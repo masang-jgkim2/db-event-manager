@@ -90,20 +90,53 @@ export interface IEventTemplate {
 }
 
 // =============================================
-// 쿼리 생성 관련
+// 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 // =============================================
 
-// 쿼리 생성 로그
-export interface IQueryLog {
+// 이벤트 상태 워크플로
+export type TEventStatus =
+  | 'event_created'    // 운영자 이벤트 생성
+  | 'dba_confirmed'    // DBA 컨펌 확인
+  | 'qa_deployed'      // DBA QA 반영
+  | 'qa_verified'      // 운영자 QA 확인
+  | 'live_deployed'    // DBA LIVE 반영
+  | 'live_verified';   // 운영자 LIVE 확인 (완료)
+
+// 상태 라벨/색상 매핑
+export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
+  event_created:  { strLabel: '이벤트 생성',    strColor: 'blue' },
+  dba_confirmed:  { strLabel: 'DBA 컨펌',      strColor: 'cyan' },
+  qa_deployed:    { strLabel: 'QA 반영',       strColor: 'orange' },
+  qa_verified:    { strLabel: 'QA 확인',       strColor: 'gold' },
+  live_deployed:  { strLabel: 'LIVE 반영',     strColor: 'volcano' },
+  live_verified:  { strLabel: 'LIVE 확인',     strColor: 'green' },
+};
+
+// 상태 변경 이력
+export interface IStatusLog {
+  strStatus: TEventStatus;
+  strChangedBy: string;
+  strComment: string;
+  dtChangedAt: string;
+}
+
+// 이벤트 인스턴스
+export interface IEventInstance {
   nId: number;
-  strEventName: string;       // 자동 생성된 이벤트 이름
+  nEventTemplateId: number;
+  strEventLabel: string;
   strProductName: string;
-  strServiceAbbr: string;     // 서비스 약자
-  strServiceRegion: string;   // 서비스 범위
-  strCategory: string;        // 이벤트 종류
-  strType: string;            // 이벤트 유형
-  strInputValues: string;     // 입력된 값
-  strGeneratedQuery: string;  // 생성된 쿼리
+  strServiceAbbr: string;
+  strServiceRegion: string;
+  strCategory: string;
+  strType: string;
+  strEventName: string;
+  strInputValues: string;
+  strGeneratedQuery: string;
+  dtExecDate: string;
+  strStatus: TEventStatus;
+  arrStatusLogs: IStatusLog[];
   strCreatedBy: string;
+  nCreatedByUserId: number;
   dtCreatedAt: string;
 }

@@ -31,6 +31,7 @@ const objRoleConfig: Record<string, { strColor: string; strLabel: string }> = {
   admin: { strColor: '#f50', strLabel: '관리자' },
   gm: { strColor: '#2db7f5', strLabel: 'GM' },
   planner: { strColor: '#87d068', strLabel: '기획자' },
+  dba: { strColor: '#722ed1', strLabel: 'DBA' },
 };
 
 const UserPage = () => {
@@ -248,6 +249,7 @@ const UserPage = () => {
             <Select placeholder="역할 선택">
               <Select.Option value="gm">GM</Select.Option>
               <Select.Option value="planner">기획자</Select.Option>
+              <Select.Option value="dba">DBA</Select.Option>
               <Select.Option value="admin">관리자</Select.Option>
             </Select>
           </Form.Item>

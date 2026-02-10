@@ -4,7 +4,7 @@ export interface IUser {
   strUserId: string;
   strPassword: string;
   strDisplayName: string;
-  strRole: 'admin' | 'gm' | 'planner';
+  strRole: 'admin' | 'gm' | 'planner' | 'dba';
   dtCreatedAt: Date;
 }
 

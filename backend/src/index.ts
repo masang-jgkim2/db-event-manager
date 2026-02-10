@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import productRoutes from './routes/productRoutes';
 import eventRoutes from './routes/eventRoutes';
+import eventInstanceRoutes from './routes/eventInstanceRoutes';
 import { fnInitUsers } from './data/users';
 
 // 환경 변수 로드
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/event-instances', eventInstanceRoutes);
 
 // 헬스 체크
 app.get('/api/health', (_req, res) => {

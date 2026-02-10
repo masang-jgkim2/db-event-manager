@@ -19,14 +19,24 @@ export const arrUsers: IUser[] = [
     strRole: 'gm',
     dtCreatedAt: new Date(),
   },
+  {
+    nId: 3,
+    strUserId: 'dba01',
+    strPassword: '$2a$10$placeholder',
+    strDisplayName: 'DBA_김철수',
+    strRole: 'dba',
+    dtCreatedAt: new Date(),
+  },
 ];
 
 // 서버 시작 시 기본 계정 비밀번호 해싱
 export const fnInitUsers = async () => {
   const strAdminHash = await bcrypt.hash('admin123', 10);
   const strGmHash = await bcrypt.hash('gm123', 10);
+  const strDbaHash = await bcrypt.hash('dba123', 10);
   arrUsers[0].strPassword = strAdminHash;
   arrUsers[1].strPassword = strGmHash;
+  arrUsers[2].strPassword = strDbaHash;
 };
 
 // 다음 ID 자동 생성

@@ -25,6 +25,7 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
   admin: { strText: '관리자', strColor: '#f50' },
   gm: { strText: 'GM', strColor: '#2db7f5' },
   planner: { strText: '기획자', strColor: '#87d068' },
+  dba: { strText: 'DBA', strColor: '#722ed1' },
 };
 
 const MainLayout = () => {
@@ -34,12 +35,12 @@ const MainLayout = () => {
   const user = useAuthStore((state) => state.user);
   const fnLogout = useAuthStore((state) => state.fnLogout);
 
-  const bIsAdmin = user?.strRole === 'admin';
+  const strRole = user?.strRole || '';
 
   // 역할에 따른 사이드바 메뉴
   const arrMenuItems = useMemo(() => {
     // 관리자 메뉴
-    if (bIsAdmin) {
+    if (strRole === 'admin') {
       return [
         {
           key: 'admin-group',
@@ -59,17 +60,26 @@ const MainLayout = () => {
           label: '운영',
           type: 'group' as const,
           children: [
+            { key: '/my-dashboard', icon: <DashboardOutlined />, label: '내 이벤트' },
             { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
           ],
         },
       ];
     }
 
-    // 일반 사용자(GM, 기획자) 메뉴
+    // DBA 메뉴
+    if (strRole === 'dba') {
+      return [
+        { key: '/dba-dashboard', icon: <DashboardOutlined />, label: 'DBA 대시보드' },
+      ];
+    }
+
+    // 운영자(GM, 기획자) 메뉴
     return [
+      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '내 이벤트' },
       { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
     ];
-  }, [bIsAdmin]);
+  }, [strRole]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -173,7 +183,7 @@ const MainLayout = () => {
             <Space style={{ cursor: 'pointer' }}>
               <Avatar
                 icon={<UserOutlined />}
-                style={{ background: bIsAdmin ? '#f50' : '#667eea' }}
+                style={{ background: objRole.strColor }}
               />
               <Text strong>{user?.strDisplayName}</Text>
               <Tag color={objRole.strColor}>{objRole.strText}</Tag>

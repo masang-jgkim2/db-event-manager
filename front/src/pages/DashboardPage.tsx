@@ -7,7 +7,6 @@ import {
 } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
-import { useQueryLogStore } from '../stores/useQueryLogStore';
 import type { IProduct, IService } from '../types';
 
 const { Title } = Typography;
@@ -15,7 +14,6 @@ const { Title } = Typography;
 const DashboardPage = () => {
   const arrProducts = useProductStore((s) => s.arrProducts);
   const arrEvents = useEventStore((s) => s.arrEvents);
-  const arrLogs = useQueryLogStore((s) => s.arrLogs);
 
   // 프로덕트 테이블 컬럼
   const arrProductColumns = [
@@ -79,7 +77,7 @@ const DashboardPage = () => {
           <Card hoverable>
             <Statistic
               title="생성된 이벤트"
-              value={arrLogs.length}
+              value={0}
               prefix={<CodeOutlined style={{ color: '#faad14' }} />}
               suffix="건"
             />

@@ -9,10 +9,8 @@ import {
   DatePicker,
   Row,
   Col,
-  Divider,
   message,
   Space,
-  Table,
   Tag,
   Steps,
   Result,
@@ -21,7 +19,6 @@ import {
 import {
   CodeOutlined,
   CopyOutlined,
-  HistoryOutlined,
   ThunderboltOutlined,
   CheckCircleOutlined,
   ReloadOutlined,
@@ -29,8 +26,8 @@ import {
 import dayjs from 'dayjs';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
-import { useQueryLogStore } from '../stores/useQueryLogStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import type { IEventTemplate, IService } from '../types';
 
 const { Title, Text } = Typography;
@@ -52,10 +49,10 @@ const QueryPage = () => {
 
   const [messageApi, contextHolder] = message.useMessage();
 
+  const [bSubmitting, setBSubmitting] = useState(false);
+
   const arrProducts = useProductStore((s) => s.arrProducts);
   const arrEvents = useEventStore((s) => s.arrEvents);
-  const arrLogs = useQueryLogStore((s) => s.arrLogs);
-  const fnAddLog = useQueryLogStore((s) => s.fnAddLog);
   const user = useAuthStore((s) => s.user);
 
   // 선택된 프로덕트
@@ -139,9 +136,15 @@ const QueryPage = () => {
     }
   };
 
-  // === 쿼리 생성 ===
-  const fnGenerateQuery = () => {
+  // === 이벤트 생성 (서버 저장) ===
+  const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
+
+    // 실행 날짜 필수 체크
+    if (!strExecDate) {
+      messageApi.warning('이벤트 실행 날짜를 선택해주세요.');
+      return;
+    }
 
     // 입력값 필요한데 비어있으면 경고
     if (objSelectedEvent.strInputFormat !== 'none' && !strInputValues.trim()) {
@@ -153,7 +156,7 @@ const QueryPage = () => {
 
     // 치환 변수 처리
     strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
-    strQuery = strQuery.replace(/\{\{date\}\}/g, strExecDate || dayjs().format('YYYY-MM-DD'));
+    strQuery = strQuery.replace(/\{\{date\}\}/g, strExecDate);
     strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
     strQuery = strQuery.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
     strQuery = strQuery.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
@@ -161,20 +164,34 @@ const QueryPage = () => {
 
     setStrGeneratedQuery(strQuery);
 
-    // 로그 기록
-    fnAddLog({
-      strEventName,
-      strProductName: objSelectedProduct?.strName || '',
-      strServiceAbbr: strSelectedAbbr || '',
-      strServiceRegion: objSelectedService?.strRegion || '',
-      strCategory: objSelectedEvent.strCategory,
-      strType: objSelectedEvent.strType,
-      strInputValues: strInputValues.trim(),
-      strGeneratedQuery: strQuery,
-      strCreatedBy: user?.strDisplayName || '',
-    });
+    // 서버에 이벤트 인스턴스 저장
+    setBSubmitting(true);
+    try {
+      const objResult = await fnApiCreateInstance({
+        nEventTemplateId: objSelectedEvent.nId,
+        strEventLabel: objSelectedEvent.strEventLabel,
+        strProductName: objSelectedProduct?.strName || '',
+        strServiceAbbr: strSelectedAbbr || '',
+        strServiceRegion: objSelectedService?.strRegion || '',
+        strCategory: objSelectedEvent.strCategory,
+        strType: objSelectedEvent.strType,
+        strEventName,
+        strInputValues: strInputValues.trim(),
+        strGeneratedQuery: strQuery,
+        dtExecDate: strExecDate,
+        strCreatedBy: user?.strDisplayName || '',
+      });
 
-    messageApi.success('이벤트가 생성되었습니다!');
+      if (objResult.bSuccess) {
+        messageApi.success('이벤트가 생성되었습니다! 대시보드에서 진행 상태를 확인하세요.');
+      } else {
+        messageApi.error(objResult.strMessage || '이벤트 생성에 실패했습니다.');
+      }
+    } catch {
+      messageApi.error('서버 연결에 실패했습니다.');
+    } finally {
+      setBSubmitting(false);
+    }
   };
 
   // 클립보드 복사
@@ -231,49 +248,6 @@ const QueryPage = () => {
       </>
     );
   }
-
-  // 로그 테이블 컬럼
-  const arrLogColumns = [
-    {
-      title: '시간',
-      dataIndex: 'dtCreatedAt',
-      key: 'dtCreatedAt',
-      width: 150,
-      render: (strDate: string) => new Date(strDate).toLocaleString('ko-KR'),
-    },
-    {
-      title: '이벤트 이름',
-      dataIndex: 'strEventName',
-      key: 'strEventName',
-      width: 280,
-    },
-    {
-      title: '종류',
-      dataIndex: 'strCategory',
-      key: 'strCategory',
-      width: 70,
-      render: (str: string) => <Tag color="blue">{str}</Tag>,
-    },
-    {
-      title: '유형',
-      dataIndex: 'strType',
-      key: 'strType',
-      width: 70,
-      render: (str: string) => <Tag color="red">{str}</Tag>,
-    },
-    {
-      title: '생성자',
-      dataIndex: 'strCreatedBy',
-      key: 'strCreatedBy',
-      width: 100,
-    },
-    {
-      title: '쿼리',
-      dataIndex: 'strGeneratedQuery',
-      key: 'strGeneratedQuery',
-      ellipsis: true,
-    },
-  ];
 
   return (
     <>
@@ -379,6 +353,15 @@ const QueryPage = () => {
           {objSelectedEvent && (
             <Card title="4. 이벤트 정보 입력" size="small" style={{ marginTop: 12 }}>
               <Form layout="vertical">
+                {/* 담당자 (자동) */}
+                <Form.Item label="담당자 (생성자)">
+                  <Input
+                    value={user?.strDisplayName || ''}
+                    disabled
+                    size="large"
+                  />
+                </Form.Item>
+
                 {/* 이벤트 이름 (자동 생성, 수정 가능) */}
                 <Form.Item label="이벤트 이름">
                   <Input
@@ -392,11 +375,15 @@ const QueryPage = () => {
                   </Text>
                 </Form.Item>
 
-                {/* 실행 날짜 */}
-                <Form.Item label="이벤트 실행 시작 날짜 (선택)">
+                {/* 실행 날짜 (필수) */}
+                <Form.Item
+                  label={
+                    <Space>이벤트 실행 날짜 <Tag color="red" style={{ fontSize: 11 }}>필수</Tag></Space>
+                  }
+                >
                   <DatePicker
                     style={{ width: '100%' }}
-                    placeholder="실행 날짜 선택 (미입력 시 오늘)"
+                    placeholder="실행 날짜를 선택하세요"
                     onChange={(date) => setStrExecDate(date ? date.format('YYYY-MM-DD') : '')}
                     size="large"
                   />
@@ -429,6 +416,7 @@ const QueryPage = () => {
                 type="primary"
                 icon={<ThunderboltOutlined />}
                 onClick={fnGenerateQuery}
+                loading={bSubmitting}
                 block
                 size="large"
                 style={{
@@ -439,7 +427,7 @@ const QueryPage = () => {
                   fontSize: 16,
                 }}
               >
-                쿼리 생성
+                이벤트 생성
               </Button>
             </Card>
           )}
@@ -505,28 +493,7 @@ const QueryPage = () => {
         </Col>
       </Row>
 
-      {/* 하단: 이력 */}
-      {arrLogs.length > 0 && (
-        <>
-          <Divider />
-          <Card
-            title={
-              <Space>
-                <HistoryOutlined />
-                <span>이벤트 생성 이력</span>
-              </Space>
-            }
-          >
-            <Table
-              dataSource={arrLogs}
-              columns={arrLogColumns}
-              rowKey="nId"
-              pagination={{ pageSize: 5 }}
-              size="small"
-            />
-          </Card>
-        </>
-      )}
+      {/* 이력은 대시보드에서 확인 */}
     </>
   );
 };
