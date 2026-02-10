@@ -110,6 +110,7 @@ export const useProductStore = create<IProductStore>()(
     }),
     {
       name: 'em-products', // localStorage 키
+      version: 2,          // 버전 변경 시 localStorage 초기화
     }
   )
 );

@@ -29,6 +29,7 @@ export const useQueryLogStore = create<IQueryLogStore>()(
     }),
     {
       name: 'em-query-logs', // localStorage 키
+      version: 2,            // 버전 변경 시 localStorage 초기화
     }
   )
 );

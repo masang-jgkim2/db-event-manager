@@ -59,7 +59,7 @@ const MainLayout = () => {
           label: '운영',
           type: 'group' as const,
           children: [
-            { key: '/query', icon: <CodeOutlined />, label: '쿼리 생성' },
+            { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
           ],
         },
       ];
@@ -67,7 +67,7 @@ const MainLayout = () => {
 
     // 일반 사용자(GM, 기획자) 메뉴
     return [
-      { key: '/query', icon: <CodeOutlined />, label: '쿼리 생성' },
+      { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
     ];
   }, [bIsAdmin]);
 

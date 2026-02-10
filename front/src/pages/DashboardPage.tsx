@@ -78,7 +78,7 @@ const DashboardPage = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable>
             <Statistic
-              title="생성된 쿼리"
+              title="생성된 이벤트"
               value={arrLogs.length}
               prefix={<CodeOutlined style={{ color: '#faad14' }} />}
               suffix="건"

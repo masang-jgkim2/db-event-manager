@@ -54,7 +54,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const user = useAuthStore((state) => state.user);
 
   if (bIsAuthenticated) {
-    // 관리자는 대시보드, 일반 사용자는 쿼리 생성 페이지로
+    // 관리자는 대시보드, 일반 사용자는 이벤트 생성 페이지로
     const strRedirect = user?.strRole === 'admin' ? '/' : '/query';
     return <Navigate to={strRedirect} replace />;
   }

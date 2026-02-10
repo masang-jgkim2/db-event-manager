@@ -174,7 +174,7 @@ const QueryPage = () => {
       strCreatedBy: user?.strDisplayName || '',
     });
 
-    messageApi.success('쿼리가 생성되었습니다!');
+    messageApi.success('이벤트가 생성되었습니다!');
   };
 
   // 클립보드 복사
@@ -215,7 +215,7 @@ const QueryPage = () => {
       <>
         {contextHolder}
         <Title level={4} style={{ marginBottom: 24 }}>
-          <CodeOutlined /> 쿼리 생성
+          <CodeOutlined /> 이벤트 생성
         </Title>
         <Card>
           <Result
@@ -280,7 +280,7 @@ const QueryPage = () => {
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
         <Title level={4} style={{ margin: 0 }}>
-          <CodeOutlined /> 쿼리 생성
+          <CodeOutlined /> 이벤트 생성
         </Title>
         {nSelectedProductId && (
           <Button icon={<ReloadOutlined />} onClick={fnReset}>초기화</Button>
@@ -498,7 +498,7 @@ const QueryPage = () => {
                 <br />
                 왼쪽에서 프로덕트와 이벤트를 선택하고
                 <br />
-                필요한 값을 입력하면 쿼리가 생성됩니다.
+                필요한 값을 입력하면 이벤트가 생성됩니다.
               </div>
             )}
           </Card>
@@ -513,7 +513,7 @@ const QueryPage = () => {
             title={
               <Space>
                 <HistoryOutlined />
-                <span>쿼리 생성 이력</span>
+                <span>이벤트 생성 이력</span>
               </Space>
             }
           >
