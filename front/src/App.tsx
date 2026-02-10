@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin } from 'antd';
+import { ConfigProvider, Spin, Result } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
 import LoginPage from './pages/LoginPage';
@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProductPage from './pages/ProductPage';
 import EventPage from './pages/EventPage';
 import QueryPage from './pages/QueryPage';
+import UserPage from './pages/UserPage';
 import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
@@ -30,15 +31,42 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// 이미 로그인된 사용자는 대시보드로 리다이렉트
-const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+// 관리자 전용 라우트 가드
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const user = useAuthStore((state) => state.user);
 
-  if (bIsAuthenticated) {
-    return <Navigate to="/" replace />;
+  if (user?.strRole !== 'admin') {
+    return (
+      <Result
+        status="403"
+        title="접근 권한 없음"
+        subTitle="관리자만 접근할 수 있는 페이지입니다."
+      />
+    );
   }
 
   return <>{children}</>;
+};
+
+// 이미 로그인된 사용자는 적절한 페이지로 리다이렉트
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+  const user = useAuthStore((state) => state.user);
+
+  if (bIsAuthenticated) {
+    // 관리자는 대시보드, 일반 사용자는 쿼리 생성 페이지로
+    const strRedirect = user?.strRole === 'admin' ? '/' : '/query';
+    return <Navigate to={strRedirect} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// 기본 리다이렉트 (역할에 따라 다른 페이지로)
+const DefaultRedirect = () => {
+  const user = useAuthStore((state) => state.user);
+  const strRedirect = user?.strRole === 'admin' ? '/' : '/query';
+  return <Navigate to={strRedirect} replace />;
 };
 
 const App = () => {
@@ -71,14 +99,46 @@ const App = () => {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/products" element={<ProductPage />} />
-            <Route path="/events" element={<EventPage />} />
+            {/* 관리자 전용 페이지 */}
+            <Route
+              path="/"
+              element={
+                <AdminRoute>
+                  <DashboardPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/products"
+              element={
+                <AdminRoute>
+                  <ProductPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/events"
+              element={
+                <AdminRoute>
+                  <EventPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <AdminRoute>
+                  <UserPage />
+                </AdminRoute>
+              }
+            />
+
+            {/* 공통 페이지 (모든 역할) */}
             <Route path="/query" element={<QueryPage />} />
           </Route>
 
-          {/* 존재하지 않는 경로는 메인으로 리다이렉트 */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* 존재하지 않는 경로 → 역할에 맞는 페이지로 */}
+          <Route path="*" element={<DefaultRedirect />} />
         </Routes>
       </BrowserRouter>
     </ConfigProvider>

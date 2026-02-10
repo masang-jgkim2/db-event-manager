@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space } from 'antd';
+import { useState, useMemo } from 'react';
+import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
@@ -10,6 +10,8 @@ import {
   LogoutOutlined,
   UserOutlined,
   DatabaseOutlined,
+  TeamOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -18,29 +20,12 @@ import type { MenuProps } from 'antd';
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
-// 사이드바 메뉴 항목
-const arrMenuItems = [
-  {
-    key: '/',
-    icon: <DashboardOutlined />,
-    label: '대시보드',
-  },
-  {
-    key: '/products',
-    icon: <AppstoreOutlined />,
-    label: '프로덕트 관리',
-  },
-  {
-    key: '/events',
-    icon: <CalendarOutlined />,
-    label: '이벤트 템플릿',
-  },
-  {
-    key: '/query',
-    icon: <CodeOutlined />,
-    label: '쿼리 생성',
-  },
-];
+// 역할 표시 라벨
+const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
+  admin: { strText: '관리자', strColor: '#f50' },
+  gm: { strText: 'GM', strColor: '#2db7f5' },
+  planner: { strText: '기획자', strColor: '#87d068' },
+};
 
 const MainLayout = () => {
   const [bCollapsed, setBCollapsed] = useState(false);
@@ -48,6 +33,43 @@ const MainLayout = () => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const fnLogout = useAuthStore((state) => state.fnLogout);
+
+  const bIsAdmin = user?.strRole === 'admin';
+
+  // 역할에 따른 사이드바 메뉴
+  const arrMenuItems = useMemo(() => {
+    // 관리자 메뉴
+    if (bIsAdmin) {
+      return [
+        {
+          key: 'admin-group',
+          icon: <SettingOutlined />,
+          label: '관리자',
+          type: 'group' as const,
+          children: [
+            { key: '/', icon: <DashboardOutlined />, label: '대시보드' },
+            { key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' },
+            { key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' },
+            { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
+          ],
+        },
+        {
+          key: 'common-group',
+          icon: <CodeOutlined />,
+          label: '운영',
+          type: 'group' as const,
+          children: [
+            { key: '/query', icon: <CodeOutlined />, label: '쿼리 생성' },
+          ],
+        },
+      ];
+    }
+
+    // 일반 사용자(GM, 기획자) 메뉴
+    return [
+      { key: '/query', icon: <CodeOutlined />, label: '쿼리 생성' },
+    ];
+  }, [bIsAdmin]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -64,6 +86,8 @@ const MainLayout = () => {
       onClick: fnLogout,
     },
   ];
+
+  const objRole = objRoleLabel[user?.strRole || ''] || { strText: user?.strRole, strColor: '#999' };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -149,12 +173,10 @@ const MainLayout = () => {
             <Space style={{ cursor: 'pointer' }}>
               <Avatar
                 icon={<UserOutlined />}
-                style={{ background: '#667eea' }}
+                style={{ background: bIsAdmin ? '#f50' : '#667eea' }}
               />
               <Text strong>{user?.strDisplayName}</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {user?.strRole}
-              </Text>
+              <Tag color={objRole.strColor}>{objRole.strText}</Tag>
             </Space>
           </Dropdown>
         </Header>

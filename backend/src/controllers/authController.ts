@@ -1,29 +1,11 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { IUser, ILoginRequest, IJwtPayload } from '../types';
+import { ILoginRequest, IJwtPayload } from '../types';
+import { arrUsers } from '../data/users';
 
 const strJwtSecret = process.env.JWT_SECRET || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
-
-// 임시 사용자 데이터 (추후 DB 연동 시 교체)
-const arrUsers: IUser[] = [
-  {
-    nId: 1,
-    strUserId: 'admin',
-    // 비밀번호: admin123
-    strPassword: '$2a$10$placeholder',
-    strDisplayName: '관리자',
-    strRole: 'admin',
-    dtCreatedAt: new Date(),
-  },
-];
-
-// 서버 시작 시 기본 계정 비밀번호 해싱
-(async () => {
-  const strHashedPassword = await bcrypt.hash('admin123', 10);
-  arrUsers[0].strPassword = strHashedPassword;
-})();
 
 // 로그인 처리
 export const fnLogin = async (req: Request, res: Response): Promise<void> => {

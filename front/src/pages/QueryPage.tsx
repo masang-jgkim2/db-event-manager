@@ -15,12 +15,15 @@ import {
   Space,
   Table,
   Tag,
+  Steps,
+  Result,
 } from 'antd';
 import {
   CodeOutlined,
   CopyOutlined,
   HistoryOutlined,
   ThunderboltOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
@@ -55,6 +58,14 @@ const QueryPage = () => {
     if (!nSelectedEventId) return undefined;
     return arrEvents.find((e) => e.nId === nSelectedEventId);
   }, [nSelectedEventId, arrEvents]);
+
+  // 현재 스텝 계산
+  const nCurrentStep = useMemo(() => {
+    if (strGeneratedQuery) return 3;
+    if (nSelectedEventId) return 2;
+    if (nSelectedProductId) return 1;
+    return 0;
+  }, [nSelectedProductId, nSelectedEventId, strGeneratedQuery]);
 
   // 프로덕트 변경 시 이벤트 초기화
   const fnHandleProductChange = (nId: number) => {
@@ -92,7 +103,6 @@ const QueryPage = () => {
               : strValue.format('YYYY-MM-DD HH:mm:ss');
         }
 
-        // 값이 없으면 빈 문자열
         strValue = strValue ?? '';
 
         const regex = new RegExp(`\\{\\{${param.strKey}\\}\\}`, 'g');
@@ -111,7 +121,7 @@ const QueryPage = () => {
         strCreatedBy: user?.strDisplayName || '',
       });
 
-      messageApi.success('쿼리가 생성되었습니다.');
+      messageApi.success('쿼리가 생성되었습니다!');
     } catch {
       messageApi.warning('필수 파라미터를 모두 입력해주세요.');
     }
@@ -121,6 +131,14 @@ const QueryPage = () => {
   const fnCopyToClipboard = () => {
     navigator.clipboard.writeText(strGeneratedQuery);
     messageApi.success('클립보드에 복사되었습니다.');
+  };
+
+  // 초기화
+  const fnReset = () => {
+    setNSelectedProductId(null);
+    setNSelectedEventId(null);
+    setStrGeneratedQuery('');
+    form.resetFields();
   };
 
   // 파라미터에 따른 입력 컴포넌트 렌더링
@@ -152,6 +170,29 @@ const QueryPage = () => {
         return <Input placeholder={`${objParam.strLabel} 입력`} />;
     }
   };
+
+  // 이벤트가 하나도 없을 때
+  if (arrProducts.length === 0 || arrEvents.length === 0) {
+    return (
+      <>
+        {contextHolder}
+        <Title level={4} style={{ marginBottom: 24 }}>
+          <CodeOutlined /> 쿼리 생성
+        </Title>
+        <Card>
+          <Result
+            status="info"
+            title="등록된 이벤트가 없습니다"
+            subTitle={
+              user?.strRole === 'admin'
+                ? '먼저 프로덕트와 이벤트 템플릿을 등록해주세요.'
+                : '관리자에게 이벤트 등록을 요청해주세요.'
+            }
+          />
+        </Card>
+      </>
+    );
+  }
 
   // 로그 테이블 컬럼
   const arrLogColumns = [
@@ -196,18 +237,32 @@ const QueryPage = () => {
         <CodeOutlined /> 쿼리 생성
       </Title>
 
+      {/* 진행 단계 표시 */}
+      <Card style={{ marginBottom: 24 }}>
+        <Steps
+          current={nCurrentStep}
+          items={[
+            { title: '프로덕트 선택' },
+            { title: '이벤트 선택' },
+            { title: '값 입력' },
+            { title: '쿼리 생성 완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
+          ]}
+        />
+      </Card>
+
       <Row gutter={24}>
         {/* 왼쪽: 조건 입력 */}
         <Col xs={24} lg={10}>
-          <Card title="1. 프로덕트 & 이벤트 선택">
+          <Card title="프로덕트 & 이벤트 선택" size="small">
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <div>
-                <Text strong>프로덕트</Text>
+                <Text strong style={{ display: 'block', marginBottom: 4 }}>프로덕트</Text>
                 <Select
-                  style={{ width: '100%', marginTop: 4 }}
+                  style={{ width: '100%' }}
                   placeholder="프로덕트를 선택하세요"
                   onChange={fnHandleProductChange}
                   value={nSelectedProductId}
+                  size="large"
                 >
                   {arrProducts.map((p) => (
                     <Select.Option key={p.nId} value={p.nId}>
@@ -217,9 +272,9 @@ const QueryPage = () => {
                 </Select>
               </div>
               <div>
-                <Text strong>이벤트</Text>
+                <Text strong style={{ display: 'block', marginBottom: 4 }}>이벤트</Text>
                 <Select
-                  style={{ width: '100%', marginTop: 4 }}
+                  style={{ width: '100%' }}
                   placeholder={
                     nSelectedProductId
                       ? '이벤트를 선택하세요'
@@ -228,6 +283,7 @@ const QueryPage = () => {
                   disabled={!nSelectedProductId}
                   onChange={fnHandleEventChange}
                   value={nSelectedEventId}
+                  size="large"
                 >
                   {arrFilteredEvents.map((e) => (
                     <Select.Option key={e.nId} value={e.nId}>
@@ -239,15 +295,27 @@ const QueryPage = () => {
             </Space>
           </Card>
 
+          {/* 이벤트 설명 표시 */}
+          {objSelectedEvent?.strDescription && (
+            <Card size="small" style={{ marginTop: 12, background: '#f6f8fa' }}>
+              <Text type="secondary">{objSelectedEvent.strDescription}</Text>
+            </Card>
+          )}
+
           {/* 파라미터 입력 영역 */}
           {objSelectedEvent && objSelectedEvent.arrParams.length > 0 && (
-            <Card title="2. 파라미터 입력" style={{ marginTop: 16 }}>
+            <Card title="파라미터 입력" size="small" style={{ marginTop: 12 }}>
               <Form form={form} layout="vertical">
                 {objSelectedEvent.arrParams.map((objParam: IEventParam) => (
                   <Form.Item
                     key={objParam.strKey}
                     name={objParam.strKey}
-                    label={objParam.strLabel}
+                    label={
+                      <Space>
+                        {objParam.strLabel}
+                        {objParam.bRequired && <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>}
+                      </Space>
+                    }
                     rules={
                       objParam.bRequired
                         ? [{ required: true, message: `${objParam.strLabel}을(를) 입력해주세요.` }]
@@ -268,6 +336,8 @@ const QueryPage = () => {
                 style={{
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   border: 'none',
+                  height: 48,
+                  fontWeight: 600,
                 }}
               >
                 쿼리 생성
@@ -275,9 +345,9 @@ const QueryPage = () => {
             </Card>
           )}
 
-          {/* 이벤트는 선택했지만 파라미터가 없는 경우 */}
+          {/* 파라미터 없는 이벤트 */}
           {objSelectedEvent && objSelectedEvent.arrParams.length === 0 && (
-            <Card style={{ marginTop: 16 }}>
+            <Card style={{ marginTop: 12 }}>
               <Button
                 type="primary"
                 icon={<ThunderboltOutlined />}
@@ -287,9 +357,11 @@ const QueryPage = () => {
                 style={{
                   background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                   border: 'none',
+                  height: 48,
+                  fontWeight: 600,
                 }}
               >
-                쿼리 생성 (파라미터 없음)
+                쿼리 생성
               </Button>
             </Card>
           )}
@@ -301,15 +373,20 @@ const QueryPage = () => {
             title="생성된 쿼리"
             extra={
               strGeneratedQuery && (
-                <Button
-                  icon={<CopyOutlined />}
-                  onClick={fnCopyToClipboard}
-                  type="primary"
-                  ghost
-                  size="small"
-                >
-                  복사
-                </Button>
+                <Space>
+                  <Button onClick={fnReset} size="small">
+                    초기화
+                  </Button>
+                  <Button
+                    icon={<CopyOutlined />}
+                    onClick={fnCopyToClipboard}
+                    type="primary"
+                    ghost
+                    size="small"
+                  >
+                    복사
+                  </Button>
+                </Space>
               )
             }
           >
@@ -317,14 +394,15 @@ const QueryPage = () => {
               <TextArea
                 value={strGeneratedQuery}
                 readOnly
-                rows={12}
+                autoSize={{ minRows: 8, maxRows: 20 }}
                 style={{
-                  fontFamily: 'monospace',
+                  fontFamily: "'Consolas', 'Monaco', monospace",
                   fontSize: 13,
                   background: '#1e1e1e',
                   color: '#d4d4d4',
                   border: 'none',
                   borderRadius: 8,
+                  padding: 16,
                 }}
               />
             ) : (
@@ -345,24 +423,27 @@ const QueryPage = () => {
       </Row>
 
       {/* 하단: 쿼리 생성 이력 */}
-      <Divider />
-      <Card
-        title={
-          <Space>
-            <HistoryOutlined />
-            <span>쿼리 생성 이력</span>
-          </Space>
-        }
-      >
-        <Table
-          dataSource={arrLogs}
-          columns={arrLogColumns}
-          rowKey="nId"
-          pagination={{ pageSize: 5 }}
-          size="small"
-          locale={{ emptyText: '아직 생성된 쿼리가 없습니다.' }}
-        />
-      </Card>
+      {arrLogs.length > 0 && (
+        <>
+          <Divider />
+          <Card
+            title={
+              <Space>
+                <HistoryOutlined />
+                <span>쿼리 생성 이력</span>
+              </Space>
+            }
+          >
+            <Table
+              dataSource={arrLogs}
+              columns={arrLogColumns}
+              rowKey="nId"
+              pagination={{ pageSize: 5 }}
+              size="small"
+            />
+          </Card>
+        </>
+      )}
     </>
   );
 };
