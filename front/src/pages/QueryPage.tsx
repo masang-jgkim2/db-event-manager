@@ -267,10 +267,10 @@ const QueryPage = () => {
           current={nCurrentStep}
           items={[
             { title: '프로덕트' },
-            { title: '서비스 선택' },
+            { title: '국내/해외' },
             { title: '이벤트 선택' },
             { title: '값 입력' },
-            { title: '완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
+            { title: '생성 완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
           ]}
         />
       </Card>
@@ -298,22 +298,34 @@ const QueryPage = () => {
             </Select>
           </Card>
 
-          {/* STEP 2: 서비스 범위 선택 */}
-          {objSelectedProduct && objSelectedProduct.arrServices.length > 1 && (
-            <Card title="2. 서비스 범위 선택" size="small" style={{ marginTop: 12 }}>
+          {/* STEP 2: 국내/해외 선택 */}
+          {objSelectedProduct && (
+            <Card title="2. 국내/해외 선택" size="small" style={{ marginTop: 12 }}>
               <Select
                 style={{ width: '100%' }}
-                placeholder="서비스 범위를 선택하세요"
+                placeholder="국내/해외를 선택하세요"
                 onChange={fnHandleServiceChange}
                 value={strSelectedAbbr}
                 size="large"
               >
-                {objSelectedProduct.arrServices.map((s) => (
-                  <Select.Option key={s.strAbbr} value={s.strAbbr}>
-                    <strong>{s.strAbbr}</strong>
-                    <Text type="secondary" style={{ marginLeft: 8 }}>({s.strRegion})</Text>
-                  </Select.Option>
-                ))}
+                {objSelectedProduct.arrServices.map((s) => {
+                  // 리전 라벨 매핑: 국내(한국), 글로벌→해외(글로벌), 스팀→해외(스팀)
+                  let strDisplayLabel = s.strRegion;
+                  if (s.strRegion === '국내') strDisplayLabel = '국내(한국)';
+                  else if (s.strRegion === '글로벌') strDisplayLabel = '해외(글로벌)';
+                  else if (s.strRegion === '스팀') strDisplayLabel = '해외(스팀)';
+                  else if (s.strRegion === '유럽') strDisplayLabel = '해외(유럽)';
+                  else if (s.strRegion === '일본') strDisplayLabel = '해외(일본)';
+
+                  return (
+                    <Select.Option key={s.strAbbr} value={s.strAbbr}>
+                      {strDisplayLabel}
+                      <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                        {s.strAbbr}
+                      </Text>
+                    </Select.Option>
+                  );
+                })}
               </Select>
             </Card>
           )}
