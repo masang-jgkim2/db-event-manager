@@ -18,6 +18,12 @@ export const fnApiCreateInstance = async (objData: Record<string, unknown>) => {
   return response.data;
 };
 
+// 이벤트 인스턴스 수정 (event_created 상태에서만)
+export const fnApiUpdateInstance = async (nId: number, objData: Record<string, unknown>) => {
+  const response = await apiClient.put(`/event-instances/${nId}`, objData);
+  return response.data;
+};
+
 // 이벤트 상태 변경
 export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strComment: string = '', strActorName: string = '') => {
   const response = await apiClient.patch(`/event-instances/${nId}/status`, { strNextStatus, strComment, strActorName });

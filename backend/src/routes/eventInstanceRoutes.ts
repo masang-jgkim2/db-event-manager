@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   fnCreateInstance, fnGetInstances,
-  fnUpdateStatus, fnGetInstance,
+  fnUpdateStatus, fnGetInstance, fnUpdateInstance,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 
@@ -18,6 +18,9 @@ router.get('/:id', fnGetInstance);
 
 // POST /api/event-instances - 이벤트 생성
 router.post('/', fnCreateInstance);
+
+// PUT /api/event-instances/:id - 이벤트 수정 (event_created 상태에서만)
+router.put('/:id', fnUpdateInstance);
 
 // PATCH /api/event-instances/:id/status - 상태 변경
 router.patch('/:id/status', fnUpdateStatus);

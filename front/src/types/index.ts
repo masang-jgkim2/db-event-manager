@@ -95,21 +95,23 @@ export interface IEventTemplate {
 
 // 이벤트 상태 워크플로
 export type TEventStatus =
-  | 'event_created'    // 운영자 이벤트 생성
-  | 'dba_confirmed'    // DBA 컨펌 확인
-  | 'qa_deployed'      // DBA QA 반영
-  | 'qa_verified'      // 운영자 QA 확인
-  | 'live_deployed'    // DBA LIVE 반영
-  | 'live_verified';   // 운영자 LIVE 확인 (완료)
+  | 'event_created'       // 운영자 이벤트 생성 (수정 가능)
+  | 'confirm_requested'   // 운영자 컨펌 요청 (수정 불가)
+  | 'dba_confirmed'       // DBA 컨펌 확인
+  | 'qa_deployed'         // DBA QA 반영
+  | 'qa_verified'         // 운영자 QA 확인
+  | 'live_deployed'       // DBA LIVE 반영
+  | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
 // 상태 라벨/색상 매핑
 export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
-  event_created:  { strLabel: '이벤트 생성',    strColor: 'blue' },
-  dba_confirmed:  { strLabel: 'DBA 컨펌',      strColor: 'cyan' },
-  qa_deployed:    { strLabel: 'QA 반영',       strColor: 'orange' },
-  qa_verified:    { strLabel: 'QA 확인',       strColor: 'gold' },
-  live_deployed:  { strLabel: 'LIVE 반영',     strColor: 'volcano' },
-  live_verified:  { strLabel: 'LIVE 확인',     strColor: 'green' },
+  event_created:      { strLabel: '작성 중',       strColor: 'default' },
+  confirm_requested:  { strLabel: '컨펌 요청',     strColor: 'blue' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌',     strColor: 'cyan' },
+  qa_deployed:        { strLabel: 'QA 반영',      strColor: 'orange' },
+  qa_verified:        { strLabel: 'QA 확인',      strColor: 'gold' },
+  live_deployed:      { strLabel: 'LIVE 반영',    strColor: 'volcano' },
+  live_verified:      { strLabel: '완료',          strColor: 'green' },
 };
 
 // 상태 변경 이력

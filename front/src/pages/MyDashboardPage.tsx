@@ -7,9 +7,10 @@ import {
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
-  RocketOutlined, CopyOutlined, UserOutlined,
+  RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
-import { fnApiGetInstances, fnApiUpdateStatus } from '../api/eventInstanceApi';
+import { fnApiGetInstances, fnApiUpdateStatus, fnApiUpdateInstance } from '../api/eventInstanceApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IEventInstance, TEventStatus, IStageActor } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
@@ -35,6 +36,12 @@ const MyDashboardPage = () => {
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
   const [strFilter, setStrFilter] = useState<string>('involved');
+  // 수정 모달
+  const [bEditOpen, setBEditOpen] = useState(false);
+  const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
+  const [strEditEventName, setStrEditEventName] = useState('');
+  const [strEditInputValues, setStrEditInputValues] = useState('');
+  const [strEditExecDate, setStrEditExecDate] = useState('');
   const [messageApi, contextHolder] = message.useMessage();
 
   const user = useAuthStore((s) => s.user);
@@ -72,6 +79,36 @@ const MyDashboardPage = () => {
     }
   };
 
+  // 수정 모달 열기
+  const fnOpenEdit = (r: IEventInstance) => {
+    setObjEditInstance(r);
+    setStrEditEventName(r.strEventName);
+    setStrEditInputValues(r.strInputValues);
+    setStrEditExecDate(r.dtExecDate);
+    setBEditOpen(true);
+  };
+
+  // 수정 저장
+  const fnSaveEdit = async () => {
+    if (!objEditInstance) return;
+    try {
+      const result = await fnApiUpdateInstance(objEditInstance.nId, {
+        strEventName: strEditEventName,
+        strInputValues: strEditInputValues,
+        dtExecDate: strEditExecDate,
+      });
+      if (result.bSuccess) {
+        messageApi.success('이벤트가 수정되었습니다.');
+        setBEditOpen(false);
+        fnLoad();
+      } else {
+        messageApi.error(result.strMessage);
+      }
+    } catch {
+      messageApi.error('수정에 실패했습니다.');
+    }
+  };
+
   // 클립보드 복사
   const fnCopy = (str: string) => {
     navigator.clipboard.writeText(str);
@@ -82,7 +119,8 @@ const MyDashboardPage = () => {
   const nTotal = arrInstances.length;
   const nMyAction = arrInstances.filter((e) => {
     const arrTrans: Record<string, string[]> = {
-      event_created: ['dba', 'admin'],
+      event_created: ['gm', 'planner', 'admin'],
+      confirm_requested: ['dba', 'admin'],
       dba_confirmed: ['dba', 'admin'],
       qa_deployed: ['gm', 'planner', 'admin'],
       qa_verified: ['dba', 'admin'],
@@ -103,9 +141,22 @@ const MyDashboardPage = () => {
         onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
     );
 
+    // 운영자: 작성 중 → 수정 + 컨펌 요청
+    if (['gm', 'planner', 'admin'].includes(strRole) && r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId) {
+      arrButtons.push(
+        <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
+      );
+      arrButtons.push(
+        <Popconfirm key="req-confirm" title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다." okText="요청" cancelText="취소"
+          onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}>
+          <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
+        </Popconfirm>
+      );
+    }
+
     // DBA 액션
     if (['dba', 'admin'].includes(strRole)) {
-      if (r.strStatus === 'event_created') {
+      if (r.strStatus === 'confirm_requested') {
         arrButtons.push(
           <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -190,7 +241,7 @@ const MyDashboardPage = () => {
     {
       title: '처리',
       key: 'actions',
-      width: 220,
+      width: 280,
       render: (_: unknown, r: IEventInstance) => fnRenderActions(r),
     },
   ];
@@ -301,6 +352,39 @@ const MyDashboardPage = () => {
                 }))}
               />
             </Card>
+          </Space>
+        )}
+      </Modal>
+
+      {/* 수정 모달 */}
+      <Modal
+        title="이벤트 수정 (컨펌 요청 전)"
+        open={bEditOpen}
+        onOk={fnSaveEdit}
+        onCancel={() => setBEditOpen(false)}
+        okText="저장"
+        cancelText="취소"
+        width={600}
+      >
+        {objEditInstance && (
+          <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="middle">
+            <div>
+              <Text strong>프로덕트</Text>
+              <Input value={`${objEditInstance.strProductName} (${objEditInstance.strServiceAbbr} / ${objEditInstance.strServiceRegion})`} disabled />
+            </div>
+            <div>
+              <Text strong>이벤트 이름</Text>
+              <Input value={strEditEventName} onChange={(e) => setStrEditEventName(e.target.value)} />
+            </div>
+            <div>
+              <Text strong>실행 날짜</Text>
+              <Input value={strEditExecDate} onChange={(e) => setStrEditExecDate(e.target.value)} placeholder="YYYY-MM-DD" />
+            </div>
+            <div>
+              <Text strong>입력값 (아이템/퀘스트)</Text>
+              <TextArea value={strEditInputValues} onChange={(e) => setStrEditInputValues(e.target.value)}
+                rows={5} style={{ fontFamily: 'monospace', fontSize: 13 }} />
+            </div>
           </Space>
         )}
       </Modal>

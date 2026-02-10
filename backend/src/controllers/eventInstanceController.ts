@@ -6,11 +6,12 @@ import {
 
 // 상태 전이 규칙
 const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
-  event_created:  [{ strNextStatus: 'dba_confirmed',  arrAllowedRoles: ['dba', 'admin'] }],
-  dba_confirmed:  [{ strNextStatus: 'qa_deployed',    arrAllowedRoles: ['dba', 'admin'] }],
-  qa_deployed:    [{ strNextStatus: 'qa_verified',    arrAllowedRoles: ['gm', 'planner', 'admin'] }],
-  qa_verified:    [{ strNextStatus: 'live_deployed',  arrAllowedRoles: ['dba', 'admin'] }],
-  live_deployed:  [{ strNextStatus: 'live_verified',  arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
+  dba_confirmed:      [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
+  qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  qa_verified:        [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
+  live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['gm', 'planner', 'admin'] }],
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
@@ -197,6 +198,47 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 조회 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// 이벤트 인스턴스 수정 (event_created 상태에서만 가능, 생성자만)
+export const fnUpdateInstance = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+
+    // event_created 상태에서만 수정 가능
+    if (objInstance.strStatus !== 'event_created') {
+      res.status(400).json({ bSuccess: false, strMessage: '컨펌 요청 전 상태에서만 수정할 수 있습니다.' });
+      return;
+    }
+
+    // 생성자 본인만 수정 가능
+    if (objInstance.nCreatedByUserId !== req.user?.nId && req.user?.strRole !== 'admin') {
+      res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다.' });
+      return;
+    }
+
+    // 수정 가능한 필드만 업데이트
+    const arrEditableFields = [
+      'strEventName', 'strInputValues', 'strGeneratedQuery',
+      'dtExecDate', 'strServiceAbbr', 'strServiceRegion',
+    ];
+    for (const key of arrEditableFields) {
+      if (req.body[key] !== undefined) {
+        (objInstance as any)[key] = req.body[key];
+      }
+    }
+
+    res.json({ bSuccess: true, objInstance });
+  } catch (error) {
+    console.error('이벤트 인스턴스 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

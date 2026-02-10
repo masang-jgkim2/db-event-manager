@@ -1,14 +1,15 @@
 // 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 
 // 이벤트 상태 워크플로
-// event_created → dba_confirmed → qa_deployed → qa_verified → live_deployed → live_verified(완료)
+// event_created → confirm_requested → dba_confirmed → qa_deployed → qa_verified → live_deployed → live_verified(완료)
 export type TEventStatus =
-  | 'event_created'    // 운영자가 이벤트 생성
-  | 'dba_confirmed'    // DBA 컨펌 확인
-  | 'qa_deployed'      // DBA QA 반영
-  | 'qa_verified'      // 운영자 QA 확인
-  | 'live_deployed'    // DBA LIVE 반영
-  | 'live_verified';   // 운영자 LIVE 확인 (최종 완료)
+  | 'event_created'       // 운영자 이벤트 생성 (수정 가능)
+  | 'confirm_requested'   // 운영자 컨펌 요청 (수정 불가)
+  | 'dba_confirmed'       // DBA 컨펌 확인
+  | 'qa_deployed'         // DBA QA 반영
+  | 'qa_verified'         // 운영자 QA 확인
+  | 'live_deployed'       // DBA LIVE 반영
+  | 'live_verified';      // 운영자 LIVE 확인 (최종 완료)
 
 export interface IStatusLog {
   strStatus: TEventStatus;
