@@ -58,11 +58,11 @@ const ProductPage = () => {
       const objValues = await form.validateFields();
 
       if (objEditProduct) {
-        fnUpdateProduct(objEditProduct.nId, objValues);
-        messageApi.success('프로덕트가 수정되었습니다.');
+        const bOk = await fnUpdateProduct(objEditProduct.nId, objValues);
+        messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 수정되었습니다.' : '수정에 실패했습니다.');
       } else {
-        fnAddProduct(objValues);
-        messageApi.success('프로덕트가 등록되었습니다.');
+        const bOk = await fnAddProduct(objValues);
+        messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 등록되었습니다.' : '등록에 실패했습니다.');
       }
       fnCloseModal();
     } catch {
@@ -70,9 +70,9 @@ const ProductPage = () => {
     }
   };
 
-  const fnHandleDelete = (nId: number) => {
-    fnDeleteProduct(nId);
-    messageApi.success('프로덕트가 삭제되었습니다.');
+  const fnHandleDelete = async (nId: number) => {
+    const bOk = await fnDeleteProduct(nId);
+    messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 삭제되었습니다.' : '삭제에 실패했습니다.');
   };
 
   // DB 타입 색상

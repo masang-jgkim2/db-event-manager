@@ -78,11 +78,11 @@ const EventPage = () => {
       };
 
       if (objEditEvent) {
-        fnUpdateEvent(objEditEvent.nId, objEventData);
-        messageApi.success('이벤트 템플릿이 수정되었습니다.');
+        const bOk = await fnUpdateEvent(objEditEvent.nId, objEventData);
+        messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 수정되었습니다.' : '수정에 실패했습니다.');
       } else {
-        fnAddEvent(objEventData);
-        messageApi.success('이벤트 템플릿이 등록되었습니다.');
+        const bOk = await fnAddEvent(objEventData);
+        messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 등록되었습니다.' : '등록에 실패했습니다.');
       }
       fnCloseModal();
     } catch {
@@ -90,9 +90,9 @@ const EventPage = () => {
     }
   };
 
-  const fnHandleDelete = (nId: number) => {
-    fnDeleteEvent(nId);
-    messageApi.success('이벤트 템플릿이 삭제되었습니다.');
+  const fnHandleDelete = async (nId: number) => {
+    const bOk = await fnDeleteEvent(nId);
+    messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 삭제되었습니다.' : '삭제에 실패했습니다.');
   };
 
   // 입력 형식 라벨

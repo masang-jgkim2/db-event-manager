@@ -28,8 +28,8 @@ export const useQueryLogStore = create<IQueryLogStore>()(
       fnClearLogs: () => set({ arrLogs: [] }),
     }),
     {
-      name: 'em-query-logs', // localStorage 키
-      version: 2,            // 버전 변경 시 localStorage 초기화
+      name: 'em-query-logs',
+      version: 3,
     }
   )
 );

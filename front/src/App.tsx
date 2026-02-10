@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin, Result } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
+import { useProductStore } from './stores/useProductStore';
+import { useEventStore } from './stores/useEventStore';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProductPage from './pages/ProductPage';
@@ -71,11 +73,22 @@ const DefaultRedirect = () => {
 
 const App = () => {
   const fnVerifyToken = useAuthStore((state) => state.fnVerifyToken);
+  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+  const fnFetchProducts = useProductStore((state) => state.fnFetchProducts);
+  const fnFetchEvents = useEventStore((state) => state.fnFetchEvents);
 
   // 앱 시작 시 토큰 검증 (자동 로그인)
   useEffect(() => {
     fnVerifyToken();
   }, [fnVerifyToken]);
+
+  // 인증 완료 후 프로덕트/이벤트 데이터 서버에서 로드
+  useEffect(() => {
+    if (bIsAuthenticated) {
+      fnFetchProducts();
+      fnFetchEvents();
+    }
+  }, [bIsAuthenticated, fnFetchProducts, fnFetchEvents]);
 
   return (
     <ConfigProvider locale={koKR}>

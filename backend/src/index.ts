@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
+import productRoutes from './routes/productRoutes';
+import eventRoutes from './routes/eventRoutes';
 import { fnInitUsers } from './data/users';
 
 // 환경 변수 로드
@@ -21,6 +23,8 @@ app.use(express.json());
 // 라우트
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/events', eventRoutes);
 
 // 헬스 체크
 app.get('/api/health', (_req, res) => {
@@ -29,7 +33,7 @@ app.get('/api/health', (_req, res) => {
 
 // 서버 시작
 const fnStartServer = async () => {
-  await fnInitUsers(); // 기본 계정 비밀번호 해싱
+  await fnInitUsers();
   app.listen(nPort, () => {
     console.log(`[서버] http://localhost:${nPort} 에서 실행 중`);
   });
