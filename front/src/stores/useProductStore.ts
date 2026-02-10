@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { IProduct } from '../types';
 
 interface IProductStore {
@@ -76,36 +77,39 @@ const arrSeedProducts: IProduct[] = [
   },
 ];
 
-export const useProductStore = create<IProductStore>((set) => ({
-  arrProducts: arrSeedProducts,
+export const useProductStore = create<IProductStore>()(
+  persist(
+    (set) => ({
+      arrProducts: arrSeedProducts,
 
-  // 외부에서 전체 목록 세팅
-  fnSetProducts: (arrProducts) => set({ arrProducts }),
+      fnSetProducts: (arrProducts) => set({ arrProducts }),
 
-  // 프로덕트 추가
-  fnAddProduct: (objProduct) =>
-    set((state) => ({
-      arrProducts: [
-        ...state.arrProducts,
-        {
-          ...objProduct,
-          nId: Date.now(),
-          dtCreatedAt: new Date().toISOString(),
-        },
-      ],
-    })),
+      fnAddProduct: (objProduct) =>
+        set((state) => ({
+          arrProducts: [
+            ...state.arrProducts,
+            {
+              ...objProduct,
+              nId: Date.now(),
+              dtCreatedAt: new Date().toISOString(),
+            },
+          ],
+        })),
 
-  // 프로덕트 수정
-  fnUpdateProduct: (nId, objProduct) =>
-    set((state) => ({
-      arrProducts: state.arrProducts.map((p) =>
-        p.nId === nId ? { ...p, ...objProduct } : p
-      ),
-    })),
+      fnUpdateProduct: (nId, objProduct) =>
+        set((state) => ({
+          arrProducts: state.arrProducts.map((p) =>
+            p.nId === nId ? { ...p, ...objProduct } : p
+          ),
+        })),
 
-  // 프로덕트 삭제
-  fnDeleteProduct: (nId) =>
-    set((state) => ({
-      arrProducts: state.arrProducts.filter((p) => p.nId !== nId),
-    })),
-}));
+      fnDeleteProduct: (nId) =>
+        set((state) => ({
+          arrProducts: state.arrProducts.filter((p) => p.nId !== nId),
+        })),
+    }),
+    {
+      name: 'em-products', // localStorage 키
+    }
+  )
+);

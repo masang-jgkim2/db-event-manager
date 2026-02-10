@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { IEventTemplate } from '../types';
 
 interface IEventStore {
@@ -9,32 +10,39 @@ interface IEventStore {
   fnDeleteEvent: (nId: number) => void;
 }
 
-export const useEventStore = create<IEventStore>((set) => ({
-  arrEvents: [],
+export const useEventStore = create<IEventStore>()(
+  persist(
+    (set) => ({
+      arrEvents: [],
 
-  fnSetEvents: (arrEvents) => set({ arrEvents }),
+      fnSetEvents: (arrEvents) => set({ arrEvents }),
 
-  fnAddEvent: (objEvent) =>
-    set((state) => ({
-      arrEvents: [
-        ...state.arrEvents,
-        {
-          ...objEvent,
-          nId: Date.now(),
-          dtCreatedAt: new Date().toISOString(),
-        },
-      ],
-    })),
+      fnAddEvent: (objEvent) =>
+        set((state) => ({
+          arrEvents: [
+            ...state.arrEvents,
+            {
+              ...objEvent,
+              nId: Date.now(),
+              dtCreatedAt: new Date().toISOString(),
+            },
+          ],
+        })),
 
-  fnUpdateEvent: (nId, objEvent) =>
-    set((state) => ({
-      arrEvents: state.arrEvents.map((e) =>
-        e.nId === nId ? { ...e, ...objEvent } : e
-      ),
-    })),
+      fnUpdateEvent: (nId, objEvent) =>
+        set((state) => ({
+          arrEvents: state.arrEvents.map((e) =>
+            e.nId === nId ? { ...e, ...objEvent } : e
+          ),
+        })),
 
-  fnDeleteEvent: (nId) =>
-    set((state) => ({
-      arrEvents: state.arrEvents.filter((e) => e.nId !== nId),
-    })),
-}));
+      fnDeleteEvent: (nId) =>
+        set((state) => ({
+          arrEvents: state.arrEvents.filter((e) => e.nId !== nId),
+        })),
+    }),
+    {
+      name: 'em-events', // localStorage 키
+    }
+  )
+);
