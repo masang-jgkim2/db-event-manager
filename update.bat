@@ -21,8 +21,9 @@ cd /d %~dp0front
 call npm install
 
 echo.
+cd /d %~dp0
 echo ============================================
-echo   업데이트 완료!
+echo   업데이트 완료! 현재 위치: %cd%
 echo   start.bat 을 실행하세요.
 echo ============================================
 echo.
