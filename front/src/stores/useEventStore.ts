@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { IEventTemplate } from '../types';
 
-// 이벤트 템플릿 관리 스토어
 interface IEventStore {
   arrEvents: IEventTemplate[];
+  fnSetEvents: (arrEvents: IEventTemplate[]) => void;
   fnAddEvent: (objEvent: Omit<IEventTemplate, 'nId' | 'dtCreatedAt'>) => void;
   fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => void;
   fnDeleteEvent: (nId: number) => void;
@@ -12,7 +12,8 @@ interface IEventStore {
 export const useEventStore = create<IEventStore>((set) => ({
   arrEvents: [],
 
-  // 이벤트 추가
+  fnSetEvents: (arrEvents) => set({ arrEvents }),
+
   fnAddEvent: (objEvent) =>
     set((state) => ({
       arrEvents: [
@@ -25,7 +26,6 @@ export const useEventStore = create<IEventStore>((set) => ({
       ],
     })),
 
-  // 이벤트 수정
   fnUpdateEvent: (nId, objEvent) =>
     set((state) => ({
       arrEvents: state.arrEvents.map((e) =>
@@ -33,7 +33,6 @@ export const useEventStore = create<IEventStore>((set) => ({
       ),
     })),
 
-  // 이벤트 삭제
   fnDeleteEvent: (nId) =>
     set((state) => ({
       arrEvents: state.arrEvents.filter((e) => e.nId !== nId),

@@ -1,27 +1,65 @@
-import { Card, Col, Row, Statistic, Typography } from 'antd';
+import { Card, Col, Row, Statistic, Typography, Table, Tag, Space } from 'antd';
 import {
   AppstoreOutlined,
   CalendarOutlined,
   CodeOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
+import { useProductStore } from '../stores/useProductStore';
+import { useEventStore } from '../stores/useEventStore';
+import { useQueryLogStore } from '../stores/useQueryLogStore';
+import type { IProduct, IService } from '../types';
 
 const { Title } = Typography;
 
-// 대시보드 - 전체 현황 요약
 const DashboardPage = () => {
+  const arrProducts = useProductStore((s) => s.arrProducts);
+  const arrEvents = useEventStore((s) => s.arrEvents);
+  const arrLogs = useQueryLogStore((s) => s.arrLogs);
+
+  // 프로덕트 테이블 컬럼
+  const arrProductColumns = [
+    {
+      title: '프로젝트명',
+      dataIndex: 'strName',
+      key: 'strName',
+      width: 140,
+    },
+    {
+      title: '서비스',
+      dataIndex: 'arrServices',
+      key: 'arrServices',
+      render: (arrServices: IService[]) => (
+        <Space wrap>
+          {arrServices.map((s) => (
+            <Tag key={s.strAbbr} color="blue">
+              {s.strAbbr} ({s.strRegion})
+            </Tag>
+          ))}
+        </Space>
+      ),
+    },
+    {
+      title: '이벤트 수',
+      key: 'eventCount',
+      width: 100,
+      render: (_: unknown, objRecord: IProduct) => {
+        const nCount = arrEvents.filter((e) => e.nProductId === objRecord.nId).length;
+        return nCount > 0 ? <Tag color="green">{nCount}개</Tag> : <Tag>0개</Tag>;
+      },
+    },
+  ];
+
   return (
     <>
-      <Title level={4} style={{ marginBottom: 24 }}>
-        대시보드
-      </Title>
+      <Title level={4} style={{ marginBottom: 24 }}>대시보드</Title>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable>
             <Statistic
               title="등록된 프로덕트"
-              value={0}
+              value={arrProducts.length}
               prefix={<AppstoreOutlined style={{ color: '#667eea' }} />}
               suffix="개"
             />
@@ -31,7 +69,7 @@ const DashboardPage = () => {
           <Card hoverable>
             <Statistic
               title="이벤트 템플릿"
-              value={0}
+              value={arrEvents.length}
               prefix={<CalendarOutlined style={{ color: '#52c41a' }} />}
               suffix="개"
             />
@@ -41,7 +79,7 @@ const DashboardPage = () => {
           <Card hoverable>
             <Statistic
               title="생성된 쿼리"
-              value={0}
+              value={arrLogs.length}
               prefix={<CodeOutlined style={{ color: '#faad14' }} />}
               suffix="건"
             />
@@ -50,27 +88,24 @@ const DashboardPage = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card hoverable>
             <Statistic
-              title="사용자"
-              value={1}
+              title="서비스 총 수"
+              value={arrProducts.reduce((n, p) => n + p.arrServices.length, 0)}
               prefix={<TeamOutlined style={{ color: '#eb2f96' }} />}
-              suffix="명"
+              suffix="개"
             />
           </Card>
         </Col>
       </Row>
 
-      {/* 최근 활동 영역 */}
-      <Card style={{ marginTop: 24 }}>
-        <Title level={5}>최근 활동</Title>
-        <div
-          style={{
-            padding: '40px 0',
-            textAlign: 'center',
-            color: '#bfbfbf',
-          }}
-        >
-          아직 활동 내역이 없습니다. 프로덕트를 등록하고 이벤트 쿼리를 생성해보세요.
-        </div>
+      {/* 프로덕트 현황 */}
+      <Card style={{ marginTop: 24 }} title="프로덕트 현황">
+        <Table
+          dataSource={arrProducts}
+          columns={arrProductColumns}
+          rowKey="nId"
+          pagination={false}
+          size="small"
+        />
       </Card>
     </>
   );

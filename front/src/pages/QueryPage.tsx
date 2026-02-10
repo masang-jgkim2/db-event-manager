@@ -7,7 +7,6 @@ import {
   Button,
   Input,
   DatePicker,
-  InputNumber,
   Row,
   Col,
   Divider,
@@ -17,6 +16,7 @@ import {
   Tag,
   Steps,
   Result,
+  Alert,
 } from 'antd';
 import {
   CodeOutlined,
@@ -24,21 +24,32 @@ import {
   HistoryOutlined,
   ThunderboltOutlined,
   CheckCircleOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useQueryLogStore } from '../stores/useQueryLogStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import type { IEventTemplate, IEventParam } from '../types';
+import type { IEventTemplate, IService } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const QueryPage = () => {
+  // 선택 상태
   const [nSelectedProductId, setNSelectedProductId] = useState<number | null>(null);
+  const [strSelectedAbbr, setStrSelectedAbbr] = useState<string | null>(null);
   const [nSelectedEventId, setNSelectedEventId] = useState<number | null>(null);
+
+  // 입력 상태
+  const [strEventName, setStrEventName] = useState('');
+  const [strInputValues, setStrInputValues] = useState('');
+  const [strExecDate, setStrExecDate] = useState('');
+
+  // 결과
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
-  const [form] = Form.useForm();
+
   const [messageApi, contextHolder] = message.useMessage();
 
   const arrProducts = useProductStore((s) => s.arrProducts);
@@ -47,6 +58,17 @@ const QueryPage = () => {
   const fnAddLog = useQueryLogStore((s) => s.fnAddLog);
   const user = useAuthStore((s) => s.user);
 
+  // 선택된 프로덕트
+  const objSelectedProduct = useMemo(() => {
+    return arrProducts.find((p) => p.nId === nSelectedProductId) || null;
+  }, [nSelectedProductId, arrProducts]);
+
+  // 선택된 서비스
+  const objSelectedService = useMemo((): IService | null => {
+    if (!objSelectedProduct || !strSelectedAbbr) return null;
+    return objSelectedProduct.arrServices.find((s) => s.strAbbr === strSelectedAbbr) || null;
+  }, [objSelectedProduct, strSelectedAbbr]);
+
   // 선택된 프로덕트에 해당하는 이벤트 필터
   const arrFilteredEvents = useMemo(() => {
     if (!nSelectedProductId) return [];
@@ -54,77 +76,105 @@ const QueryPage = () => {
   }, [nSelectedProductId, arrEvents]);
 
   // 선택된 이벤트 템플릿
-  const objSelectedEvent: IEventTemplate | undefined = useMemo(() => {
-    if (!nSelectedEventId) return undefined;
-    return arrEvents.find((e) => e.nId === nSelectedEventId);
+  const objSelectedEvent: IEventTemplate | null = useMemo(() => {
+    if (!nSelectedEventId) return null;
+    return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
 
-  // 현재 스텝 계산
+  // 현재 스텝
   const nCurrentStep = useMemo(() => {
-    if (strGeneratedQuery) return 3;
-    if (nSelectedEventId) return 2;
+    if (strGeneratedQuery) return 4;
+    if (nSelectedEventId) return 3;
+    if (strSelectedAbbr) return 2;
     if (nSelectedProductId) return 1;
     return 0;
-  }, [nSelectedProductId, nSelectedEventId, strGeneratedQuery]);
+  }, [nSelectedProductId, strSelectedAbbr, nSelectedEventId, strGeneratedQuery]);
 
-  // 프로덕트 변경 시 이벤트 초기화
-  const fnHandleProductChange = (nId: number) => {
-    setNSelectedProductId(nId);
-    setNSelectedEventId(null);
-    setStrGeneratedQuery('');
-    form.resetFields();
+  // 이벤트 이름 자동 생성
+  const fnGenerateEventName = (strAbbr: string, strEventLabel: string) => {
+    const strToday = dayjs().format('M월 D일');
+    return `[${strAbbr}] ${strToday}, ${strEventLabel}`;
   };
 
-  // 이벤트 변경
+  // === 선택 핸들러 ===
+  const fnHandleProductChange = (nId: number) => {
+    setNSelectedProductId(nId);
+    setStrSelectedAbbr(null);
+    setNSelectedEventId(null);
+    setStrEventName('');
+    setStrInputValues('');
+    setStrExecDate('');
+    setStrGeneratedQuery('');
+
+    // 서비스가 1개뿐이면 자동 선택
+    const objProduct = arrProducts.find((p) => p.nId === nId);
+    if (objProduct && objProduct.arrServices.length === 1) {
+      setStrSelectedAbbr(objProduct.arrServices[0].strAbbr);
+    }
+  };
+
+  const fnHandleServiceChange = (strAbbr: string) => {
+    setStrSelectedAbbr(strAbbr);
+    setNSelectedEventId(null);
+    setStrEventName('');
+    setStrInputValues('');
+    setStrGeneratedQuery('');
+  };
+
   const fnHandleEventChange = (nId: number) => {
     setNSelectedEventId(nId);
     setStrGeneratedQuery('');
-    form.resetFields();
+
+    const objEvent = arrEvents.find((e) => e.nId === nId);
+    if (objEvent && strSelectedAbbr) {
+      // 이벤트 이름 자동 생성
+      setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
+
+      // 기본 아이템값이 있으면 자동 채움
+      if (objEvent.strDefaultItems) {
+        setStrInputValues(objEvent.strDefaultItems);
+      } else {
+        setStrInputValues('');
+      }
+    }
   };
 
-  // 쿼리 생성
-  const fnGenerateQuery = async () => {
+  // === 쿼리 생성 ===
+  const fnGenerateQuery = () => {
     if (!objSelectedEvent) return;
 
-    try {
-      const objValues = await form.validateFields();
-
-      let strQuery = objSelectedEvent.strQueryTemplate;
-
-      // 템플릿의 {{key}} 를 실제 값으로 치환
-      objSelectedEvent.arrParams.forEach((param: IEventParam) => {
-        let strValue = objValues[param.strKey];
-
-        // 날짜 타입 포맷팅
-        if ((param.strType === 'date' || param.strType === 'datetime') && strValue) {
-          strValue =
-            param.strType === 'date'
-              ? strValue.format('YYYY-MM-DD')
-              : strValue.format('YYYY-MM-DD HH:mm:ss');
-        }
-
-        strValue = strValue ?? '';
-
-        const regex = new RegExp(`\\{\\{${param.strKey}\\}\\}`, 'g');
-        strQuery = strQuery.replace(regex, String(strValue));
-      });
-
-      setStrGeneratedQuery(strQuery);
-
-      // 로그 기록
-      const objProduct = arrProducts.find((p) => p.nId === nSelectedProductId);
-      fnAddLog({
-        nEventTemplateId: objSelectedEvent.nId,
-        strEventName: objSelectedEvent.strName,
-        strProductName: objProduct?.strName || '',
-        strGeneratedQuery: strQuery,
-        strCreatedBy: user?.strDisplayName || '',
-      });
-
-      messageApi.success('쿼리가 생성되었습니다!');
-    } catch {
-      messageApi.warning('필수 파라미터를 모두 입력해주세요.');
+    // 입력값 필요한데 비어있으면 경고
+    if (objSelectedEvent.strInputFormat !== 'none' && !strInputValues.trim()) {
+      messageApi.warning('입력값을 입력해주세요.');
+      return;
     }
+
+    let strQuery = objSelectedEvent.strQueryTemplate;
+
+    // 치환 변수 처리
+    strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
+    strQuery = strQuery.replace(/\{\{date\}\}/g, strExecDate || dayjs().format('YYYY-MM-DD'));
+    strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
+    strQuery = strQuery.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
+    strQuery = strQuery.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
+    strQuery = strQuery.replace(/\{\{region\}\}/g, objSelectedService?.strRegion || '');
+
+    setStrGeneratedQuery(strQuery);
+
+    // 로그 기록
+    fnAddLog({
+      strEventName,
+      strProductName: objSelectedProduct?.strName || '',
+      strServiceAbbr: strSelectedAbbr || '',
+      strServiceRegion: objSelectedService?.strRegion || '',
+      strCategory: objSelectedEvent.strCategory,
+      strType: objSelectedEvent.strType,
+      strInputValues: strInputValues.trim(),
+      strGeneratedQuery: strQuery,
+      strCreatedBy: user?.strDisplayName || '',
+    });
+
+    messageApi.success('쿼리가 생성되었습니다!');
   };
 
   // 클립보드 복사
@@ -133,45 +183,33 @@ const QueryPage = () => {
     messageApi.success('클립보드에 복사되었습니다.');
   };
 
-  // 초기화
+  // 전체 초기화
   const fnReset = () => {
     setNSelectedProductId(null);
+    setStrSelectedAbbr(null);
     setNSelectedEventId(null);
+    setStrEventName('');
+    setStrInputValues('');
+    setStrExecDate('');
     setStrGeneratedQuery('');
-    form.resetFields();
   };
 
-  // 파라미터에 따른 입력 컴포넌트 렌더링
-  const fnRenderParamInput = (objParam: IEventParam) => {
-    switch (objParam.strType) {
-      case 'number':
-        return <InputNumber style={{ width: '100%' }} placeholder={`${objParam.strLabel} 입력`} />;
+  // 입력 형식에 맞는 placeholder
+  const fnGetInputPlaceholder = (): string => {
+    if (!objSelectedEvent) return '';
+    switch (objSelectedEvent.strInputFormat) {
+      case 'item_number':
+        return '아이템 번호를 쉼표로 구분하여 입력\n예: 7902, 9471, 9138, 11582';
+      case 'item_string':
+        return '아이템 문자열을 줄바꿈으로 구분하여 입력\n예:\n2012_yuki_giftbox\n2012_yuki_ticket';
       case 'date':
-        return <DatePicker style={{ width: '100%' }} placeholder={`${objParam.strLabel} 선택`} />;
-      case 'datetime':
-        return (
-          <DatePicker
-            showTime
-            style={{ width: '100%' }}
-            placeholder={`${objParam.strLabel} 선택`}
-          />
-        );
-      case 'select':
-        return (
-          <Select placeholder={`${objParam.strLabel} 선택`}>
-            {objParam.arrOptions?.map((strOpt) => (
-              <Select.Option key={strOpt} value={strOpt}>
-                {strOpt}
-              </Select.Option>
-            ))}
-          </Select>
-        );
+        return '날짜를 입력하세요\n예: 20251125';
       default:
-        return <Input placeholder={`${objParam.strLabel} 입력`} />;
+        return '';
     }
   };
 
-  // 이벤트가 하나도 없을 때
+  // 이벤트가 없을 때
   if (arrProducts.length === 0 || arrEvents.length === 0) {
     return (
       <>
@@ -200,21 +238,28 @@ const QueryPage = () => {
       title: '시간',
       dataIndex: 'dtCreatedAt',
       key: 'dtCreatedAt',
-      width: 160,
+      width: 150,
       render: (strDate: string) => new Date(strDate).toLocaleString('ko-KR'),
     },
     {
-      title: '프로덕트',
-      dataIndex: 'strProductName',
-      key: 'strProductName',
-      width: 120,
-      render: (str: string) => <Tag>{str}</Tag>,
-    },
-    {
-      title: '이벤트',
+      title: '이벤트 이름',
       dataIndex: 'strEventName',
       key: 'strEventName',
-      width: 160,
+      width: 280,
+    },
+    {
+      title: '종류',
+      dataIndex: 'strCategory',
+      key: 'strCategory',
+      width: 70,
+      render: (str: string) => <Tag color="blue">{str}</Tag>,
+    },
+    {
+      title: '유형',
+      dataIndex: 'strType',
+      key: 'strType',
+      width: 70,
+      render: (str: string) => <Tag color="red">{str}</Tag>,
     },
     {
       title: '생성자',
@@ -233,19 +278,25 @@ const QueryPage = () => {
   return (
     <>
       {contextHolder}
-      <Title level={4} style={{ marginBottom: 24 }}>
-        <CodeOutlined /> 쿼리 생성
-      </Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          <CodeOutlined /> 쿼리 생성
+        </Title>
+        {nSelectedProductId && (
+          <Button icon={<ReloadOutlined />} onClick={fnReset}>초기화</Button>
+        )}
+      </div>
 
-      {/* 진행 단계 표시 */}
+      {/* 진행 단계 */}
       <Card style={{ marginBottom: 24 }}>
         <Steps
           current={nCurrentStep}
           items={[
-            { title: '프로덕트 선택' },
+            { title: '프로덕트' },
+            { title: '서비스 선택' },
             { title: '이벤트 선택' },
             { title: '값 입력' },
-            { title: '쿼리 생성 완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
+            { title: '완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
           ]}
         />
       </Card>
@@ -253,101 +304,127 @@ const QueryPage = () => {
       <Row gutter={24}>
         {/* 왼쪽: 조건 입력 */}
         <Col xs={24} lg={10}>
-          <Card title="프로덕트 & 이벤트 선택" size="small">
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <div>
-                <Text strong style={{ display: 'block', marginBottom: 4 }}>프로덕트</Text>
-                <Select
-                  style={{ width: '100%' }}
-                  placeholder="프로덕트를 선택하세요"
-                  onChange={fnHandleProductChange}
-                  value={nSelectedProductId}
-                  size="large"
-                >
-                  {arrProducts.map((p) => (
-                    <Select.Option key={p.nId} value={p.nId}>
-                      {p.strName}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Text strong style={{ display: 'block', marginBottom: 4 }}>이벤트</Text>
-                <Select
-                  style={{ width: '100%' }}
-                  placeholder={
-                    nSelectedProductId
-                      ? '이벤트를 선택하세요'
-                      : '프로덕트를 먼저 선택하세요'
-                  }
-                  disabled={!nSelectedProductId}
-                  onChange={fnHandleEventChange}
-                  value={nSelectedEventId}
-                  size="large"
-                >
-                  {arrFilteredEvents.map((e) => (
-                    <Select.Option key={e.nId} value={e.nId}>
-                      {e.strName}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
-            </Space>
+          {/* STEP 1: 프로덕트 선택 */}
+          <Card title="1. 프로덕트 선택" size="small">
+            <Select
+              style={{ width: '100%' }}
+              placeholder="프로덕트를 선택하세요"
+              onChange={fnHandleProductChange}
+              value={nSelectedProductId}
+              size="large"
+            >
+              {arrProducts.map((p) => (
+                <Select.Option key={p.nId} value={p.nId}>
+                  {p.strName}
+                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    ({p.arrServices.map((s) => s.strAbbr).join(', ')})
+                  </Text>
+                </Select.Option>
+              ))}
+            </Select>
           </Card>
 
-          {/* 이벤트 설명 표시 */}
-          {objSelectedEvent?.strDescription && (
-            <Card size="small" style={{ marginTop: 12, background: '#f6f8fa' }}>
-              <Text type="secondary">{objSelectedEvent.strDescription}</Text>
+          {/* STEP 2: 서비스 범위 선택 */}
+          {objSelectedProduct && objSelectedProduct.arrServices.length > 1 && (
+            <Card title="2. 서비스 범위 선택" size="small" style={{ marginTop: 12 }}>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="서비스 범위를 선택하세요"
+                onChange={fnHandleServiceChange}
+                value={strSelectedAbbr}
+                size="large"
+              >
+                {objSelectedProduct.arrServices.map((s) => (
+                  <Select.Option key={s.strAbbr} value={s.strAbbr}>
+                    <strong>{s.strAbbr}</strong>
+                    <Text type="secondary" style={{ marginLeft: 8 }}>({s.strRegion})</Text>
+                  </Select.Option>
+                ))}
+              </Select>
             </Card>
           )}
 
-          {/* 파라미터 입력 영역 */}
-          {objSelectedEvent && objSelectedEvent.arrParams.length > 0 && (
-            <Card title="파라미터 입력" size="small" style={{ marginTop: 12 }}>
-              <Form form={form} layout="vertical">
-                {objSelectedEvent.arrParams.map((objParam: IEventParam) => (
+          {/* STEP 3: 이벤트 선택 */}
+          {strSelectedAbbr && (
+            <Card title="3. 이벤트 선택" size="small" style={{ marginTop: 12 }}>
+              <Select
+                style={{ width: '100%' }}
+                placeholder="이벤트를 선택하세요"
+                onChange={fnHandleEventChange}
+                value={nSelectedEventId}
+                size="large"
+              >
+                {arrFilteredEvents.map((e) => (
+                  <Select.Option key={e.nId} value={e.nId}>
+                    {e.strEventLabel}
+                    <Space style={{ marginLeft: 8 }}>
+                      <Tag color="blue" style={{ fontSize: 11 }}>{e.strCategory}</Tag>
+                      <Tag color="red" style={{ fontSize: 11 }}>{e.strType}</Tag>
+                    </Space>
+                  </Select.Option>
+                ))}
+              </Select>
+              {objSelectedEvent?.strDescription && (
+                <Alert
+                  message={objSelectedEvent.strDescription}
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 8 }}
+                />
+              )}
+            </Card>
+          )}
+
+          {/* STEP 4: 값 입력 */}
+          {objSelectedEvent && (
+            <Card title="4. 이벤트 정보 입력" size="small" style={{ marginTop: 12 }}>
+              <Form layout="vertical">
+                {/* 이벤트 이름 (자동 생성, 수정 가능) */}
+                <Form.Item label="이벤트 이름">
+                  <Input
+                    value={strEventName}
+                    onChange={(e) => setStrEventName(e.target.value)}
+                    placeholder="[약자] 날짜, 이벤트 설명"
+                    size="large"
+                  />
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    자동 생성됩니다. 필요시 수정 가능합니다.
+                  </Text>
+                </Form.Item>
+
+                {/* 실행 날짜 */}
+                <Form.Item label="이벤트 실행 시작 날짜 (선택)">
+                  <DatePicker
+                    style={{ width: '100%' }}
+                    placeholder="실행 날짜 선택 (미입력 시 오늘)"
+                    onChange={(date) => setStrExecDate(date ? date.format('YYYY-MM-DD') : '')}
+                    size="large"
+                  />
+                </Form.Item>
+
+                {/* 입력값 (형식에 따라) */}
+                {objSelectedEvent.strInputFormat !== 'none' && (
                   <Form.Item
-                    key={objParam.strKey}
-                    name={objParam.strKey}
                     label={
                       <Space>
-                        {objParam.strLabel}
-                        {objParam.bRequired && <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>}
+                        {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
+                        {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
+                        {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
+                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
                       </Space>
                     }
-                    rules={
-                      objParam.bRequired
-                        ? [{ required: true, message: `${objParam.strLabel}을(를) 입력해주세요.` }]
-                        : []
-                    }
-                    initialValue={objParam.strDefaultValue || undefined}
                   >
-                    {fnRenderParamInput(objParam)}
+                    <TextArea
+                      value={strInputValues}
+                      onChange={(e) => setStrInputValues(e.target.value)}
+                      rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
+                      placeholder={fnGetInputPlaceholder()}
+                      style={{ fontFamily: 'monospace', fontSize: 13 }}
+                    />
                   </Form.Item>
-                ))}
+                )}
               </Form>
-              <Button
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                onClick={fnGenerateQuery}
-                block
-                size="large"
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  border: 'none',
-                  height: 48,
-                  fontWeight: 600,
-                }}
-              >
-                쿼리 생성
-              </Button>
-            </Card>
-          )}
 
-          {/* 파라미터 없는 이벤트 */}
-          {objSelectedEvent && objSelectedEvent.arrParams.length === 0 && (
-            <Card style={{ marginTop: 12 }}>
               <Button
                 type="primary"
                 icon={<ThunderboltOutlined />}
@@ -359,6 +436,7 @@ const QueryPage = () => {
                   border: 'none',
                   height: 48,
                   fontWeight: 600,
+                  fontSize: 16,
                 }}
               >
                 쿼리 생성
@@ -367,62 +445,67 @@ const QueryPage = () => {
           )}
         </Col>
 
-        {/* 오른쪽: 결과 표시 */}
+        {/* 오른쪽: 결과 */}
         <Col xs={24} lg={14}>
           <Card
             title="생성된 쿼리"
             extra={
               strGeneratedQuery && (
-                <Space>
-                  <Button onClick={fnReset} size="small">
-                    초기화
-                  </Button>
-                  <Button
-                    icon={<CopyOutlined />}
-                    onClick={fnCopyToClipboard}
-                    type="primary"
-                    ghost
-                    size="small"
-                  >
-                    복사
-                  </Button>
-                </Space>
+                <Button
+                  icon={<CopyOutlined />}
+                  onClick={fnCopyToClipboard}
+                  type="primary"
+                  ghost
+                  size="small"
+                >
+                  복사
+                </Button>
               )
             }
           >
             {strGeneratedQuery ? (
-              <TextArea
-                value={strGeneratedQuery}
-                readOnly
-                autoSize={{ minRows: 8, maxRows: 20 }}
-                style={{
-                  fontFamily: "'Consolas', 'Monaco', monospace",
-                  fontSize: 13,
-                  background: '#1e1e1e',
-                  color: '#d4d4d4',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: 16,
-                }}
-              />
+              <>
+                {/* 이벤트 이름 표시 */}
+                <Alert
+                  message={
+                    <Space>
+                      <Text strong>이벤트:</Text>
+                      <Text>{strEventName}</Text>
+                    </Space>
+                  }
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                />
+                <TextArea
+                  value={strGeneratedQuery}
+                  readOnly
+                  autoSize={{ minRows: 10, maxRows: 25 }}
+                  style={{
+                    fontFamily: "'Consolas', 'Monaco', monospace",
+                    fontSize: 13,
+                    background: '#1e1e1e',
+                    color: '#d4d4d4',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: 16,
+                  }}
+                />
+              </>
             ) : (
-              <div
-                style={{
-                  padding: '60px 0',
-                  textAlign: 'center',
-                  color: '#bfbfbf',
-                }}
-              >
-                프로덕트와 이벤트를 선택하고 파라미터를 입력하면
+              <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>
+                <CodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
                 <br />
-                쿼리가 자동으로 생성됩니다.
+                왼쪽에서 프로덕트와 이벤트를 선택하고
+                <br />
+                필요한 값을 입력하면 쿼리가 생성됩니다.
               </div>
             )}
           </Card>
         </Col>
       </Row>
 
-      {/* 하단: 쿼리 생성 이력 */}
+      {/* 하단: 이력 */}
       {arrLogs.length > 0 && (
         <>
           <Divider />
