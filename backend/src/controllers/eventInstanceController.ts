@@ -4,13 +4,15 @@ import {
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
 
-// 상태 전이 규칙
+// 상태 전이 규칙 (9단계)
 const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['gm', 'planner', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
-  dba_confirmed:      [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
+  dba_confirmed:      [{ strNextStatus: 'qa_requested',      arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  qa_requested:       [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
   qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['gm', 'planner', 'admin'] }],
-  qa_verified:        [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
+  qa_verified:        [{ strNextStatus: 'live_requested',    arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  live_requested:     [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
   live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['gm', 'planner', 'admin'] }],
 };
 
@@ -68,8 +70,10 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       // 단계별 처리자
       objCreator,
       objConfirmer: null,
+      objQaRequester: null,
       objQaDeployer: null,
       objQaVerifier: null,
+      objLiveRequester: null,
       objLiveDeployer: null,
       objLiveVerifier: null,
       // 메타
@@ -162,11 +166,13 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
 
     // 단계별 처리자 매핑
     switch (strNextStatus) {
-      case 'dba_confirmed':  objInstance.objConfirmer = objActor; break;
-      case 'qa_deployed':    objInstance.objQaDeployer = objActor; break;
-      case 'qa_verified':    objInstance.objQaVerifier = objActor; break;
-      case 'live_deployed':  objInstance.objLiveDeployer = objActor; break;
-      case 'live_verified':  objInstance.objLiveVerifier = objActor; break;
+      case 'dba_confirmed':   objInstance.objConfirmer = objActor; break;
+      case 'qa_requested':    objInstance.objQaRequester = objActor; break;
+      case 'qa_deployed':     objInstance.objQaDeployer = objActor; break;
+      case 'qa_verified':     objInstance.objQaVerifier = objActor; break;
+      case 'live_requested':  objInstance.objLiveRequester = objActor; break;
+      case 'live_deployed':   objInstance.objLiveDeployer = objActor; break;
+      case 'live_verified':   objInstance.objLiveVerifier = objActor; break;
     }
 
     // 상태 변경 + 이력 추가

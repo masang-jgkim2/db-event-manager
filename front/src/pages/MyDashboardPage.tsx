@@ -121,9 +121,11 @@ const MyDashboardPage = () => {
     const arrTrans: Record<string, string[]> = {
       event_created: ['gm', 'planner', 'admin'],
       confirm_requested: ['dba', 'admin'],
-      dba_confirmed: ['dba', 'admin'],
+      dba_confirmed: ['gm', 'planner', 'admin'],
+      qa_requested: ['dba', 'admin'],
       qa_deployed: ['gm', 'planner', 'admin'],
-      qa_verified: ['dba', 'admin'],
+      qa_verified: ['gm', 'planner', 'admin'],
+      live_requested: ['dba', 'admin'],
       live_deployed: ['gm', 'planner', 'admin'],
     };
     return arrTrans[e.strStatus]?.includes(strRole);
@@ -164,7 +166,7 @@ const MyDashboardPage = () => {
           </Popconfirm>
         );
       }
-      if (r.strStatus === 'dba_confirmed') {
+      if (r.strStatus === 'qa_requested') {
         arrButtons.push(
           <Popconfirm key="qa" title="QA 반영 처리하시겠습니까?" okText="확인" cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'qa_deployed', 'QA 반영')}>
@@ -172,7 +174,7 @@ const MyDashboardPage = () => {
           </Popconfirm>
         );
       }
-      if (r.strStatus === 'qa_verified') {
+      if (r.strStatus === 'live_requested') {
         arrButtons.push(
           <Popconfirm key="live" title="LIVE 반영 처리하시겠습니까?" okText="확인" cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'live_deployed', 'LIVE 반영')}>
@@ -184,11 +186,27 @@ const MyDashboardPage = () => {
 
     // 운영자 액션
     if (['gm', 'planner', 'admin'].includes(strRole)) {
+      if (r.strStatus === 'dba_confirmed') {
+        arrButtons.push(
+          <Popconfirm key="qa-req" title="QA 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}>
+            <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
+          </Popconfirm>
+        );
+      }
       if (r.strStatus === 'qa_deployed') {
         arrButtons.push(
           <Popconfirm key="qa-v" title="QA 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}>
             <Button size="small" type="primary" icon={<CheckOutlined />}>QA확인</Button>
+          </Popconfirm>
+        );
+      }
+      if (r.strStatus === 'qa_verified') {
+        arrButtons.push(
+          <Popconfirm key="live-req" title="LIVE 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}>
+            <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
           </Popconfirm>
         );
       }
@@ -312,8 +330,10 @@ const MyDashboardPage = () => {
               <Space direction="vertical" size={4} style={{ width: '100%' }}>
                 <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
                 <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
+                <ActorTag objActor={objDetail.objQaRequester} strLabel="QA반영요청자" />
                 <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA반영자" />
                 <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
+                <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE반영요청자" />
                 <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE반영자" />
                 <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
               </Space>

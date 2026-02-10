@@ -87,10 +87,12 @@ const QueryPage = () => {
     return 0;
   }, [nSelectedProductId, strSelectedAbbr, nSelectedEventId, strGeneratedQuery]);
 
-  // 이벤트 이름 자동 생성
+  // 이벤트 이름 자동 생성 - [약자앞부분] 날짜, 설명
+  // 예: DK/KR → [DK], AO/EU → [AO], FH → [FH]
   const fnGenerateEventName = (strAbbr: string, strEventLabel: string) => {
+    const strShortAbbr = strAbbr.includes('/') ? strAbbr.split('/')[0] : strAbbr;
     const strToday = dayjs().format('M월 D일');
-    return `[${strAbbr}] ${strToday}, ${strEventLabel}`;
+    return `[${strShortAbbr}] ${strToday}, ${strEventLabel}`;
   };
 
   // === 선택 핸들러 ===
