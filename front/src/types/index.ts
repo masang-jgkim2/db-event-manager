@@ -116,8 +116,17 @@ export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColo
 export interface IStatusLog {
   strStatus: TEventStatus;
   strChangedBy: string;
+  nChangedByUserId: number;
   strComment: string;
   dtChangedAt: string;
+}
+
+// 단계별 처리자
+export interface IStageActor {
+  strDisplayName: string;
+  nUserId: number;
+  strUserId: string;
+  dtProcessedAt: string;
 }
 
 // 이벤트 인스턴스
@@ -136,6 +145,14 @@ export interface IEventInstance {
   dtExecDate: string;
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];
+  // 단계별 처리자 (추적용)
+  objCreator: IStageActor | null;
+  objConfirmer: IStageActor | null;
+  objQaDeployer: IStageActor | null;
+  objQaVerifier: IStageActor | null;
+  objLiveDeployer: IStageActor | null;
+  objLiveVerifier: IStageActor | null;
+  // 메타
   strCreatedBy: string;
   nCreatedByUserId: number;
   dtCreatedAt: string;

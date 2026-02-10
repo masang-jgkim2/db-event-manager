@@ -1,43 +1,59 @@
 // 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 
 // 이벤트 상태 워크플로
-// template_created → event_created → dba_confirmed → qa_deployed → qa_verified → live_deployed → live_verified
+// event_created → dba_confirmed → qa_deployed → qa_verified → live_deployed → live_verified(완료)
 export type TEventStatus =
   | 'event_created'    // 운영자가 이벤트 생성
   | 'dba_confirmed'    // DBA 컨펌 확인
-  | 'qa_deployed'      // DBA QA 반영 완료
-  | 'qa_verified'      // 운영자 QA 반영 확인
-  | 'live_deployed'    // DBA LIVE 반영 완료
-  | 'live_verified';   // 운영자 LIVE 반영 확인 (최종 완료)
+  | 'qa_deployed'      // DBA QA 반영
+  | 'qa_verified'      // 운영자 QA 확인
+  | 'live_deployed'    // DBA LIVE 반영
+  | 'live_verified';   // 운영자 LIVE 확인 (최종 완료)
 
 export interface IStatusLog {
   strStatus: TEventStatus;
-  strChangedBy: string;     // 상태 변경한 사용자 이름
-  strComment: string;       // 코멘트 (선택)
+  strChangedBy: string;       // 처리자 표시 이름
+  nChangedByUserId: number;   // 처리자 사용자 ID
+  strComment: string;
   dtChangedAt: string;
+}
+
+// 각 단계별 처리자 정보
+export interface IStageActor {
+  strDisplayName: string;     // 표시 이름
+  nUserId: number;            // 사용자 ID
+  strUserId: string;          // 로그인 아이디
+  dtProcessedAt: string;      // 처리 시각
 }
 
 export interface IEventInstance {
   nId: number;
   // 템플릿 정보
   nEventTemplateId: number;
-  strEventLabel: string;       // 이벤트 템플릿명
+  strEventLabel: string;
   strProductName: string;
-  strServiceAbbr: string;      // 선택된 서비스 약자
-  strServiceRegion: string;    // 서비스 범위
-  strCategory: string;         // 이벤트 종류 (아이템/퀘스트)
-  strType: string;             // 이벤트 유형 (삭제/지급/초기화)
+  strServiceAbbr: string;
+  strServiceRegion: string;
+  strCategory: string;
+  strType: string;
   // 생성자 입력 정보
-  strEventName: string;        // 자동 생성된 이벤트 이름
-  strInputValues: string;      // 입력한 아이템/퀘스트 값
-  strGeneratedQuery: string;   // 생성된 쿼리
-  dtExecDate: string;          // 이벤트 실행 날짜 (필수)
+  strEventName: string;
+  strInputValues: string;
+  strGeneratedQuery: string;
+  dtExecDate: string;
   // 상태
   strStatus: TEventStatus;
-  arrStatusLogs: IStatusLog[]; // 상태 변경 이력
+  arrStatusLogs: IStatusLog[];
+  // 단계별 처리자 (명확한 추적)
+  objCreator: IStageActor | null;       // 생성자
+  objConfirmer: IStageActor | null;     // DBA 컨펌자
+  objQaDeployer: IStageActor | null;    // QA 반영자
+  objQaVerifier: IStageActor | null;    // QA 확인자
+  objLiveDeployer: IStageActor | null;  // LIVE 반영자
+  objLiveVerifier: IStageActor | null;  // LIVE 확인자
   // 메타
-  strCreatedBy: string;        // 생성자 (담당자)
-  nCreatedByUserId: number;    // 생성자 ID
+  strCreatedBy: string;
+  nCreatedByUserId: number;
   dtCreatedAt: string;
 }
 

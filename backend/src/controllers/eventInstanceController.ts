@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
 import {
-  arrEventInstances,
-  fnGetNextInstanceId,
-  TEventStatus,
+  arrEventInstances, fnGetNextInstanceId,
+  TEventStatus, IStageActor,
 } from '../data/eventInstances';
 
-// 상태 전이 규칙: 현재 상태 → 다음 상태 (누가 할 수 있는지)
+// 상태 전이 규칙
 const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:  [{ strNextStatus: 'dba_confirmed',  arrAllowedRoles: ['dba', 'admin'] }],
   dba_confirmed:  [{ strNextStatus: 'qa_deployed',    arrAllowedRoles: ['dba', 'admin'] }],
@@ -14,19 +13,35 @@ const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAll
   live_deployed:  [{ strNextStatus: 'live_verified',  arrAllowedRoles: ['gm', 'planner', 'admin'] }],
 };
 
-// 이벤트 인스턴스 생성 (운영자)
+// 현재 사용자 정보를 IStageActor로 변환
+const fnMakeActor = (req: Request): IStageActor => ({
+  strDisplayName: req.body.strActorName || req.user?.strUserId || '',
+  nUserId: req.user?.nId || 0,
+  strUserId: req.user?.strUserId || '',
+  dtProcessedAt: new Date().toISOString(),
+});
+
+// 이벤트 인스턴스 생성
 export const fnCreateInstance = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
       nEventTemplateId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
       strEventName, strInputValues, strGeneratedQuery, dtExecDate,
+      strCreatedBy,
     } = req.body;
 
     if (!strEventName || !dtExecDate || !nEventTemplateId) {
       res.status(400).json({ bSuccess: false, strMessage: '필수 항목을 입력해주세요.' });
       return;
     }
+
+    const objCreator: IStageActor = {
+      strDisplayName: strCreatedBy || req.user?.strUserId || '',
+      nUserId: req.user?.nId || 0,
+      strUserId: req.user?.strUserId || '',
+      dtProcessedAt: new Date().toISOString(),
+    };
 
     const objNew = {
       nId: fnGetNextInstanceId(),
@@ -44,12 +59,21 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strStatus: 'event_created' as TEventStatus,
       arrStatusLogs: [{
         strStatus: 'event_created' as TEventStatus,
-        strChangedBy: req.user?.strUserId || '',
+        strChangedBy: objCreator.strDisplayName,
+        nChangedByUserId: objCreator.nUserId,
         strComment: '이벤트 생성',
-        dtChangedAt: new Date().toISOString(),
+        dtChangedAt: objCreator.dtProcessedAt,
       }],
-      strCreatedBy: req.body.strCreatedBy || req.user?.strUserId || '',
-      nCreatedByUserId: req.user?.nId || 0,
+      // 단계별 처리자
+      objCreator,
+      objConfirmer: null,
+      objQaDeployer: null,
+      objQaVerifier: null,
+      objLiveDeployer: null,
+      objLiveVerifier: null,
+      // 메타
+      strCreatedBy: objCreator.strDisplayName,
+      nCreatedByUserId: objCreator.nUserId,
       dtCreatedAt: new Date().toISOString(),
     };
 
@@ -64,32 +88,35 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
 // 이벤트 인스턴스 목록 조회
 export const fnGetInstances = async (req: Request, res: Response): Promise<void> => {
   try {
-    const strRole = req.user?.strRole || '';
     const nUserId = req.user?.nId || 0;
     const strFilter = req.query.filter as string || 'all';
 
     let arrFiltered = [...arrEventInstances];
 
-    // 운영자: 본인이 생성한 것만
+    // 내가 관여한 이벤트 (생성/컨펌/반영/확인 중 하나라도 내가 한 것)
+    if (strFilter === 'involved') {
+      arrFiltered = arrFiltered.filter((e) =>
+        e.objCreator?.nUserId === nUserId ||
+        e.objConfirmer?.nUserId === nUserId ||
+        e.objQaDeployer?.nUserId === nUserId ||
+        e.objQaVerifier?.nUserId === nUserId ||
+        e.objLiveDeployer?.nUserId === nUserId ||
+        e.objLiveVerifier?.nUserId === nUserId
+      );
+    }
+
+    // 내가 생성한 이벤트만
     if (strFilter === 'mine') {
       arrFiltered = arrFiltered.filter((e) => e.nCreatedByUserId === nUserId);
     }
 
-    // DBA: 본인이 처리해야 할 것 (컨펌 대기, QA 배포 대기, LIVE 배포 대기)
-    if (strFilter === 'dba_pending') {
-      arrFiltered = arrFiltered.filter((e) =>
-        e.strStatus === 'event_created' ||
-        e.strStatus === 'dba_confirmed' ||
-        e.strStatus === 'qa_verified'
-      );
-    }
-
-    // 운영자: 본인이 확인해야 할 것 (QA 확인 대기, LIVE 확인 대기)
-    if (strFilter === 'my_pending') {
-      arrFiltered = arrFiltered.filter((e) =>
-        e.nCreatedByUserId === nUserId &&
-        (e.strStatus === 'qa_deployed' || e.strStatus === 'live_deployed')
-      );
+    // 내가 처리해야 할 이벤트 (역할 기반)
+    if (strFilter === 'my_action') {
+      const strRole = req.user?.strRole || '';
+      arrFiltered = arrFiltered.filter((e) => {
+        const arrTrans = objStatusTransitions[e.strStatus] || [];
+        return arrTrans.some((t) => t.arrAllowedRoles.includes(strRole));
+      });
     }
 
     // 최신순 정렬
@@ -115,7 +142,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 전이 가능한 상태 확인
+    // 전이 규칙 확인
     const arrTransitions = objStatusTransitions[objInstance.strStatus] || [];
     const objTransition = arrTransitions.find((t) => t.strNextStatus === strNextStatus);
 
@@ -124,17 +151,29 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 권한 확인
     if (!objTransition.arrAllowedRoles.includes(strRole)) {
       res.status(403).json({ bSuccess: false, strMessage: '해당 상태를 변경할 권한이 없습니다.' });
       return;
     }
 
-    // 상태 변경
+    // 처리자 기록
+    const objActor = fnMakeActor(req);
+
+    // 단계별 처리자 매핑
+    switch (strNextStatus) {
+      case 'dba_confirmed':  objInstance.objConfirmer = objActor; break;
+      case 'qa_deployed':    objInstance.objQaDeployer = objActor; break;
+      case 'qa_verified':    objInstance.objQaVerifier = objActor; break;
+      case 'live_deployed':  objInstance.objLiveDeployer = objActor; break;
+      case 'live_verified':  objInstance.objLiveVerifier = objActor; break;
+    }
+
+    // 상태 변경 + 이력 추가
     objInstance.strStatus = strNextStatus;
     objInstance.arrStatusLogs.push({
       strStatus: strNextStatus,
-      strChangedBy: req.user?.strUserId || '',
+      strChangedBy: objActor.strDisplayName,
+      nChangedByUserId: objActor.nUserId,
       strComment: strComment || '',
       dtChangedAt: new Date().toISOString(),
     });
@@ -151,12 +190,10 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
   try {
     const nId = Number(req.params.id);
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
-
     if (!objInstance) {
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
       return;
     }
-
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 조회 오류:', error);

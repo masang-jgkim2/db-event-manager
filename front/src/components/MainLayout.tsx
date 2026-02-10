@@ -60,7 +60,7 @@ const MainLayout = () => {
           label: '운영',
           type: 'group' as const,
           children: [
-            { key: '/my-dashboard', icon: <DashboardOutlined />, label: '내 이벤트' },
+            { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
             { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
           ],
         },
@@ -70,13 +70,13 @@ const MainLayout = () => {
     // DBA 메뉴
     if (strRole === 'dba') {
       return [
-        { key: '/dba-dashboard', icon: <DashboardOutlined />, label: 'DBA 대시보드' },
+        { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
       ];
     }
 
     // 운영자(GM, 기획자) 메뉴
     return [
-      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '내 이벤트' },
+      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
       { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
     ];
   }, [strRole]);

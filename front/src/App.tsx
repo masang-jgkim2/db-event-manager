@@ -12,7 +12,6 @@ import EventPage from './pages/EventPage';
 import QueryPage from './pages/QueryPage';
 import UserPage from './pages/UserPage';
 import MyDashboardPage from './pages/MyDashboardPage';
-import DbaDashboardPage from './pages/DbaDashboardPage';
 import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
@@ -59,10 +58,8 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (bIsAuthenticated) {
     // 역할별 기본 페이지
-    let strRedirect = '/query';
+    let strRedirect = '/my-dashboard';
     if (user?.strRole === 'admin') strRedirect = '/';
-    else if (user?.strRole === 'dba') strRedirect = '/dba-dashboard';
-    else strRedirect = '/my-dashboard';
     return <Navigate to={strRedirect} replace />;
   }
 
@@ -72,9 +69,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 // 기본 리다이렉트 (역할에 따라 다른 페이지로)
 const DefaultRedirect = () => {
   const user = useAuthStore((state) => state.user);
-  let strRedirect = '/my-dashboard';
-  if (user?.strRole === 'admin') strRedirect = '/';
-  else if (user?.strRole === 'dba') strRedirect = '/dba-dashboard';
+  const strRedirect = user?.strRole === 'admin' ? '/' : '/my-dashboard';
   return <Navigate to={strRedirect} replace />;
 };
 
@@ -153,12 +148,9 @@ const App = () => {
               }
             />
 
-            {/* 운영자/관리자 공통 */}
+            {/* 공통: 나의 대시보드 + 이벤트 생성 */}
             <Route path="/my-dashboard" element={<MyDashboardPage />} />
             <Route path="/query" element={<QueryPage />} />
-
-            {/* DBA 전용 */}
-            <Route path="/dba-dashboard" element={<DbaDashboardPage />} />
           </Route>
 
           {/* 존재하지 않는 경로 → 역할에 맞는 페이지로 */}

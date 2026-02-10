@@ -19,7 +19,7 @@ export const fnApiCreateInstance = async (objData: Record<string, unknown>) => {
 };
 
 // 이벤트 상태 변경
-export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strComment: string = '') => {
-  const response = await apiClient.patch(`/event-instances/${nId}/status`, { strNextStatus, strComment });
+export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strComment: string = '', strActorName: string = '') => {
+  const response = await apiClient.patch(`/event-instances/${nId}/status`, { strNextStatus, strComment, strActorName });
   return response.data;
 };
