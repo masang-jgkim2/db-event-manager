@@ -5,6 +5,10 @@ import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import ProductPage from './pages/ProductPage';
+import EventPage from './pages/EventPage';
+import QueryPage from './pages/QueryPage';
+import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -49,6 +53,7 @@ const App = () => {
     <ConfigProvider locale={koKR}>
       <BrowserRouter>
         <Routes>
+          {/* 로그인 (비인증 전용) */}
           <Route
             path="/login"
             element={
@@ -57,14 +62,21 @@ const App = () => {
               </PublicRoute>
             }
           />
+
+          {/* 메인 레이아웃 (인증 필수) */}
           <Route
-            path="/"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                <MainLayout />
               </ProtectedRoute>
             }
-          />
+          >
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/products" element={<ProductPage />} />
+            <Route path="/events" element={<EventPage />} />
+            <Route path="/query" element={<QueryPage />} />
+          </Route>
+
           {/* 존재하지 않는 경로는 메인으로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
