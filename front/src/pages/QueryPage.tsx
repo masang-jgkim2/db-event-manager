@@ -24,6 +24,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -34,6 +35,7 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 const QueryPage = () => {
+  const navigate = useNavigate();
   // 선택 상태
   const [nSelectedProductId, setNSelectedProductId] = useState<number | null>(null);
   const [strSelectedAbbr, setStrSelectedAbbr] = useState<string | null>(null);
@@ -185,7 +187,9 @@ const QueryPage = () => {
       });
 
       if (objResult.bSuccess) {
-        messageApi.success('이벤트가 생성되었습니다! 대시보드에서 진행 상태를 확인하세요.');
+        messageApi.success('이벤트가 생성되었습니다!');
+        // 2초 후 나의 대시보드로 이동
+        setTimeout(() => navigate('/my-dashboard'), 1500);
       } else {
         messageApi.error(objResult.strMessage || '이벤트 생성에 실패했습니다.');
       }
@@ -227,6 +231,15 @@ const QueryPage = () => {
         return '';
     }
   };
+
+  // DBA는 이벤트 생성 권한 없음
+  if (user?.strRole === 'dba') {
+    return (
+      <Card>
+        <Result status="403" title="접근 권한 없음" subTitle="DBA는 이벤트 생성 권한이 없습니다. 나의 대시보드를 이용해주세요." />
+      </Card>
+    );
+  }
 
   // 이벤트가 없을 때
   if (arrProducts.length === 0 || arrEvents.length === 0) {

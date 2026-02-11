@@ -98,13 +98,15 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
 
     let arrFiltered = [...arrEventInstances];
 
-    // 내가 관여한 이벤트 (생성/컨펌/반영/확인 중 하나라도 내가 한 것)
+    // 내가 관여한 이벤트 (생성/컨펌/요청/반영/확인 중 하나라도 내가 한 것)
     if (strFilter === 'involved') {
       arrFiltered = arrFiltered.filter((e) =>
         e.objCreator?.nUserId === nUserId ||
         e.objConfirmer?.nUserId === nUserId ||
+        e.objQaRequester?.nUserId === nUserId ||
         e.objQaDeployer?.nUserId === nUserId ||
         e.objQaVerifier?.nUserId === nUserId ||
+        e.objLiveRequester?.nUserId === nUserId ||
         e.objLiveDeployer?.nUserId === nUserId ||
         e.objLiveVerifier?.nUserId === nUserId
       );
