@@ -38,53 +38,73 @@ const MainLayout = () => {
   const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
 
-  // 역할에 따른 사이드바 메뉴
+  // 권한 보유 여부 헬퍼
+  const fnHasPerm = (strPerm: string) => arrPermissions.includes(strPerm);
+  const bIsAdmin = arrRoles.includes('admin');
+
+  // 권한 기반 사이드바 메뉴 동적 생성
   const arrMenuItems = useMemo(() => {
-    // 관리자 메뉴
-    if (arrRoles.includes('admin')) {
-      return [
-        {
-          key: 'event-group',
-          label: '이벤트',
-          type: 'group' as const,
-          children: [
-            { key: '/', icon: <DashboardOutlined />, label: '대시보드' },
-            { key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' },
-            { key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' },
-            { key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' },
-          ],
-        },
-        {
-          key: 'user-group',
-          label: '사용자',
-          type: 'group' as const,
-          children: [
-            { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
-            { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한 관리' },
-          ],
-        },
-        {
-          key: 'operation-group',
-          label: '운영',
-          type: 'group' as const,
-          children: [
-            { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
-            { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
-          ],
-        },
-      ];
+    const arrResult = [];
+
+    // ── 이벤트 그룹 ──────────────────────────────────
+    const arrEventChildren = [];
+
+    // 관리자 전용: 대시보드
+    if (bIsAdmin) {
+      arrEventChildren.push({ key: '/', icon: <DashboardOutlined />, label: '대시보드' });
+    }
+    // 프로덕트 조회 또는 관리 권한
+    if (fnHasPerm('product.view') || fnHasPerm('product.manage')) {
+      arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' });
+    }
+    // 이벤트 템플릿 조회 또는 관리 권한
+    if (fnHasPerm('event_template.view') || fnHasPerm('event_template.manage')) {
+      arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' });
+    }
+    // DB 접속 정보: 관리 권한
+    if (fnHasPerm('db.manage')) {
+      arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
     }
 
-    // 운영자/DBA 공통 메뉴 (권한 기반으로 확장 가능)
-    const arrMenu = [];
-    arrMenu.push({ key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' });
-    
-    // 이벤트 생성 권한이 있으면 메뉴 표시
-    if (arrPermissions.includes('instance.create')) {
-      arrMenu.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
+    if (arrEventChildren.length > 0) {
+      arrResult.push({
+        key: 'event-group',
+        label: '이벤트',
+        type: 'group' as const,
+        children: arrEventChildren,
+      });
     }
 
-    return arrMenu;
+    // ── 사용자 그룹 (관리자 전용) ─────────────────────
+    if (fnHasPerm('user.manage') || bIsAdmin) {
+      arrResult.push({
+        key: 'user-group',
+        label: '사용자',
+        type: 'group' as const,
+        children: [
+          { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
+          { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한 관리' },
+        ],
+      });
+    }
+
+    // ── 운영 그룹 ─────────────────────────────────────
+    const arrOpChildren = [
+      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
+    ];
+    if (fnHasPerm('instance.create')) {
+      arrOpChildren.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
+    }
+
+    arrResult.push({
+      key: 'operation-group',
+      label: '운영',
+      type: 'group' as const,
+      children: arrOpChildren,
+    });
+
+    return arrResult;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrRoles, arrPermissions]);
 
   // 사이드바 메뉴 클릭 처리

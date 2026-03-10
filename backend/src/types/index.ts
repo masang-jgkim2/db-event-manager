@@ -2,17 +2,22 @@
 // 권한 코드 (세부 기능 접근 제어)
 // =============================================
 export type TPermission =
-  | 'product.manage'           // 프로덕트 CRUD
-  | 'event_template.manage'    // 이벤트 템플릿 CRUD
-  | 'user.manage'              // 사용자 관리
-  | 'db.manage'                // DB 접속 정보 관리
-  | 'instance.create'          // 이벤트 인스턴스 생성
-  | 'instance.approve_qa'      // QA 승인 (dba_confirmed → qa_requested)
-  | 'instance.execute_qa'      // QA DB 실제 실행 (qa_requested → qa_deployed)
-  | 'instance.verify_qa'       // QA 확인 (qa_deployed → qa_verified)
-  | 'instance.approve_live'    // LIVE 승인 (qa_verified → live_requested)
-  | 'instance.execute_live'    // LIVE DB 실제 실행 (live_requested → live_deployed)
-  | 'instance.verify_live';    // LIVE 확인 (live_deployed → live_verified)
+  // 조회 권한
+  | 'product.view'              // 프로덕트 목록/상세 조회
+  | 'event_template.view'       // 이벤트 템플릿 목록/상세 조회
+  // 관리 권한 (CRUD)
+  | 'product.manage'            // 프로덕트 CRUD (view 포함)
+  | 'event_template.manage'     // 이벤트 템플릿 CRUD (view 포함)
+  | 'user.manage'               // 사용자 관리
+  | 'db.manage'                 // DB 접속 정보 관리
+  // 이벤트 인스턴스 권한
+  | 'instance.create'           // 이벤트 생성
+  | 'instance.approve_qa'       // QA 승인 요청
+  | 'instance.execute_qa'       // QA DB 실제 실행
+  | 'instance.verify_qa'        // QA 결과 확인
+  | 'instance.approve_live'     // LIVE 승인 요청
+  | 'instance.execute_live'     // LIVE DB 실제 실행
+  | 'instance.verify_live';     // LIVE 결과 확인
 
 // =============================================
 // 역할 모델 (동적 관리)

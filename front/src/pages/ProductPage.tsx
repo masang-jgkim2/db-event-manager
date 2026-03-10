@@ -17,6 +17,7 @@ import {
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import type { IProduct, IService } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
 
@@ -33,6 +34,10 @@ const ProductPage = () => {
   const fnAddProduct = useProductStore((s) => s.fnAddProduct);
   const fnUpdateProduct = useProductStore((s) => s.fnUpdateProduct);
   const fnDeleteProduct = useProductStore((s) => s.fnDeleteProduct);
+
+  // 관리 권한 여부 (없으면 조회 전용)
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const bCanManage = arrPermissions.includes('product.manage');
 
   // 모달 열기
   const fnOpenModal = (objProduct?: IProduct) => {
@@ -127,7 +132,8 @@ const ProductPage = () => {
       key: 'strDescription',
       ellipsis: true,
     },
-    {
+    // 관리 권한이 있을 때만 수정/삭제 컬럼 표시
+    ...(bCanManage ? [{
       title: '관리',
       key: 'actions',
       width: 100,
@@ -144,7 +150,7 @@ const ProductPage = () => {
           </Popconfirm>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -152,9 +158,11 @@ const ProductPage = () => {
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>프로덕트 관리</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          새로운 프로덕트
-        </Button>
+        {bCanManage && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+            새로운 프로덕트
+          </Button>
+        )}
       </div>
 
       <Card>

@@ -8,7 +8,9 @@ export const arrRoles: IRole[] = [
     strDisplayName: '관리자',
     strDescription: '전체 시스템 관리 권한',
     arrPermissions: [
+      'product.view',
       'product.manage',
+      'event_template.view',
       'event_template.manage',
       'user.manage',
       'db.manage',
@@ -43,6 +45,8 @@ export const arrRoles: IRole[] = [
     strDisplayName: 'GM',
     strDescription: '게임 운영 관리자',
     arrPermissions: [
+      'product.view',
+      'event_template.view',
       'instance.create',
       'instance.approve_qa',
       'instance.verify_qa',
@@ -59,6 +63,8 @@ export const arrRoles: IRole[] = [
     strDisplayName: '기획자',
     strDescription: '이벤트 기획 및 생성',
     arrPermissions: [
+      'product.view',
+      'event_template.view',
       'instance.create',
     ],
     bIsSystem: true,

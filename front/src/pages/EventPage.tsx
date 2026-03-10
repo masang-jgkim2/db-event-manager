@@ -19,6 +19,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import type { IEventTemplate, TEventCategory, TEventType, TInputFormat } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
@@ -49,6 +50,10 @@ const EventPage = () => {
   const fnUpdateEvent = useEventStore((s) => s.fnUpdateEvent);
   const fnDeleteEvent = useEventStore((s) => s.fnDeleteEvent);
   const arrProducts = useProductStore((s) => s.arrProducts);
+
+  // 관리 권한 여부 (없으면 조회 전용)
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const bCanManage = arrPermissions.includes('event_template.manage');
 
   const fnOpenModal = (objEvent?: IEventTemplate) => {
     if (objEvent) {
@@ -157,7 +162,8 @@ const EventPage = () => {
         </Text>
       ),
     },
-    {
+    // 관리 권한이 있을 때만 수정/삭제 컬럼 표시
+    ...(bCanManage ? [{
       title: '관리',
       key: 'actions',
       width: 100,
@@ -174,7 +180,7 @@ const EventPage = () => {
           </Popconfirm>
         </Space>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -182,9 +188,11 @@ const EventPage = () => {
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>이벤트 템플릿</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          새로운 이벤트
-        </Button>
+        {bCanManage && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+            새로운 이벤트
+          </Button>
+        )}
       </div>
 
       <Card>

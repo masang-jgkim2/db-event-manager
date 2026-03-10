@@ -2,22 +2,29 @@
 // 권한 코드
 // =============================================
 export type TPermission =
-  | 'product.manage'
-  | 'event_template.manage'
-  | 'user.manage'
-  | 'db.manage'
-  | 'instance.create'
-  | 'instance.approve_qa'
-  | 'instance.execute_qa'
-  | 'instance.verify_qa'
-  | 'instance.approve_live'
-  | 'instance.execute_live'
-  | 'instance.verify_live';
+  // 조회 권한
+  | 'product.view'              // 프로덕트 목록/상세 조회
+  | 'event_template.view'       // 이벤트 템플릿 목록/상세 조회
+  // 관리 권한 (CRUD)
+  | 'product.manage'            // 프로덕트 CRUD (view 포함)
+  | 'event_template.manage'     // 이벤트 템플릿 CRUD (view 포함)
+  | 'user.manage'               // 사용자 관리
+  | 'db.manage'                 // DB 접속 정보 관리
+  // 이벤트 인스턴스 권한
+  | 'instance.create'           // 이벤트 생성
+  | 'instance.approve_qa'       // QA 승인 요청
+  | 'instance.execute_qa'       // QA DB 실제 실행
+  | 'instance.verify_qa'        // QA 결과 확인
+  | 'instance.approve_live'     // LIVE 승인 요청
+  | 'instance.execute_live'     // LIVE DB 실제 실행
+  | 'instance.verify_live';     // LIVE 결과 확인
 
-// 역할별 기본 권한 (UI 표시용)
+// 권한 표시 라벨
 export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
-  'product.manage':          '프로덕트 관리',
-  'event_template.manage':   '이벤트 템플릿 관리',
+  'product.view':            '프로덕트 조회',
+  'event_template.view':     '이벤트 템플릿 조회',
+  'product.manage':          '프로덕트 관리 (CRUD)',
+  'event_template.manage':   '이벤트 템플릿 관리 (CRUD)',
   'user.manage':             '사용자 관리',
   'db.manage':               'DB 접속 정보 관리',
   'instance.create':         '이벤트 생성',

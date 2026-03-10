@@ -54,6 +54,31 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+// 특정 권한 기반 라우트 가드 (하나라도 보유하면 통과)
+const PermissionRoute = ({
+  children,
+  arrRequiredPerms,
+}: {
+  children: React.ReactNode;
+  arrRequiredPerms: string[];
+}) => {
+  const user = useAuthStore((state) => state.user);
+  const arrPerms = user?.arrPermissions || [];
+  const bHas = arrRequiredPerms.some((p) => arrPerms.includes(p));
+
+  if (!bHas) {
+    return (
+      <Result
+        status="403"
+        title="접근 권한 없음"
+        subTitle="해당 페이지에 접근할 권한이 없습니다."
+      />
+    );
+  }
+
+  return <>{children}</>;
+};
+
 // 이미 로그인된 사용자는 적절한 페이지로 리다이렉트
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
@@ -130,17 +155,17 @@ const App = () => {
             <Route
               path="/products"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['product.view', 'product.manage']}>
                   <ProductPage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
             <Route
               path="/events"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['event_template.view', 'event_template.manage']}>
                   <EventPage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
             <Route
