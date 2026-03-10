@@ -4,6 +4,7 @@ import {
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
 import { fnFindActiveConnection } from '../data/dbConnections';
+import { arrProducts } from '../data/products';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
@@ -21,8 +22,9 @@ const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAll
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
+// strActorName(body) > JWT의 strDisplayName > strUserId 순서로 폴백
 const fnMakeActor = (req: Request): IStageActor => ({
-  strDisplayName: req.body.strActorName || req.user?.strUserId || '',
+  strDisplayName: req.body.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
   nUserId: req.user?.nId || 0,
   strUserId: req.user?.strUserId || '',
   dtProcessedAt: new Date().toISOString(),
@@ -32,7 +34,7 @@ const fnMakeActor = (req: Request): IStageActor => ({
 export const fnCreateInstance = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
-      nEventTemplateId, strEventLabel, strProductName,
+      nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
       strEventName, strInputValues, strGeneratedQuery, dtExecDate,
       strCreatedBy,
@@ -44,7 +46,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     }
 
     const objCreator: IStageActor = {
-      strDisplayName: strCreatedBy || req.user?.strUserId || '',
+      strDisplayName: strCreatedBy || req.user?.strDisplayName || req.user?.strUserId || '',
       nUserId: req.user?.nId || 0,
       strUserId: req.user?.strUserId || '',
       dtProcessedAt: new Date().toISOString(),
@@ -53,6 +55,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     const objNew = {
       nId: fnGetNextInstanceId(),
       nEventTemplateId,
+      nProductId: Number(nProductId) || 0,
       strEventLabel: strEventLabel || '',
       strProductName: strProductName || '',
       strServiceAbbr: strServiceAbbr || '',
@@ -265,13 +268,14 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 실행 권한 확인 (인스턴스에 연결된 프로덕트 기반 DB 접속 정보 찾기)
-    // 이벤트 인스턴스에는 nProductId가 없으므로 이벤트 템플릿에서 찾아야 함
-    // 현재 인메모리 구조에서는 strProductName으로 제품 찾기
-    const { arrProducts } = await import('../data/products');
-    const objProduct = arrProducts.find((p) => p.strName === objInstance.strProductName);
+    // nProductId로 직접 DB 접속 정보 조회 (없으면 strProductName으로 폴백)
+    let nProductId = objInstance.nProductId;
+    if (!nProductId) {
+      const objProduct = arrProducts.find((p) => p.strName === objInstance.strProductName);
+      nProductId = objProduct?.nId || 0;
+    }
 
-    if (!objProduct) {
+    if (!nProductId) {
       res.status(404).json({
         bSuccess: false,
         strMessage: `프로덕트 '${objInstance.strProductName}'를 찾을 수 없습니다. DB 접속 정보 설정을 확인해주세요.`,
@@ -280,7 +284,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     }
 
     // 활성 DB 접속 정보 조회
-    const objDbConn = fnFindActiveConnection(objProduct.nId, strEnv);
+    const objDbConn = fnFindActiveConnection(nProductId, strEnv);
     if (!objDbConn) {
       res.status(400).json({
         bSuccess: false,
@@ -308,7 +312,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
     // 실행 성공 → 상태 전이 + 처리자 기록
     const objActor: IStageActor = {
-      strDisplayName: req.body.strActorName || req.user?.strUserId || '',
+      strDisplayName: req.body.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
       nUserId: req.user?.nId || 0,
       strUserId: req.user?.strUserId || '',
       dtProcessedAt: new Date().toISOString(),

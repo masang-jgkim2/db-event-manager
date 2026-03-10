@@ -235,6 +235,7 @@ export interface IStageActor {
 export interface IEventInstance {
   nId: number;
   nEventTemplateId: number;
+  nProductId: number;
   strEventLabel: string;
   strProductName: string;
   strServiceAbbr: string;

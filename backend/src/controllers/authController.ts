@@ -33,10 +33,11 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
     // 사용자의 모든 역할에서 권한 합집합 계산
     const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
 
-    // JWT 페이로드에 역할 + 권한 목록 포함
+    // JWT 페이로드에 역할 + 권한 + 표시 이름 포함
     const objPayload: IJwtPayload = {
       nId: objUser.nId,
       strUserId: objUser.strUserId,
+      strDisplayName: objUser.strDisplayName,
       arrRoles: objUser.arrRoles,
       arrPermissions: arrPermissions as any,
     };

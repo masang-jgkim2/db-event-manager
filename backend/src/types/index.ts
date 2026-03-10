@@ -49,6 +49,7 @@ export interface IUser {
 export interface IJwtPayload {
   nId: number;
   strUserId: string;
+  strDisplayName: string;          // 처리자 이름 기록용
   arrRoles: string[];              // 역할 코드 배열
   arrPermissions: TPermission[];   // 전체 역할의 권한 합집합
 }

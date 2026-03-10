@@ -42,6 +42,7 @@ export interface IEventInstance {
   nId: number;
   // 템플릿 정보
   nEventTemplateId: number;
+  nProductId: number;               // DB 접속 정보 조회용 (추가)
   strEventLabel: string;
   strProductName: string;
   strServiceAbbr: string;

@@ -173,6 +173,7 @@ const QueryPage = () => {
     try {
       const objResult = await fnApiCreateInstance({
         nEventTemplateId: objSelectedEvent.nId,
+        nProductId: objSelectedProduct?.nId || 0,
         strEventLabel: objSelectedEvent.strEventLabel,
         strProductName: objSelectedProduct?.strName || '',
         strServiceAbbr: strSelectedAbbr || '',
@@ -232,11 +233,14 @@ const QueryPage = () => {
     }
   };
 
-  // DBA는 이벤트 생성 권한 없음
-  if (user?.strRole === 'dba') {
+  const arrUserRoles = user?.arrRoles || [];
+  const arrUserPermissions = user?.arrPermissions || [];
+
+  // instance.create 권한이 없으면 접근 차단
+  if (!arrUserPermissions.includes('instance.create')) {
     return (
       <Card>
-        <Result status="403" title="접근 권한 없음" subTitle="DBA는 이벤트 생성 권한이 없습니다. 나의 대시보드를 이용해주세요." />
+        <Result status="403" title="접근 권한 없음" subTitle="이벤트 생성 권한이 없습니다. 나의 대시보드를 이용해주세요." />
       </Card>
     );
   }
@@ -254,7 +258,7 @@ const QueryPage = () => {
             status="info"
             title="등록된 이벤트가 없습니다"
             subTitle={
-              user?.strRole === 'admin'
+              arrUserRoles.includes('admin')
                 ? '먼저 프로덕트와 이벤트 템플릿을 등록해주세요.'
                 : '관리자에게 이벤트 등록을 요청해주세요.'
             }
