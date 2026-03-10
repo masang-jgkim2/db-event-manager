@@ -96,31 +96,45 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
 
 // =============================================
 // MSSQL 트랜잭션 실행
+// 여러 쿼리를 BEGIN TRAN...COMMIT 블록으로 래핑해 단일 배치로 전송.
+// 프로파일러에서 1건으로 보이며 네트워크 왕복도 1회.
 // =============================================
 const fnExecuteMssql = async (
   objPool: mssql.ConnectionPool,
   arrQueries: string[]
 ): Promise<IQueryPartResult[]> => {
-  const arrResults: IQueryPartResult[] = [];
-  const transaction = new mssql.Transaction(objPool);
+  // 단일 쿼리면 트랜잭션 래퍼 없이 그대로 실행 (불필요한 BEGIN TRAN 제거)
+  const bNeedsTransaction = arrQueries.length > 1;
 
-  await transaction.begin();
+  // 모든 구문을 세미콜론으로 연결해 하나의 배치 문자열로 합침
+  const strBatch = bNeedsTransaction
+    ? `BEGIN TRAN\n${arrQueries.join(';\n')};\nCOMMIT`
+    : arrQueries[0];
+
+  const objRequest = new mssql.Request(objPool);
+
   try {
-    for (let i = 0; i < arrQueries.length; i++) {
-      const strQuery = arrQueries[i];
-      const objRequest = new mssql.Request(transaction);
-      const objResult = await objRequest.query(strQuery);
+    const objResult = await objRequest.query(strBatch);
 
-      arrResults.push({
-        nIndex: i,
-        strQuery,
-        nAffectedRows: objResult.rowsAffected?.[0] ?? 0,
-      });
-    }
-    await transaction.commit();
-    return arrResults;
+    // rowsAffected: 각 구문별 영향 행 수 배열 (e.g. [3, 5])
+    // BEGIN TRAN / COMMIT 자체도 0으로 포함될 수 있으므로 arrQueries 길이 기준으로 매핑
+    const arrRowsAffected = objResult.rowsAffected ?? [];
+
+    return arrQueries.map((strQuery, i) => ({
+      nIndex: i,
+      strQuery,
+      // BEGIN TRAN(0), 쿼리1(1), ..., COMMIT(마지막) 순서로 오므로
+      // 트랜잭션 래퍼가 있으면 인덱스를 1씩 밀어서 읽음
+      nAffectedRows: arrRowsAffected[bNeedsTransaction ? i + 1 : i] ?? 0,
+    }));
   } catch (error) {
-    try { await transaction.rollback(); } catch { /* 롤백 실패 무시 */ }
+    // 단일 배치이므로 오류 발생 시 MSSQL이 자동 롤백(또는 명시적 ROLLBACK 전송)
+    // BEGIN TRAN을 직접 붙인 경우 ROLLBACK으로 명시적 정리
+    if (bNeedsTransaction) {
+      try {
+        await new mssql.Request(objPool).query('IF @@TRANCOUNT > 0 ROLLBACK');
+      } catch { /* 연결 오류 시 무시 */ }
+    }
     throw error;
   }
 };
