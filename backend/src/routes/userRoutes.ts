@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import {
-  fnGetUsers, fnCreateUser, fnDeleteUser,
-  fnResetPassword, fnUpdatePermissions,
+  fnGetUsers, fnCreateUser, fnUpdateUser, fnDeleteUser, fnResetPassword,
 } from '../controllers/userController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnAdminOnly } from '../middleware/roleMiddleware';
@@ -17,13 +16,13 @@ router.get('/', fnGetUsers);
 // POST /api/users - 사용자 추가
 router.post('/', fnCreateUser);
 
+// PUT /api/users/:id - 사용자 수정 (이름, 역할)
+router.put('/:id', fnUpdateUser);
+
 // DELETE /api/users/:id - 사용자 삭제
 router.delete('/:id', fnDeleteUser);
 
 // PATCH /api/users/:id/password - 비밀번호 초기화
 router.patch('/:id/password', fnResetPassword);
-
-// PATCH /api/users/:id/permissions - 세부 권한 수정
-router.patch('/:id/permissions', fnUpdatePermissions);
 
 export default router;

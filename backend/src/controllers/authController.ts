@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
 import { arrUsers } from '../data/users';
+import { fnGetMergedPermissions } from '../data/roles';
 
 const strJwtSecret = process.env.JWT_SECRET || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
@@ -29,12 +30,15 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // JWT 페이로드에 권한 목록 포함
+    // 사용자의 모든 역할에서 권한 합집합 계산
+    const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
+
+    // JWT 페이로드에 역할 + 권한 목록 포함
     const objPayload: IJwtPayload = {
       nId: objUser.nId,
       strUserId: objUser.strUserId,
-      strRole: objUser.strRole,
-      arrPermissions: objUser.arrPermissions,
+      arrRoles: objUser.arrRoles,
+      arrPermissions: arrPermissions as any,
     };
 
     const strToken = jwt.sign(objPayload, strJwtSecret, {
@@ -48,8 +52,8 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
         nId: objUser.nId,
         strUserId: objUser.strUserId,
         strDisplayName: objUser.strDisplayName,
-        strRole: objUser.strRole,
-        arrPermissions: objUser.arrPermissions,
+        arrRoles: objUser.arrRoles,
+        arrPermissions: arrPermissions as any,
       },
     });
   } catch (error) {
@@ -74,14 +78,17 @@ export const fnVerifyToken = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // 최신 권한 재계산
+    const arrPermissions = fnGetMergedPermissions(objFullUser.arrRoles);
+
     res.json({
       bSuccess: true,
       user: {
         nId: objFullUser.nId,
         strUserId: objFullUser.strUserId,
         strDisplayName: objFullUser.strDisplayName,
-        strRole: objFullUser.strRole,
-        arrPermissions: objFullUser.arrPermissions,
+        arrRoles: objFullUser.arrRoles,
+        arrPermissions: arrPermissions as any,
       },
     });
   } catch (error) {

@@ -189,7 +189,7 @@ const MyDashboardPage = () => {
   const [messageApi, contextHolder] = message.useMessage();
 
   const user = useAuthStore((s) => s.user);
-  const strRole = user?.strRole || '';
+  const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
 
   // 권한 확인 헬퍼
@@ -290,16 +290,16 @@ const MyDashboardPage = () => {
   const nTotal = arrInstances.length;
   const nMyAction = arrInstances.filter((e) => {
     const arrTrans: Record<string, string[]> = {
-      event_created: ['gm', 'planner', 'admin'],
+      event_created: ['game_manager', 'game_designer', 'admin'],
       confirm_requested: ['dba', 'admin'],
-      dba_confirmed: ['gm', 'planner', 'admin'],
+      dba_confirmed: ['game_manager', 'game_designer', 'admin'],
       qa_requested: ['dba', 'admin'],
-      qa_deployed: ['gm', 'planner', 'admin'],
-      qa_verified: ['gm', 'planner', 'admin'],
+      qa_deployed: ['game_manager', 'game_designer', 'admin'],
+      qa_verified: ['game_manager', 'game_designer', 'admin'],
       live_requested: ['dba', 'admin'],
-      live_deployed: ['gm', 'planner', 'admin'],
+      live_deployed: ['game_manager', 'game_designer', 'admin'],
     };
-    return arrTrans[e.strStatus]?.includes(strRole);
+    return arrTrans[e.strStatus]?.some((r) => arrRoles.includes(r));
   }).length;
   const nInProgress = arrInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrInstances.filter((e) => e.strStatus === 'live_verified').length;

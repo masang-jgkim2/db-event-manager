@@ -13,6 +13,7 @@ import QueryPage from './pages/QueryPage';
 import UserPage from './pages/UserPage';
 import MyDashboardPage from './pages/MyDashboardPage';
 import DbConnectionPage from './pages/DbConnectionPage';
+import RolePage from './pages/RolePage';
 import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
@@ -38,8 +39,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 // 관리자 전용 라우트 가드
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const user = useAuthStore((state) => state.user);
+  const arrRoles = user?.arrRoles || [];
 
-  if (user?.strRole !== 'admin') {
+  if (!arrRoles.includes('admin')) {
     return (
       <Result
         status="403"
@@ -56,11 +58,11 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
   const user = useAuthStore((state) => state.user);
+  const arrRoles = user?.arrRoles || [];
 
   if (bIsAuthenticated) {
-    // 역할별 기본 페이지
-    let strRedirect = '/my-dashboard';
-    if (user?.strRole === 'admin') strRedirect = '/';
+    // 관리자는 대시보드, 그 외는 나의 대시보드
+    const strRedirect = arrRoles.includes('admin') ? '/' : '/my-dashboard';
     return <Navigate to={strRedirect} replace />;
   }
 
@@ -70,7 +72,8 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 // 기본 리다이렉트 (역할에 따라 다른 페이지로)
 const DefaultRedirect = () => {
   const user = useAuthStore((state) => state.user);
-  const strRedirect = user?.strRole === 'admin' ? '/' : '/my-dashboard';
+  const arrRoles = user?.arrRoles || [];
+  const strRedirect = arrRoles.includes('admin') ? '/' : '/my-dashboard';
   return <Navigate to={strRedirect} replace />;
 };
 
@@ -153,6 +156,14 @@ const App = () => {
               element={
                 <AdminRoute>
                   <DbConnectionPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/roles"
+              element={
+                <AdminRoute>
+                  <RolePage />
                 </AdminRoute>
               }
             />

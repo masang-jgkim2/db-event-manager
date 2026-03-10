@@ -183,7 +183,7 @@ const EventPage = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>이벤트 템플릿</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          이벤트 추가
+          새로운 이벤트
         </Button>
       </div>
 

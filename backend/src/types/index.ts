@@ -15,15 +15,28 @@ export type TPermission =
   | 'instance.verify_live';    // LIVE 확인 (live_deployed → live_verified)
 
 // =============================================
+// 역할 모델 (동적 관리)
+// =============================================
+export interface IRole {
+  nId: number;
+  strCode: string;                // 역할 코드 (unique, 예: 'admin', 'dba', 'game_manager')
+  strDisplayName: string;         // 표시 이름 (예: '관리자', 'DBA', 'GM')
+  strDescription: string;         // 역할 설명
+  arrPermissions: TPermission[];  // 이 역할이 가지는 권한 목록
+  bIsSystem: boolean;             // true: 시스템 기본 역할 (삭제 불가, 권한만 수정)
+  dtCreatedAt: string;
+  dtUpdatedAt: string;
+}
+
+// =============================================
 // 사용자 인터페이스
 // =============================================
 export interface IUser {
   nId: number;
-  strUserId: string;
+  strUserId: string;              // 로그인 아이디 (unique, 변경 불가)
   strPassword: string;
-  strDisplayName: string;
-  strRole: 'admin' | 'gm' | 'planner' | 'dba';
-  arrPermissions: TPermission[];  // 세부 권한 (역할 기본값 + 커스텀)
+  strDisplayName: string;         // 표시 이름 (수정 가능)
+  arrRoles: string[];             // 역할 코드 배열 (멀티 역할 지원, 예: ['admin', 'dba'])
   dtCreatedAt: Date;
 }
 
@@ -31,8 +44,8 @@ export interface IUser {
 export interface IJwtPayload {
   nId: number;
   strUserId: string;
-  strRole: string;
-  arrPermissions: TPermission[];
+  arrRoles: string[];              // 역할 코드 배열
+  arrPermissions: TPermission[];   // 전체 역할의 권한 합집합
 }
 
 // 로그인 요청
@@ -49,7 +62,7 @@ export interface ILoginResponse {
     nId: number;
     strUserId: string;
     strDisplayName: string;
-    strRole: string;
+    arrRoles: string[];
     arrPermissions: TPermission[];
   };
   strMessage?: string;

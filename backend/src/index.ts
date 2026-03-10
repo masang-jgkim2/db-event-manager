@@ -7,6 +7,7 @@ import productRoutes from './routes/productRoutes';
 import eventRoutes from './routes/eventRoutes';
 import eventInstanceRoutes from './routes/eventInstanceRoutes';
 import dbConnectionRoutes from './routes/dbConnectionRoutes';
+import roleRoutes from './routes/roleRoutes';
 import { fnInitUsers } from './data/users';
 
 // 환경 변수 로드
@@ -29,6 +30,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/event-instances', eventInstanceRoutes);
 app.use('/api/db-connections', dbConnectionRoutes);
+app.use('/api/roles', roleRoutes);
 
 // 헬스 체크
 app.get('/api/health', (_req, res) => {

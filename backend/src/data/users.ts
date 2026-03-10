@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
 import { IUser } from '../types';
-import { fnGetDefaultPermissions } from './permissions';
 
 // 임시 사용자 데이터 저장소 (추후 DB 연동 시 교체)
 export const arrUsers: IUser[] = [
@@ -9,8 +8,7 @@ export const arrUsers: IUser[] = [
     strUserId: 'admin',
     strPassword: '$2a$10$placeholder',
     strDisplayName: '관리자',
-    strRole: 'admin',
-    arrPermissions: fnGetDefaultPermissions('admin'),
+    arrRoles: ['admin'],
     dtCreatedAt: new Date(),
   },
   {
@@ -18,8 +16,7 @@ export const arrUsers: IUser[] = [
     strUserId: 'gm01',
     strPassword: '$2a$10$placeholder',
     strDisplayName: 'GM_홍길동',
-    strRole: 'gm',
-    arrPermissions: fnGetDefaultPermissions('gm'),
+    arrRoles: ['game_manager'],
     dtCreatedAt: new Date(),
   },
   {
@@ -27,8 +24,7 @@ export const arrUsers: IUser[] = [
     strUserId: 'dba01',
     strPassword: '$2a$10$placeholder',
     strDisplayName: 'DBA_김철수',
-    strRole: 'dba',
-    arrPermissions: fnGetDefaultPermissions('dba'),
+    arrRoles: ['dba'],
     dtCreatedAt: new Date(),
   },
 ];

@@ -30,13 +30,27 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
 };
 
 // =============================================
+// 역할 모델
+// =============================================
+export interface IRole {
+  nId: number;
+  strCode: string;
+  strDisplayName: string;
+  strDescription: string;
+  arrPermissions: TPermission[];
+  bIsSystem: boolean;
+  dtCreatedAt: string;
+  dtUpdatedAt: string;
+}
+
+// =============================================
 // 사용자 관련
 // =============================================
 export interface IUser {
   nId: number;
   strUserId: string;
   strDisplayName: string;
-  strRole: string;
+  arrRoles: string[];           // 역할 코드 배열 (멀티 역할)
   arrPermissions: TPermission[];
 }
 

@@ -1,20 +1,22 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { arrUsers, fnGetNextId } from '../data/users';
-import { fnGetDefaultPermissions } from '../data/permissions';
-import { TPermission } from '../types';
+import { fnGetMergedPermissions } from '../data/roles';
 
 // 사용자 목록 조회 (관리자 전용)
 export const fnGetUsers = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const arrSafeUsers = arrUsers.map((u) => ({
-      nId: u.nId,
-      strUserId: u.strUserId,
-      strDisplayName: u.strDisplayName,
-      strRole: u.strRole,
-      arrPermissions: u.arrPermissions,
-      dtCreatedAt: u.dtCreatedAt,
-    }));
+    const arrSafeUsers = arrUsers.map((u) => {
+      const arrPermissions = fnGetMergedPermissions(u.arrRoles);
+      return {
+        nId: u.nId,
+        strUserId: u.strUserId,
+        strDisplayName: u.strDisplayName,
+        arrRoles: u.arrRoles,
+        arrPermissions,
+        dtCreatedAt: u.dtCreatedAt,
+      };
+    });
     res.json({ bSuccess: true, arrUsers: arrSafeUsers });
   } catch (error) {
     console.error('사용자 목록 조회 오류:', error);
@@ -25,10 +27,10 @@ export const fnGetUsers = async (_req: Request, res: Response): Promise<void> =>
 // 사용자 추가 (관리자 전용)
 export const fnCreateUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { strUserId, strPassword, strDisplayName, strRole } = req.body;
+    const { strUserId, strPassword, strDisplayName, arrRoles } = req.body;
 
-    if (!strUserId || !strPassword || !strDisplayName || !strRole) {
-      res.status(400).json({ bSuccess: false, strMessage: '모든 필드를 입력해주세요.' });
+    if (!strUserId || !strPassword || !strDisplayName || !Array.isArray(arrRoles) || arrRoles.length === 0) {
+      res.status(400).json({ bSuccess: false, strMessage: '모든 필드를 입력해주세요. 역할은 최소 1개 이상 필요합니다.' });
       return;
     }
 
@@ -44,12 +46,13 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
       strUserId,
       strPassword: strHashedPassword,
       strDisplayName,
-      strRole: strRole as 'admin' | 'gm' | 'planner' | 'dba',
-      arrPermissions: fnGetDefaultPermissions(strRole),  // 역할 기본 권한 자동 부여
+      arrRoles,
       dtCreatedAt: new Date(),
     };
 
     arrUsers.push(objNewUser);
+    const arrPermissions = fnGetMergedPermissions(objNewUser.arrRoles);
+
     res.json({
       bSuccess: true,
       strMessage: '사용자가 생성되었습니다.',
@@ -57,12 +60,46 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
         nId: objNewUser.nId,
         strUserId: objNewUser.strUserId,
         strDisplayName: objNewUser.strDisplayName,
-        strRole: objNewUser.strRole,
-        arrPermissions: objNewUser.arrPermissions,
+        arrRoles: objNewUser.arrRoles,
+        arrPermissions,
       },
     });
   } catch (error) {
     console.error('사용자 생성 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// 사용자 수정 (이름 + 역할 수정 가능, 아이디는 불가)
+export const fnUpdateUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const objUser = arrUsers.find((u) => u.nId === nId);
+
+    if (!objUser) {
+      res.status(404).json({ bSuccess: false, strMessage: '사용자를 찾을 수 없습니다.' });
+      return;
+    }
+
+    const { strDisplayName, arrRoles } = req.body;
+
+    if (strDisplayName !== undefined) objUser.strDisplayName = strDisplayName;
+    if (Array.isArray(arrRoles) && arrRoles.length > 0) objUser.arrRoles = arrRoles;
+
+    const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
+    res.json({
+      bSuccess: true,
+      strMessage: '사용자가 수정되었습니다.',
+      user: {
+        nId: objUser.nId,
+        strUserId: objUser.strUserId,
+        strDisplayName: objUser.strDisplayName,
+        arrRoles: objUser.arrRoles,
+        arrPermissions,
+      },
+    });
+  } catch (error) {
+    console.error('사용자 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
@@ -112,35 +149,6 @@ export const fnResetPassword = async (req: Request, res: Response): Promise<void
     res.json({ bSuccess: true, strMessage: '비밀번호가 초기화되었습니다.' });
   } catch (error) {
     console.error('비밀번호 초기화 오류:', error);
-    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
-  }
-};
-
-// 사용자 권한 수정 (관리자 전용)
-export const fnUpdatePermissions = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const nId = Number(req.params.id);
-    const { arrPermissions } = req.body as { arrPermissions: TPermission[] };
-
-    if (!Array.isArray(arrPermissions)) {
-      res.status(400).json({ bSuccess: false, strMessage: 'arrPermissions 배열이 필요합니다.' });
-      return;
-    }
-
-    const objUser = arrUsers.find((u) => u.nId === nId);
-    if (!objUser) {
-      res.status(404).json({ bSuccess: false, strMessage: '사용자를 찾을 수 없습니다.' });
-      return;
-    }
-
-    objUser.arrPermissions = arrPermissions;
-    res.json({
-      bSuccess: true,
-      strMessage: '권한이 업데이트되었습니다.',
-      arrPermissions: objUser.arrPermissions,
-    });
-  } catch (error) {
-    console.error('권한 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

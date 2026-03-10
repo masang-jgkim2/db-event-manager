@@ -11,9 +11,18 @@ export const fnApiCreateUser = async (objData: {
   strUserId: string;
   strPassword: string;
   strDisplayName: string;
-  strRole: string;
+  arrRoles: string[];
 }) => {
   const response = await apiClient.post('/users', objData);
+  return response.data;
+};
+
+// 사용자 수정 (이름, 역할)
+export const fnApiUpdateUser = async (nId: number, objData: {
+  strDisplayName?: string;
+  arrRoles?: string[];
+}) => {
+  const response = await apiClient.put(`/users/${nId}`, objData);
   return response.data;
 };
 

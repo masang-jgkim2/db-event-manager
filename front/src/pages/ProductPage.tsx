@@ -153,7 +153,7 @@ const ProductPage = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>프로덕트 관리</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          프로덕트 추가
+          새로운 프로덕트
         </Button>
       </div>
 

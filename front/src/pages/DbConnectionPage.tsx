@@ -251,7 +251,7 @@ const DbConnectionPage = () => {
           DB 접속 정보 관리
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          접속 정보 추가
+          새로운 DB 접속 정보
         </Button>
       </div>
 

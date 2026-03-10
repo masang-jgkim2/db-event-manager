@@ -23,8 +23,8 @@ const { Text } = Typography;
 // 역할 표시 라벨
 const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
   admin: { strText: '관리자', strColor: '#f50' },
-  gm: { strText: 'GM', strColor: '#2db7f5' },
-  planner: { strText: '기획자', strColor: '#87d068' },
+  game_manager: { strText: 'GM', strColor: '#2db7f5' },
+  game_designer: { strText: '기획자', strColor: '#87d068' },
   dba: { strText: 'DBA', strColor: '#722ed1' },
 };
 
@@ -35,29 +35,36 @@ const MainLayout = () => {
   const user = useAuthStore((state) => state.user);
   const fnLogout = useAuthStore((state) => state.fnLogout);
 
-  const strRole = user?.strRole || '';
+  const arrRoles = user?.arrRoles || [];
+  const arrPermissions = user?.arrPermissions || [];
 
   // 역할에 따른 사이드바 메뉴
   const arrMenuItems = useMemo(() => {
     // 관리자 메뉴
-    if (strRole === 'admin') {
+    if (arrRoles.includes('admin')) {
       return [
         {
-          key: 'admin-group',
-          icon: <SettingOutlined />,
-          label: '관리자',
+          key: 'event-group',
+          label: '이벤트',
           type: 'group' as const,
           children: [
             { key: '/', icon: <DashboardOutlined />, label: '대시보드' },
             { key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' },
             { key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' },
-            { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
             { key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' },
           ],
         },
         {
-          key: 'common-group',
-          icon: <CodeOutlined />,
+          key: 'user-group',
+          label: '사용자',
+          type: 'group' as const,
+          children: [
+            { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
+            { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한 관리' },
+          ],
+        },
+        {
+          key: 'operation-group',
           label: '운영',
           type: 'group' as const,
           children: [
@@ -68,19 +75,17 @@ const MainLayout = () => {
       ];
     }
 
-    // DBA 메뉴
-    if (strRole === 'dba') {
-      return [
-        { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
-      ];
+    // 운영자/DBA 공통 메뉴 (권한 기반으로 확장 가능)
+    const arrMenu = [];
+    arrMenu.push({ key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' });
+    
+    // 이벤트 생성 권한이 있으면 메뉴 표시
+    if (arrPermissions.includes('instance.create')) {
+      arrMenu.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
     }
 
-    // 운영자(GM, 기획자) 메뉴
-    return [
-      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
-      { key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' },
-    ];
-  }, [strRole]);
+    return arrMenu;
+  }, [arrRoles, arrPermissions]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -98,7 +103,9 @@ const MainLayout = () => {
     },
   ];
 
-  const objRole = objRoleLabel[user?.strRole || ''] || { strText: user?.strRole, strColor: '#999' };
+  // 첫 번째 역할을 대표로 표시
+  const strFirstRole = arrRoles[0] || '';
+  const objRole = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

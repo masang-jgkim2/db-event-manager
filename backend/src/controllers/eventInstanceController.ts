@@ -9,14 +9,14 @@ import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계)
 const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
-  event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
-  dba_confirmed:      [{ strNextStatus: 'qa_requested',      arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  dba_confirmed:      [{ strNextStatus: 'qa_requested',      arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   qa_requested:       [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
-  qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['gm', 'planner', 'admin'] }],
-  qa_verified:        [{ strNextStatus: 'live_requested',    arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
+  qa_verified:        [{ strNextStatus: 'live_requested',    arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   live_requested:     [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
-  live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['gm', 'planner', 'admin'] }],
+  live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
@@ -122,10 +122,12 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
 
     // 내가 처리해야 할 이벤트 (역할 기반)
     if (strFilter === 'my_action') {
-      const strRole = req.user?.strRole || '';
+      const arrUserRoles = req.user?.arrRoles || [];
       arrFiltered = arrFiltered.filter((e) => {
         const arrTrans = objStatusTransitions[e.strStatus] || [];
-        return arrTrans.some((t) => t.arrAllowedRoles.includes(strRole));
+        return arrTrans.some((t) =>
+          t.arrAllowedRoles.some((r) => arrUserRoles.includes(r))
+        );
       });
     }
 
@@ -144,7 +146,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
   try {
     const nId = Number(req.params.id);
     const { strNextStatus, strComment } = req.body;
-    const strRole = req.user?.strRole || '';
+    const arrUserRoles = req.user?.arrRoles || [];
 
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
@@ -161,7 +163,9 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    if (!objTransition.arrAllowedRoles.includes(strRole)) {
+    // 사용자의 역할 중 하나라도 허용된 역할이면 통과
+    const bHasRole = objTransition.arrAllowedRoles.some((r) => arrUserRoles.includes(r));
+    if (!bHasRole) {
       res.status(403).json({ bSuccess: false, strMessage: '해당 상태를 변경할 권한이 없습니다.' });
       return;
     }
@@ -353,8 +357,9 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // 생성자 본인만 수정 가능
-    if (objInstance.nCreatedByUserId !== req.user?.nId && req.user?.strRole !== 'admin') {
+    // 생성자 본인만 수정 가능 (관리자는 예외)
+    const arrUserRoles = req.user?.arrRoles || [];
+    if (objInstance.nCreatedByUserId !== req.user?.nId && !arrUserRoles.includes('admin')) {
       res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다.' });
       return;
     }
