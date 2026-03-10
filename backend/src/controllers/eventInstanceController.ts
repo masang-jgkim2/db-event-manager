@@ -5,6 +5,7 @@ import {
 } from '../data/eventInstances';
 import { fnFindActiveConnection } from '../data/dbConnections';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
+import { fnBroadcastInstanceUpdate } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계)
@@ -86,6 +87,8 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
+    // 새 인스턴스 생성 알림 - 모든 연결된 클라이언트에 브로드캐스트
+    fnBroadcastInstanceUpdate(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
   } catch (error) {
     console.error('이벤트 인스턴스 생성 오류:', error);
@@ -194,6 +197,8 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       dtChangedAt: new Date().toISOString(),
     });
 
+    // 상태 변경 SSE 브로드캐스트
+    fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 상태 변경 오류:', error);
@@ -328,6 +333,8 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       },
     });
 
+    // DB 실행 후 상태 변경 SSE 브로드캐스트
+    fnBroadcastInstanceUpdate(objInstance);
     res.json({
       bSuccess: true,
       strMessage: `${strEnv.toUpperCase()} 반영이 완료되었습니다.`,
@@ -375,6 +382,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
+    // 수정 후 SSE 브로드캐스트
+    fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 수정 오류:', error);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Typography, Card, Table, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
@@ -10,11 +10,8 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
-import {
-  fnApiGetInstances, fnApiUpdateStatus,
-  fnApiUpdateInstance, fnApiExecuteQuery,
-} from '../api/eventInstanceApi';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult,
@@ -169,11 +166,8 @@ const ExecutionResultModal = ({
 };
 
 const MyDashboardPage = () => {
-  const [arrInstances, setArrInstances] = useState<IEventInstance[]>([]);
-  const [bLoading, setBLoading] = useState(false);
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
-  const [strFilter, setStrFilter] = useState<string>('involved');
   // 수정 모달
   const [bEditOpen, setBEditOpen] = useState(false);
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
@@ -181,7 +175,7 @@ const MyDashboardPage = () => {
   const [strEditInputValues, setStrEditInputValues] = useState('');
   const [strEditExecDate, setStrEditExecDate] = useState('');
   // 실행 관련
-  const [bExecuting, setBExecuting] = useState<number | null>(null);  // 실행 중인 인스턴스 ID
+  const [bExecuting, setBExecuting] = useState<number | null>(null);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
@@ -192,37 +186,42 @@ const MyDashboardPage = () => {
   const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
 
+  // 전역 이벤트 인스턴스 스토어 (SSE 실시간 업데이트 포함)
+  const arrInstances = useEventInstanceStore((s) => s.arrInstances);
+  const bLoading = useEventInstanceStore((s) => s.bLoading);
+  const strFilter = useEventInstanceStore((s) => s.strFilter);
+  const fnFetchInstances = useEventInstanceStore((s) => s.fnFetchInstances);
+  const fnSetFilter = useEventInstanceStore((s) => s.fnSetFilter);
+  const fnStoreUpdateStatus = useEventInstanceStore((s) => s.fnUpdateStatus);
+  const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
+  const fnStoreUpdateInstance = useEventInstanceStore((s) => s.fnUpdateInstance);
+
   // 권한 확인 헬퍼
   const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
 
-  // 이벤트 목록 조회
-  const fnLoad = useCallback(async () => {
-    setBLoading(true);
-    try {
-      const result = await fnApiGetInstances(strFilter);
-      if (result.bSuccess) setArrInstances(result.arrInstances);
-    } catch {
-      messageApi.error('이벤트 목록을 불러올 수 없습니다.');
-    } finally {
-      setBLoading(false);
-    }
-  }, [strFilter, messageApi]);
+  // 페이지 진입 시 최초 1회 로드 (이후는 SSE가 자동 동기화)
+  useEffect(() => {
+    fnFetchInstances();
+  }, [fnFetchInstances]);
 
-  useEffect(() => { fnLoad(); }, [fnLoad]);
+  // SSE로 수신된 업데이트가 상세 모달에도 반영
+  useEffect(() => {
+    if (objDetail) {
+      const objUpdated = arrInstances.find((e) => e.nId === objDetail.nId);
+      if (objUpdated && objUpdated.strStatus !== objDetail.strStatus) {
+        setObjDetail(objUpdated);
+      }
+    }
+  }, [arrInstances, objDetail]);
 
   // 상태 변경 처리 (일반 상태 전이)
   const fnHandleAction = async (nId: number, strNextStatus: TEventStatus, strActionLabel: string) => {
-    try {
-      const result = await fnApiUpdateStatus(nId, strNextStatus, strActionLabel, user?.strDisplayName || '');
-      if (result.bSuccess) {
-        messageApi.success(`${strActionLabel} 처리 완료`);
-        fnLoad();
-        if (objDetail?.nId === nId) setObjDetail(result.objInstance);
-      } else {
-        messageApi.error(result.strMessage);
-      }
-    } catch {
-      messageApi.error('처리에 실패했습니다.');
+    const result = await fnStoreUpdateStatus(nId, strNextStatus, strActionLabel, user?.strDisplayName || '');
+    if (result.bSuccess) {
+      messageApi.success(`${strActionLabel} 처리 완료`);
+      if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
+    } else {
+      messageApi.error(result.strMessage || '처리에 실패했습니다.');
     }
   };
 
@@ -231,16 +230,14 @@ const MyDashboardPage = () => {
     setBExecuting(r.nId);
     setStrExecEnv(strEnv);
     try {
-      const result = await fnApiExecuteQuery(r.nId, strEnv, user?.strDisplayName || '');
-      setObjExecResult(result.objExecutionResult);
+      const result = await fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || '');
+      setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
       setBExecResultOpen(true);
 
       if (result.bSuccess) {
         messageApi.success(`${strEnv.toUpperCase()} 반영 완료`);
-        fnLoad();
-        if (objDetail?.nId === r.nId) setObjDetail(result.objInstance);
+        if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
-        // 실패해도 결과 모달은 열림 (롤백 메시지 표시)
         messageApi.error(`${strEnv.toUpperCase()} 반영 실패 - 롤백 완료`);
       }
     } catch {
@@ -262,21 +259,16 @@ const MyDashboardPage = () => {
   // 수정 저장
   const fnSaveEdit = async () => {
     if (!objEditInstance) return;
-    try {
-      const result = await fnApiUpdateInstance(objEditInstance.nId, {
-        strEventName: strEditEventName,
-        strInputValues: strEditInputValues,
-        dtExecDate: strEditExecDate,
-      });
-      if (result.bSuccess) {
-        messageApi.success('이벤트가 수정되었습니다.');
-        setBEditOpen(false);
-        fnLoad();
-      } else {
-        messageApi.error(result.strMessage);
-      }
-    } catch {
-      messageApi.error('수정에 실패했습니다.');
+    const result = await fnStoreUpdateInstance(objEditInstance.nId, {
+      strEventName: strEditEventName,
+      strInputValues: strEditInputValues,
+      dtExecDate: strEditExecDate,
+    });
+    if (result.bSuccess) {
+      messageApi.success('이벤트가 수정되었습니다.');
+      setBEditOpen(false);
+    } else {
+      messageApi.error(result.strMessage || '수정에 실패했습니다.');
     }
   };
 
@@ -327,8 +319,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // DBA: 컨펌 처리
-    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || strRole === 'admin')) {
+    // DBA/관리자: 컨펌 처리
+    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || arrRoles.includes('admin'))) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -510,7 +502,7 @@ const MyDashboardPage = () => {
       {/* 필터 + 목록 */}
       <Card>
         <div style={{ marginBottom: 16 }}>
-          <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => setStrFilter(v as string)} />
+          <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
         </div>
         <Table
           dataSource={arrInstances}

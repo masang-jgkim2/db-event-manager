@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag } from 'antd';
+import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
@@ -12,9 +12,11 @@ import {
   DatabaseOutlined,
   TeamOutlined,
   SafetyCertificateOutlined,
+  WifiOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useEventStream } from '../hooks/useEventStream';
 import type { MenuProps } from 'antd';
 
 const { Header, Sider, Content } = Layout;
@@ -34,6 +36,9 @@ const MainLayout = () => {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const fnLogout = useAuthStore((state) => state.fnLogout);
+
+  // SSE 연결 - 레이아웃 마운트 시 시작, 앱 전체 유효
+  const { bConnected } = useEventStream();
 
   const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
@@ -206,17 +211,30 @@ const MainLayout = () => {
             style={{ fontSize: 18 }}
           />
 
-          {/* 사용자 정보 */}
-          <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
-              <Avatar
-                icon={<UserOutlined />}
-                style={{ background: objRole.strColor }}
+          {/* 실시간 연결 상태 + 사용자 정보 */}
+          <Space>
+            <Badge
+              status={bConnected ? 'success' : 'default'}
+              title={bConnected ? '실시간 연결됨' : '연결 중...'}
+            >
+              <WifiOutlined
+                style={{
+                  fontSize: 16,
+                  color: bConnected ? '#52c41a' : '#bfbfbf',
+                }}
               />
-              <Text strong>{user?.strDisplayName}</Text>
-              <Tag color={objRole.strColor}>{objRole.strText}</Tag>
-            </Space>
-          </Dropdown>
+            </Badge>
+            <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
+              <Space style={{ cursor: 'pointer' }}>
+                <Avatar
+                  icon={<UserOutlined />}
+                  style={{ background: objRole.strColor }}
+                />
+                <Text strong>{user?.strDisplayName}</Text>
+                <Tag color={objRole.strColor}>{objRole.strText}</Tag>
+              </Space>
+            </Dropdown>
+          </Space>
         </Header>
 
         {/* 콘텐츠 영역 */}
