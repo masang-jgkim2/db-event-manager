@@ -11,7 +11,7 @@ import {
   UserOutlined,
   DatabaseOutlined,
   TeamOutlined,
-  SettingOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
