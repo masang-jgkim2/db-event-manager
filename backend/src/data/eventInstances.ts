@@ -53,7 +53,7 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
-  dtExecDate: string;
+  dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
   // 상태
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];

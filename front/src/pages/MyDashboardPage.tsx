@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import {
   Typography, Card, Table, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
-  Segmented, Descriptions, Alert, Spin, Divider, Progress,
+  Segmented, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
 } from 'antd';
+import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
@@ -173,7 +174,7 @@ const MyDashboardPage = () => {
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
   const [strEditEventName, setStrEditEventName] = useState('');
   const [strEditInputValues, setStrEditInputValues] = useState('');
-  const [strEditExecDate, setStrEditExecDate] = useState('');
+  const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
@@ -252,7 +253,7 @@ const MyDashboardPage = () => {
     setObjEditInstance(r);
     setStrEditEventName(r.strEventName);
     setStrEditInputValues(r.strInputValues);
-    setStrEditExecDate(r.dtExecDate);
+    setStrEditDeployDate(r.dtDeployDate);
     setBEditOpen(true);
   };
 
@@ -262,7 +263,7 @@ const MyDashboardPage = () => {
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
       strInputValues: strEditInputValues,
-      dtExecDate: strEditExecDate,
+      dtDeployDate: strEditDeployDate,
     });
     if (result.bSuccess) {
       messageApi.success('이벤트가 수정되었습니다.');
@@ -444,10 +445,11 @@ const MyDashboardPage = () => {
       render: (_: unknown, r: IEventInstance) => <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag>,
     },
     {
-      title: '실행일',
-      dataIndex: 'dtExecDate',
-      key: 'dtExecDate',
-      width: 100,
+      title: '반영 날짜',
+      dataIndex: 'dtDeployDate',
+      key: 'dtDeployDate',
+      width: 140,
+      render: (str: string) => str ? new Date(str).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-',
     },
     {
       title: '생성자',
@@ -526,7 +528,11 @@ const MyDashboardPage = () => {
                 <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
                 <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
                 <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
-                <Descriptions.Item label="실행일">{objDetail.dtExecDate}</Descriptions.Item>
+                <Descriptions.Item label="반영 날짜">
+                  {objDetail.dtDeployDate
+                    ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
+                    : '-'}
+                </Descriptions.Item>
                 <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
               </Descriptions>
             </Card>
@@ -607,26 +613,42 @@ const MyDashboardPage = () => {
         onCancel={() => setBEditOpen(false)}
         okText="저장"
         cancelText="취소"
-        width={600}
+        width={620}
       >
         {objEditInstance && (
           <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="middle">
             <div>
               <Text strong>프로덕트</Text>
-              <Input value={`${objEditInstance.strProductName} (${objEditInstance.strServiceAbbr} / ${objEditInstance.strServiceRegion})`} disabled />
+              <Input value={`${objEditInstance.strProductName} (${objEditInstance.strServiceAbbr} / ${objEditInstance.strServiceRegion})`} disabled style={{ marginTop: 4 }} />
             </div>
             <div>
               <Text strong>이벤트 이름</Text>
-              <Input value={strEditEventName} onChange={(e) => setStrEditEventName(e.target.value)} />
+              <Input value={strEditEventName} onChange={(e) => setStrEditEventName(e.target.value)} style={{ marginTop: 4 }} />
             </div>
             <div>
-              <Text strong>실행 날짜</Text>
-              <Input value={strEditExecDate} onChange={(e) => setStrEditExecDate(e.target.value)} placeholder="YYYY-MM-DD" />
+              <Space style={{ marginBottom: 4 }}>
+                <Text strong>반영 날짜</Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>DEV/QA: 이 시각 이전 실행 가능 · LIVE: 이 시각 이후 실행 가능</Text>
+              </Space>
+              <DatePicker
+                style={{ width: '100%', marginTop: 4 }}
+                showTime={{ format: 'HH:mm:ss' }}
+                format="YYYY-MM-DD HH:mm:ss"
+                value={strEditDeployDate ? dayjs(strEditDeployDate) : null}
+                onChange={(date) => setStrEditDeployDate(date ? date.toISOString() : '')}
+              />
             </div>
             <div>
-              <Text strong>입력값 (아이템/퀘스트)</Text>
-              <TextArea value={strEditInputValues} onChange={(e) => setStrEditInputValues(e.target.value)}
-                rows={5} style={{ fontFamily: 'monospace', fontSize: 13 }} />
+              <Space style={{ marginBottom: 4 }}>
+                <Text strong>입력값 (아이템/퀘스트)</Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
+              </Space>
+              <TextArea
+                value={strEditInputValues}
+                onChange={(e) => setStrEditInputValues(e.target.value)}
+                rows={5}
+                style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
+              />
             </div>
           </Space>
         )}

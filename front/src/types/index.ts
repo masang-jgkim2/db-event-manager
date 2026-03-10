@@ -245,7 +245,7 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
-  dtExecDate: string;
+  dtDeployDate: string;    // 반영 날짜 (datetime, ISO 8601)
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];
   // 단계별 처리자 (추적용)

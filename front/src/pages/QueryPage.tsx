@@ -44,7 +44,7 @@ const QueryPage = () => {
   // 입력 상태
   const [strEventName, setStrEventName] = useState('');
   const [strInputValues, setStrInputValues] = useState('');
-  const [strExecDate, setStrExecDate] = useState('');
+  const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
 
   // 결과
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
@@ -104,7 +104,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
-    setStrExecDate('');
+    setStrDeployDate('');
     setStrGeneratedQuery('');
 
     // 서비스가 1개뿐이면 자동 선택
@@ -119,6 +119,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setStrDeployDate('');
     setStrGeneratedQuery('');
   };
 
@@ -144,9 +145,9 @@ const QueryPage = () => {
   const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
 
-    // 실행 날짜 필수 체크
-    if (!strExecDate) {
-      messageApi.warning('이벤트 실행 날짜를 선택해주세요.');
+    // 반영 날짜 필수 체크
+    if (!strDeployDate) {
+      messageApi.warning('반영 날짜를 선택해주세요.');
       return;
     }
 
@@ -158,9 +159,10 @@ const QueryPage = () => {
 
     let strQuery = objSelectedEvent.strQueryTemplate;
 
-    // 치환 변수 처리
+    // 치환 변수 처리 ({{date}}에는 날짜 부분만 넣음 YYYY-MM-DD)
+    const strDateOnly = strDeployDate.slice(0, 10);
     strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
-    strQuery = strQuery.replace(/\{\{date\}\}/g, strExecDate);
+    strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
     strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
     strQuery = strQuery.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
     strQuery = strQuery.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
@@ -183,7 +185,7 @@ const QueryPage = () => {
         strEventName,
         strInputValues: strInputValues.trim(),
         strGeneratedQuery: strQuery,
-        dtExecDate: strExecDate,
+        dtDeployDate: strDeployDate,
         strCreatedBy: user?.strDisplayName || '',
       });
 
@@ -214,7 +216,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
-    setStrExecDate('');
+    setStrDeployDate('');
     setStrGeneratedQuery('');
   };
 
@@ -406,16 +408,22 @@ const QueryPage = () => {
                   </Text>
                 </Form.Item>
 
-                {/* 실행 날짜 (필수) */}
+                {/* 반영 날짜 (필수, 날짜+시분초) */}
                 <Form.Item
                   label={
-                    <Space>이벤트 실행 날짜 <Tag color="red" style={{ fontSize: 11 }}>필수</Tag></Space>
+                    <Space>
+                      반영 날짜
+                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                      <Text type="secondary" style={{ fontSize: 11 }}>DEV/QA: 이 시각 이전에 실행, LIVE: 이 시각 이후에 실행</Text>
+                    </Space>
                   }
                 >
                   <DatePicker
                     style={{ width: '100%' }}
-                    placeholder="실행 날짜를 선택하세요"
-                    onChange={(date) => setStrExecDate(date ? date.format('YYYY-MM-DD') : '')}
+                    showTime={{ format: 'HH:mm:ss' }}
+                    format="YYYY-MM-DD HH:mm:ss"
+                    placeholder="반영 날짜/시각을 선택하세요"
+                    onChange={(date) => setStrDeployDate(date ? date.toISOString() : '')}
                     size="large"
                   />
                 </Form.Item>

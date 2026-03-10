@@ -5,6 +5,7 @@ import {
 } from '../data/eventInstances';
 import { fnFindActiveConnection } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
+import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
@@ -36,11 +37,11 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     const {
       nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
-      strEventName, strInputValues, strGeneratedQuery, dtExecDate,
+      strEventName, strInputValues, strGeneratedQuery, dtDeployDate,
       strCreatedBy,
     } = req.body;
 
-    if (!strEventName || !dtExecDate || !nEventTemplateId) {
+    if (!strEventName || !dtDeployDate || !nEventTemplateId) {
       res.status(400).json({ bSuccess: false, strMessage: '필수 항목을 입력해주세요.' });
       return;
     }
@@ -65,7 +66,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strEventName,
       strInputValues: strInputValues || '',
       strGeneratedQuery: strGeneratedQuery || '',
-      dtExecDate,
+      dtDeployDate,  // 반영 날짜 (ISO 8601)
       strStatus: 'event_created' as TEventStatus,
       arrStatusLogs: [{
         strStatus: 'event_created' as TEventStatus,
@@ -233,10 +234,10 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
 export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<void> => {
   try {
     const nId = Number(req.params.id);
-    const { strEnv } = req.body as { strEnv: 'qa' | 'live' };
+    const { strEnv } = req.body as { strEnv: 'dev' | 'qa' | 'live' };
 
-    if (!strEnv || !['qa', 'live'].includes(strEnv)) {
-      res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 qa 또는 live이어야 합니다.' });
+    if (!strEnv || !['dev', 'qa', 'live'].includes(strEnv)) {
+      res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 dev, qa, live 중 하나여야 합니다.' });
       return;
     }
 
@@ -247,15 +248,19 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     }
 
     // 현재 상태가 실행 가능한 단계인지 확인
-    const objRequiredStatus: Record<'qa' | 'live', TEventStatus> = {
+    // dev는 qa_requested 단계에서 함께 처리 (dev 전용 워크플로 단계 없음)
+    const objRequiredStatus: Record<'dev' | 'qa' | 'live', TEventStatus> = {
+      dev: 'qa_requested',
       qa: 'qa_requested',
       live: 'live_requested',
     };
-    const objDeployedStatus: Record<'qa' | 'live', TEventStatus> = {
+    const objDeployedStatus: Record<'dev' | 'qa' | 'live', TEventStatus> = {
+      dev: 'qa_deployed',
       qa: 'qa_deployed',
       live: 'live_deployed',
     };
-    const objDeployedActorField: Record<'qa' | 'live', 'objQaDeployer' | 'objLiveDeployer'> = {
+    const objDeployedActorField: Record<'dev' | 'qa' | 'live', 'objQaDeployer' | 'objLiveDeployer'> = {
+      dev: 'objQaDeployer',
       qa: 'objQaDeployer',
       live: 'objLiveDeployer',
     };
@@ -289,6 +294,33 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       res.status(400).json({
         bSuccess: false,
         strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
+      });
+      return;
+    }
+
+    // ── 반영 날짜 시점 체크 ────────────────────────────────
+    // DEV / QA : 현재 시각 < 반영 날짜 → 반영 날짜 이전에만 실행 허용 (사전 검증)
+    // LIVE      : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
+    const dtNow = new Date();
+    const dtDeploy = new Date(objInstance.dtDeployDate);
+
+    if (isNaN(dtDeploy.getTime())) {
+      res.status(400).json({ bSuccess: false, strMessage: '반영 날짜가 올바르지 않습니다.' });
+      return;
+    }
+
+    if ((strEnv === 'dev' || strEnv === 'qa') && dtNow >= dtDeploy) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `DEV/QA 반영은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이전에만 실행할 수 있습니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
+      });
+      return;
+    }
+
+    if (strEnv === 'live' && dtNow < dtDeploy) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `LIVE 반영은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 실행할 수 있습니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
       });
       return;
     }
@@ -351,7 +383,29 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
   }
 };
 
+// 쿼리 템플릿 치환 헬퍼 (생성/수정에 공통 사용)
+const fnApplyQueryTemplate = (
+  strTemplate: string,
+  strInputValues: string,
+  strDeployDate: string,
+  strEventName: string,
+  strServiceAbbr: string,
+  strProductName: string,
+  strServiceRegion: string
+): string => {
+  const strDateOnly = strDeployDate.slice(0, 10);  // YYYY-MM-DD 부분만
+  let strQuery = strTemplate;
+  strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
+  strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
+  strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
+  strQuery = strQuery.replace(/\{\{abbr\}\}/g, strServiceAbbr);
+  strQuery = strQuery.replace(/\{\{product\}\}/g, strProductName);
+  strQuery = strQuery.replace(/\{\{region\}\}/g, strServiceRegion);
+  return strQuery;
+};
+
 // 이벤트 인스턴스 수정 (event_created 상태에서만 가능, 생성자만)
+// strInputValues 또는 dtDeployDate 변경 시 strGeneratedQuery 자동 재생성
 export const fnUpdateInstance = async (req: Request, res: Response): Promise<void> => {
   try {
     const nId = Number(req.params.id);
@@ -375,14 +429,34 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // 수정 가능한 필드만 업데이트
-    const arrEditableFields = [
-      'strEventName', 'strInputValues', 'strGeneratedQuery',
-      'dtExecDate', 'strServiceAbbr', 'strServiceRegion',
-    ];
-    for (const key of arrEditableFields) {
+    // 수정 가능한 단순 필드 업데이트
+    const arrSimpleFields = ['strEventName', 'strServiceAbbr', 'strServiceRegion'];
+    for (const key of arrSimpleFields) {
       if (req.body[key] !== undefined) {
         (objInstance as any)[key] = req.body[key];
+      }
+    }
+
+    // inputValues 또는 dtDeployDate 변경 시 쿼리 자동 재생성
+    const bInputChanged = req.body.strInputValues !== undefined;
+    const bDateChanged = req.body.dtDeployDate !== undefined;
+
+    if (bInputChanged) objInstance.strInputValues = req.body.strInputValues;
+    if (bDateChanged) objInstance.dtDeployDate = req.body.dtDeployDate;
+
+    if (bInputChanged || bDateChanged) {
+      // 원본 이벤트 템플릿의 쿼리 템플릿으로 재생성
+      const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
+      if (objTemplate?.strQueryTemplate) {
+        objInstance.strGeneratedQuery = fnApplyQueryTemplate(
+          objTemplate.strQueryTemplate,
+          objInstance.strInputValues,
+          objInstance.dtDeployDate,
+          objInstance.strEventName,
+          objInstance.strServiceAbbr,
+          objInstance.strProductName,
+          objInstance.strServiceRegion
+        );
       }
     }
 
