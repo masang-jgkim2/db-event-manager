@@ -21,6 +21,7 @@ const { Title, Text } = Typography;
 
 // 환경 태그 색상
 const OBJ_ENV_COLOR: Record<string, string> = {
+  dev: 'green',
   qa: 'orange',
   live: 'red',
 };
@@ -334,9 +335,12 @@ const DbConnectionPage = () => {
               label="환경"
               rules={[{ required: true, message: '환경을 선택해주세요.' }]}
             >
-              <Select placeholder="QA 또는 LIVE 선택">
+              <Select placeholder="환경 선택">
+                <Select.Option value="dev">
+                  <Tag color="green">DEV</Tag> 개발/테스트 환경
+                </Select.Option>
                 <Select.Option value="qa">
-                  <Tag color="orange">QA</Tag> 테스트 환경
+                  <Tag color="orange">QA</Tag> QA 환경
                 </Select.Option>
                 <Select.Option value="live">
                   <Tag color="red">LIVE</Tag> 운영 환경

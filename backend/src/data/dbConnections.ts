@@ -13,7 +13,7 @@ export const fnGetNextDbConnectionId = (): number => {
 // 특정 프로덕트 + 환경의 활성 접속 정보 조회
 export const fnFindActiveConnection = (
   nProductId: number,
-  strEnv: 'qa' | 'live'
+  strEnv: 'dev' | 'qa' | 'live'
 ): IDbConnection | undefined => {
   return arrDbConnections.find(
     (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.bIsActive

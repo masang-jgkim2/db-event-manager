@@ -62,7 +62,7 @@ export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;           // 자동 매핑
-  strEnv: 'qa' | 'live';           // 환경 구분
+  strEnv: 'dev' | 'qa' | 'live';   // 환경 구분
   strDbType: 'mssql' | 'mysql';    // DB 드라이버 종류
   strHost: string;
   nPort: number;                    // MSSQL 기본 1433, MySQL 기본 3306

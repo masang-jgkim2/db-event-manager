@@ -175,7 +175,7 @@ export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;
-  strEnv: 'qa' | 'live';
+  strEnv: 'dev' | 'qa' | 'live';
   strDbType: 'mssql' | 'mysql';
   strHost: string;
   nPort: number;
