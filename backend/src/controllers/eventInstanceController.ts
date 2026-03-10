@@ -3,6 +3,9 @@ import {
   arrEventInstances, fnGetNextInstanceId,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
+import { fnFindActiveConnection } from '../data/dbConnections';
+import { fnExecuteQueryWithText } from '../services/queryExecutor';
+import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계)
 const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
@@ -206,6 +209,129 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 조회 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// =============================================
+// QA/LIVE 반영 - 실제 DB 쿼리 실행 후 상태 전이
+// POST /api/event-instances/:id/execute
+// Body: { strEnv: 'qa' | 'live' }
+// =============================================
+export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const { strEnv } = req.body as { strEnv: 'qa' | 'live' };
+
+    if (!strEnv || !['qa', 'live'].includes(strEnv)) {
+      res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 qa 또는 live이어야 합니다.' });
+      return;
+    }
+
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+
+    // 현재 상태가 실행 가능한 단계인지 확인
+    const objRequiredStatus: Record<'qa' | 'live', TEventStatus> = {
+      qa: 'qa_requested',
+      live: 'live_requested',
+    };
+    const objDeployedStatus: Record<'qa' | 'live', TEventStatus> = {
+      qa: 'qa_deployed',
+      live: 'live_deployed',
+    };
+    const objDeployedActorField: Record<'qa' | 'live', 'objQaDeployer' | 'objLiveDeployer'> = {
+      qa: 'objQaDeployer',
+      live: 'objLiveDeployer',
+    };
+
+    if (objInstance.strStatus !== objRequiredStatus[strEnv]) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `${strEnv.toUpperCase()} 반영은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
+      });
+      return;
+    }
+
+    // 실행 권한 확인 (인스턴스에 연결된 프로덕트 기반 DB 접속 정보 찾기)
+    // 이벤트 인스턴스에는 nProductId가 없으므로 이벤트 템플릿에서 찾아야 함
+    // 현재 인메모리 구조에서는 strProductName으로 제품 찾기
+    const { arrProducts } = await import('../data/products');
+    const objProduct = arrProducts.find((p) => p.strName === objInstance.strProductName);
+
+    if (!objProduct) {
+      res.status(404).json({
+        bSuccess: false,
+        strMessage: `프로덕트 '${objInstance.strProductName}'를 찾을 수 없습니다. DB 접속 정보 설정을 확인해주세요.`,
+      });
+      return;
+    }
+
+    // 활성 DB 접속 정보 조회
+    const objDbConn = fnFindActiveConnection(objProduct.nId, strEnv);
+    if (!objDbConn) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
+      });
+      return;
+    }
+
+    // 쿼리 실행
+    const objExecResult: IQueryExecutionResult = await fnExecuteQueryWithText(
+      objDbConn,
+      objInstance.strGeneratedQuery,
+      strEnv
+    );
+
+    if (!objExecResult.bSuccess) {
+      // 실패 시 상태 변경 없이 오류 반환
+      res.status(200).json({
+        bSuccess: false,
+        strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
+        objExecutionResult: objExecResult,
+      });
+      return;
+    }
+
+    // 실행 성공 → 상태 전이 + 처리자 기록
+    const objActor: IStageActor = {
+      strDisplayName: req.body.strActorName || req.user?.strUserId || '',
+      nUserId: req.user?.nId || 0,
+      strUserId: req.user?.strUserId || '',
+      dtProcessedAt: new Date().toISOString(),
+    };
+
+    const strNextStatus = objDeployedStatus[strEnv];
+    const strActorField = objDeployedActorField[strEnv];
+
+    objInstance[strActorField] = objActor;
+    objInstance.strStatus = strNextStatus;
+    objInstance.arrStatusLogs.push({
+      strStatus: strNextStatus,
+      strChangedBy: objActor.strDisplayName,
+      nChangedByUserId: objActor.nUserId,
+      strComment: `${strEnv.toUpperCase()} 반영 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
+      dtChangedAt: new Date().toISOString(),
+      objExecutionResult: {
+        strEnv,
+        nTotalAffectedRows: objExecResult.nTotalAffectedRows,
+        nElapsedMs: objExecResult.nElapsedMs,
+        arrQueryResults: objExecResult.arrQueryResults,
+      },
+    });
+
+    res.json({
+      bSuccess: true,
+      strMessage: `${strEnv.toUpperCase()} 반영이 완료되었습니다.`,
+      objExecutionResult: objExecResult,
+      objInstance,
+    });
+  } catch (error) {
+    console.error('쿼리 실행 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

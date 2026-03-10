@@ -1,7 +1,7 @@
 # 이벤트 매니저 & DB 쿼리 매니저 - 개발 명세서
 
-> 최종 업데이트: 2026-02-10
-> 버전: v0.2.0
+> 최종 업데이트: 2026-03-10
+> 버전: v0.3.0
 
 ---
 
@@ -13,9 +13,10 @@
 ### 1.2 대상 사용자
 | 역할 | 코드 | 권한 |
 |------|------|------|
-| 관리자 | `admin` | 프로덕트/이벤트/사용자 관리 + 이벤트 생성 |
-| GM | `gm` | 이벤트 생성 (쿼리 자동 생성) |
-| 기획자 | `planner` | 이벤트 생성 (쿼리 자동 생성) |
+| 관리자 | `admin` | 전체 관리 + 이벤트 생성 + DB 실행 |
+| GM | `gm` | 이벤트 생성 + QA/LIVE 승인 및 확인 |
+| 기획자 | `planner` | 이벤트 생성 |
+| DBA | `dba` | QA/LIVE DB 쿼리 실제 실행 |
 
 ### 1.3 핵심 프로세스
 ```
@@ -137,7 +138,9 @@ db-event-manager/
 │   │   │   ├── authApi.ts          #   인증 API (fnApiLogin, fnApiVerifyToken)
 │   │   │   ├── userApi.ts          #   사용자 관리 API (CRUD + 비밀번호 초기화)
 │   │   │   ├── productApi.ts       #   프로덕트 API (CRUD)
-│   │   │   └── eventApi.ts         #   이벤트 템플릿 API (CRUD)
+│   │   │   ├── eventApi.ts         #   이벤트 템플릿 API (CRUD)
+│   │   │   ├── eventInstanceApi.ts #   이벤트 인스턴스 API (CRUD + fnApiExecuteQuery)
+│   │   │   └── dbConnectionApi.ts  #   DB 접속 정보 API (CRUD + 연결 테스트) [신규]
 │   │   ├── components/             # 공통 컴포넌트
 │   │   │   └── MainLayout.tsx      #   메인 레이아웃 (사이드바+헤더+콘텐츠, 역할별 메뉴 분기)
 │   │   ├── pages/                  # 페이지 컴포넌트
@@ -146,6 +149,8 @@ db-event-manager/
 │   │   │   ├── ProductPage.tsx     #   프로덕트 관리 - CRUD + 서비스 범위 (관리자)
 │   │   │   ├── EventPage.tsx       #   이벤트 템플릿 관리 - CRUD + 쿼리 템플릿 (관리자)
 │   │   │   ├── UserPage.tsx        #   사용자 관리 - 계정 CRUD + 비밀번호 초기화 (관리자)
+│   │   │   ├── DbConnectionPage.tsx #  DB 접속 정보 관리 - CRUD + 연결 테스트 (관리자) [신규]
+│   │   │   ├── MyDashboardPage.tsx #   나의 대시보드 - 이벤트 처리 + QA/LIVE DB 실행
 │   │   │   └── QueryPage.tsx       #   이벤트 생성 - 스텝 UI, 쿼리 자동 생성 (전체 역할)
 │   │   ├── stores/                 # Zustand 상태 관리
 │   │   │   ├── useAuthStore.ts     #   인증 (fnLogin/fnLogout/fnVerifyToken)
@@ -165,23 +170,35 @@ db-event-manager/
 │   ├── src/
 │   │   ├── controllers/            # 비즈니스 로직
 │   │   │   ├── authController.ts   #   로그인(fnLogin) / 토큰검증(fnVerifyToken)
-│   │   │   ├── userController.ts   #   사용자 CRUD / 비밀번호 초기화
+│   │   │   ├── userController.ts   #   사용자 CRUD / 비밀번호 초기화 / 권한 수정
 │   │   │   ├── productController.ts #  프로덕트 CRUD
-│   │   │   └── eventController.ts  #   이벤트 템플릿 CRUD
+│   │   │   ├── eventController.ts  #   이벤트 템플릿 CRUD
+│   │   │   ├── eventInstanceController.ts # 이벤트 인스턴스 + DB 실행(fnExecuteAndDeploy)
+│   │   │   └── dbConnectionController.ts  # DB 접속 정보 CRUD + 연결 테스트
 │   │   ├── middleware/             # 미들웨어
 │   │   │   ├── authMiddleware.ts   #   JWT 토큰 검증 → req.user 주입
-│   │   │   └── roleMiddleware.ts   #   관리자 전용 (fnAdminOnly)
+│   │   │   ├── roleMiddleware.ts   #   관리자 전용 (fnAdminOnly) - re-export
+│   │   │   └── permissionMiddleware.ts # 세부 권한 체크 (fnRequirePermission)
 │   │   ├── routes/                 # 라우트 정의
-│   │   │   ├── authRoutes.ts       #   /api/auth/* (공개/인증)
-│   │   │   ├── userRoutes.ts       #   /api/users/* (관리자 전용)
-│   │   │   ├── productRoutes.ts    #   /api/products/* (조회:인증, CUD:관리자)
-│   │   │   └── eventRoutes.ts      #   /api/events/* (조회:인증, CUD:관리자)
+│   │   │   ├── authRoutes.ts       #   /api/auth/*
+│   │   │   ├── userRoutes.ts       #   /api/users/* + /:id/permissions
+│   │   │   ├── productRoutes.ts    #   /api/products/*
+│   │   │   ├── eventRoutes.ts      #   /api/events/*
+│   │   │   ├── eventInstanceRoutes.ts # /api/event-instances/* + /:id/execute
+│   │   │   └── dbConnectionRoutes.ts  # /api/db-connections/* + /:id/test
+│   │   ├── db/                     # DB 드라이버 추상화 (신규)
+│   │   │   └── dbManager.ts        #   MSSQL/MySQL 커넥션 풀 관리 + 연결 테스트
+│   │   ├── services/               # 비즈니스 서비스 (신규)
+│   │   │   └── queryExecutor.ts    #   멀티쿼리 파싱 + 트랜잭션 실행 + 롤백
 │   │   ├── data/                   # 데이터 저장소 (서버 메모리, 추후 DB 교체)
-│   │   │   ├── users.ts            #   사용자 배열 + 시드 (admin, gm01)
+│   │   │   ├── users.ts            #   사용자 배열 + 시드 (admin, gm01, dba01)
 │   │   │   ├── products.ts         #   프로덕트 배열 + 시드 (7개 게임)
-│   │   │   └── events.ts           #   이벤트 템플릿 배열 (빈 상태, 관리자가 추가)
+│   │   │   ├── events.ts           #   이벤트 템플릿 배열
+│   │   │   ├── eventInstances.ts   #   이벤트 인스턴스 배열
+│   │   │   ├── dbConnections.ts    #   DB 접속 정보 배열 (신규)
+│   │   │   └── permissions.ts      #   역할별 기본 권한 정의 (신규)
 │   │   ├── types/
-│   │   │   └── index.ts            #   백엔드 타입 정의 (IUser, IJwtPayload 등)
+│   │   │   └── index.ts            #   백엔드 타입 (TPermission, IDbConnection, IQueryExecutionResult 등)
 │   │   └── index.ts                #   서버 엔트리 (Express 설정, 라우트 등록, 시작)
 │   ├── .env.example                #   환경변수 템플릿
 │   ├── package.json
@@ -323,7 +340,72 @@ db-event-manager/
 }
 ```
 
-### 5.6 헬스 체크
+### 5.6 DB 접속 정보 API (관리자 전용, db.manage 권한)
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `GET` | `/api/db-connections` | DB 접속 정보 목록 (비밀번호 마스킹) |
+| `POST` | `/api/db-connections` | 접속 정보 추가 |
+| `PUT` | `/api/db-connections/:id` | 접속 정보 수정 |
+| `DELETE` | `/api/db-connections/:id` | 접속 정보 삭제 |
+| `POST` | `/api/db-connections/:id/test` | 연결 테스트 (DB명/사용자/서버/버전/시각 반환) |
+
+#### POST /api/db-connections/:id/test 응답
+```json
+{
+  "bSuccess": true,
+  "strMessage": "연결 성공",
+  "objDbInfo": {
+    "strDatabase": "game_qa_db",
+    "strUser": "dba_user",
+    "strServer": "qa-db-01",
+    "strVersion": "Microsoft SQL Server 2019 (RTM-CU18)",
+    "strServerTime": "2026-03-10 14:23:11"
+  }
+}
+```
+
+### 5.7 이벤트 실행 API (DBA 권한 - instance.execute_qa / instance.execute_live)
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `POST` | `/api/event-instances/:id/execute` | QA/LIVE DB 쿼리 실행 |
+
+#### POST /api/event-instances/:id/execute
+```json
+// 요청
+{ "strEnv": "qa", "strActorName": "DBA_김철수" }
+
+// 성공 응답
+{
+  "bSuccess": true,
+  "strMessage": "QA 반영이 완료되었습니다.",
+  "objExecutionResult": {
+    "bSuccess": true,
+    "strEnv": "qa",
+    "strExecutedQuery": "DELETE FROM item_table WHERE ...",
+    "arrQueryResults": [{ "nIndex": 0, "strQuery": "...", "nAffectedRows": 15 }],
+    "nTotalAffectedRows": 15,
+    "nElapsedMs": 123,
+    "dtExecutedAt": "2026-03-10T14:23:11.000Z"
+  },
+  "objInstance": { "...업데이트된 인스턴스..." }
+}
+
+// 실패 응답 (롤백 완료)
+{
+  "bSuccess": false,
+  "strMessage": "쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.",
+  "objExecutionResult": {
+    "bSuccess": false,
+    "strError": "Duplicate entry '123' for key 'PRIMARY'",
+    "strRollbackMsg": "트랜잭션이 롤백되어 DB 변경 사항이 없습니다.",
+    "nElapsedMs": 45
+  }
+}
+```
+
+### 5.8 헬스 체크
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/api/health` | 서버 상태 확인 |
@@ -332,6 +414,22 @@ db-event-manager/
 
 ## 6. 데이터 모델
 
+### 6.0 권한 코드 (TPermission)
+```typescript
+type TPermission =
+  | 'product.manage'          // 프로덕트 CRUD
+  | 'event_template.manage'   // 이벤트 템플릿 CRUD
+  | 'user.manage'             // 사용자 관리
+  | 'db.manage'               // DB 접속 정보 관리
+  | 'instance.create'         // 이벤트 인스턴스 생성
+  | 'instance.approve_qa'     // QA 승인
+  | 'instance.execute_qa'     // QA DB 실제 실행
+  | 'instance.verify_qa'      // QA 확인
+  | 'instance.approve_live'   // LIVE 승인
+  | 'instance.execute_live'   // LIVE DB 실제 실행
+  | 'instance.verify_live';   // LIVE 확인
+```
+
 ### 6.1 사용자 (IUser)
 ```typescript
 interface IUser {
@@ -339,7 +437,8 @@ interface IUser {
   strUserId: string;        // 로그인 아이디 (unique)
   strPassword: string;      // bcrypt 해시
   strDisplayName: string;   // 표시 이름
-  strRole: 'admin' | 'gm' | 'planner';
+  strRole: 'admin' | 'gm' | 'planner' | 'dba';
+  arrPermissions: TPermission[];  // 세부 권한 (역할 기본값 + 커스텀)
   dtCreatedAt: Date;
 }
 ```
@@ -401,7 +500,47 @@ interface IEventTemplate {
 | `{{product}}` | 프로덕트명 | `에이스온라인` |
 | `{{region}}` | 서비스 범위 | `국내` |
 
-### 6.4 이벤트 생성 이력 (IQueryLog) - 브라우저 localStorage
+### 6.4 DB 접속 정보 (IDbConnection)
+```typescript
+interface IDbConnection {
+  nId: number;
+  nProductId: number;
+  strProductName: string;        // 자동 매핑
+  strEnv: 'qa' | 'live';
+  strDbType: 'mssql' | 'mysql';  // MSSQL 기본, MySQL 지원
+  strHost: string;
+  nPort: number;                 // MSSQL: 1433, MySQL: 3306
+  strDatabase: string;
+  strUser: string;
+  strPassword: string;           // 인메모리 저장 (Phase 2 암호화 예정)
+  bIsActive: boolean;            // 비활성 시 실행 차단
+  dtCreatedAt: string;
+  dtUpdatedAt: string;
+}
+```
+
+### 6.5 쿼리 실행 결과 (IQueryExecutionResult)
+```typescript
+interface IQueryExecutionResult {
+  bSuccess: boolean;
+  strEnv: 'qa' | 'live';
+  strExecutedQuery: string;
+  arrQueryResults: IQueryPartResult[];  // 쿼리별 개별 결과
+  nTotalAffectedRows: number;
+  nElapsedMs: number;
+  strError?: string;
+  strRollbackMsg?: string;
+  dtExecutedAt: string;
+}
+
+interface IQueryPartResult {
+  nIndex: number;       // 쿼리 순번 (0부터)
+  strQuery: string;
+  nAffectedRows: number;
+}
+```
+
+### 6.6 이벤트 생성 이력 (IQueryLog) - 브라우저 localStorage
 ```typescript
 interface IQueryLog {
   nId: number;
@@ -646,13 +785,16 @@ JWT_EXPIRES_IN=24h
 - [ ] backend/src/data/* → Prisma Client 호출로 교체
 - [ ] 이벤트 생성 이력도 서버 DB로 이전
 
-### Phase 3 - 기능 고도화
+### Phase 3 - 기능 고도화 (v0.3.0에서 일부 완료)
+- [x] 쿼리 직접 실행 기능 (QA/LIVE DB 연결 + 트랜잭션 + 롤백)
+- [x] 세부 권한 시스템 (TPermission + arrPermissions)
+- [x] DB 접속 정보 관리 UI + 연결 테스트
+- [x] 쿼리 실행 결과 표시 (처리 건수, 실행 시간, 개별 쿼리별 결과)
 - [ ] 실제 쿼리 템플릿 등록 (게임별 운영 쿼리)
-- [ ] 쿼리 실행 전 미리보기/검증
+- [ ] 쿼리 실행 전 미리보기/검증 (EXPLAIN 등)
 - [ ] 이벤트 생성 이력 검색/필터/내보내기
-- [ ] 이벤트 승인 워크플로 (생성 → 검토 → 실행)
-- [ ] 쿼리 직접 실행 기능 (게임 DB 연결)
 - [ ] 다중 아이템 입력 UI 개선 (태그 입력 등)
+- [ ] DB 접속 비밀번호 암호화 저장
 
 ### Phase 4 - 운영 안정화
 - [ ] Docker compose 배포 환경

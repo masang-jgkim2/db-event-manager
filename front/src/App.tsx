@@ -12,6 +12,7 @@ import EventPage from './pages/EventPage';
 import QueryPage from './pages/QueryPage';
 import UserPage from './pages/UserPage';
 import MyDashboardPage from './pages/MyDashboardPage';
+import DbConnectionPage from './pages/DbConnectionPage';
 import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
@@ -144,6 +145,14 @@ const App = () => {
               element={
                 <AdminRoute>
                   <UserPage />
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/db-connections"
+              element={
+                <AdminRoute>
+                  <DbConnectionPage />
                 </AdminRoute>
               }
             />

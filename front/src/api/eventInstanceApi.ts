@@ -29,3 +29,9 @@ export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strC
   const response = await apiClient.patch(`/event-instances/${nId}/status`, { strNextStatus, strComment, strActorName });
   return response.data;
 };
+
+// QA/LIVE DB 쿼리 실행 (실제 DB 반영)
+export const fnApiExecuteQuery = async (nId: number, strEnv: 'qa' | 'live', strActorName: string = '') => {
+  const response = await apiClient.post(`/event-instances/${nId}/execute`, { strEnv, strActorName });
+  return response.data;
+};

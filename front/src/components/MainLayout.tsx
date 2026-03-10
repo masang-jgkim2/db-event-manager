@@ -52,6 +52,7 @@ const MainLayout = () => {
             { key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' },
             { key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' },
             { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
+            { key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' },
           ],
         },
         {

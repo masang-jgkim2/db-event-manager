@@ -21,6 +21,13 @@ export interface IStatusLog {
   nChangedByUserId: number;   // 처리자 사용자 ID
   strComment: string;
   dtChangedAt: string;
+  // 쿼리 실행 결과 (qa_deployed, live_deployed 단계에서만 포함)
+  objExecutionResult?: {
+    strEnv: 'qa' | 'live';
+    nTotalAffectedRows: number;
+    nElapsedMs: number;
+    arrQueryResults: Array<{ nIndex: number; strQuery: string; nAffectedRows: number }>;
+  };
 }
 
 // 각 단계별 처리자 정보

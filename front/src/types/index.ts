@@ -1,4 +1,35 @@
 // =============================================
+// 권한 코드
+// =============================================
+export type TPermission =
+  | 'product.manage'
+  | 'event_template.manage'
+  | 'user.manage'
+  | 'db.manage'
+  | 'instance.create'
+  | 'instance.approve_qa'
+  | 'instance.execute_qa'
+  | 'instance.verify_qa'
+  | 'instance.approve_live'
+  | 'instance.execute_live'
+  | 'instance.verify_live';
+
+// 역할별 기본 권한 (UI 표시용)
+export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
+  'product.manage':          '프로덕트 관리',
+  'event_template.manage':   '이벤트 템플릿 관리',
+  'user.manage':             '사용자 관리',
+  'db.manage':               'DB 접속 정보 관리',
+  'instance.create':         '이벤트 생성',
+  'instance.approve_qa':     'QA 승인',
+  'instance.execute_qa':     'QA DB 실행',
+  'instance.verify_qa':      'QA 확인',
+  'instance.approve_live':   'LIVE 승인',
+  'instance.execute_live':   'LIVE DB 실행',
+  'instance.verify_live':    'LIVE 확인',
+};
+
+// =============================================
 // 사용자 관련
 // =============================================
 export interface IUser {
@@ -6,6 +37,7 @@ export interface IUser {
   strUserId: string;
   strDisplayName: string;
   strRole: string;
+  arrPermissions: TPermission[];
 }
 
 export interface ILoginRequest {
@@ -118,6 +150,43 @@ export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColo
   live_verified:      { strLabel: '완료',            strColor: 'green' },
 };
 
+// 쿼리 개별 실행 결과
+export interface IQueryPartResult {
+  nIndex: number;
+  strQuery: string;
+  nAffectedRows: number;
+}
+
+// 쿼리 전체 실행 결과
+export interface IQueryExecutionResult {
+  bSuccess: boolean;
+  strEnv: 'qa' | 'live';
+  strExecutedQuery: string;
+  arrQueryResults: IQueryPartResult[];
+  nTotalAffectedRows: number;
+  nElapsedMs: number;
+  strError?: string;
+  strRollbackMsg?: string;
+  dtExecutedAt: string;
+}
+
+// DB 접속 정보
+export interface IDbConnection {
+  nId: number;
+  nProductId: number;
+  strProductName: string;
+  strEnv: 'qa' | 'live';
+  strDbType: 'mssql' | 'mysql';
+  strHost: string;
+  nPort: number;
+  strDatabase: string;
+  strUser: string;
+  strPassword: string;
+  bIsActive: boolean;
+  dtCreatedAt: string;
+  dtUpdatedAt: string;
+}
+
 // 상태 변경 이력
 export interface IStatusLog {
   strStatus: TEventStatus;
@@ -125,6 +194,12 @@ export interface IStatusLog {
   nChangedByUserId: number;
   strComment: string;
   dtChangedAt: string;
+  objExecutionResult?: {
+    strEnv: 'qa' | 'live';
+    nTotalAffectedRows: number;
+    nElapsedMs: number;
+    arrQueryResults: IQueryPartResult[];
+  };
 }
 
 // 단계별 처리자

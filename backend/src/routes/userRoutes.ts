@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { fnGetUsers, fnCreateUser, fnDeleteUser, fnResetPassword } from '../controllers/userController';
+import {
+  fnGetUsers, fnCreateUser, fnDeleteUser,
+  fnResetPassword, fnUpdatePermissions,
+} from '../controllers/userController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnAdminOnly } from '../middleware/roleMiddleware';
 
@@ -19,5 +22,8 @@ router.delete('/:id', fnDeleteUser);
 
 // PATCH /api/users/:id/password - 비밀번호 초기화
 router.patch('/:id/password', fnResetPassword);
+
+// PATCH /api/users/:id/permissions - 세부 권한 수정
+router.patch('/:id/permissions', fnUpdatePermissions);
 
 export default router;

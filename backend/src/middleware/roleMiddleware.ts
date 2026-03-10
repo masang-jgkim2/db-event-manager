@@ -1,10 +1,2 @@
-import { Request, Response, NextFunction } from 'express';
-
-// 관리자 전용 미들웨어
-export const fnAdminOnly = (req: Request, res: Response, next: NextFunction): void => {
-  if (req.user?.strRole !== 'admin') {
-    res.status(403).json({ bSuccess: false, strMessage: '관리자 권한이 필요합니다.' });
-    return;
-  }
-  next();
-};
+// 하위 호환: 기존 import 경로 유지를 위해 permissionMiddleware에서 re-export
+export { fnAdminOnly } from './permissionMiddleware';

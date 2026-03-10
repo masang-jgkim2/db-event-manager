@@ -28,8 +28,7 @@ export const fnAuthMiddleware = (req: Request, res: Response, next: NextFunction
     const decoded = jwt.verify(strToken, strJwtSecret) as IJwtPayload;
     req.user = decoded;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({ bSuccess: false, strMessage: '유효하지 않은 토큰입니다.' });
-    return;
   }
 };
