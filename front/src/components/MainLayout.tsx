@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
@@ -46,7 +46,41 @@ const MainLayout = () => {
 
   // 테마 스토어
   const nSiderWidth = useThemeStore((s) => s.nSiderWidth);
+  const fnSetSiderWidth = useThemeStore((s) => s.fnSetSiderWidth);
   const { token } = antdTheme.useToken();
+
+  // 사이드바 드래그 리사이즈
+  const bDragging = useRef(false);
+  const nDragStartX = useRef(0);
+  const nDragStartWidth = useRef(nSiderWidth);
+
+  const fnOnDragStart = useCallback((e: React.MouseEvent) => {
+    bDragging.current = true;
+    nDragStartX.current = e.clientX;
+    nDragStartWidth.current = nSiderWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [nSiderWidth]);
+
+  useEffect(() => {
+    const fnOnMouseMove = (e: MouseEvent) => {
+      if (!bDragging.current) return;
+      const nDelta = e.clientX - nDragStartX.current;
+      fnSetSiderWidth(nDragStartWidth.current + nDelta);
+    };
+    const fnOnMouseUp = () => {
+      if (!bDragging.current) return;
+      bDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    window.addEventListener('mousemove', fnOnMouseMove);
+    window.addEventListener('mouseup', fnOnMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', fnOnMouseMove);
+      window.removeEventListener('mouseup', fnOnMouseUp);
+    };
+  }, [fnSetSiderWidth]);
 
   const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
@@ -194,13 +228,34 @@ const MainLayout = () => {
           onClick={fnHandleMenuClick}
           style={{ borderRight: 0, marginTop: 8 }}
         />
+
+        {/* 드래그 리사이즈 핸들 — collapsed 시 숨김 */}
+        {!bCollapsed && (
+          <div
+            onMouseDown={fnOnDragStart}
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              width: 5,
+              height: '100%',
+              cursor: 'col-resize',
+              zIndex: 20,
+              // hover 시 primary 컬러로 하이라이트
+              background: 'transparent',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = token.colorPrimary + '66'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+          />
+        )}
       </Sider>
 
-      {/* 메인 영역 */}
+      {/* 메인 영역 — 드래그 중에는 transition 제거로 버벅임 방지 */}
       <Layout
         style={{
           marginLeft: bCollapsed ? 80 : nSiderWidth,
-          transition: 'margin-left 0.2s',
+          transition: bDragging.current ? 'none' : 'margin-left 0.2s',
         }}
       >
         {/* 상단 헤더 */}

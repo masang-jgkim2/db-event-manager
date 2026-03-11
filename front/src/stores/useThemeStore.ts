@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { generate } from '@ant-design/colors';
 
 // 테마 모드 타입
 export type TThemeMode = 'light' | 'dark' | 'system';
 
-// 포인트 컬러 팔레트
+// 포인트 컬러 팔레트 정의
 export const ARR_PRIMARY_COLORS = [
   { strLabel: '퍼플 블루', strValue: '#667eea' },
   { strLabel: '블루', strValue: '#1677ff' },
@@ -15,6 +16,12 @@ export const ARR_PRIMARY_COLORS = [
   { strLabel: '마젠타', strValue: '#eb2f96' },
   { strLabel: '바이올렛', strValue: '#722ed1' },
 ];
+
+// primary 컬러 하나로 10단계 팔레트를 생성한다
+// generate()[5] = primary (index 5, 6번째), [0]~[4] = 밝은 계열, [6]~[9] = 어두운 계열
+export function fnGenPalette(strPrimary: string, bDark = false): string[] {
+  return generate(strPrimary, bDark ? { theme: 'dark', backgroundColor: '#141414' } : undefined);
+}
 
 // 기본값
 const OBJ_DEFAULT = {
