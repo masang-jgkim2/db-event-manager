@@ -36,6 +36,7 @@ const OBJ_DEFAULT = {
   nFontSize: 14,
   bCompact: false,
   strPrimaryColor: '#667eea',
+  bFunMode: false, // 재미 모드: 재요청 버튼을 롱프레스로 전환
 };
 
 interface IThemeStore {
@@ -44,6 +45,7 @@ interface IThemeStore {
   nFontSize: number;
   bCompact: boolean;
   strPrimaryColor: string;
+  bFunMode: boolean;
 
   // 시스템 다크모드 여부 (system 모드일 때 OS 설정 반영)
   fnGetIsDark: () => boolean;
@@ -54,6 +56,7 @@ interface IThemeStore {
   fnSetFontSize: (nSize: number) => void;
   fnSetCompact: (bCompact: boolean) => void;
   fnSetPrimaryColor: (strColor: string) => void;
+  fnSetFunMode: (bFunMode: boolean) => void;
   fnReset: () => void;
 }
 
@@ -76,6 +79,7 @@ export const useThemeStore = create<IThemeStore>()(
       fnSetFontSize: (nSize) => set({ nFontSize: Math.min(25, Math.max(12, nSize)) }),
       fnSetCompact: (bCompact) => set({ bCompact }),
       fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
+      fnSetFunMode: (bFunMode) => set({ bFunMode }),
       fnReset: () => set({ ...OBJ_DEFAULT }),
     }),
     {

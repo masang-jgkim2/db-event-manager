@@ -14,7 +14,9 @@ import {
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined,
 } from '@ant-design/icons';
 import AppTable from '../components/AppTable';
+import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import type {
   IEventInstance, TEventStatus, IStageActor,
@@ -372,6 +374,8 @@ const MyDashboardPage = () => {
   const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
   const fnStoreUpdateInstance = useEventInstanceStore((s) => s.fnUpdateInstance);
 
+  const bFunMode = useThemeStore((s) => s.bFunMode);
+
   // 권한 확인 헬퍼
   const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
 
@@ -662,30 +666,92 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 (운영자)
+    // QA 확인 (운영자) — 재미 모드 시 롱프레스로 QA 재반영 요청 전환
     if (bHasQa && fnHasPermission('instance.verify_qa') && r.strStatus === 'qa_deployed') {
-      arrButtons.push(
-        <Popconfirm key="qa-v" title="QA 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}>
-          <Button size="small" type="primary" icon={<CheckOutlined />}>QA확인</Button>
-        </Popconfirm>
-      );
+      if (bFunMode && fnHasPermission('instance.approve_qa')) {
+        arrButtons.push(
+          <RequestWithLongPressButton
+            key="qa-verify-longpress"
+            primaryLabel="QA확인"
+            primaryTitle="QA 반영을 확인하셨습니까?"
+            onPrimaryConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}
+            rerequestLabel="QA 재반영 요청"
+            rerequestTitle="QA 재반영을 요청하시겠습니까?"
+            rerequestDescription="QA 확인 전 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+            primaryButtonStyle={{ background: token.colorPrimary, border: 'none', color: '#fff' }}
+            primaryIcon={<CheckOutlined />}
+            rerequestIcon={<SyncOutlined />}
+            okText="확인"
+            rerequestOkText="재요청"
+            cancelText="취소"
+          />
+        );
+      } else {
+        arrButtons.push(
+          <Popconfirm key="qa-v" title="QA 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}>
+            <Button size="small" type="primary" icon={<CheckOutlined />}>QA확인</Button>
+          </Popconfirm>
+        );
+      }
     }
 
-    // LIVE 반영 요청 (운영자) — QA 완료 후
-    if (bHasQa && bHasLive && fnHasPermission('instance.approve_live') && r.strStatus === 'qa_verified') {
-      arrButtons.push(
-        <PopconfirmWithSkip
-          key="live-req"
-          actionKey="live_requested"
-          title="LIVE 반영을 요청하시겠습니까?"
-          okText="요청"
-          cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
-        >
-          <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
-        </PopconfirmWithSkip>
-      );
+    // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (데이터 문제 시)
+    if (bHasQa && r.strStatus === 'qa_verified') {
+      const bCanLive = bHasLive && fnHasPermission('instance.approve_live');
+      const bCanQaRereq = fnHasPermission('instance.approve_qa');
+
+      if (bFunMode && bCanLive && bCanQaRereq) {
+        // 재미 모드: 한 버튼에서 롱프레스 시 QA 재반영 요청으로 전환
+        arrButtons.push(
+          <RequestWithLongPressButton
+            key="live-qa-longpress"
+            primaryLabel="LIVE반영 요청"
+            primaryTitle="LIVE 반영을 요청하시겠습니까?"
+            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+            rerequestLabel="QA 재반영 요청"
+            rerequestTitle="QA 재반영을 요청하시겠습니까?"
+            rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+            primaryButtonStyle={{ background: '#eb2f96', border: 'none', color: '#fff' }}
+            primaryIcon={<SendOutlined />}
+            rerequestIcon={<SyncOutlined />}
+            okText="요청"
+            rerequestOkText="재요청"
+            cancelText="취소"
+          />
+        );
+      } else {
+        if (bCanLive) {
+          arrButtons.push(
+            <PopconfirmWithSkip
+              key="live-req"
+              actionKey="live_requested"
+              title="LIVE 반영을 요청하시겠습니까?"
+              okText="요청"
+              cancelText="취소"
+              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+            >
+              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+            </PopconfirmWithSkip>
+          );
+        }
+        if (bCanQaRereq) {
+          arrButtons.push(
+            <Popconfirm
+              key="qa-rereq"
+              title="QA 재반영을 요청하시겠습니까?"
+              description="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
+              okText="재요청"
+              cancelText="취소"
+              onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+            >
+              <Button size="small" icon={<SyncOutlined />}>QA 재반영 요청</Button>
+            </Popconfirm>
+          );
+        }
+      }
     }
 
     // LIVE DB 실행 (DBA 권한)
@@ -717,14 +783,72 @@ const MyDashboardPage = () => {
       );
     }
 
-    // LIVE 확인 (운영자)
+    // LIVE 확인 (운영자) — 재미 모드 시 롱프레스로 LIVE 재반영 요청 전환
     if (bHasLive && fnHasPermission('instance.verify_live') && r.strStatus === 'live_deployed') {
-      arrButtons.push(
-        <Popconfirm key="live-v" title="LIVE 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}>
-          <Button size="small" style={{ background: '#52c41a', border: 'none', color: '#fff' }} icon={<CheckCircleOutlined />}>LIVE확인</Button>
-        </Popconfirm>
-      );
+      if (bFunMode && fnHasPermission('instance.approve_live')) {
+        arrButtons.push(
+          <RequestWithLongPressButton
+            key="live-verify-longpress"
+            primaryLabel="LIVE확인"
+            primaryTitle="LIVE 반영을 확인하셨습니까?"
+            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}
+            rerequestLabel="LIVE 재반영 요청"
+            rerequestTitle="LIVE 재반영을 요청하시겠습니까?"
+            rerequestDescription="LIVE 확인 전 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
+            primaryButtonStyle={{ background: '#52c41a', border: 'none', color: '#fff' }}
+            primaryIcon={<CheckCircleOutlined />}
+            rerequestIcon={<SyncOutlined />}
+            okText="확인"
+            rerequestOkText="재요청"
+            cancelText="취소"
+          />
+        );
+      } else {
+        arrButtons.push(
+          <Popconfirm key="live-v" title="LIVE 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}>
+            <Button size="small" style={{ background: '#52c41a', border: 'none', color: '#fff' }} icon={<CheckCircleOutlined />}>LIVE확인</Button>
+          </Popconfirm>
+        );
+      }
+    }
+
+    // 완료(live_verified) 후: 데이터 문제 시 LIVE 재반영 요청
+    if (bHasLive && fnHasPermission('instance.approve_live') && r.strStatus === 'live_verified') {
+      if (bFunMode) {
+        // 재미 모드: 롱프레스 후 클릭 시에만 재요청 (실수 방지)
+        arrButtons.push(
+          <RequestWithLongPressButton
+            key="live-rereq-longpress"
+            primaryLabel="LIVE 재반영 요청"
+            primaryTitle=""
+            onPrimaryConfirm={() => {}}
+            rerequestLabel="LIVE 재반영 요청"
+            rerequestTitle="LIVE 재반영을 요청하시겠습니까?"
+            rerequestDescription="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
+            bRerequestOnly
+            primaryIcon={<SyncOutlined />}
+            rerequestIcon={<SyncOutlined />}
+            rerequestOkText="재요청"
+            cancelText="취소"
+          />
+        );
+      } else {
+        arrButtons.push(
+          <Popconfirm
+            key="live-rereq"
+            title="LIVE 재반영을 요청하시겠습니까?"
+            description="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
+            okText="재요청"
+            cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
+          >
+            <Button size="small" icon={<SyncOutlined />}>LIVE 재반영 요청</Button>
+          </Popconfirm>
+        );
+      }
     }
 
     return <Space wrap>{arrButtons}</Space>;
@@ -828,7 +952,14 @@ const MyDashboardPage = () => {
   return (
     <>
       {contextHolder}
-      <Title level={4} style={{ marginBottom: 24 }}>나의 대시보드</Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+        <Title level={4} style={{ margin: 0 }}>나의 대시보드</Title>
+        {bFunMode && (
+          <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
+            <Tag color="orange">재미 모드</Tag>
+          </Tooltip>
+        )}
+      </div>
 
       {/* 통계 */}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

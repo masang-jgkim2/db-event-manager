@@ -1,4 +1,4 @@
-import { Drawer, Segmented, Slider, Switch, Typography, Divider, Button, Tooltip, theme as antdTheme } from 'antd';
+import { Drawer, Segmented, Slider, Switch, Typography, Divider, Button, Tooltip, message, theme as antdTheme } from 'antd';
 import {
   SunOutlined,
   MoonOutlined,
@@ -51,6 +51,8 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const fnSetFontSize = useThemeStore((s) => s.fnSetFontSize);
   const fnSetCompact = useThemeStore((s) => s.fnSetCompact);
   const fnSetPrimaryColor = useThemeStore((s) => s.fnSetPrimaryColor);
+  const bFunMode = useThemeStore((s) => s.bFunMode);
+  const fnSetFunMode = useThemeStore((s) => s.fnSetFunMode);
   const fnReset = useThemeStore((s) => s.fnReset);
 
   const bIsDark = fnGetIsDark();
@@ -180,6 +182,28 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
           <Text type="secondary" style={{ fontSize: 11 }}>테이블/폼 등 여백 축소</Text>
         </div>
         <Switch checked={bCompact} onChange={fnSetCompact} />
+      </div>
+
+      <Divider />
+
+      {/* ⑤ 굳굳 설정 — 재미 모드 */}
+      <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>굳굳 설정</Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Text style={{ fontSize: 13 }}>재미 모드</Text>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11 }}>재요청 버튼을 롱프레스로 전환 (길게 누르면 게이지 후 재요청)</Text>
+          </div>
+        </div>
+        <Switch
+          checked={bFunMode}
+          onChange={(bChecked) => {
+            fnSetFunMode(bChecked);
+            if (bChecked) {
+              message.success('재미 모드가 켜졌습니다. 버튼을 2~3초 길게 누르면 재요청으로 전환됩니다.');
+            }
+          }}
+        />
       </div>
 
       <Divider />

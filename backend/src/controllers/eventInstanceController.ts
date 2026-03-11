@@ -10,17 +10,32 @@ import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
 
-// 상태 전이 규칙 (기본 9단계)
+// 상태 전이 규칙 (9단계 + 재요청)
 // arrDeployScope=['live']인 경우 fnGetTransitions에서 QA 단계 스킵
 const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
-  // dba_confirmed: 반영 범위에 따라 동적으로 결정
   qa_requested:       [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
-  qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
-  qa_verified:        [{ strNextStatus: 'live_requested',    arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
+  // QA 반영 후: 확인 또는 확인 전 재반영 요청 (재미 모드 롱프레스)
+  qa_deployed:        [
+    { strNextStatus: 'qa_verified',  arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+    { strNextStatus: 'qa_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+  ],
+  // QA 확인 후: 정상 진행(LIVE 요청) 또는 데이터 문제 시 QA 재반영 요청
+  qa_verified:        [
+    { strNextStatus: 'live_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+    { strNextStatus: 'qa_requested',  arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+  ],
   live_requested:     [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
-  live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
+  // LIVE 반영 후: 확인 또는 확인 전 재반영 요청 (재미 모드 롱프레스)
+  live_deployed:      [
+    { strNextStatus: 'live_verified',  arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+    { strNextStatus: 'live_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+  ],
+  // 완료 후: 데이터 문제 시 LIVE 재반영 요청
+  live_verified:      [
+    { strNextStatus: 'live_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
+  ],
 };
 
 // 반영 범위에 따른 동적 전이 조회
