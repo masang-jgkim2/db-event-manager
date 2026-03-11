@@ -1,0 +1,81 @@
+---
+description: 백엔드 Express/TypeScript 패턴 — 컨트롤러, 권한 미들웨어, Repository, SSE
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# 백엔드 패턴
+
+## 프로젝트 구조
+
+```
+backend/src/
+  controllers/   # 요청 처리, 비즈니스 로직
+  routes/        # 라우트 정의 + 미들웨어 체인
+  middleware/    # authMiddleware, permissionMiddleware
+  services/      # queryExecutor, sseBroadcaster
+  repositories/  # 데이터 접근 추상화 (인메모리 → DB 교체 대비)
+  data/          # 인메모리 저장소 (arrUsers, arrRoles 등)
+  db/            # dbManager (커넥션 풀)
+  types/         # index.ts — 공유 인터페이스
+```
+
+## 권한 체크
+
+```typescript
+// 단일 권한
+router.post('/endpoint', fnAuthMiddleware, fnRequirePermission('product.manage'), fnHandler);
+
+// OR 조건 (하나라도)
+router.post('/execute', fnAuthMiddleware, fnRequireAnyPermission('instance.execute_qa', 'instance.execute_live'), fnHandler);
+
+// 관리자 전용
+router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
+```
+
+## TPermission 체계
+
+- 조회: `product.view`, `event_template.view`
+- 관리: `product.manage`, `event_template.manage`, `user.manage`, `db.manage`
+- 인스턴스: `instance.create`, `instance.approve_qa`, `instance.execute_qa`, `instance.verify_qa`, `instance.approve_live`, `instance.execute_live`, `instance.verify_live`
+
+## 컨트롤러 응답 형식
+
+```typescript
+// 성공
+res.json({ bSuccess: true, objInstance });
+
+// 실패 (클라이언트 오류)
+res.status(400).json({ bSuccess: false, strMessage: '한글 오류 메시지' });
+
+// 서버 오류
+res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+```
+
+## SSE 브로드캐스트
+
+상태 변경 후 반드시 브로드캐스트 호출:
+```typescript
+fnBroadcastInstanceUpdate(objInstance);  // 인스턴스 변경 시
+```
+
+## Repository 패턴
+
+인메모리 데이터 직접 접근 대신 Repository 사용 (DB 전환 대비):
+```typescript
+// ❌ 직접 접근
+arrUsers.find((u) => u.strUserId === strId);
+
+// ✅ Repository 사용
+userRepository.findByUserId(strId);
+```
+
+## MSSQL 멀티쿼리
+
+여러 쿼리는 단일 배치로 묶어 전송 (`fnExecuteQueryWithText` 내부에서 자동 처리):
+```sql
+BEGIN TRAN
+  DELETE FROM ...;
+  UPDATE ...;
+COMMIT
+```

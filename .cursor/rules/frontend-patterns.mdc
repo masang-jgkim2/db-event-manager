@@ -1,0 +1,85 @@
+---
+description: 프론트엔드 React/TypeScript 패턴 — Ant Design, Zustand, 권한 기반 UI
+globs: front/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# 프론트엔드 패턴
+
+## 프로젝트 구조
+
+```
+front/src/
+  pages/      # 각 메뉴 페이지 컴포넌트
+  components/ # 공통 컴포넌트 (MainLayout 등)
+  stores/     # Zustand 스토어 (useAuthStore, useEventInstanceStore)
+  api/        # API 클라이언트 (axios 래퍼)
+  hooks/      # 커스텀 훅 (useEventStream 등)
+  types/      # index.ts — 공유 인터페이스 (백엔드와 동기화)
+```
+
+## 권한 기반 UI 렌더링
+
+```typescript
+const { user } = useAuthStore();
+const arrUserPermissions = user?.arrPermissions ?? [];
+
+// 버튼/액션 숨김
+{arrUserPermissions.includes('product.manage') && (
+  <Button>새로운 프로덕트</Button>
+)}
+
+// 라우트 보호 (App.tsx의 PermissionRoute)
+<PermissionRoute permission="product.view">
+  <ProductPage />
+</PermissionRoute>
+```
+
+## Zustand 스토어 패턴
+
+```typescript
+// 직접 setState 대신 액션 함수 사용
+const { fnFetchInstances, fnUpdateInstance } = useEventInstanceStore();
+```
+
+## SSE 실시간 업데이트
+
+`MainLayout`에서 `useEventStream()`을 1회 초기화하면 전 페이지에 적용:
+```typescript
+// MainLayout.tsx에서만 호출
+const { bConnected } = useEventStream();
+```
+
+## API 클라이언트
+
+```typescript
+// api/*.ts — axios 인스턴스 재사용
+import { objApiClient } from './apiClient';
+
+export const fnApiGetProducts = () =>
+  objApiClient.get<IProduct[]>('/api/products');
+```
+
+## 날짜/시간 입력
+
+반영 날짜는 `DatePicker.showTime`으로 날짜+시분초 입력:
+```typescript
+<DatePicker
+  showTime
+  format="YYYY-MM-DD HH:mm:ss"
+  onChange={(date) => setStrDeployDate(date?.toISOString() ?? '')}
+/>
+```
+
+## 버튼 텍스트 규칙
+
+새로 생성하는 버튼은 "새로운 ~" 형식 사용:
+- "새로운 프로덕트", "새로운 이벤트", "새로운 역할", "새로운 사용자", "새로운 DB 접속 정보"
+
+## 메뉴 구조
+
+| 그룹 | 항목 | 권한 |
+|------|------|------|
+| 이벤트 | 대시보드, 프로덕트 관리, 이벤트 템플릿, DB 접속 정보 | 각 view/manage |
+| 사용자 | 사용자 관리, 역할 권한 관리 | user.manage (admin) |
+| 운영 | 나의 대시보드, 이벤트 생성 | instance.create 등 |
