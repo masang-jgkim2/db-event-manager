@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin, Result } from 'antd';
+import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
+import { useThemeStore } from './stores/useThemeStore';
 import { useProductStore } from './stores/useProductStore';
 import { useEventStore } from './stores/useEventStore';
 import LoginPage from './pages/LoginPage';
@@ -108,6 +109,25 @@ const App = () => {
   const fnFetchProducts = useProductStore((state) => state.fnFetchProducts);
   const fnFetchEvents = useEventStore((state) => state.fnFetchEvents);
 
+  // 테마 스토어
+  const fnGetIsDark = useThemeStore((state) => state.fnGetIsDark);
+  const nFontSize = useThemeStore((state) => state.nFontSize);
+  const bCompact = useThemeStore((state) => state.bCompact);
+  const strPrimaryColor = useThemeStore((state) => state.strPrimaryColor);
+  const strMode = useThemeStore((state) => state.strMode);
+
+  // system 모드일 때 OS 변경 감지하여 리렌더 유도
+  useEffect(() => {
+    if (strMode !== 'system') return;
+    const objMq = window.matchMedia('(prefers-color-scheme: dark)');
+    const fnHandler = () => {
+      // 리렌더 트리거: 스토어 액션 없이 강제 재평가를 위해 임시 상태 변경
+      useThemeStore.setState((s) => ({ ...s }));
+    };
+    objMq.addEventListener('change', fnHandler);
+    return () => objMq.removeEventListener('change', fnHandler);
+  }, [strMode]);
+
   // 앱 시작 시 토큰 검증 (자동 로그인)
   useEffect(() => {
     fnVerifyToken();
@@ -121,8 +141,22 @@ const App = () => {
     }
   }, [bIsAuthenticated, fnFetchProducts, fnFetchEvents]);
 
+  const bIsDark = fnGetIsDark();
+
   return (
-    <ConfigProvider locale={koKR}>
+    <ConfigProvider
+      locale={koKR}
+      theme={{
+        algorithm: [
+          bIsDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+          ...(bCompact ? [antdTheme.compactAlgorithm] : []),
+        ],
+        token: {
+          colorPrimary: strPrimaryColor,
+          fontSize: nFontSize,
+        },
+      }}
+    >
       <BrowserRouter>
         <Routes>
           {/* 로그인 (비인증 전용) */}

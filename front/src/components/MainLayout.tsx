@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge } from 'antd';
+import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
@@ -13,10 +13,13 @@ import {
   TeamOutlined,
   SafetyCertificateOutlined,
   WifiOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEventStream } from '../hooks/useEventStream';
+import { useThemeStore } from '../stores/useThemeStore';
+import SettingsDrawer from './SettingsDrawer';
 import type { MenuProps } from 'antd';
 
 const { Header, Sider, Content } = Layout;
@@ -32,6 +35,7 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
 
 const MainLayout = () => {
   const [bCollapsed, setBCollapsed] = useState(false);
+  const [bSettingsOpen, setBSettingsOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
@@ -39,6 +43,10 @@ const MainLayout = () => {
 
   // SSE 연결 - 레이아웃 마운트 시 시작, 앱 전체 유효
   const { bConnected } = useEventStream();
+
+  // 테마 스토어
+  const nSiderWidth = useThemeStore((s) => s.nSiderWidth);
+  const { token } = antdTheme.useToken();
 
   const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
@@ -139,8 +147,8 @@ const MainLayout = () => {
         trigger={null}
         collapsible
         collapsed={bCollapsed}
+        width={nSiderWidth}
         style={{
-          background: '#001529',
           overflow: 'auto',
           height: '100vh',
           position: 'fixed',
@@ -157,15 +165,14 @@ const MainLayout = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
           }}
         >
-          <DatabaseOutlined style={{ fontSize: 24, color: '#667eea' }} />
+          <DatabaseOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
           {!bCollapsed && (
             <Text
               strong
               style={{
-                color: '#fff',
                 fontSize: 16,
                 marginLeft: 10,
                 whiteSpace: 'nowrap',
@@ -188,16 +195,21 @@ const MainLayout = () => {
       </Sider>
 
       {/* 메인 영역 */}
-      <Layout style={{ marginLeft: bCollapsed ? 80 : 200, transition: 'margin-left 0.2s' }}>
+      <Layout
+        style={{
+          marginLeft: bCollapsed ? 80 : nSiderWidth,
+          transition: 'margin-left 0.2s',
+        }}
+      >
         {/* 상단 헤더 */}
         <Header
           style={{
             padding: '0 24px',
-            background: '#fff',
+            background: token.colorBgContainer,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
             position: 'sticky',
             top: 0,
             zIndex: 9,
@@ -211,7 +223,7 @@ const MainLayout = () => {
             style={{ fontSize: 18 }}
           />
 
-          {/* 실시간 연결 상태 + 사용자 정보 */}
+          {/* 실시간 연결 상태 + 사용자 정보 + 설정 버튼 */}
           <Space>
             <Badge
               status={bConnected ? 'success' : 'default'}
@@ -220,7 +232,7 @@ const MainLayout = () => {
               <WifiOutlined
                 style={{
                   fontSize: 16,
-                  color: bConnected ? '#52c41a' : '#bfbfbf',
+                  color: bConnected ? '#52c41a' : token.colorTextDisabled,
                 }}
               />
             </Badge>
@@ -234,6 +246,14 @@ const MainLayout = () => {
                 <Tag color={objRole.strColor}>{objRole.strText}</Tag>
               </Space>
             </Dropdown>
+            {/* UI 설정 버튼 */}
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              onClick={() => setBSettingsOpen(true)}
+              title="UI 설정"
+              style={{ fontSize: 16 }}
+            />
           </Space>
         </Header>
 
@@ -242,6 +262,12 @@ const MainLayout = () => {
           <Outlet />
         </Content>
       </Layout>
+
+      {/* UI 설정 드로어 */}
+      <SettingsDrawer
+        bOpen={bSettingsOpen}
+        fnOnClose={() => setBSettingsOpen(false)}
+      />
     </Layout>
   );
 };

@@ -10,8 +10,19 @@ body {
     Arial, 'Noto Sans KR', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 테마 전환 시 배경/글자색 부드럽게 */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Ant Design Layout 전환 애니메이션 보조 */
+.ant-layout,
+.ant-layout-sider,
+.ant-layout-header,
+.ant-layout-content,
+.ant-menu {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
