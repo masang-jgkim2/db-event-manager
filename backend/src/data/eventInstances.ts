@@ -53,7 +53,8 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
-  dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
+  dtDeployDate: string;                   // 반영 날짜 (datetime, ISO 8601)
+  arrDeployScope: Array<'qa' | 'live'>;   // 반영 범위 (DEV 제외, 기본 ['qa','live'])
   // 상태
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];

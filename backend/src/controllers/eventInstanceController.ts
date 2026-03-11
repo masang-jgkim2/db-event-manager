@@ -10,16 +10,31 @@ import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
 
-// 상태 전이 규칙 (9단계)
-const objStatusTransitions: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
+// 상태 전이 규칙 (기본 9단계)
+// arrDeployScope=['live']인 경우 fnGetTransitions에서 QA 단계 스킵
+const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
-  dba_confirmed:      [{ strNextStatus: 'qa_requested',      arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
+  // dba_confirmed: 반영 범위에 따라 동적으로 결정
   qa_requested:       [{ strNextStatus: 'qa_deployed',       arrAllowedRoles: ['dba', 'admin'] }],
   qa_deployed:        [{ strNextStatus: 'qa_verified',       arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   qa_verified:        [{ strNextStatus: 'live_requested',    arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   live_requested:     [{ strNextStatus: 'live_deployed',     arrAllowedRoles: ['dba', 'admin'] }],
   live_deployed:      [{ strNextStatus: 'live_verified',     arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
+};
+
+// 반영 범위에 따른 동적 전이 조회
+// LIVE only: dba_confirmed → live_requested (QA 단계 스킵)
+const fnGetTransitions = (
+  strStatus: string,
+  arrScope: Array<'qa' | 'live'>
+): { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[] => {
+  if (strStatus === 'dba_confirmed') {
+    const bHasQa = arrScope.includes('qa');
+    const strNext: TEventStatus = bHasQa ? 'qa_requested' : 'live_requested';
+    return [{ strNextStatus: strNext, arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }];
+  }
+  return OBJ_STATUS_TRANSITIONS_BASE[strStatus] ?? [];
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
@@ -38,11 +53,23 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
       strEventName, strInputValues, strGeneratedQuery, dtDeployDate,
-      strCreatedBy,
+      arrDeployScope: arrReqScope, strCreatedBy,
     } = req.body;
 
     if (!strEventName || !dtDeployDate || !nEventTemplateId) {
       res.status(400).json({ bSuccess: false, strMessage: '필수 항목을 입력해주세요.' });
+      return;
+    }
+
+    // 반영 범위 검증: DEV 불가, 최소 1개 이상, 기본값 ['qa','live']
+    const arrAllowed = ['qa', 'live'];
+    const arrDeployScope: Array<'qa' | 'live'> =
+      Array.isArray(arrReqScope) && arrReqScope.length > 0
+        ? arrReqScope.filter((s: string) => arrAllowed.includes(s))
+        : ['qa', 'live'];
+
+    if (arrDeployScope.length === 0) {
+      res.status(400).json({ bSuccess: false, strMessage: '반영 범위는 QA 또는 LIVE 중 하나 이상 선택해야 합니다.' });
       return;
     }
 
@@ -66,7 +93,8 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strEventName,
       strInputValues: strInputValues || '',
       strGeneratedQuery: strGeneratedQuery || '',
-      dtDeployDate,  // 반영 날짜 (ISO 8601)
+      dtDeployDate,
+      arrDeployScope,
       strStatus: 'event_created' as TEventStatus,
       arrStatusLogs: [{
         strStatus: 'event_created' as TEventStatus,
@@ -131,7 +159,8 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
     if (strFilter === 'my_action') {
       const arrUserRoles = req.user?.arrRoles || [];
       arrFiltered = arrFiltered.filter((e) => {
-        const arrTrans = objStatusTransitions[e.strStatus] || [];
+        const arrScope = e.arrDeployScope ?? ['qa', 'live'];
+        const arrTrans = fnGetTransitions(e.strStatus, arrScope);
         return arrTrans.some((t) =>
           t.arrAllowedRoles.some((r) => arrUserRoles.includes(r))
         );
@@ -161,8 +190,9 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 전이 규칙 확인
-    const arrTransitions = objStatusTransitions[objInstance.strStatus] || [];
+    // 전이 규칙 확인 (반영 범위 반영)
+    const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
+    const arrTransitions = fnGetTransitions(objInstance.strStatus, arrScope);
     const objTransition = arrTransitions.find((t) => t.strNextStatus === strNextStatus);
 
     if (!objTransition) {
@@ -269,6 +299,20 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       res.status(400).json({
         bSuccess: false,
         strMessage: `${strEnv.toUpperCase()} 반영은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
+      });
+      return;
+    }
+
+    // 반영 범위에 포함된 환경인지 확인 (DEV는 항상 차단)
+    if (strEnv === 'dev') {
+      res.status(400).json({ bSuccess: false, strMessage: 'DEV 환경 직접 실행은 지원하지 않습니다.' });
+      return;
+    }
+    const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
+    if (!arrScope.includes(strEnv as 'qa' | 'live')) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `이 이벤트의 반영 범위에 ${strEnv.toUpperCase()}이 포함되어 있지 않습니다. (설정된 범위: ${arrScope.join(', ').toUpperCase()})`,
       });
       return;
     }
@@ -438,6 +482,17 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     for (const key of arrSimpleFields) {
       if (req.body[key] !== undefined) {
         (objInstance as any)[key] = req.body[key];
+      }
+    }
+
+    // 반영 범위 — event_created 상태에서만 수정 가능 (컨펌 요청 이후 잠김)
+    if (req.body.arrDeployScope !== undefined) {
+      const arrAllowed = ['qa', 'live'];
+      const arrNewScope: Array<'qa' | 'live'> = Array.isArray(req.body.arrDeployScope)
+        ? req.body.arrDeployScope.filter((s: string) => arrAllowed.includes(s))
+        : [];
+      if (arrNewScope.length > 0) {
+        objInstance.arrDeployScope = arrNewScope;
       }
     }
 

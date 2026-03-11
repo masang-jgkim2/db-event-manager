@@ -104,6 +104,9 @@ export interface IQueryPartResult {
   nAffectedRows: number;
 }
 
+// 반영 범위 (DEV는 백엔드 차단, 클라이언트에서도 선택 불가)
+export type TDeployScope = 'qa' | 'live';
+
 // 전체 실행 결과
 export interface IQueryExecutionResult {
   bSuccess: boolean;

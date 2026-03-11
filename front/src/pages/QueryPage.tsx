@@ -15,6 +15,7 @@ import {
   Steps,
   Result,
   Alert,
+  Checkbox,
 } from 'antd';
 import {
   CodeOutlined,
@@ -30,7 +31,8 @@ import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IService } from '../types';
+import type { IEventTemplate, IService, TDeployScope } from '../types';
+import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -46,6 +48,9 @@ const QueryPage = () => {
   const [strEventName, setStrEventName] = useState('');
   const [strInputValues, setStrInputValues] = useState('');
   const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
+
+  // 반영 범위 (기본: QA→LIVE, LIVE only 가능, DEV 불가)
+  const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
 
   // 결과
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
@@ -193,6 +198,7 @@ const QueryPage = () => {
         strInputValues: strInputValues.trim(),
         strGeneratedQuery: strQuery,
         dtDeployDate: strDeployDate,
+        arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
       });
 
@@ -225,6 +231,7 @@ const QueryPage = () => {
     setStrInputValues('');
     setStrDeployDate('');
     setStrGeneratedQuery('');
+    setArrDeployScope(['qa', 'live']);
   };
 
   // 입력 형식에 맞는 placeholder
@@ -433,6 +440,43 @@ const QueryPage = () => {
                     onChange={(date) => setStrDeployDate(date ? date.toISOString() : '')}
                     size="large"
                   />
+                </Form.Item>
+
+                {/* 반영 범위 */}
+                <Form.Item
+                  label={
+                    <Space>
+                      반영 범위
+                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                      <Text type="secondary" style={{ fontSize: 11 }}>DEV 환경은 지원하지 않습니다</Text>
+                    </Space>
+                  }
+                >
+                  <Space direction="vertical" size={4}>
+                    <Checkbox.Group
+                      value={arrDeployScope}
+                      onChange={(arrChecked) => {
+                        // LIVE 단독 또는 QA+LIVE만 허용, 최소 1개
+                        const arrNext = arrChecked.filter(
+                          (v): v is TDeployScope => v === 'qa' || v === 'live'
+                        );
+                        if (arrNext.length > 0) setArrDeployScope(arrNext);
+                      }}
+                    >
+                      {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                        <Checkbox key={opt.value} value={opt.value}>
+                          <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                        </Checkbox>
+                      ))}
+                    </Checkbox.Group>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {arrDeployScope.includes('qa') && arrDeployScope.includes('live')
+                        ? '기본: QA 반영 후 LIVE 반영'
+                        : arrDeployScope.includes('live')
+                        ? 'LIVE 전용: QA 단계 없이 바로 LIVE 반영'
+                        : 'QA 반영만 진행'}
+                    </Text>
+                  </Space>
                 </Form.Item>
 
                 {/* 입력값 (형식에 따라) */}

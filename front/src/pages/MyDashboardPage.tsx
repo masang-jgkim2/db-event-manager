@@ -3,6 +3,7 @@ import {
   Typography, Card, Table, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
+  Steps, Checkbox,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -15,9 +16,9 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import type {
   IEventInstance, TEventStatus, IStageActor,
-  IQueryExecutionResult,
+  IQueryExecutionResult, TDeployScope,
 } from '../types';
-import { OBJ_STATUS_CONFIG } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -189,15 +190,98 @@ const ExecutionResultModal = ({
   );
 };
 
+// 이벤트 인스턴스의 arrDeployScope에 따라 스텝 목록을 동적으로 생성
+const fnBuildSteps = (objInstance: IEventInstance) => {
+  const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
+  const bHasQa = arrScope.includes('qa');
+  const bHasLive = arrScope.includes('live');
+
+  const arrSteps = [
+    { strStatus: 'event_created',     strLabel: '작성',          strSubLabel: '' },
+    { strStatus: 'confirm_requested', strLabel: '컨펌 요청',     strSubLabel: '' },
+    { strStatus: 'dba_confirmed',     strLabel: 'DBA 컨펌',      strSubLabel: '' },
+  ];
+
+  if (bHasQa) {
+    arrSteps.push(
+      { strStatus: 'qa_requested', strLabel: 'QA 요청',  strSubLabel: '' },
+      { strStatus: 'qa_deployed',  strLabel: 'QA 반영',  strSubLabel: '' },
+      { strStatus: 'qa_verified',  strLabel: 'QA 확인',  strSubLabel: '' },
+    );
+  }
+
+  if (bHasLive) {
+    arrSteps.push(
+      { strStatus: 'live_requested', strLabel: 'LIVE 요청', strSubLabel: '' },
+      { strStatus: 'live_deployed',  strLabel: 'LIVE 반영', strSubLabel: '' },
+      { strStatus: 'live_verified',  strLabel: '완료',       strSubLabel: '' },
+    );
+  }
+
+  // 현재 상태의 스텝 인덱스 계산
+  const nCurrentIdx = arrSteps.findIndex((s) => s.strStatus === objInstance.strStatus);
+  const nStep = nCurrentIdx >= 0 ? nCurrentIdx : 0;
+
+  // 이미 완료된 상태면 마지막 스텝을 finish로
+  const bFinished = objInstance.strStatus === 'live_verified';
+
+  return { arrSteps, nStep, bFinished };
+};
+
+// 이벤트별 진행 상태 스테퍼 컴포넌트
+const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
+  const { arrSteps, nStep, bFinished } = fnBuildSteps(objInstance);
+  const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
+
+  return (
+    <Card
+      size="small"
+      style={{ marginBottom: 16, background: '#fafafa', border: '1px solid #f0f0f0' }}
+      bodyStyle={{ padding: '12px 16px' }}
+    >
+      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Text strong style={{ fontSize: 13 }}>{objInstance.strEventName}</Text>
+        <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
+          {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
+        </Tag>
+        <Space size={4}>
+          {arrScope.map((s) => (
+            <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 10 }}>
+              {s.toUpperCase()}
+            </Tag>
+          ))}
+        </Space>
+      </div>
+      <Steps
+        current={nStep}
+        status={bFinished ? 'finish' : 'process'}
+        size="small"
+        items={arrSteps.map((s) => ({
+          title: s.strLabel,
+          status: (() => {
+            const nIdx = arrSteps.indexOf(s);
+            if (nIdx < nStep) return 'finish';
+            if (nIdx === nStep) return bFinished ? 'finish' : 'process';
+            return 'wait';
+          })(),
+        }))}
+      />
+    </Card>
+  );
+};
+
 const MyDashboardPage = () => {
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
+  // 테이블에서 선택된 이벤트 (상단 스테퍼 표시용)
+  const [objSelectedRow, setObjSelectedRow] = useState<IEventInstance | null>(null);
   // 수정 모달
   const [bEditOpen, setBEditOpen] = useState(false);
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
   const [strEditEventName, setStrEditEventName] = useState('');
   const [strEditInputValues, setStrEditInputValues] = useState('');
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
+  const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
@@ -229,15 +313,17 @@ const MyDashboardPage = () => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
-  // SSE로 수신된 업데이트가 상세 모달에도 반영
+  // SSE 업데이트 → 상세 모달 + 선택된 행 동기화
   useEffect(() => {
     if (objDetail) {
       const objUpdated = arrInstances.find((e) => e.nId === objDetail.nId);
-      if (objUpdated && objUpdated.strStatus !== objDetail.strStatus) {
-        setObjDetail(objUpdated);
-      }
+      if (objUpdated) setObjDetail(objUpdated);
     }
-  }, [arrInstances, objDetail]);
+    if (objSelectedRow) {
+      const objUpdated = arrInstances.find((e) => e.nId === objSelectedRow.nId);
+      if (objUpdated) setObjSelectedRow(objUpdated);
+    }
+  }, [arrInstances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 상태 변경 처리 (일반 상태 전이)
   const fnHandleAction = async (nId: number, strNextStatus: TEventStatus, strActionLabel: string) => {
@@ -309,6 +395,7 @@ const MyDashboardPage = () => {
     setStrEditEventName(r.strEventName);
     setStrEditInputValues(r.strInputValues);
     setStrEditDeployDate(r.dtDeployDate);
+    setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
     setBEditOpen(true);
   };
 
@@ -319,6 +406,7 @@ const MyDashboardPage = () => {
       strEventName: strEditEventName,
       strInputValues: strEditInputValues,
       dtDeployDate: strEditDeployDate,
+      arrDeployScope: arrEditDeployScope,
     });
     if (result.bSuccess) {
       messageApi.success('이벤트가 수정되었습니다.');
@@ -557,6 +645,11 @@ const MyDashboardPage = () => {
       </Row>
 
       {/* 필터 + 목록 */}
+      {/* 선택된 이벤트 진행 상태 스테퍼 */}
+      {objSelectedRow && (
+        <InstanceStepper objInstance={objSelectedRow} />
+      )}
+
       <Card>
         <div style={{ marginBottom: 16 }}>
           <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
@@ -569,6 +662,11 @@ const MyDashboardPage = () => {
           pagination={{ pageSize: 15 }}
           locale={{ emptyText: '해당 조건의 이벤트가 없습니다.' }}
           size="small"
+          rowClassName={(r) => r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : ''}
+          onRow={(r) => ({
+            onClick: () => setObjSelectedRow((prev) => prev?.nId === r.nId ? null : r),
+            style: { cursor: 'pointer' },
+          })}
         />
       </Card>
 
@@ -587,6 +685,13 @@ const MyDashboardPage = () => {
                   {objDetail.dtDeployDate
                     ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
                     : '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="반영 범위">
+                  <Space size={4}>
+                    {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
+                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
+                    ))}
+                  </Space>
                 </Descriptions.Item>
                 <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
               </Descriptions>
@@ -679,6 +784,39 @@ const MyDashboardPage = () => {
             <div>
               <Text strong>이벤트 이름</Text>
               <Input value={strEditEventName} onChange={(e) => setStrEditEventName(e.target.value)} style={{ marginTop: 4 }} />
+            </div>
+            <div>
+              <Space style={{ marginBottom: 4 }}>
+                <Text strong>반영 범위</Text>
+                {objEditInstance.strStatus !== 'event_created' && (
+                  <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
+                )}
+              </Space>
+              <div style={{ marginTop: 4 }}>
+                {objEditInstance.strStatus === 'event_created' ? (
+                  <Checkbox.Group
+                    value={arrEditDeployScope}
+                    onChange={(arrChecked) => {
+                      const arrNext = arrChecked.filter(
+                        (v): v is TDeployScope => v === 'qa' || v === 'live'
+                      );
+                      if (arrNext.length > 0) setArrEditDeployScope(arrNext);
+                    }}
+                  >
+                    {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                      <Checkbox key={opt.value} value={opt.value}>
+                        <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                      </Checkbox>
+                    ))}
+                  </Checkbox.Group>
+                ) : (
+                  <Space>
+                    {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => (
+                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
+                    ))}
+                  </Space>
+                )}
+              </div>
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>

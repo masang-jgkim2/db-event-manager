@@ -146,6 +146,13 @@ export interface IEventTemplate {
 // 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 // =============================================
 
+// 반영 범위 — DEV는 UI에서 선택 불가(백엔드 차단), QA→LIVE가 기본값
+export type TDeployScope = 'qa' | 'live';
+export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strColor: string }[] = [
+  { value: 'qa',   label: 'QA',   strColor: 'orange' },
+  { value: 'live', label: 'LIVE', strColor: 'red' },
+];
+
 // 이벤트 상태 워크플로
 export type TEventStatus =
   | 'event_created'       // 운영자 이벤트 생성 (수정 가능)
@@ -245,7 +252,8 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
-  dtDeployDate: string;    // 반영 날짜 (datetime, ISO 8601)
+  dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
+  arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];
   // 단계별 처리자 (추적용)
