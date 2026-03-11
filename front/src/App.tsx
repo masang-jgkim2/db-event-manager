@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
-import { useThemeStore, fnGenPalette } from './stores/useThemeStore';
+import { useThemeStore } from './stores/useThemeStore';
+import { fnBuildDesignSystem } from './styles/design-system';
+import { DesignSystemContext } from './styles/DesignSystemContext';
 import { useProductStore } from './stores/useProductStore';
 import { useEventStore } from './stores/useEventStore';
 import LoginPage from './pages/LoginPage';
@@ -143,18 +145,14 @@ const App = () => {
 
   const bIsDark = fnGetIsDark();
 
-  // primary 컬러로 10단계 팔레트 생성 (다크/라이트 분기)
-  const arrPalette = fnGenPalette(strPrimaryColor, bIsDark);
-  // [0]=가장밝음(배경용) [1]=hover [2]=active/selected [5]=primary [6]=진한 primary [7~9]=어두운 계열
-  const strColorPrimaryBg       = arrPalette[0];  // 테이블 헤더/선택 배경
-  const strColorPrimaryBgHover  = arrPalette[1];  // hover 배경
-  const strColorPrimaryBorder   = arrPalette[2];  // 테두리
-  const strColorPrimaryHover    = arrPalette[4];  // 버튼 hover
-  const strColorPrimaryActive   = arrPalette[6];  // 버튼 active/pressed
-  const strColorPrimaryText     = arrPalette[5];  // 링크, 강조 텍스트
-  const strColorPrimaryTextHover = arrPalette[4];
+  // 디자인 시스템 전체 토큰 생성
+  const objDs = fnBuildDesignSystem(strPrimaryColor, bIsDark, nFontSize);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { token: dsToken, components: dsComponents } = objDs.antdThemeConfig as any;
 
   return (
+    <DesignSystemContext.Provider value={objDs}>
     <ConfigProvider
       locale={koKR}
       theme={{
@@ -162,18 +160,8 @@ const App = () => {
           bIsDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
           ...(bCompact ? [antdTheme.compactAlgorithm] : []),
         ],
-        token: {
-          colorPrimary: strPrimaryColor,
-          fontSize: nFontSize,
-          // primary 팔레트 기반 서브 컬러 자동 적용
-          colorPrimaryBg:        strColorPrimaryBg,
-          colorPrimaryBgHover:   strColorPrimaryBgHover,
-          colorPrimaryBorder:    strColorPrimaryBorder,
-          colorPrimaryHover:     strColorPrimaryHover,
-          colorPrimaryActive:    strColorPrimaryActive,
-          colorPrimaryText:      strColorPrimaryText,
-          colorPrimaryTextHover: strColorPrimaryTextHover,
-        },
+        token:      dsToken,
+        components: dsComponents,
       }}
     >
       <BrowserRouter>
@@ -256,6 +244,7 @@ const App = () => {
         </Routes>
       </BrowserRouter>
     </ConfigProvider>
+    </DesignSystemContext.Provider>
   );
 };
 

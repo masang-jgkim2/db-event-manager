@@ -184,11 +184,11 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
       </div>
       <Slider
         min={12}
-        max={16}
+        max={25}
         step={1}
         value={nFontSize}
         onChange={fnSetFontSize}
-        marks={{ 12: '12', 13: '13', 14: '14', 15: '15', 16: '16' }}
+        marks={{ 12: '12', 14: '14', 16: '16', 18: '18', 20: '20', 25: '25' }}
       />
 
       <Divider />

@@ -23,6 +23,12 @@ export function fnGenPalette(strPrimary: string, bDark = false): string[] {
   return generate(strPrimary, bDark ? { theme: 'dark', backgroundColor: '#141414' } : undefined);
 }
 
+// 사이드바 너비 한계: 최소 160px, 최대 화면 너비의 1/3 (동적)
+export const N_SIDER_MIN = 160;
+export function fnSiderMax(): number {
+  return Math.floor(window.innerWidth / 3);
+}
+
 // 기본값
 const OBJ_DEFAULT = {
   strMode: 'light' as TThemeMode,
@@ -66,8 +72,8 @@ export const useThemeStore = create<IThemeStore>()(
       },
 
       fnSetMode: (strMode) => set({ strMode }),
-      fnSetSiderWidth: (nWidth) => set({ nSiderWidth: Math.min(300, Math.max(160, nWidth)) }),
-      fnSetFontSize: (nSize) => set({ nFontSize: Math.min(16, Math.max(12, nSize)) }),
+      fnSetSiderWidth: (nWidth) => set({ nSiderWidth: Math.min(fnSiderMax(), Math.max(N_SIDER_MIN, nWidth)) }),
+      fnSetFontSize: (nSize) => set({ nFontSize: Math.min(25, Math.max(12, nSize)) }),
       fnSetCompact: (bCompact) => set({ bCompact }),
       fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
       fnReset: () => set({ ...OBJ_DEFAULT }),

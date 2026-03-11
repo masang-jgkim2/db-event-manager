@@ -19,6 +19,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEventStream } from '../hooks/useEventStream';
 import { useThemeStore } from '../stores/useThemeStore';
+import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
 import type { MenuProps } from 'antd';
 
@@ -48,6 +49,9 @@ const MainLayout = () => {
   const nSiderWidth = useThemeStore((s) => s.nSiderWidth);
   const fnSetSiderWidth = useThemeStore((s) => s.fnSetSiderWidth);
   const { token } = antdTheme.useToken();
+
+  // 디자인 시스템 토큰
+  const ds = useDesignSystem();
 
   // 사이드바 드래그 리사이즈
   const bDragging = useRef(false);
@@ -190,6 +194,7 @@ const MainLayout = () => {
           top: 0,
           bottom: 0,
           zIndex: 10,
+          background: ds.objSider.strBackground,
         }}
       >
         {/* 로고 영역 */}
@@ -199,19 +204,19 @@ const MainLayout = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            background: ds.objSider.strLogoBackground,
+            borderBottom: `1px solid ${ds.objSider.strLogoBorder}`,
           }}
         >
-          <DatabaseOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
+          <DatabaseOutlined style={{ fontSize: ds.objTypo.nLg + 8, color: token.colorPrimary }} />
           {!bCollapsed && (
-            // Sider는 항상 dark theme이므로 로고 텍스트는 흰색 고정
             <span
               style={{
-                fontSize: 16,
-                fontWeight: 700,
-                marginLeft: 10,
+                fontSize: ds.objSider.nLogoFontSize,
+                fontWeight: ds.objSider.nLogoFontWeight,
+                marginLeft: ds.objSpacing.nSm,
                 whiteSpace: 'nowrap',
-                color: 'rgba(255, 255, 255, 0.95)',
+                color: ds.objSider.strLogoText,
               }}
             >
               이벤트 매니저
@@ -245,7 +250,7 @@ const MainLayout = () => {
               background: 'transparent',
               transition: 'background 0.15s',
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = token.colorPrimary + '66'; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = ds.objSider.strResizeHandle; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
           />
         )}
@@ -261,12 +266,12 @@ const MainLayout = () => {
         {/* 상단 헤더 */}
         <Header
           style={{
-            padding: '0 24px',
-            background: token.colorBgContainer,
+            padding: `0 ${ds.objSpacing.nXl}px`,
+            background: ds.objHeader.strBackground,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            borderBottom: `1px solid ${ds.objHeader.strBorder}`,
             position: 'sticky',
             top: 0,
             zIndex: 9,
@@ -315,7 +320,7 @@ const MainLayout = () => {
         </Header>
 
         {/* 콘텐츠 영역 */}
-        <Content style={{ margin: 24, minHeight: 280 }}>
+        <Content style={{ margin: ds.objSpacing.nXl, minHeight: 280 }}>
           <Outlet />
         </Content>
       </Layout>
