@@ -1,6 +1,4 @@
-import { IEventInstance } from '../types';
-import { arrEventInstances, fnGetNextInstanceId } from '../data/eventInstances';
-import { TEventStatus } from '../data/eventInstances';
+import { IEventInstance, TEventStatus, arrEventInstances, fnGetNextInstanceId } from '../data/eventInstances';
 
 // 이벤트 인스턴스 Repository - 인메모리 구현체
 export class EventInstanceRepository {

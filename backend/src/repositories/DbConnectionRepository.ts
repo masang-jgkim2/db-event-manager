@@ -11,10 +11,16 @@ export class DbConnectionRepository {
     return arrDbConnections.find((c) => c.nId === nId) ?? null;
   }
 
-  async findActive(nProductId: number, strEnv: 'dev' | 'qa' | 'live'): Promise<IDbConnection | null> {
+  async findActive(nProductId: number, strEnv: string): Promise<IDbConnection | null> {
     return arrDbConnections.find(
       (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.bIsActive
     ) ?? null;
+  }
+
+  async existsByProductEnv(nProductId: number, strEnv: string, nExcludeId?: number): Promise<boolean> {
+    return arrDbConnections.some(
+      (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.nId !== nExcludeId
+    );
   }
 
   async create(objData: Omit<IDbConnection, 'nId'>): Promise<IDbConnection> {

@@ -5,16 +5,33 @@ import {
   fnApiUpdateInstance, fnApiExecuteQuery, fnApiCreateInstance,
 } from '../api/eventInstanceApi';
 
+// localStorage 기반 숨김 ID 목록 관리
+const HIDDEN_KEY = 'db-event-manager-hidden-ids';
+const fnLoadHiddenIds = (): Set<number> => {
+  try {
+    const strRaw = localStorage.getItem(HIDDEN_KEY);
+    return strRaw ? new Set<number>(JSON.parse(strRaw)) : new Set();
+  } catch { return new Set(); }
+};
+const fnSaveHiddenIds = (setIds: Set<number>) => {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...setIds]));
+};
+
 interface IEventInstanceStore {
   // 현재 필터 기준 목록 (테이블 표시용)
   arrInstances: IEventInstance[];
   // 전체 목록 캐시 (통계, SSE 신규 등록 판단용)
   arrAllInstances: IEventInstance[];
+  // 숨긴 이벤트 ID 집합 (localStorage 동기화)
+  setHiddenIds: Set<number>;
   bLoading: boolean;
   strFilter: string;
 
   fnFetchInstances: (strFilter?: string) => Promise<void>;
   fnSetFilter: (strFilter: string) => void;
+  // 숨기기 / 숨기기 해제
+  fnHideInstance: (nId: number) => void;
+  fnUnhideInstance: (nId: number) => void;
 
   fnUpdateStatus: (
     nId: number,
@@ -67,8 +84,23 @@ const fnPatchStatus = (
 export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => ({
   arrInstances: [],
   arrAllInstances: [],
+  setHiddenIds: fnLoadHiddenIds(),
   bLoading: false,
   strFilter: 'all',  // 기본값: 전체
+
+  fnHideInstance: (nId) => {
+    const setNext = new Set(get().setHiddenIds);
+    setNext.add(nId);
+    fnSaveHiddenIds(setNext);
+    set({ setHiddenIds: setNext });
+  },
+
+  fnUnhideInstance: (nId) => {
+    const setNext = new Set(get().setHiddenIds);
+    setNext.delete(nId);
+    fnSaveHiddenIds(setNext);
+    set({ setHiddenIds: setNext });
+  },
 
   fnFetchInstances: async (strFilter?: string) => {
     const strActiveFilter = strFilter ?? get().strFilter;

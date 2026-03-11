@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
-import { arrProducts, fnGetNextProductId } from '../data/products';
+import { arrProducts, fnGetNextProductId, fnSaveProducts } from '../data/products';
 
-// 프로덕트 목록 조회 (모든 인증 사용자)
 export const fnGetProducts = async (_req: Request, res: Response): Promise<void> => {
   res.json({ bSuccess: true, arrProducts });
 };
 
-// 프로덕트 추가 (관리자)
 export const fnCreateProduct = async (req: Request, res: Response): Promise<void> => {
   try {
     const { strName, strDescription, strDbType, arrServices } = req.body;
@@ -17,15 +15,13 @@ export const fnCreateProduct = async (req: Request, res: Response): Promise<void
     }
 
     const objNew = {
-      nId: fnGetNextProductId(),
-      strName,
-      strDescription: strDescription || '',
-      strDbType,
-      arrServices,
+      nId: fnGetNextProductId(), strName,
+      strDescription: strDescription || '', strDbType, arrServices,
       dtCreatedAt: new Date().toISOString(),
     };
 
     arrProducts.push(objNew);
+    fnSaveProducts();
     res.json({ bSuccess: true, objProduct: objNew });
   } catch (error) {
     console.error('프로덕트 생성 오류:', error);
@@ -33,10 +29,9 @@ export const fnCreateProduct = async (req: Request, res: Response): Promise<void
   }
 };
 
-// 프로덕트 수정 (관리자)
 export const fnUpdateProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const nIndex = arrProducts.findIndex((p) => p.nId === nId);
 
     if (nIndex === -1) {
@@ -45,11 +40,12 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
     }
 
     const { strName, strDescription, strDbType, arrServices } = req.body;
-    if (strName !== undefined) arrProducts[nIndex].strName = strName;
+    if (strName        !== undefined) arrProducts[nIndex].strName        = strName;
     if (strDescription !== undefined) arrProducts[nIndex].strDescription = strDescription;
-    if (strDbType !== undefined) arrProducts[nIndex].strDbType = strDbType;
-    if (arrServices !== undefined) arrProducts[nIndex].arrServices = arrServices;
+    if (strDbType      !== undefined) arrProducts[nIndex].strDbType      = strDbType;
+    if (arrServices    !== undefined) arrProducts[nIndex].arrServices    = arrServices;
 
+    fnSaveProducts();
     res.json({ bSuccess: true, objProduct: arrProducts[nIndex] });
   } catch (error) {
     console.error('프로덕트 수정 오류:', error);
@@ -57,10 +53,9 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
   }
 };
 
-// 프로덕트 삭제 (관리자)
 export const fnDeleteProduct = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const nIndex = arrProducts.findIndex((p) => p.nId === nId);
 
     if (nIndex === -1) {
@@ -69,6 +64,7 @@ export const fnDeleteProduct = async (req: Request, res: Response): Promise<void
     }
 
     arrProducts.splice(nIndex, 1);
+    fnSaveProducts();
     res.json({ bSuccess: true, strMessage: '프로덕트가 삭제되었습니다.' });
   } catch (error) {
     console.error('프로덕트 삭제 오류:', error);

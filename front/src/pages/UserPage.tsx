@@ -129,8 +129,8 @@ const UserPage = () => {
       } else {
         messageApi.error(objResult.strMessage);
       }
-    } catch {
-      messageApi.error('삭제에 실패했습니다.');
+    } catch (error: any) {
+      messageApi.error(error?.message || '삭제에 실패했습니다.');
     }
   };
 

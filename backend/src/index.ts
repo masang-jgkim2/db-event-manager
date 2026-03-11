@@ -18,7 +18,7 @@ const nPort = Number(process.env.PORT) || 4000;
 
 // 미들웨어
 app.use(cors({
-  origin: 'http://localhost:5173', // Vite 기본 포트
+  origin: 'http://localhost:5173',
   credentials: true,
 }));
 app.use(express.json());
@@ -37,11 +37,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ bSuccess: true, strMessage: '서버가 정상 동작 중입니다.' });
 });
 
-// 서버 시작
+// 서버 시작 — 인메모리 모드 (기본 계정 비밀번호 해싱 후 시작)
 const fnStartServer = async () => {
   await fnInitUsers();
   app.listen(nPort, () => {
-    console.log(`[서버] http://localhost:${nPort} 에서 실행 중`);
+    console.log(`[서버] http://localhost:${nPort} 에서 실행 중 (인메모리 모드)`);
   });
 };
 

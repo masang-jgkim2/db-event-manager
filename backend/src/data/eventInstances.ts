@@ -73,10 +73,13 @@ export interface IEventInstance {
   dtCreatedAt: string;
 }
 
-export const arrEventInstances: IEventInstance[] = [];
+import { fnLoadJson, fnSaveJson } from './jsonStore';
 
-export const fnGetNextInstanceId = (): number => {
-  return arrEventInstances.length > 0
-    ? Math.max(...arrEventInstances.map((e) => e.nId)) + 1
-    : 1;
-};
+const STR_FILE = 'eventInstances.json';
+
+export const arrEventInstances: IEventInstance[] = fnLoadJson<IEventInstance>(STR_FILE, []);
+
+export const fnSaveEventInstances = () => fnSaveJson(STR_FILE, arrEventInstances);
+
+export const fnGetNextInstanceId = (): number =>
+  arrEventInstances.length > 0 ? Math.max(...arrEventInstances.map((e) => e.nId)) + 1 : 1;

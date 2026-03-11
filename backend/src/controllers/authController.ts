@@ -5,10 +5,10 @@ import { ILoginRequest, IJwtPayload } from '../types';
 import { arrUsers } from '../data/users';
 import { fnGetMergedPermissions } from '../data/roles';
 
-const strJwtSecret = process.env.JWT_SECRET || 'default-secret';
+const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
 
-// 로그인 처리
+// 로그인
 export const fnLogin = async (req: Request, res: Response): Promise<void> => {
   try {
     const { strUserId, strPassword } = req.body as ILoginRequest;
@@ -30,30 +30,26 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // 사용자의 모든 역할에서 권한 합집합 계산
     const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
 
-    // JWT 페이로드에 역할 + 권한 + 표시 이름 포함
     const objPayload: IJwtPayload = {
-      nId: objUser.nId,
-      strUserId: objUser.strUserId,
+      nId:            objUser.nId,
+      strUserId:      objUser.strUserId,
       strDisplayName: objUser.strDisplayName,
-      arrRoles: objUser.arrRoles,
+      arrRoles:       objUser.arrRoles,
       arrPermissions: arrPermissions as any,
     };
 
-    const strToken = jwt.sign(objPayload, strJwtSecret, {
-      expiresIn: strJwtExpiresIn as any,
-    });
+    const strToken = jwt.sign(objPayload, strJwtSecret, { expiresIn: strJwtExpiresIn as any });
 
     res.json({
       bSuccess: true,
       strToken,
       user: {
-        nId: objUser.nId,
-        strUserId: objUser.strUserId,
+        nId:            objUser.nId,
+        strUserId:      objUser.strUserId,
         strDisplayName: objUser.strDisplayName,
-        arrRoles: objUser.arrRoles,
+        arrRoles:       objUser.arrRoles,
         arrPermissions: arrPermissions as any,
       },
     });
@@ -63,7 +59,7 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// 토큰 검증 (프론트에서 자동 로그인 확인용)
+// 토큰 검증 (프론트 자동 로그인 확인용)
 export const fnVerifyToken = async (req: Request, res: Response): Promise<void> => {
   try {
     const objUser = req.user;
@@ -72,23 +68,21 @@ export const fnVerifyToken = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // 최신 권한 정보를 DB에서 재조회 (권한이 변경됐을 경우 반영)
     const objFullUser = arrUsers.find((u) => u.nId === objUser.nId);
     if (!objFullUser) {
       res.status(401).json({ bSuccess: false, strMessage: '사용자를 찾을 수 없습니다.' });
       return;
     }
 
-    // 최신 권한 재계산
     const arrPermissions = fnGetMergedPermissions(objFullUser.arrRoles);
 
     res.json({
       bSuccess: true,
       user: {
-        nId: objFullUser.nId,
-        strUserId: objFullUser.strUserId,
+        nId:            objFullUser.nId,
+        strUserId:      objFullUser.strUserId,
         strDisplayName: objFullUser.strDisplayName,
-        arrRoles: objFullUser.arrRoles,
+        arrRoles:       objFullUser.arrRoles,
         arrPermissions: arrPermissions as any,
       },
     });

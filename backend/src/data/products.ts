@@ -1,4 +1,6 @@
-// 프로덕트 데이터 저장소 (추후 DB 연동 시 교체)
+import { fnLoadJson, fnSaveJson } from './jsonStore';
+
+// 프로덕트 데이터 저장소
 
 export interface IService {
   strAbbr: string;
@@ -14,8 +16,10 @@ export interface IProduct {
   dtCreatedAt: string;
 }
 
-// 시드 데이터 (7개 게임)
-export const arrProducts: IProduct[] = [
+const STR_FILE = 'products.json';
+
+// 시드 데이터 (최초 실행 시에만 사용)
+const ARR_SEED: IProduct[] = [
   {
     nId: 1,
     strName: '출조낚시왕',
@@ -81,7 +85,9 @@ export const arrProducts: IProduct[] = [
   },
 ];
 
-// 다음 ID
-export const fnGetNextProductId = (): number => {
-  return arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;
-};
+export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
+
+export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
+
+export const fnGetNextProductId = (): number =>
+  arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;

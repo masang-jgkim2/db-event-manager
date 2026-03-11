@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import {
-  arrEventInstances, fnGetNextInstanceId,
+  arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
 import { fnFindActiveConnection } from '../data/dbConnections';
@@ -119,6 +119,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
+    fnSaveEventInstances();
     // 생성자 외 모든 클라이언트에 신규 이벤트 알림 (instance_created)
     fnBroadcastInstanceCreated(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
@@ -231,6 +232,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       dtChangedAt: new Date().toISOString(),
     });
 
+    fnSaveEventInstances();
     // 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
@@ -343,21 +345,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     }
 
     // ── 반영 날짜 시점 체크 ────────────────────────────────
-    // DEV / QA : 현재 시각 < 반영 날짜 → 반영 날짜 이전에만 실행 허용 (사전 검증)
-    // LIVE      : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
+    // QA  : 시간 제한 없음 — LIVE 반영 전 언제든지 실행 가능
+    // LIVE : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
     const dtNow = new Date();
     const dtDeploy = new Date(objInstance.dtDeployDate);
 
     if (isNaN(dtDeploy.getTime())) {
       res.status(400).json({ bSuccess: false, strMessage: '반영 날짜가 올바르지 않습니다.' });
-      return;
-    }
-
-    if ((strEnv === 'dev' || strEnv === 'qa') && dtNow >= dtDeploy) {
-      res.status(400).json({
-        bSuccess: false,
-        strMessage: `DEV/QA 반영은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이전에만 실행할 수 있습니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
-      });
       return;
     }
 
@@ -413,6 +407,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       },
     });
 
+    fnSaveEventInstances();
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     res.json({
@@ -452,8 +447,10 @@ const fnApplyQueryTemplate = (
   return strQuery;
 };
 
-// 이벤트 인스턴스 수정 (event_created 상태에서만 가능, 생성자만)
-// strInputValues 또는 dtDeployDate 변경 시 strGeneratedQuery 자동 재생성
+// 이벤트 인스턴스 수정
+// - event_created: 생성자(또는 admin)만 → 모든 필드 수정 가능
+// - confirm_requested / dba_confirmed / qa_requested / qa_deployed / qa_verified
+//   / live_requested / live_deployed: DBA(또는 admin)만 → strGeneratedQuery 직접 수정 가능
 export const fnUpdateInstance = async (req: Request, res: Response): Promise<void> => {
   try {
     const nId = Number(req.params.id);
@@ -464,15 +461,48 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // event_created 상태에서만 수정 가능
-    if (objInstance.strStatus !== 'event_created') {
-      res.status(400).json({ bSuccess: false, strMessage: '컨펌 요청 전 상태에서만 수정할 수 있습니다.' });
+    const arrUserRoles = req.user?.arrRoles || [];
+    const bIsAdmin = arrUserRoles.includes('admin');
+    const bIsDba   = arrUserRoles.includes('dba');
+
+    // ── DBA 쿼리 수정 (컨펌 이후 단계에서 DBA/admin만 strGeneratedQuery 수정 가능) ──
+    // 허용 단계: confirm_requested, dba_confirmed, qa_requested, qa_deployed,
+    //            qa_verified, live_requested, live_deployed
+    const ARR_DBA_EDITABLE_STATUSES: TEventStatus[] = [
+      'confirm_requested', 'dba_confirmed',
+      'qa_requested', 'qa_deployed', 'qa_verified',
+      'live_requested', 'live_deployed',
+    ];
+    if (ARR_DBA_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
+      if (!bIsDba && !bIsAdmin) {
+        res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 DBA 권한이 있어야 쿼리를 수정할 수 있습니다.' });
+        return;
+      }
+      if (req.body.strGeneratedQuery !== undefined) {
+        objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
+        // 쿼리 수정 이력 추가
+        const objActor = fnMakeActor(req);
+        objInstance.arrStatusLogs.push({
+          strStatus: objInstance.strStatus,
+          strChangedBy: objActor.strDisplayName,
+          nChangedByUserId: objActor.nUserId,
+          strComment: 'DBA 쿼리 직접 수정',
+          dtChangedAt: new Date().toISOString(),
+        });
+      }
+      fnSaveEventInstances();
+      fnBroadcastInstanceUpdate(objInstance);
+      res.json({ bSuccess: true, objInstance });
       return;
     }
 
-    // 생성자 본인만 수정 가능 (관리자는 예외)
-    const arrUserRoles = req.user?.arrRoles || [];
-    if (objInstance.nCreatedByUserId !== req.user?.nId && !arrUserRoles.includes('admin')) {
+    // ── 일반 수정 (event_created 상태에서 생성자 또는 admin만) ──
+    if (objInstance.strStatus !== 'event_created') {
+      res.status(400).json({ bSuccess: false, strMessage: '현재 상태에서는 수정할 수 없습니다.' });
+      return;
+    }
+
+    if (objInstance.nCreatedByUserId !== req.user?.nId && !bIsAdmin) {
       res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다.' });
       return;
     }
@@ -485,7 +515,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    // 반영 범위 — event_created 상태에서만 수정 가능 (컨펌 요청 이후 잠김)
+    // 반영 범위 — event_created 상태에서만 수정 가능
     if (req.body.arrDeployScope !== undefined) {
       const arrAllowed = ['qa', 'live'];
       const arrNewScope: Array<'qa' | 'live'> = Array.isArray(req.body.arrDeployScope)
@@ -498,13 +528,12 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     // inputValues 또는 dtDeployDate 변경 시 쿼리 자동 재생성
     const bInputChanged = req.body.strInputValues !== undefined;
-    const bDateChanged = req.body.dtDeployDate !== undefined;
+    const bDateChanged  = req.body.dtDeployDate !== undefined;
 
     if (bInputChanged) objInstance.strInputValues = req.body.strInputValues;
-    if (bDateChanged) objInstance.dtDeployDate = req.body.dtDeployDate;
+    if (bDateChanged)  objInstance.dtDeployDate   = req.body.dtDeployDate;
 
     if (bInputChanged || bDateChanged) {
-      // 원본 이벤트 템플릿의 쿼리 템플릿으로 재생성
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
       if (objTemplate?.strQueryTemplate) {
         objInstance.strGeneratedQuery = fnApplyQueryTemplate(
@@ -519,7 +548,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    // 수정 후 SSE 브로드캐스트
+    fnSaveEventInstances();
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {

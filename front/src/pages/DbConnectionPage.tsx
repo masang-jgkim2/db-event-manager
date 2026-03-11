@@ -99,29 +99,28 @@ const DbConnectionPage = () => {
     form.setFieldValue('nPort', strDbType === 'mssql' ? 1433 : 3306);
   };
 
-  // 저장
+  // 저장 — 성공/중복/오류를 구분해 표시, 성공 시에만 모달 닫힘
   const fnHandleSave = async () => {
     try {
       const objValues = await form.validateFields();
-
-      let result;
-      if (objEditConn) {
-        result = await fnApiUpdateDbConnection(objEditConn.nId, objValues);
-      } else {
-        result = await fnApiCreateDbConnection(objValues);
-      }
+      const result = objEditConn
+        ? await fnApiUpdateDbConnection(objEditConn.nId, objValues)
+        : await fnApiCreateDbConnection(objValues);
 
       if (result.bSuccess) {
-        messageApi.success(objEditConn ? '수정되었습니다.' : '등록되었습니다.');
+        messageApi.success(objEditConn ? 'DB 접속 정보가 수정되었습니다.' : 'DB 접속 정보가 등록되었습니다.');
         setBModalOpen(false);
         form.resetFields();
         setObjEditConn(null);
         fnLoad();
+      } else if ((result as any).strErrorCode === 'DUPLICATE') {
+        // 중복 등록 시 warning 아이콘으로 구분
+        messageApi.warning(result.strMessage);
       } else {
-        messageApi.error(result.strMessage);
+        messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
       }
     } catch {
-      // 유효성 검사 실패 시 무시
+      // 유효성 검사 실패 — Ant Design Form 인라인 에러 표시
     }
   };
 
@@ -135,8 +134,8 @@ const DbConnectionPage = () => {
       } else {
         messageApi.error(result.strMessage);
       }
-    } catch {
-      messageApi.error('삭제에 실패했습니다.');
+    } catch (error: any) {
+      messageApi.error(error?.message || '삭제에 실패했습니다.');
     }
   };
 
@@ -150,10 +149,10 @@ const DbConnectionPage = () => {
       if (result.bSuccess) {
         messageApi.success('연결 성공!');
       } else {
-        messageApi.error('연결 실패');
+        messageApi.error(result.strMessage || '연결 실패');
       }
-    } catch {
-      messageApi.error('테스트 요청에 실패했습니다.');
+    } catch (error: any) {
+      messageApi.error(error?.message || '테스트 요청에 실패했습니다.');
     } finally {
       setBTesting(null);
     }

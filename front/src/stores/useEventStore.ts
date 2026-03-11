@@ -2,20 +2,24 @@ import { create } from 'zustand';
 import type { IEventTemplate } from '../types';
 import { fnApiGetEvents, fnApiCreateEvent, fnApiUpdateEvent, fnApiDeleteEvent } from '../api/eventApi';
 
+export interface IStoreResult {
+  bSuccess: boolean;
+  strMessage: string;
+}
+
 interface IEventStore {
   arrEvents: IEventTemplate[];
   bLoading: boolean;
   fnFetchEvents: () => Promise<void>;
-  fnAddEvent: (objEvent: Omit<IEventTemplate, 'nId' | 'dtCreatedAt'>) => Promise<boolean>;
-  fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => Promise<boolean>;
-  fnDeleteEvent: (nId: number) => Promise<boolean>;
+  fnAddEvent: (objEvent: Omit<IEventTemplate, 'nId' | 'dtCreatedAt'>) => Promise<IStoreResult>;
+  fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => Promise<IStoreResult>;
+  fnDeleteEvent: (nId: number) => Promise<IStoreResult>;
 }
 
 export const useEventStore = create<IEventStore>((set) => ({
   arrEvents: [],
   bLoading: false,
 
-  // 서버에서 이벤트 목록 로드
   fnFetchEvents: async () => {
     set({ bLoading: true });
     try {
@@ -30,21 +34,19 @@ export const useEventStore = create<IEventStore>((set) => ({
     }
   },
 
-  // 이벤트 추가
   fnAddEvent: async (objEvent) => {
     try {
       const result = await fnApiCreateEvent(objEvent as any);
       if (result.bSuccess) {
         set((state) => ({ arrEvents: [...state.arrEvents, result.objEvent] }));
-        return true;
+        return { bSuccess: true, strMessage: '이벤트 템플릿이 등록되었습니다.' };
       }
-      return false;
-    } catch {
-      return false;
+      return { bSuccess: false, strMessage: result.strMessage || '등록에 실패했습니다.' };
+    } catch (error: any) {
+      return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
     }
   },
 
-  // 이벤트 수정
   fnUpdateEvent: async (nId, objEvent) => {
     try {
       const result = await fnApiUpdateEvent(nId, objEvent as any);
@@ -52,25 +54,24 @@ export const useEventStore = create<IEventStore>((set) => ({
         set((state) => ({
           arrEvents: state.arrEvents.map((e) => (e.nId === nId ? result.objEvent : e)),
         }));
-        return true;
+        return { bSuccess: true, strMessage: '이벤트 템플릿이 수정되었습니다.' };
       }
-      return false;
-    } catch {
-      return false;
+      return { bSuccess: false, strMessage: result.strMessage || '수정에 실패했습니다.' };
+    } catch (error: any) {
+      return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
     }
   },
 
-  // 이벤트 삭제
   fnDeleteEvent: async (nId) => {
     try {
       const result = await fnApiDeleteEvent(nId);
       if (result.bSuccess) {
         set((state) => ({ arrEvents: state.arrEvents.filter((e) => e.nId !== nId) }));
-        return true;
+        return { bSuccess: true, strMessage: '이벤트 템플릿이 삭제되었습니다.' };
       }
-      return false;
-    } catch {
-      return false;
+      return { bSuccess: false, strMessage: result.strMessage || '삭제에 실패했습니다.' };
+    } catch (error: any) {
+      return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
     }
   },
 }));

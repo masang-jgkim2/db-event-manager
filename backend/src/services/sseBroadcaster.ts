@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { IEventInstance } from '../types';
+import { IEventInstance } from '../data/eventInstances';
 
 // SSE 클라이언트 연결 풀
 // Map<userId, Set<Response>> - 같은 유저가 여러 탭 열 수 있음

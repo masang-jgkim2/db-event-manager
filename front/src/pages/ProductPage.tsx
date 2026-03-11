@@ -67,23 +67,24 @@ const ProductPage = () => {
   const fnHandleSave = async () => {
     try {
       const objValues = await form.validateFields();
+      const result = objEditProduct
+        ? await fnUpdateProduct(objEditProduct.nId, objValues)
+        : await fnAddProduct(objValues);
 
-      if (objEditProduct) {
-        const bOk = await fnUpdateProduct(objEditProduct.nId, objValues);
-        messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 수정되었습니다.' : '수정에 실패했습니다.');
+      if (result.bSuccess) {
+        messageApi.success(result.strMessage);
+        fnCloseModal();
       } else {
-        const bOk = await fnAddProduct(objValues);
-        messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 등록되었습니다.' : '등록에 실패했습니다.');
+        messageApi.error(result.strMessage);
       }
-      fnCloseModal();
     } catch {
-      // 유효성 검사 실패
+      // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
     }
   };
 
   const fnHandleDelete = async (nId: number) => {
-    const bOk = await fnDeleteProduct(nId);
-    messageApi[bOk ? 'success' : 'error'](bOk ? '프로덕트가 삭제되었습니다.' : '삭제에 실패했습니다.');
+    const result = await fnDeleteProduct(nId);
+    messageApi[result.bSuccess ? 'success' : 'error'](result.strMessage);
   };
 
   // DB 타입 색상

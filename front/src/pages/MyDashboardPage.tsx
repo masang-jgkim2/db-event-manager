@@ -3,7 +3,7 @@ import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
-  Steps, Checkbox, theme as antdTheme,
+  Steps, Checkbox, Tooltip, theme as antdTheme,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -11,6 +11,7 @@ import {
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
+  EyeInvisibleOutlined, EyeTwoTone, CodeOutlined,
 } from '@ant-design/icons';
 import AppTable from '../components/AppTable';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -284,6 +285,11 @@ const MyDashboardPage = () => {
   const [strEditInputValues, setStrEditInputValues] = useState('');
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+  // DBA 쿼리 수정 모달
+  const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
+  const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
+  const [strQueryEditValue, setStrQueryEditValue] = useState('');
+  const [bQuerySaving, setBQuerySaving] = useState(false);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
@@ -300,6 +306,9 @@ const MyDashboardPage = () => {
   // 전역 이벤트 인스턴스 스토어 (SSE 실시간 업데이트 포함)
   const arrInstances = useEventInstanceStore((s) => s.arrInstances);
   const arrAllInstances = useEventInstanceStore((s) => s.arrAllInstances);
+  const setHiddenIds = useEventInstanceStore((s) => s.setHiddenIds);
+  const fnHideInstance = useEventInstanceStore((s) => s.fnHideInstance);
+  const fnUnhideInstance = useEventInstanceStore((s) => s.fnUnhideInstance);
   const bLoading = useEventInstanceStore((s) => s.bLoading);
   const strFilter = useEventInstanceStore((s) => s.strFilter);
   const fnFetchInstances = useEventInstanceStore((s) => s.fnFetchInstances);
@@ -419,6 +428,35 @@ const MyDashboardPage = () => {
     }
   };
 
+  // DBA 쿼리 수정 모달 열기
+  const fnOpenQueryEdit = (r: IEventInstance) => {
+    setObjQueryEditInstance(r);
+    setStrQueryEditValue(r.strGeneratedQuery);
+    setBQueryEditOpen(true);
+  };
+
+  // DBA 쿼리 수정 저장
+  const fnSaveQueryEdit = async () => {
+    if (!objQueryEditInstance) return;
+    setBQuerySaving(true);
+    try {
+      const result = await fnStoreUpdateInstance(objQueryEditInstance.nId, {
+        strGeneratedQuery: strQueryEditValue,
+      });
+      if (result.bSuccess) {
+        messageApi.success('쿼리가 수정되었습니다.');
+        setBQueryEditOpen(false);
+        if (objDetail?.nId === objQueryEditInstance.nId && result.objInstance) {
+          setObjDetail(result.objInstance);
+        }
+      } else {
+        messageApi.error(result.strMessage || '쿼리 수정에 실패했습니다.');
+      }
+    } finally {
+      setBQuerySaving(false);
+    }
+  };
+
   // 클립보드 복사
   const fnCopy = (str: string) => {
     navigator.clipboard.writeText(str);
@@ -456,6 +494,25 @@ const MyDashboardPage = () => {
       <Button key="detail" size="small" icon={<EyeOutlined />}
         onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
     );
+
+    // DBA: 컨펌 이후 단계에서 쿼리 직접 수정 버튼
+    const ARR_DBA_EDIT_STATUS: TEventStatus[] = [
+      'confirm_requested', 'dba_confirmed',
+      'qa_requested', 'qa_deployed', 'qa_verified',
+      'live_requested', 'live_deployed',
+    ];
+    if (
+      (arrRoles.includes('dba') || arrRoles.includes('admin')) &&
+      ARR_DBA_EDIT_STATUS.includes(r.strStatus)
+    ) {
+      arrButtons.push(
+        <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
+          <Button size="small" icon={<CodeOutlined />} onClick={() => fnOpenQueryEdit(r)}>
+            쿼리 수정
+          </Button>
+        </Tooltip>
+      );
+    }
 
     // 운영자: 작성 중 → 수정 + 컨펌 요청
     if (fnHasPermission('instance.create') && r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId) {
@@ -596,6 +653,17 @@ const MyDashboardPage = () => {
     return <Space wrap>{arrButtons}</Space>;
   };
 
+  // 탭 (전체이벤트 / 완료 이벤트)
+  const [strDashTab, setStrDashTab] = useState<'active' | 'completed'>('active');
+
+  // 진행 이벤트 탭: 사용자가 직접 숨기기 버튼을 누른 이벤트만 제외
+  // live_verified 완료 상태여도 숨기기 전까지는 진행탭에 남아 흐릿하게 표시됨
+  const arrActiveInstances = arrInstances.filter((r) => !setHiddenIds.has(r.nId));
+  // 완료·숨김 이벤트 탭: 사용자가 숨기기 버튼을 누른 이벤트만
+  const arrCompletedInstances = arrInstances.filter((r) => setHiddenIds.has(r.nId));
+
+  const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
+
   // 테이블 컬럼
   const arrColumns = [
     {
@@ -633,8 +701,41 @@ const MyDashboardPage = () => {
     {
       title: '처리',
       key: 'actions',
-      width: 300,
-      render: (_: unknown, r: IEventInstance) => fnRenderActions(r),
+      width: 340,
+      render: (_: unknown, r: IEventInstance) => (
+        <Space wrap>
+          {fnRenderActions(r)}
+          {/* 숨기기 — live_verified 완료 상태에서만 활성화, 누르면 완료·숨김 탭으로 이동 */}
+          {!setHiddenIds.has(r.nId) ? (
+            <Tooltip title={
+              r.strStatus === 'live_verified'
+                ? '숨기면 완료·숨김 탭으로 이동됩니다'
+                : '완료(라이브 검증) 상태에서만 숨길 수 있습니다'
+            }>
+              <Popconfirm
+                title="이 이벤트를 숨기시겠습니까?"
+                description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                okText="숨기기"
+                cancelText="취소"
+                onConfirm={() => fnHideInstance(r.nId)}
+                disabled={r.strStatus !== 'live_verified'}
+              >
+                <Button
+                  size="small"
+                  icon={<EyeInvisibleOutlined />}
+                  type="text"
+                  disabled={r.strStatus !== 'live_verified'}
+                >숨기기</Button>
+              </Popconfirm>
+            </Tooltip>
+          ) : (
+            <Tooltip title="진행 이벤트 탭으로 복원">
+              <Button size="small" icon={<EyeTwoTone />} type="text"
+                onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
+            </Tooltip>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -667,28 +768,43 @@ const MyDashboardPage = () => {
         </Col>
       </Row>
 
-      {/* 필터 + 목록 */}
+      {/* 탭 + 필터 + 목록 */}
       <Card>
-        <div style={{ marginBottom: 16 }}>
-          <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
+        {/* 탭 — 전체 이벤트 / 완료 이벤트 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Segmented
+            options={[
+              { label: `진행 이벤트 (${arrActiveInstances.length})`, value: 'active' },
+              { label: `숨긴 이벤트 (${arrCompletedInstances.length})`, value: 'completed' },
+            ]}
+            value={strDashTab}
+            onChange={(v) => setStrDashTab(v as 'active' | 'completed')}
+          />
+          {/* 진행 이벤트 탭일 때 필터 표시 */}
+          {strDashTab === 'active' && (
+            <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
+          )}
         </div>
         <AppTable
-          dataSource={arrInstances}
+          dataSource={arrDisplayInstances}
           columns={arrColumns}
           loading={bLoading}
           pagination={{ pageSize: 15 }}
           strEmptyText="해당 조건의 이벤트가 없습니다."
-          // 선택한 행 바로 아래에 인라인 스테퍼 표시
           expandable={{
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => <InstanceStepper objInstance={r} />,
-            // 기본 expand 아이콘 숨김 — 행 클릭으로 제어
             expandIcon: () => null,
             rowExpandable: () => true,
           }}
-          rowClassName={(r) => r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : ''}
-          onRow={(r) => ({
+          // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
+          rowClassName={(r: IEventInstance) => {
+            if (r.nId === objSelectedRow?.nId) return 'ant-table-row-selected';
+            if (r.strStatus === 'live_verified' || setHiddenIds.has(r.nId)) return 'row-completed-dim';
+            return '';
+          }}
+          onRow={(r: IEventInstance) => ({
             onClick: () => setObjSelectedRow((prev) => prev?.nId === r.nId ? null : r),
             style: { cursor: 'pointer' },
           })}
@@ -868,6 +984,49 @@ const MyDashboardPage = () => {
                 style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
               />
             </div>
+          </Space>
+        )}
+      </Modal>
+
+      {/* DBA 쿼리 직접 수정 모달 */}
+      <Modal
+        title={
+          <Space>
+            <CodeOutlined />
+            <span>DBA 쿼리 수정</span>
+            {objQueryEditInstance && (
+              <Tag color={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strColor}>
+                {OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strLabel}
+              </Tag>
+            )}
+          </Space>
+        }
+        open={bQueryEditOpen}
+        onOk={fnSaveQueryEdit}
+        onCancel={() => setBQueryEditOpen(false)}
+        okText="저장"
+        cancelText="취소"
+        confirmLoading={bQuerySaving}
+        width={740}
+      >
+        {objQueryEditInstance && (
+          <Space direction="vertical" style={{ width: '100%', marginTop: 8 }} size="middle">
+            <Alert
+              type="warning"
+              showIcon
+              message="DBA 전용 쿼리 직접 수정"
+              description={`이벤트: ${objQueryEditInstance.strEventName} | 수정 이력이 진행 로그에 기록됩니다.`}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
+            </div>
+            <Input.TextArea
+              value={strQueryEditValue}
+              onChange={(e) => setStrQueryEditValue(e.target.value)}
+              autoSize={{ minRows: 10, maxRows: 25 }}
+              style={{ fontFamily: 'monospace', fontSize: 13 }}
+              placeholder="SQL 쿼리를 입력하세요..."
+            />
           </Space>
         )}
       </Modal>

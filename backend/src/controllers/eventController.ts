@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { arrEvents, fnGetNextEventId } from '../data/events';
+import { arrEvents, fnGetNextEventId, fnSaveEvents } from '../data/events';
 import { arrProducts } from '../data/products';
 
 // 이벤트 목록 조회 (모든 인증 사용자)
@@ -39,6 +39,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     };
 
     arrEvents.push(objNew);
+    fnSaveEvents();
     res.json({ bSuccess: true, objEvent: objNew });
   } catch (error) {
     console.error('이벤트 생성 오류:', error);
@@ -75,6 +76,7 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       arrEvents[nIndex].strProductName = objProduct?.strName || '';
     }
 
+    fnSaveEvents();
     res.json({ bSuccess: true, objEvent: arrEvents[nIndex] });
   } catch (error) {
     console.error('이벤트 수정 오류:', error);
@@ -94,6 +96,7 @@ export const fnDeleteEvent = async (req: Request, res: Response): Promise<void> 
     }
 
     arrEvents.splice(nIndex, 1);
+    fnSaveEvents();
     res.json({ bSuccess: true, strMessage: '이벤트가 삭제되었습니다.' });
   } catch (error) {
     console.error('이벤트 삭제 오류:', error);

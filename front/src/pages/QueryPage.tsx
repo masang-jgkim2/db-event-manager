@@ -209,8 +209,8 @@ const QueryPage = () => {
       } else {
         messageApi.error(objResult.strMessage || '이벤트 생성에 실패했습니다.');
       }
-    } catch {
-      messageApi.error('서버 연결에 실패했습니다.');
+    } catch (error: any) {
+      messageApi.error(error?.message || '서버 연결에 실패했습니다.');
     } finally {
       setBSubmitting(false);
     }

@@ -1,4 +1,4 @@
-// 이벤트 템플릿 데이터 저장소 (추후 DB 연동 시 교체)
+import { fnLoadJson, fnSaveJson } from './jsonStore';
 
 export interface IEventTemplate {
   nId: number;
@@ -14,9 +14,11 @@ export interface IEventTemplate {
   dtCreatedAt: string;
 }
 
-export const arrEvents: IEventTemplate[] = [];
+const STR_FILE = 'events.json';
 
-// 다음 ID
-export const fnGetNextEventId = (): number => {
-  return arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;
-};
+export const arrEvents: IEventTemplate[] = fnLoadJson<IEventTemplate>(STR_FILE, []);
+
+export const fnSaveEvents = () => fnSaveJson(STR_FILE, arrEvents);
+
+export const fnGetNextEventId = (): number =>
+  arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;

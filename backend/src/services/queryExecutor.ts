@@ -273,12 +273,47 @@ export const fnExecuteQueryWithText = async (
       await fnInvalidatePool(objConn.nId);
     }
 
+    // ── 오류 행 번호 → 실제 쿼리 내 위치로 변환 ─────────────────
+    // MSSQL lineNumber는 실행된 배치 전체 기준이므로
+    // BEGIN TRAN 래퍼 오프셋(1줄)과 각 쿼리의 누적 줄 수를 계산해
+    // "몇 번째 쿼리 / 해당 쿼리 내 몇 번째 줄"로 변환한다.
+    let strLineInfo: string | null = null;
+    if (error?.lineNumber) {
+      const nBatchLine: number = error.lineNumber;
+      const bHasTran = arrQueries.length > 1;
+      // BEGIN TRAN 줄이 1줄이므로 트랜잭션 래퍼가 있으면 -1 오프셋
+      const nOffset = bHasTran ? 1 : 0;
+      const nAdjusted = nBatchLine - nOffset;   // 쿼리 본문 기준 줄 번호
+
+      // 각 쿼리의 줄 수 누적합으로 어느 쿼리에 해당하는지 찾기
+      let nAccum = 0;
+      let nQueryIdx = -1;
+      let nLineInQuery = nAdjusted;
+      for (let i = 0; i < arrQueries.length; i++) {
+        const nLines = arrQueries[i].split('\n').length;
+        // 쿼리 사이 세미콜론도 1줄로 간주 (배치 조립 시 ";\n" 추가)
+        const nSepLines = bHasTran && i < arrQueries.length - 1 ? 1 : 0;
+        if (nAdjusted <= nAccum + nLines) {
+          nQueryIdx    = i;
+          nLineInQuery = nAdjusted - nAccum;
+          break;
+        }
+        nAccum += nLines + nSepLines;
+      }
+
+      if (nQueryIdx >= 0) {
+        strLineInfo = `[쿼리 ${nQueryIdx + 1}번 / ${nLineInQuery}번째 줄]`;
+      } else {
+        strLineInfo = `[배치 ${nBatchLine}번째 줄]`;
+      }
+    }
+
     // 오류 메시지 사용자 친화적으로 가공
     // MSSQL 오류는 number/lineNumber/serverName 등 포함 가능
     const strUserError = [
       strErrorMsg,
-      error?.number ? `[SQL 오류 번호: ${error.number}]` : null,
-      error?.lineNumber ? `[줄 번호: ${error.lineNumber}]` : null,
+      error?.number   ? `[SQL 오류 번호: ${error.number}]` : null,
+      strLineInfo,
     ].filter(Boolean).join(' ');
 
     return {

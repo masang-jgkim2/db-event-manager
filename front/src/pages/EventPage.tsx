@@ -83,28 +83,26 @@ const EventPage = () => {
     try {
       const objValues = await form.validateFields();
       const objProduct = arrProducts.find((p) => p.nId === objValues.nProductId);
+      const objEventData = { ...objValues, strProductName: objProduct?.strName || '' };
 
-      const objEventData = {
-        ...objValues,
-        strProductName: objProduct?.strName || '',
-      };
+      const result = objEditEvent
+        ? await fnUpdateEvent(objEditEvent.nId, objEventData)
+        : await fnAddEvent(objEventData);
 
-      if (objEditEvent) {
-        const bOk = await fnUpdateEvent(objEditEvent.nId, objEventData);
-        messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 수정되었습니다.' : '수정에 실패했습니다.');
+      if (result.bSuccess) {
+        messageApi.success(result.strMessage);
+        fnCloseModal();
       } else {
-        const bOk = await fnAddEvent(objEventData);
-        messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 등록되었습니다.' : '등록에 실패했습니다.');
+        messageApi.error(result.strMessage);
       }
-      fnCloseModal();
     } catch {
-      // 유효성 검사 실패
+      // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
     }
   };
 
   const fnHandleDelete = async (nId: number) => {
-    const bOk = await fnDeleteEvent(nId);
-    messageApi[bOk ? 'success' : 'error'](bOk ? '이벤트 템플릿이 삭제되었습니다.' : '삭제에 실패했습니다.');
+    const result = await fnDeleteEvent(nId);
+    messageApi[result.bSuccess ? 'success' : 'error'](result.strMessage);
   };
 
   // 입력 형식 라벨

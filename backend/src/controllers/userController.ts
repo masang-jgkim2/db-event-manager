@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { arrUsers, fnGetNextId } from '../data/users';
+import { arrUsers, fnGetNextId, fnSaveUsers } from '../data/users';
 import { fnGetMergedPermissions } from '../data/roles';
 
 // 사용자 목록 조회 (관리자 전용)
@@ -9,12 +9,12 @@ export const fnGetUsers = async (_req: Request, res: Response): Promise<void> =>
     const arrSafeUsers = arrUsers.map((u) => {
       const arrPermissions = fnGetMergedPermissions(u.arrRoles);
       return {
-        nId: u.nId,
-        strUserId: u.strUserId,
+        nId:            u.nId,
+        strUserId:      u.strUserId,
         strDisplayName: u.strDisplayName,
-        arrRoles: u.arrRoles,
+        arrRoles:       u.arrRoles,
         arrPermissions,
-        dtCreatedAt: u.dtCreatedAt,
+        dtCreatedAt:    u.dtCreatedAt,
       };
     });
     res.json({ bSuccess: true, arrUsers: arrSafeUsers });
@@ -36,31 +36,35 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
 
     const objExisting = arrUsers.find((u) => u.strUserId === strUserId);
     if (objExisting) {
-      res.status(400).json({ bSuccess: false, strMessage: '이미 존재하는 아이디입니다.' });
+      res.status(409).json({
+        bSuccess: false,
+        strErrorCode: 'DUPLICATE',
+        strMessage: `[${strUserId}] 아이디가 이미 존재합니다.`,
+      });
       return;
     }
 
     const strHashedPassword = await bcrypt.hash(strPassword, 10);
     const objNewUser = {
-      nId: fnGetNextId(),
+      nId:            fnGetNextId(),
       strUserId,
-      strPassword: strHashedPassword,
+      strPassword:    strHashedPassword,
       strDisplayName,
       arrRoles,
-      dtCreatedAt: new Date(),
+      dtCreatedAt:    new Date(),
     };
-
     arrUsers.push(objNewUser);
+    fnSaveUsers();
     const arrPermissions = fnGetMergedPermissions(objNewUser.arrRoles);
 
     res.json({
       bSuccess: true,
       strMessage: '사용자가 생성되었습니다.',
       user: {
-        nId: objNewUser.nId,
-        strUserId: objNewUser.strUserId,
+        nId:            objNewUser.nId,
+        strUserId:      objNewUser.strUserId,
         strDisplayName: objNewUser.strDisplayName,
-        arrRoles: objNewUser.arrRoles,
+        arrRoles:       objNewUser.arrRoles,
         arrPermissions,
       },
     });
@@ -70,10 +74,10 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 사용자 수정 (이름 + 역할 수정 가능, 아이디는 불가)
+// 사용자 수정 (이름 + 역할 수정 가능, 아이디 불가)
 export const fnUpdateUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const objUser = arrUsers.find((u) => u.nId === nId);
 
     if (!objUser) {
@@ -82,19 +86,19 @@ export const fnUpdateUser = async (req: Request, res: Response): Promise<void> =
     }
 
     const { strDisplayName, arrRoles } = req.body;
-
     if (strDisplayName !== undefined) objUser.strDisplayName = strDisplayName;
     if (Array.isArray(arrRoles) && arrRoles.length > 0) objUser.arrRoles = arrRoles;
 
+    fnSaveUsers();
     const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
     res.json({
       bSuccess: true,
       strMessage: '사용자가 수정되었습니다.',
       user: {
-        nId: objUser.nId,
-        strUserId: objUser.strUserId,
+        nId:            objUser.nId,
+        strUserId:      objUser.strUserId,
         strDisplayName: objUser.strDisplayName,
-        arrRoles: objUser.arrRoles,
+        arrRoles:       objUser.arrRoles,
         arrPermissions,
       },
     });
@@ -121,6 +125,7 @@ export const fnDeleteUser = async (req: Request, res: Response): Promise<void> =
     }
 
     arrUsers.splice(nIndex, 1);
+    fnSaveUsers();
     res.json({ bSuccess: true, strMessage: '사용자가 삭제되었습니다.' });
   } catch (error) {
     console.error('사용자 삭제 오류:', error);
@@ -146,6 +151,7 @@ export const fnResetPassword = async (req: Request, res: Response): Promise<void
     }
 
     objUser.strPassword = await bcrypt.hash(strNewPassword, 10);
+    fnSaveUsers();
     res.json({ bSuccess: true, strMessage: '비밀번호가 초기화되었습니다.' });
   } catch (error) {
     console.error('비밀번호 초기화 오류:', error);

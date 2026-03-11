@@ -26,3 +26,11 @@ body {
 .ant-menu {
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
+
+/* 완료·숨김 이벤트 행 — 눈에 잘 안 띄도록 흐리게 */
+.row-completed-dim td {
+  opacity: 0.45;
+}
+.row-completed-dim:hover td {
+  opacity: 0.7;
+}

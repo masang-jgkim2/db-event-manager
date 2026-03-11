@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { arrDbConnections, fnGetNextDbConnectionId } from '../data/dbConnections';
+import { arrDbConnections, fnGetNextDbConnectionId, fnSaveDbConnections } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { IDbConnection } from '../types';
 import { fnTestDbConnection } from '../db/dbManager';
@@ -7,11 +7,7 @@ import { fnTestDbConnection } from '../db/dbManager';
 // DB 접속 정보 목록 조회
 export const fnGetDbConnections = async (_req: Request, res: Response): Promise<void> => {
   try {
-    // 비밀번호 마스킹 처리
-    const arrSafe = arrDbConnections.map((c) => ({
-      ...c,
-      strPassword: '••••••••',
-    }));
+    const arrSafe = arrDbConnections.map((c) => ({ ...c, strPassword: '••••••••' }));
     res.json({ bSuccess: true, arrDbConnections: arrSafe });
   } catch (error) {
     console.error('DB 접속 정보 조회 오류:', error);
@@ -37,38 +33,38 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
       (c) => c.nProductId === nProductId && c.strEnv === strEnv
     );
     if (objExisting) {
-      res.status(400).json({
+      const objProduct     = arrProducts.find((p) => p.nId === nProductId);
+      const strProductName = objProduct?.strName || `프로덕트 #${nProductId}`;
+      res.status(409).json({
         bSuccess: false,
-        strMessage: '해당 프로덕트의 같은 환경 접속 정보가 이미 존재합니다. 수정을 이용해주세요.',
+        strErrorCode: 'DUPLICATE',
+        strMessage: `[${strProductName}] 프로덕트의 [${strEnv.toUpperCase()}] 환경 접속 정보가 이미 등록되어 있습니다. 기존 항목을 수정해주세요.`,
       });
       return;
     }
 
-    // 프로덕트명 자동 매핑
-    const objProduct = arrProducts.find((p) => p.nId === nProductId);
+    const objProduct     = arrProducts.find((p) => p.nId === nProductId);
     const strProductName = objProduct?.strName || '';
-
-    // 기본 포트 자동 설정
-    const nFinalPort = nPort || (strDbType === 'mssql' ? 1433 : 3306);
+    const nFinalPort     = nPort || (strDbType === 'mssql' ? 1433 : 3306);
 
     const objNew: IDbConnection = {
-      nId: fnGetNextDbConnectionId(),
+      nId:          fnGetNextDbConnectionId(),
       nProductId,
       strProductName,
-      strEnv: strEnv as 'qa' | 'live',
-      strDbType: strDbType as 'mssql' | 'mysql',
+      strEnv:       strEnv as IDbConnection['strEnv'],
+      strDbType:    strDbType as IDbConnection['strDbType'],
       strHost,
-      nPort: nFinalPort,
+      nPort:        nFinalPort,
       strDatabase,
       strUser,
       strPassword,
-      bIsActive: true,
-      dtCreatedAt: new Date().toISOString(),
-      dtUpdatedAt: new Date().toISOString(),
+      bIsActive:    true,
+      dtCreatedAt:  new Date().toISOString(),
+      dtUpdatedAt:  new Date().toISOString(),
     };
 
     arrDbConnections.push(objNew);
-
+    fnSaveDbConnections();
     res.json({
       bSuccess: true,
       strMessage: 'DB 접속 정보가 등록되었습니다.',
@@ -83,7 +79,7 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
 // DB 접속 정보 수정
 export const fnUpdateDbConnection = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const objConn = arrDbConnections.find((c) => c.nId === nId);
 
     if (!objConn) {
@@ -91,23 +87,18 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
       return;
     }
 
-    const {
-      strHost, nPort, strDatabase, strUser, strPassword,
-      strDbType, bIsActive,
-    } = req.body;
+    const { strHost, nPort, strDatabase, strUser, strPassword, strDbType, bIsActive } = req.body;
 
-    if (strHost !== undefined) objConn.strHost = strHost;
-    if (nPort !== undefined) objConn.nPort = nPort;
+    if (strHost     !== undefined) objConn.strHost     = strHost;
+    if (nPort       !== undefined) objConn.nPort       = nPort;
     if (strDatabase !== undefined) objConn.strDatabase = strDatabase;
-    if (strUser !== undefined) objConn.strUser = strUser;
-    if (strPassword !== undefined && strPassword !== '••••••••') {
-      objConn.strPassword = strPassword;  // 마스킹값이 아닐 때만 업데이트
-    }
-    if (strDbType !== undefined) objConn.strDbType = strDbType;
-    if (bIsActive !== undefined) objConn.bIsActive = bIsActive;
+    if (strUser     !== undefined) objConn.strUser     = strUser;
+    if (strPassword !== undefined && strPassword !== '••••••••') objConn.strPassword = strPassword;
+    if (strDbType   !== undefined) objConn.strDbType   = strDbType;
+    if (bIsActive   !== undefined) objConn.bIsActive   = bIsActive;
     objConn.dtUpdatedAt = new Date().toISOString();
+    fnSaveDbConnections();
 
-    // 접속 정보가 변경됐으므로 커넥션 풀 캐시 무효화
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);
 
@@ -125,7 +116,7 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
 // DB 접속 정보 삭제
 export const fnDeleteDbConnection = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const nIndex = arrDbConnections.findIndex((c) => c.nId === nId);
 
     if (nIndex === -1) {
@@ -134,8 +125,8 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
     }
 
     arrDbConnections.splice(nIndex, 1);
+    fnSaveDbConnections();
 
-    // 커넥션 풀 캐시 무효화
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);
 
@@ -149,7 +140,7 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
 // 연결 테스트
 export const fnTestConnection = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId = Number(req.params.id);
+    const nId    = Number(req.params.id);
     const objConn = arrDbConnections.find((c) => c.nId === nId);
 
     if (!objConn) {
