@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Table, theme as antdTheme } from 'antd';
 import type { TableProps, TableColumnType } from 'antd';
 import {
@@ -16,6 +16,10 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// 컬럼 너비 저장 키
+const fnWidthStorageKey = (strTableId: string) => `app_table_col_width_${strTableId}`;
+const N_MIN_COL_WIDTH = 40;
 
 export type { TableColumnType as TAppColumn };
 
@@ -71,14 +75,45 @@ const fnSaveOrder = (strTableId: string, arrOrder: string[]): void => {
   }
 };
 
-// ─── 드래그 가능한 헤더 셀 ──────────────────────────────────
+// 저장된 컬럼 너비 로드
+const fnLoadWidths = (strTableId: string): Record<string, number> => {
+  try {
+    const strSaved = localStorage.getItem(fnWidthStorageKey(strTableId));
+    if (!strSaved) return {};
+    const obj = JSON.parse(strSaved) as Record<string, number>;
+    return typeof obj === 'object' && obj !== null ? obj : {};
+  } catch {
+    return {};
+  }
+};
+
+// 컬럼 너비 저장
+const fnSaveWidths = (strTableId: string, objWidths: Record<string, number>): void => {
+  try {
+    localStorage.setItem(fnWidthStorageKey(strTableId), JSON.stringify(objWidths));
+  } catch {
+    // ignore
+  }
+};
+
+// 리사이즈 콜백 전달용 컨텍스트
+interface IResizeContextValue {
+  setColWidth: (strColKey: string, nWidth: number) => void;
+  strTableId?: string;
+}
+const ResizeContext = React.createContext<IResizeContextValue | null>(null);
+
+// ─── 드래그(순서) + 리사이즈(너비) 가능한 헤더 셀 ──────────────────────────────────
 interface IDraggableHeaderCellProps extends React.HTMLAttributes<HTMLTableCellElement> {
   'data-drag-id': string;
+  'data-col-key'?: string;
 }
 
 const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
   const { token } = antdTheme.useToken();
   const strId = props['data-drag-id'];
+  const strColKey = props['data-col-key'];
+  const ctxResize = React.useContext(ResizeContext);
 
   const {
     attributes,
@@ -89,9 +124,39 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
     isDragging,
   } = useSortable({ id: strId });
 
-  const { 'data-drag-id': _dragId, style, ...restProps } = props;
+  const { 'data-drag-id': _dragId, 'data-col-key': _colKey, style, children, ...restProps } = props;
+  const nStartXRef = useRef(0);
+  const nStartWidthRef = useRef(0);
 
-  // scaleX/scaleY 제거 — 드래그 중 셀 크기 변형 방지
+  const fnHandleResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!strColKey || !ctxResize) return;
+      const th = (e.target as HTMLElement).closest('th');
+      if (!th) return;
+      nStartXRef.current = e.clientX;
+      nStartWidthRef.current = th.offsetWidth;
+
+      const fnMove = (e2: MouseEvent) => {
+        const nDelta = e2.clientX - nStartXRef.current;
+        const nNew = Math.max(N_MIN_COL_WIDTH, nStartWidthRef.current + nDelta);
+        ctxResize.setColWidth(strColKey, nNew);
+      };
+      const fnUp = () => {
+        document.removeEventListener('mousemove', fnMove);
+        document.removeEventListener('mouseup', fnUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', fnMove);
+      document.addEventListener('mouseup', fnUp);
+    },
+    [strColKey, ctxResize],
+  );
+
   const strTransform = transform
     ? CSS.Transform.toString({ ...transform, scaleX: 1, scaleY: 1 })
     : undefined;
@@ -108,15 +173,33 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
         opacity: isDragging ? 0.55 : 1,
         background: isDragging ? token.colorPrimaryBg : undefined,
         zIndex: isDragging ? 2 : undefined,
-        // 드래그 중에도 셀 크기 고정
         whiteSpace: 'nowrap',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
+        position: 'relative',
       }}
       {...attributes}
       {...listeners}
       {...restProps}
-    />
+    >
+      {children}
+      {/* 컬럼 우측 리사이즈 핸들 */}
+      {strColKey && ctxResize && (
+        <div
+          role="presentation"
+          onMouseDown={fnHandleResizeMouseDown}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 8,
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      )}
+    </th>
   );
 };
 
@@ -154,6 +237,27 @@ function AppTable<T extends object>({
     const arrKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
     return strTableId ? fnLoadOrder(strTableId, arrKeys) : arrKeys;
   });
+
+  // 컬럼 너비 (리사이즈 드래그로 변경, strTableId 있으면 localStorage 저장)
+  const [objWidths, setObjWidths] = useState<Record<string, number>>(() =>
+    strTableId ? fnLoadWidths(strTableId) : {},
+  );
+
+  const fnSetColWidth = useCallback(
+    (strColKey: string, nWidth: number) => {
+      setObjWidths((prev) => {
+        const next = { ...prev, [strColKey]: nWidth };
+        if (strTableId) fnSaveWidths(strTableId, next);
+        return next;
+      });
+    },
+    [strTableId],
+  );
+
+  const ctxResizeValue = useMemo<IResizeContextValue | null>(
+    () => (bDraggableColumns ? { setColWidth: fnSetColWidth, strTableId } : null),
+    [bDraggableColumns, fnSetColWidth, strTableId],
+  );
 
   // columns prop이 교체됐을 때 순서 재계산 (새 컬럼 반영)
   if (prevColsRef.current !== columns) {
@@ -193,7 +297,7 @@ function AppTable<T extends object>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strTableId]);
 
-  // 현재 순서대로 컬럼 배열 재정렬 + onHeaderCell 주입
+  // 현재 순서대로 컬럼 배열 재정렬 + 너비 반영 + onHeaderCell 주입
   const arrSortedColumns: TableColumnType<T>[] | undefined =
     bDraggableColumns && columns
       ? arrOrder
@@ -203,12 +307,19 @@ function AppTable<T extends object>({
             ),
           )
           .filter(Boolean)
-          .map((col) => ({
-            ...(col as TableColumnType<T>),
-            onHeaderCell: () => ({
-              'data-drag-id': fnGetColKey(col as TableColumnType<T>, 0),
-            }),
-          }))
+          .map((col) => {
+            const colTyped = col as TableColumnType<T>;
+            const strColKey = fnGetColKey(colTyped, 0);
+            const nWidth = objWidths[strColKey] ?? colTyped.width;
+            return {
+              ...colTyped,
+              width: typeof nWidth === 'number' ? nWidth : colTyped.width,
+              onHeaderCell: () => ({
+                'data-drag-id': strColKey,
+                'data-col-key': strColKey,
+              }),
+            };
+          })
       : (columns as TableColumnType<T>[] | undefined);
 
   const objPagination =
@@ -254,12 +365,18 @@ function AppTable<T extends object>({
 
   if (!bDraggableColumns) return objTable;
 
-  return (
+  const tableContent = (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={fnOnDragEnd}>
       <SortableContext items={arrOrder} strategy={horizontalListSortingStrategy}>
         {objTable}
       </SortableContext>
     </DndContext>
+  );
+
+  return (
+    <ResizeContext.Provider value={ctxResizeValue!}>
+      {tableContent}
+    </ResizeContext.Provider>
   );
 }
 
