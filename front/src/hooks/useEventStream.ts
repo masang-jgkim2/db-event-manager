@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { useAuthStore } from '../stores/useAuthStore';
 
@@ -8,16 +8,19 @@ const STR_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
 // MainLayout에 한 번만 마운트하면 앱 전체에서 동작
 export const useEventStream = () => {
   const refEventSource = useRef<EventSource | null>(null);
+  // bConnected를 ref 대신 state로 관리해 헤더에 실시간 반영
+  const [bConnected, setBConnected] = useState(false);
+
   const bIsAuthenticated = useAuthStore((s) => s.bIsAuthenticated);
   const strToken = useAuthStore((s) => s.strToken);
   const fnHandleSseEvent = useEventInstanceStore((s) => s.fnHandleSseEvent);
 
   useEffect(() => {
     if (!bIsAuthenticated || !strToken) {
-      // 로그아웃 시 기존 연결 종료
       if (refEventSource.current) {
         refEventSource.current.close();
         refEventSource.current = null;
+        setBConnected(false);
       }
       return;
     }
@@ -32,9 +35,20 @@ export const useEventStream = () => {
 
     objEs.addEventListener('connected', () => {
       console.log('[SSE] 연결됨');
+      setBConnected(true);
     });
 
-    // 관여한 인스턴스 전체 업데이트 (내가 관여한 이벤트)
+    // 다른 유저가 생성한 신규 이벤트 수신
+    objEs.addEventListener('instance_created', (e: MessageEvent) => {
+      try {
+        const objInstance = JSON.parse(e.data);
+        fnHandleSseEvent('instance_created', objInstance);
+      } catch {
+        console.warn('[SSE] instance_created 파싱 실패');
+      }
+    });
+
+    // 관여한 인스턴스 전체 업데이트
     objEs.addEventListener('instance_updated', (e: MessageEvent) => {
       try {
         const objInstance = JSON.parse(e.data);
@@ -44,7 +58,7 @@ export const useEventStream = () => {
       }
     });
 
-    // 상태 변경 요약 (관여하지 않은 이벤트 - "전체 이벤트" 필터용)
+    // 상태 변경 요약 (관여하지 않은 이벤트)
     objEs.addEventListener('instance_status_changed', (e: MessageEvent) => {
       try {
         const objSummary = JSON.parse(e.data);
@@ -55,18 +69,16 @@ export const useEventStream = () => {
     });
 
     objEs.onerror = () => {
-      // 연결 오류 시 EventSource가 자동 재연결을 시도함
-      // 명시적으로 끊기 전까지는 재연결 유지
+      setBConnected(false);
       console.warn('[SSE] 연결 오류 - 자동 재연결 대기');
     };
 
     return () => {
       objEs.close();
       refEventSource.current = null;
+      setBConnected(false);
     };
   }, [bIsAuthenticated, strToken, fnHandleSseEvent]);
 
-  return {
-    bConnected: refEventSource.current?.readyState === EventSource.OPEN,
-  };
+  return { bConnected };
 };

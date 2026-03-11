@@ -212,6 +212,7 @@ const MyDashboardPage = () => {
 
   // 전역 이벤트 인스턴스 스토어 (SSE 실시간 업데이트 포함)
   const arrInstances = useEventInstanceStore((s) => s.arrInstances);
+  const arrAllInstances = useEventInstanceStore((s) => s.arrAllInstances);
   const bLoading = useEventInstanceStore((s) => s.bLoading);
   const strFilter = useEventInstanceStore((s) => s.strFilter);
   const fnFetchInstances = useEventInstanceStore((s) => s.fnFetchInstances);
@@ -333,23 +334,23 @@ const MyDashboardPage = () => {
     messageApi.success('클립보드에 복사되었습니다.');
   };
 
-  // 통계
-  const nTotal = arrInstances.length;
-  const nMyAction = arrInstances.filter((e) => {
-    const arrTrans: Record<string, string[]> = {
-      event_created: ['game_manager', 'game_designer', 'admin'],
-      confirm_requested: ['dba', 'admin'],
-      dba_confirmed: ['game_manager', 'game_designer', 'admin'],
-      qa_requested: ['dba', 'admin'],
-      qa_deployed: ['game_manager', 'game_designer', 'admin'],
-      qa_verified: ['game_manager', 'game_designer', 'admin'],
-      live_requested: ['dba', 'admin'],
-      live_deployed: ['game_manager', 'game_designer', 'admin'],
-    };
-    return arrTrans[e.strStatus]?.some((r) => arrRoles.includes(r));
-  }).length;
-  const nInProgress = arrInstances.filter((e) => e.strStatus !== 'live_verified').length;
-  const nCompleted = arrInstances.filter((e) => e.strStatus === 'live_verified').length;
+  // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
+  const OBJ_ACTION_ROLES: Record<string, string[]> = {
+    event_created: ['game_manager', 'game_designer', 'admin'],
+    confirm_requested: ['dba', 'admin'],
+    dba_confirmed: ['game_manager', 'game_designer', 'admin'],
+    qa_requested: ['dba', 'admin'],
+    qa_deployed: ['game_manager', 'game_designer', 'admin'],
+    qa_verified: ['game_manager', 'game_designer', 'admin'],
+    live_requested: ['dba', 'admin'],
+    live_deployed: ['game_manager', 'game_designer', 'admin'],
+  };
+  const nTotal = arrAllInstances.length;
+  const nMyAction = arrAllInstances.filter((e) =>
+    OBJ_ACTION_ROLES[e.strStatus]?.some((r) => arrRoles.includes(r))
+  ).length;
+  const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
+  const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
   // 액션 버튼 렌더링 (역할 + 권한 + 상태 기반)
   const fnRenderActions = (r: IEventInstance) => {
@@ -526,12 +527,12 @@ const MyDashboardPage = () => {
     },
   ];
 
-  // 필터 옵션
+  // 필터 옵션 — 전체를 첫 번째로
   const arrFilterOptions = [
+    { label: '전체 이벤트', value: 'all' },
     { label: '내가 관여한 이벤트', value: 'involved' },
     { label: '내가 생성한 이벤트', value: 'mine' },
     { label: '내가 처리할 이벤트', value: 'my_action' },
-    { label: '전체 이벤트', value: 'all' },
   ];
 
   return (

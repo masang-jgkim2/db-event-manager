@@ -6,15 +6,16 @@ import {
 } from '../api/eventInstanceApi';
 
 interface IEventInstanceStore {
+  // 현재 필터 기준 목록 (테이블 표시용)
   arrInstances: IEventInstance[];
+  // 전체 목록 캐시 (통계, SSE 신규 등록 판단용)
+  arrAllInstances: IEventInstance[];
   bLoading: boolean;
   strFilter: string;
 
-  // 데이터 로드
   fnFetchInstances: (strFilter?: string) => Promise<void>;
   fnSetFilter: (strFilter: string) => void;
 
-  // 상태 변경 (낙관적 업데이트 + 서버 동기화)
   fnUpdateStatus: (
     nId: number,
     strNextStatus: TEventStatus,
@@ -22,43 +23,70 @@ interface IEventInstanceStore {
     strActorName: string
   ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance }>;
 
-  // DB 실행
   fnExecuteQuery: (
     nId: number,
     strEnv: 'qa' | 'live',
     strActorName: string
   ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance; objExecutionResult?: unknown }>;
 
-  // 인스턴스 수정
   fnUpdateInstance: (
     nId: number,
     objData: Record<string, unknown>
-  ) => Promise<{ bSuccess: boolean; strMessage?: string }>;
+  ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance }>;
 
-  // 인스턴스 생성
   fnCreateInstance: (
     objData: Record<string, unknown>
   ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance }>;
 
-  // SSE 이벤트 처리 (서버 push → 스토어 동기화)
   fnHandleSseEvent: (
-    strEvent: 'instance_updated' | 'instance_status_changed',
+    strEvent: 'instance_updated' | 'instance_status_changed' | 'instance_created',
     objPayload: unknown
   ) => void;
 }
 
+// 두 목록에 동시에 인스턴스를 upsert하는 헬퍼
+const fnUpsertInstance = (
+  arrList: IEventInstance[],
+  objInstance: IEventInstance
+): IEventInstance[] => {
+  const bExists = arrList.some((e) => e.nId === objInstance.nId);
+  if (bExists) {
+    return arrList.map((e) => e.nId === objInstance.nId ? objInstance : e);
+  }
+  return [objInstance, ...arrList];
+};
+
+// 두 목록에서 상태만 업데이트하는 헬퍼
+const fnPatchStatus = (
+  arrList: IEventInstance[],
+  nId: number,
+  strStatus: TEventStatus
+): IEventInstance[] =>
+  arrList.map((e) => e.nId === nId ? { ...e, strStatus } : e);
+
 export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => ({
   arrInstances: [],
+  arrAllInstances: [],
   bLoading: false,
-  strFilter: 'involved',
+  strFilter: 'all',  // 기본값: 전체
 
   fnFetchInstances: async (strFilter?: string) => {
     const strActiveFilter = strFilter ?? get().strFilter;
     set({ bLoading: true });
     try {
-      const objResult = await fnApiGetInstances(strActiveFilter);
-      if (objResult.bSuccess) {
-        set({ arrInstances: objResult.arrInstances });
+      // 필터된 목록과 전체 목록을 병렬로 가져옴
+      const [objFiltered, objAll] = await Promise.all([
+        fnApiGetInstances(strActiveFilter),
+        strActiveFilter !== 'all' ? fnApiGetInstances('all') : Promise.resolve(null),
+      ]);
+      if (objFiltered.bSuccess) {
+        set({
+          arrInstances: objFiltered.arrInstances,
+          // 전체 필터면 arrAllInstances도 동일하게, 아니면 별도 조회 결과 사용
+          arrAllInstances: objAll?.bSuccess
+            ? objAll.arrInstances
+            : (strActiveFilter === 'all' ? objFiltered.arrInstances : get().arrAllInstances),
+        });
       }
     } finally {
       set({ bLoading: false });
@@ -73,11 +101,9 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
   fnUpdateStatus: async (nId, strNextStatus, strComment, strActorName) => {
     const objResult = await fnApiUpdateStatus(nId, strNextStatus, strComment, strActorName);
     if (objResult.bSuccess && objResult.objInstance) {
-      // 스토어 내 해당 인스턴스 즉시 업데이트 (SSE 도착 전 낙관적 반영)
       set((state) => ({
-        arrInstances: state.arrInstances.map((e) =>
-          e.nId === nId ? objResult.objInstance : e
-        ),
+        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
+        arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
     }
     return objResult;
@@ -88,14 +114,12 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
       const objResult = await fnApiExecuteQuery(nId, strEnv, strActorName);
       if (objResult.bSuccess && objResult.objInstance) {
         set((state) => ({
-          arrInstances: state.arrInstances.map((e) =>
-            e.nId === nId ? objResult.objInstance : e
-          ),
+          arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
+          arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
         }));
       }
       return objResult;
     } catch (error: any) {
-      // fnApiExecuteQuery 내부에서 이미 catch하므로 여기까지 오는 경우는 예외적 상황
       return {
         bSuccess: false,
         strMessage: error?.message || '알 수 없는 오류가 발생했습니다.',
@@ -107,9 +131,8 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
     const objResult = await fnApiUpdateInstance(nId, objData);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: state.arrInstances.map((e) =>
-          e.nId === nId ? objResult.objInstance : e
-        ),
+        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
+        arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
     }
     return objResult;
@@ -119,40 +142,38 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
     const objResult = await fnApiCreateInstance(objData);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: [objResult.objInstance, ...state.arrInstances],
+        arrInstances: [objResult.objInstance!, ...state.arrInstances],
+        arrAllInstances: [objResult.objInstance!, ...state.arrAllInstances],
       }));
     }
     return objResult;
   },
 
-  // SSE로 서버에서 push된 이벤트를 스토어에 반영
+  // SSE push → 스토어 동기화
   fnHandleSseEvent: (strEvent, objPayload) => {
-    if (strEvent === 'instance_updated') {
-      // 전체 인스턴스 객체 수신 - 존재하면 교체, 없으면 추가
+    if (strEvent === 'instance_created') {
+      // 다른 유저가 생성한 신규 이벤트 → 전체 목록과 현재 필터 목록 모두 추가
       const objInstance = objPayload as IEventInstance;
-      set((state) => {
-        const bExists = state.arrInstances.some((e) => e.nId === objInstance.nId);
-        if (bExists) {
-          return {
-            arrInstances: state.arrInstances.map((e) =>
-              e.nId === objInstance.nId ? objInstance : e
-            ),
-          };
-        }
-        // 현재 필터가 'all' 또는 'involved'인 경우에만 새 인스턴스 추가
-        const strFilter = state.strFilter;
-        if (strFilter === 'all' || strFilter === 'involved') {
-          return { arrInstances: [objInstance, ...state.arrInstances] };
-        }
-        return state;
-      });
+      set((state) => ({
+        arrAllInstances: fnUpsertInstance(state.arrAllInstances, objInstance),
+        // 현재 필터가 'all' 이면 표시 목록에도 추가
+        arrInstances: state.strFilter === 'all'
+          ? fnUpsertInstance(state.arrInstances, objInstance)
+          : state.arrInstances,
+      }));
+    } else if (strEvent === 'instance_updated') {
+      // 관여자에게 오는 전체 객체 업데이트
+      const objInstance = objPayload as IEventInstance;
+      set((state) => ({
+        arrInstances: fnUpsertInstance(state.arrInstances, objInstance),
+        arrAllInstances: fnUpsertInstance(state.arrAllInstances, objInstance),
+      }));
     } else if (strEvent === 'instance_status_changed') {
-      // 상태 요약 수신 - 해당 인스턴스의 상태만 업데이트
+      // 비관여자에게 오는 상태 요약 업데이트
       const objSummary = objPayload as { nId: number; strStatus: TEventStatus };
       set((state) => ({
-        arrInstances: state.arrInstances.map((e) =>
-          e.nId === objSummary.nId ? { ...e, strStatus: objSummary.strStatus } : e
-        ),
+        arrInstances: fnPatchStatus(state.arrInstances, objSummary.nId, objSummary.strStatus),
+        arrAllInstances: fnPatchStatus(state.arrAllInstances, objSummary.nId, objSummary.strStatus),
       }));
     }
   },

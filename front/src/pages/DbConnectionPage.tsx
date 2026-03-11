@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+
 import {
   Typography, Card, Table, Tag, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
@@ -15,6 +16,7 @@ import {
   fnApiTestDbConnection,
 } from '../api/dbConnectionApi';
 import { useProductStore } from '../stores/useProductStore';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection } from '../types';
 
 const { Title, Text } = Typography;
@@ -72,6 +74,7 @@ const DbConnectionPage = () => {
   }, [messageApi]);
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
+  useAutoRefresh(fnLoad);
 
   // 추가/수정 모달 열기
   const fnOpenModal = (objConn?: IDbConnection) => {

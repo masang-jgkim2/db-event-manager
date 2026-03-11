@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Typography,
   Card,
@@ -29,6 +29,7 @@ import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService } from '../types';
 
 const { Title, Text } = Typography;
@@ -54,8 +55,14 @@ const QueryPage = () => {
   const [bSubmitting, setBSubmitting] = useState(false);
 
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const arrEvents = useEventStore((s) => s.arrEvents);
+  const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const user = useAuthStore((s) => s.user);
+
+  // 페이지 진입 시 최신 프로덕트/이벤트 목록 로드
+  useEffect(() => { fnFetchProducts(); fnFetchEvents(); }, [fnFetchProducts, fnFetchEvents]);
+  useAutoRefresh(() => { fnFetchProducts(); fnFetchEvents(); });
 
   // 선택된 프로덕트
   const objSelectedProduct = useMemo(() => {

@@ -53,9 +53,21 @@ export const fnBroadcastAll = (strEvent: string, objData: unknown): void => {
   }
 };
 
+// 신규 이벤트 인스턴스 생성 브로드캐스트
+// 생성자 본인을 제외한 모든 연결된 유저에게 instance_created 전송
+export const fnBroadcastInstanceCreated = (objInstance: IEventInstance): void => {
+  const nCreatorId = objInstance.objCreator?.nUserId ?? 0;
+  for (const [nUserId, setClients] of mapClients.entries()) {
+    if (nUserId === nCreatorId) continue;  // 생성자 본인은 로컬에서 이미 반영
+    for (const res of setClients) {
+      fnSendEvent(res, 'instance_created', objInstance);
+    }
+  }
+};
+
 // 이벤트 인스턴스 상태 변경 브로드캐스트
-// - 관여자(생성자 + 처리자)에게는 전체 인스턴스 객체 전송
-// - 나머지 연결된 유저에게는 가벼운 상태 변경 알림만 전송
+// - 관여자(생성자 + 처리자)에게는 전체 인스턴스 객체 전송 (instance_updated)
+// - 나머지 연결된 유저에게는 가벼운 상태 변경 알림만 전송 (instance_status_changed)
 export const fnBroadcastInstanceUpdate = (objInstance: IEventInstance): void => {
   // 관여자 ID 수집
   const setInvolvedUserIds = new Set<number>();

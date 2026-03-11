@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
@@ -20,6 +20,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, TEventCategory, TEventType, TInputFormat } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
@@ -46,14 +47,20 @@ const EventPage = () => {
   const [messageApi, contextHolder] = message.useMessage();
 
   const arrEvents = useEventStore((s) => s.arrEvents);
+  const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const fnAddEvent = useEventStore((s) => s.fnAddEvent);
   const fnUpdateEvent = useEventStore((s) => s.fnUpdateEvent);
   const fnDeleteEvent = useEventStore((s) => s.fnDeleteEvent);
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
 
   // 관리 권한 여부 (없으면 조회 전용)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
   const bCanManage = arrPermissions.includes('event_template.manage');
+
+  // 페이지 진입 및 탭 포커스 시 자동 리페치
+  useEffect(() => { fnFetchEvents(); fnFetchProducts(); }, [fnFetchEvents, fnFetchProducts]);
+  useAutoRefresh(fnFetchEvents);
 
   const fnOpenModal = (objEvent?: IEventTemplate) => {
     if (objEvent) {

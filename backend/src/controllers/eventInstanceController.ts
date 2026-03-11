@@ -7,7 +7,7 @@ import { fnFindActiveConnection } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
-import { fnBroadcastInstanceUpdate } from '../services/sseBroadcaster';
+import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계)
@@ -91,8 +91,8 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
-    // 새 인스턴스 생성 알림 - 모든 연결된 클라이언트에 브로드캐스트
-    fnBroadcastInstanceUpdate(objNew);
+    // 생성자 외 모든 클라이언트에 신규 이벤트 알림 (instance_created)
+    fnBroadcastInstanceCreated(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
   } catch (error) {
     console.error('이벤트 인스턴스 생성 오류:', error);

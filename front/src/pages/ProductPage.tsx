@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
@@ -18,6 +18,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IProduct, IService } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
 
@@ -31,6 +32,7 @@ const ProductPage = () => {
   const [messageApi, contextHolder] = message.useMessage();
 
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const fnAddProduct = useProductStore((s) => s.fnAddProduct);
   const fnUpdateProduct = useProductStore((s) => s.fnUpdateProduct);
   const fnDeleteProduct = useProductStore((s) => s.fnDeleteProduct);
@@ -38,6 +40,10 @@ const ProductPage = () => {
   // 관리 권한 여부 (없으면 조회 전용)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
   const bCanManage = arrPermissions.includes('product.manage');
+
+  // 페이지 진입 및 탭 포커스 시 자동 리페치 (다른 유저가 수정한 내용 반영)
+  useEffect(() => { fnFetchProducts(); }, [fnFetchProducts]);
+  useAutoRefresh(fnFetchProducts);
 
   // 모달 열기
   const fnOpenModal = (objProduct?: IProduct) => {
