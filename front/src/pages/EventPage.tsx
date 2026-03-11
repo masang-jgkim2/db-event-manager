@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
-  Table,
   Modal,
   Form,
   Input,
@@ -16,6 +15,7 @@ import {
   Col,
   Divider,
 } from 'antd';
+import AppTable from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
@@ -203,12 +203,10 @@ const EventPage = () => {
       </div>
 
       <Card>
-        <Table
+        <AppTable
           dataSource={arrEvents}
           columns={arrColumns}
-          rowKey="nId"
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: '등록된 이벤트 템플릿이 없습니다.' }}
+          strEmptyText="등록된 이벤트 템플릿이 없습니다."
         />
       </Card>
 

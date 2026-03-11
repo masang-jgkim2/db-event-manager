@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography, Button, Table, Modal, Form, Input, Select, Space, Tag,
+  Typography, Button, Modal, Form, Input, Select, Space, Tag,
   Popconfirm, message, Card, Divider,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined } from '@ant-design/icons';
+import AppTable from '../components/AppTable';
 import {
   fnApiGetUsers, fnApiCreateUser, fnApiUpdateUser,
   fnApiDeleteUser, fnApiResetPassword,
@@ -254,14 +255,11 @@ const UserPage = () => {
       </div>
 
       <Card>
-        <Table
+        <AppTable
           dataSource={arrUsers}
           columns={arrColumns}
-          rowKey="nId"
           loading={bLoading}
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: '등록된 사용자가 없습니다.' }}
-          size="small"
+          strEmptyText="등록된 사용자가 없습니다."
         />
       </Card>
 

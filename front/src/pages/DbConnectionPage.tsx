@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import {
-  Typography, Card, Table, Tag, Space, Button, Modal,
+  Typography, Card, Tag, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
   message, Descriptions, Alert, Spin,
 } from 'antd';
@@ -10,6 +10,7 @@ import {
   ApiOutlined, CheckCircleOutlined, CloseCircleOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
+import AppTable from '../components/AppTable';
 import {
   fnApiGetDbConnections, fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
@@ -293,14 +294,12 @@ const DbConnectionPage = () => {
       )}
 
       <Card>
-        <Table
+        <AppTable
           dataSource={arrConnections}
           columns={arrColumns}
-          rowKey="nId"
           loading={bLoading}
           pagination={false}
-          locale={{ emptyText: '등록된 DB 접속 정보가 없습니다.' }}
-          size="small"
+          strEmptyText="등록된 DB 접속 정보가 없습니다."
         />
       </Card>
 

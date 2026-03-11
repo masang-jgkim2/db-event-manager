@@ -170,16 +170,18 @@ const MainLayout = () => {
         >
           <DatabaseOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
           {!bCollapsed && (
-            <Text
-              strong
+            // Sider는 항상 dark theme이므로 로고 텍스트는 흰색 고정
+            <span
               style={{
                 fontSize: 16,
+                fontWeight: 700,
                 marginLeft: 10,
                 whiteSpace: 'nowrap',
+                color: 'rgba(255, 255, 255, 0.95)',
               }}
             >
               이벤트 매니저
-            </Text>
+            </span>
           )}
         </div>
 

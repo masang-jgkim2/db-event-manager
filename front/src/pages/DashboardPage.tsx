@@ -1,4 +1,5 @@
-import { Card, Col, Row, Statistic, Typography, Table, Tag, Space } from 'antd';
+import { Card, Col, Row, Statistic, Typography, Tag, Space } from 'antd';
+import AppTable from '../components/AppTable';
 import {
   AppstoreOutlined,
   CalendarOutlined,
@@ -97,12 +98,11 @@ const DashboardPage = () => {
 
       {/* 프로덕트 현황 */}
       <Card style={{ marginTop: 24 }} title="프로덕트 현황">
-        <Table
+        <AppTable
           dataSource={arrProducts}
           columns={arrProductColumns}
-          rowKey="nId"
           pagination={false}
-          size="small"
+          strEmptyText="등록된 프로덕트가 없습니다."
         />
       </Card>
     </>

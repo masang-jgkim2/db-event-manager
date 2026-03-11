@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography, Card, Table, Tag, Space, Button, Modal,
+  Typography, Card, Tag, Space, Button, Modal,
   Form, Input, Checkbox, Popconfirm, message, Alert, Divider,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
+import AppTable from '../components/AppTable';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
@@ -175,14 +176,12 @@ const RolePage = () => {
       </div>
 
       <Card>
-        <Table
+        <AppTable
           dataSource={arrRoles}
           columns={arrColumns}
-          rowKey="nId"
           loading={bLoading}
           pagination={false}
-          locale={{ emptyText: '등록된 역할이 없습니다.' }}
-          size="small"
+          strEmptyText="등록된 역할이 없습니다."
         />
       </Card>
 

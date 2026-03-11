@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   Typography,
   Button,
-  Table,
   Modal,
   Form,
   Input,
@@ -15,6 +14,7 @@ import {
   Row,
   Col,
 } from 'antd';
+import AppTable from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -172,12 +172,10 @@ const ProductPage = () => {
       </div>
 
       <Card>
-        <Table
+        <AppTable
           dataSource={arrProducts}
           columns={arrColumns}
-          rowKey="nId"
-          pagination={{ pageSize: 10 }}
-          locale={{ emptyText: '등록된 프로덕트가 없습니다.' }}
+          strEmptyText="등록된 프로덕트가 없습니다."
         />
       </Card>
 

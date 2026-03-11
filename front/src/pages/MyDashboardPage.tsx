@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
-  Typography, Card, Table, Tag, Space, Button, Modal,
+  Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
-  Steps, Checkbox,
+  Steps, Checkbox, theme as antdTheme,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -12,6 +12,7 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
+import AppTable from '../components/AppTable';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import type {
@@ -47,6 +48,7 @@ const ExecutionResultModal = ({
   strEnv: 'qa' | 'live';
   onClose: () => void;
 }) => {
+  const { token } = antdTheme.useToken();
   if (!objResult) return null;
 
   return (
@@ -122,11 +124,11 @@ const ExecutionResultModal = ({
                     style={{
                       marginTop: 4,
                       padding: '6px 10px',
-                      background: '#1e1e1e',
-                      borderRadius: 4,
+                      background: token.colorFillTertiary,
+                      borderRadius: token.borderRadiusSM,
                       fontFamily: 'monospace',
                       fontSize: 11,
-                      color: '#d4d4d4',
+                      color: token.colorText,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-all',
                       maxHeight: 80,
@@ -170,11 +172,11 @@ const ExecutionResultModal = ({
             }>
               <div style={{
                 padding: '8px 12px',
-                background: '#1e1e1e',
-                borderRadius: 4,
+                background: token.colorFillTertiary,
+                borderRadius: token.borderRadiusSM,
                 fontFamily: 'monospace',
                 fontSize: 11,
-                color: '#d4d4d4',
+                color: token.colorText,
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-all',
                 maxHeight: 160,
@@ -232,13 +234,14 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
 const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
   const { arrSteps, nStep, bFinished } = fnBuildSteps(objInstance);
   const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
+  const { token } = antdTheme.useToken();
 
   return (
     <div style={{
       padding: '12px 24px 16px',
-      background: '#f8f9ff',
-      borderTop: '1px solid #e8eaf6',
-      borderBottom: '1px solid #e8eaf6',
+      background: token.colorFillAlter,
+      borderTop: `1px solid ${token.colorBorderSecondary}`,
+      borderBottom: `1px solid ${token.colorBorderSecondary}`,
     }}>
       <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
@@ -288,6 +291,7 @@ const MyDashboardPage = () => {
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
 
   const [messageApi, contextHolder] = message.useMessage();
+  const { token } = antdTheme.useToken();
 
   const user = useAuthStore((s) => s.user);
   const arrRoles = user?.arrRoles || [];
@@ -668,14 +672,12 @@ const MyDashboardPage = () => {
         <div style={{ marginBottom: 16 }}>
           <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
         </div>
-        <Table
+        <AppTable
           dataSource={arrInstances}
           columns={arrColumns}
-          rowKey="nId"
           loading={bLoading}
           pagination={{ pageSize: 15 }}
-          locale={{ emptyText: '해당 조건의 이벤트가 없습니다.' }}
-          size="small"
+          strEmptyText="해당 조건의 이벤트가 없습니다."
           // 선택한 행 바로 아래에 인라인 스테퍼 표시
           expandable={{
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
@@ -747,7 +749,7 @@ const MyDashboardPage = () => {
                 <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
               }>
                 <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                  style={{ fontFamily: 'monospace', fontSize: 12, background: '#1e1e1e', color: '#d4d4d4', border: 'none', borderRadius: 8, padding: 12 }} />
+                  style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
               </Card>
             )}
 
