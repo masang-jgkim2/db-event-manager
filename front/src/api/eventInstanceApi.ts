@@ -31,7 +31,20 @@ export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strC
 };
 
 // QA/LIVE DB 쿼리 실행 (실제 DB 반영)
+// axios는 4xx/5xx를 throw하므로 catch로 서버 응답을 그대로 반환
 export const fnApiExecuteQuery = async (nId: number, strEnv: 'qa' | 'live', strActorName: string = '') => {
-  const response = await apiClient.post(`/event-instances/${nId}/execute`, { strEnv, strActorName });
-  return response.data;
+  try {
+    const response = await apiClient.post(`/event-instances/${nId}/execute`, { strEnv, strActorName });
+    return response.data;
+  } catch (error: any) {
+    // 서버가 4xx/5xx로 응답한 경우 → 서버 바디를 그대로 반환 (bSuccess: false + strMessage)
+    if (error.response?.data) {
+      return error.response.data;
+    }
+    // 네트워크/타임아웃 오류
+    return {
+      bSuccess: false,
+      strMessage: error.message || '네트워크 오류가 발생했습니다.',
+    };
+  }
 };

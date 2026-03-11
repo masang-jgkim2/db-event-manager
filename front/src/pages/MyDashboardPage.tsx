@@ -144,10 +144,12 @@ const ExecutionResultModal = ({
           <Alert
             type="error"
             showIcon
-            message="쿼리 실행 실패"
+            message="실행 실패"
             description={
               <Space direction="vertical" size={4}>
-                <Text>{objResult.strError}</Text>
+                <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {objResult.strError}
+                </Text>
                 {objResult.strRollbackMsg && (
                   <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
                 )}
@@ -156,10 +158,31 @@ const ExecutionResultModal = ({
           />
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              실행 시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
-              {' · '}소요 시간: {objResult.nElapsedMs}ms
+              시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
+              {objResult.nElapsedMs > 0 && ` · ${objResult.nElapsedMs}ms`}
             </Text>
           </div>
+          {/* 실행을 시도한 쿼리 표시 (디버깅용) */}
+          {objResult.strExecutedQuery && (
+            <Card size="small" title="실행 시도 쿼리" extra={
+              <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
+            }>
+              <div style={{
+                padding: '8px 12px',
+                background: '#1e1e1e',
+                borderRadius: 4,
+                fontFamily: 'monospace',
+                fontSize: 11,
+                color: '#d4d4d4',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                maxHeight: 160,
+                overflow: 'auto',
+              }}>
+                {objResult.strExecutedQuery}
+              </div>
+            </Card>
+          )}
         </Space>
       )}
     </Modal>
@@ -232,17 +255,48 @@ const MyDashboardPage = () => {
     setStrExecEnv(strEnv);
     try {
       const result = await fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || '');
-      setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
-      setBExecResultOpen(true);
 
       if (result.bSuccess) {
+        // 성공: 실행 결과 모달 표시
+        setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
+        setBExecResultOpen(true);
         messageApi.success(`${strEnv.toUpperCase()} 반영 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
-        messageApi.error(`${strEnv.toUpperCase()} 반영 실패 - 롤백 완료`);
+        // 실패: objExecutionResult 있으면 모달로, 없으면(사전 검증 오류) 전용 에러 모달로
+        const objExecRes = result.objExecutionResult as IQueryExecutionResult | undefined;
+        if (objExecRes) {
+          // DB 실행 중 오류 (쿼리 오류, 연결 실패 등) → 실행 결과 모달
+          setObjExecResult(objExecRes);
+          setBExecResultOpen(true);
+        } else {
+          // 사전 검증 오류 (반영 날짜 조건, 상태 불일치, DB 접속 정보 없음 등) → 에러 모달
+          setObjExecResult({
+            bSuccess: false,
+            strEnv,
+            strExecutedQuery: r.strGeneratedQuery || '',
+            arrQueryResults: [],
+            nTotalAffectedRows: 0,
+            nElapsedMs: 0,
+            strError: result.strMessage || '실행에 실패했습니다.',
+            dtExecutedAt: new Date().toISOString(),
+          });
+          setBExecResultOpen(true);
+        }
       }
-    } catch {
-      messageApi.error('실행 요청에 실패했습니다.');
+    } catch (error: any) {
+      // 예상치 못한 예외 (네트워크 단절 등)
+      setObjExecResult({
+        bSuccess: false,
+        strEnv,
+        strExecutedQuery: r.strGeneratedQuery || '',
+        arrQueryResults: [],
+        nTotalAffectedRows: 0,
+        nElapsedMs: 0,
+        strError: error?.message || '네트워크 오류가 발생했습니다.',
+        dtExecutedAt: new Date().toISOString(),
+      });
+      setBExecResultOpen(true);
     } finally {
       setBExecuting(null);
     }

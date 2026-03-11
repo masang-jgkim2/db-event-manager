@@ -84,15 +84,23 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
   },
 
   fnExecuteQuery: async (nId, strEnv, strActorName) => {
-    const objResult = await fnApiExecuteQuery(nId, strEnv, strActorName);
-    if (objResult.bSuccess && objResult.objInstance) {
-      set((state) => ({
-        arrInstances: state.arrInstances.map((e) =>
-          e.nId === nId ? objResult.objInstance : e
-        ),
-      }));
+    try {
+      const objResult = await fnApiExecuteQuery(nId, strEnv, strActorName);
+      if (objResult.bSuccess && objResult.objInstance) {
+        set((state) => ({
+          arrInstances: state.arrInstances.map((e) =>
+            e.nId === nId ? objResult.objInstance : e
+          ),
+        }));
+      }
+      return objResult;
+    } catch (error: any) {
+      // fnApiExecuteQuery 내부에서 이미 catch하므로 여기까지 오는 경우는 예외적 상황
+      return {
+        bSuccess: false,
+        strMessage: error?.message || '알 수 없는 오류가 발생했습니다.',
+      };
     }
-    return objResult;
   },
 
   fnUpdateInstance: async (nId, objData) => {

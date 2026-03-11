@@ -377,9 +377,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       objExecutionResult: objExecResult,
       objInstance,
     });
-  } catch (error) {
-    console.error('쿼리 실행 오류:', error);
-    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  } catch (error: any) {
+    console.error(`[fnExecuteAndDeploy] 예기치 않은 오류 | instanceId: ${req.params.id} | ${error?.message}`);
+    if (error?.stack) console.error(error.stack);
+    res.status(500).json({
+      bSuccess: false,
+      strMessage: `서버 오류가 발생했습니다. (${error?.message || '알 수 없는 오류'})`,
+    });
   }
 };
 

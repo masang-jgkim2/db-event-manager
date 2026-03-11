@@ -255,12 +255,31 @@ export const fnExecuteQueryWithText = async (
     const nElapsedMs = Date.now() - dtStart;
     const strErrorMsg = error?.message || String(error);
 
-    console.error(`[쿼리 실행 실패] ${strEnv.toUpperCase()} | ${objConn.strProductName} | ${strErrorMsg}`);
+    // 오류 상세 로그: DB 종류별 오류 코드 + 쿼리 첫 줄 포함
+    const strQueryPreview = strGeneratedQuery.split('\n')[0].trim().slice(0, 80);
+    console.error(`[쿼리 실행 실패] ──────────────────────────────`);
+    console.error(`  환경: ${strEnv.toUpperCase()} | 프로덕트: ${objConn.strProductName}`);
+    console.error(`  DB: ${objConn.strDbType} | ${objConn.strHost}:${objConn.nPort}/${objConn.strDatabase}`);
+    console.error(`  오류 코드: ${error?.code ?? error?.number ?? 'N/A'} | 상태: ${error?.state ?? 'N/A'}`);
+    console.error(`  메시지: ${strErrorMsg}`);
+    console.error(`  쿼리(첫 줄): ${strQueryPreview}`);
+    console.error(`  소요: ${nElapsedMs}ms`);
+    if (error?.stack) console.error(`  스택:\n${error.stack}`);
+    console.error(`──────────────────────────────────────────`);
 
-    // 연결 문제일 경우 풀 무효화
+    // 연결 문제일 경우 풀 무효화 (재연결 유도)
     if (error?.code === 'ECONNRESET' || error?.code === 'ENOTOPEN' || error?.number === -2) {
+      console.warn(`[쿼리 실행] 연결 오류 감지 — 커넥션 풀 무효화 (nId: ${objConn.nId})`);
       await fnInvalidatePool(objConn.nId);
     }
+
+    // 오류 메시지 사용자 친화적으로 가공
+    // MSSQL 오류는 number/lineNumber/serverName 등 포함 가능
+    const strUserError = [
+      strErrorMsg,
+      error?.number ? `[SQL 오류 번호: ${error.number}]` : null,
+      error?.lineNumber ? `[줄 번호: ${error.lineNumber}]` : null,
+    ].filter(Boolean).join(' ');
 
     return {
       bSuccess: false,
@@ -269,7 +288,7 @@ export const fnExecuteQueryWithText = async (
       arrQueryResults: [],
       nTotalAffectedRows: 0,
       nElapsedMs,
-      strError: strErrorMsg,
+      strError: strUserError,
       strRollbackMsg: '트랜잭션이 롤백되어 DB 변경 사항이 없습니다.',
       dtExecutedAt,
     };
