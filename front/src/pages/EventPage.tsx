@@ -15,7 +15,7 @@ import {
   Col,
   Divider,
 } from 'antd';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
@@ -114,12 +114,7 @@ const EventPage = () => {
 
   // 테이블 컬럼
   const arrColumns = [
-    {
-      title: 'No.',
-      key: 'index',
-      width: 50,
-      render: (_: unknown, __: unknown, nIndex: number) => nIndex + 1,
-    },
+    fnMakeIndexColumn(),
     {
       title: '프로덕트',
       dataIndex: 'strProductName',

@@ -6,7 +6,7 @@ import {
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
@@ -100,12 +100,7 @@ const RolePage = () => {
   const arrAllPermissions = Object.keys(OBJ_PERMISSION_LABELS) as TPermission[];
 
   const arrColumns = [
-    {
-      title: 'No.',
-      key: 'index',
-      width: 60,
-      render: (_: unknown, __: unknown, nIndex: number) => nIndex + 1,
-    },
+    fnMakeIndexColumn(),
     {
       title: '역할 코드',
       dataIndex: 'strCode',

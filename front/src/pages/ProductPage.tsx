@@ -14,7 +14,7 @@ import {
   Row,
   Col,
 } from 'antd';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -95,12 +95,7 @@ const ProductPage = () => {
 
   // 테이블 컬럼
   const arrColumns = [
-    {
-      title: 'No.',
-      key: 'index',
-      width: 50,
-      render: (_: unknown, __: unknown, nIndex: number) => nIndex + 1,
-    },
+    fnMakeIndexColumn(),
     {
       title: '프로젝트명',
       dataIndex: 'strName',

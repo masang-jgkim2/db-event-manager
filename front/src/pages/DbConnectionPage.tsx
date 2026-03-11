@@ -10,7 +10,7 @@ import {
   ApiOutlined, CheckCircleOutlined, CloseCircleOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   fnApiGetDbConnections, fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
@@ -160,6 +160,7 @@ const DbConnectionPage = () => {
   };
 
   const arrColumns = [
+    fnMakeIndexColumn(),
     {
       title: '프로덕트',
       key: 'product',

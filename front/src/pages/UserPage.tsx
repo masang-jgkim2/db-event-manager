@@ -4,7 +4,7 @@ import {
   Popconfirm, message, Card, Divider,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined } from '@ant-design/icons';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   fnApiGetUsers, fnApiCreateUser, fnApiUpdateUser,
   fnApiDeleteUser, fnApiResetPassword,
@@ -155,12 +155,7 @@ const UserPage = () => {
 
   // 테이블 컬럼
   const arrColumns = [
-    {
-      title: 'No.',
-      key: 'index',
-      width: 60,
-      render: (_: unknown, __: unknown, nIndex: number) => nIndex + 1,
-    },
+    fnMakeIndexColumn(),
     {
       title: '아이디',
       dataIndex: 'strUserId',
