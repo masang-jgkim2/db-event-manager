@@ -228,45 +228,44 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   return { arrSteps, nStep, bFinished };
 };
 
-// 이벤트별 진행 상태 스테퍼 컴포넌트
+// 이벤트별 진행 상태 스테퍼 컴포넌트 — 행 인라인 확장용
 const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
   const { arrSteps, nStep, bFinished } = fnBuildSteps(objInstance);
   const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
 
   return (
-    <Card
-      size="small"
-      style={{ marginBottom: 16, background: '#fafafa', border: '1px solid #f0f0f0' }}
-      bodyStyle={{ padding: '12px 16px' }}
-    >
-      <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text strong style={{ fontSize: 13 }}>{objInstance.strEventName}</Text>
+    <div style={{
+      padding: '12px 24px 16px',
+      background: '#f8f9ff',
+      borderTop: '1px solid #e8eaf6',
+      borderBottom: '1px solid #e8eaf6',
+    }}>
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
+        {arrScope.map((s) => (
+          <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 11 }}>
+            {s.toUpperCase()}
+          </Tag>
+        ))}
+        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>진행 단계:</Text>
         <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
           {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
         </Tag>
-        <Space size={4}>
-          {arrScope.map((s) => (
-            <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 10 }}>
-              {s.toUpperCase()}
-            </Tag>
-          ))}
-        </Space>
       </div>
       <Steps
         current={nStep}
         status={bFinished ? 'finish' : 'process'}
         size="small"
-        items={arrSteps.map((s) => ({
+        items={arrSteps.map((s, nIdx) => ({
           title: s.strLabel,
           status: (() => {
-            const nIdx = arrSteps.indexOf(s);
-            if (nIdx < nStep) return 'finish';
-            if (nIdx === nStep) return bFinished ? 'finish' : 'process';
-            return 'wait';
+            if (nIdx < nStep) return 'finish' as const;
+            if (nIdx === nStep) return (bFinished ? 'finish' : 'process') as const;
+            return 'wait' as const;
           })(),
         }))}
       />
-    </Card>
+    </div>
   );
 };
 
@@ -440,9 +439,13 @@ const MyDashboardPage = () => {
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
-  // 액션 버튼 렌더링 (역할 + 권한 + 상태 기반)
+  // 액션 버튼 렌더링 (역할 + 권한 + 상태 + 반영 범위 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
+    // 이 이벤트의 반영 범위 (기본: QA+LIVE)
+    const arrScope = r.arrDeployScope ?? ['qa', 'live'];
+    const bHasQa   = arrScope.includes('qa');
+    const bHasLive = arrScope.includes('live');
 
     // 상세 보기 (항상)
     arrButtons.push(
@@ -464,7 +467,7 @@ const MyDashboardPage = () => {
     }
 
     // DBA/관리자: 컨펌 처리
-    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || arrRoles.includes('admin'))) {
+    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || fnHasPermission('instance.execute_live') || arrRoles.includes('admin'))) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -473,18 +476,34 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 반영 요청 (운영자)
-    if (fnHasPermission('instance.approve_qa') && r.strStatus === 'dba_confirmed') {
-      arrButtons.push(
-        <Popconfirm key="qa-req" title="QA 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}>
-          <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
-        </Popconfirm>
-      );
+    // dba_confirmed 이후 → 반영 범위에 따라 QA요청 또는 LIVE요청 버튼
+    if (r.strStatus === 'dba_confirmed') {
+      if (bHasQa && fnHasPermission('instance.approve_qa')) {
+        // QA 포함: QA 반영 요청
+        arrButtons.push(
+          <Popconfirm key="qa-req" title="QA 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}>
+            <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
+          </Popconfirm>
+        );
+      } else if (!bHasQa && bHasLive && fnHasPermission('instance.approve_live')) {
+        // LIVE only: QA 스킵 → LIVE 반영 요청
+        arrButtons.push(
+          <Popconfirm key="live-req-skip" title={
+            <Space direction="vertical" size={4}>
+              <Text strong>LIVE 반영을 요청하시겠습니까?</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용으로 QA 단계가 없습니다.</Text>
+            </Space>
+          } okText="요청" cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}>
+            <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+          </Popconfirm>
+        );
+      }
     }
 
-    // QA DB 실행 (DBA 권한 - 실제 DB 접속)
-    if (fnHasPermission('instance.execute_qa') && r.strStatus === 'qa_requested') {
+    // QA DB 실행 (DBA 권한)
+    if (bHasQa && fnHasPermission('instance.execute_qa') && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
           key="qa-execute"
@@ -512,7 +531,7 @@ const MyDashboardPage = () => {
     }
 
     // QA 확인 (운영자)
-    if (fnHasPermission('instance.verify_qa') && r.strStatus === 'qa_deployed') {
+    if (bHasQa && fnHasPermission('instance.verify_qa') && r.strStatus === 'qa_deployed') {
       arrButtons.push(
         <Popconfirm key="qa-v" title="QA 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}>
@@ -521,8 +540,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // LIVE 반영 요청 (운영자)
-    if (fnHasPermission('instance.approve_live') && r.strStatus === 'qa_verified') {
+    // LIVE 반영 요청 (운영자) — QA 완료 후
+    if (bHasQa && bHasLive && fnHasPermission('instance.approve_live') && r.strStatus === 'qa_verified') {
       arrButtons.push(
         <Popconfirm key="live-req" title="LIVE 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}>
@@ -531,8 +550,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // LIVE DB 실행 (DBA 권한 - 실제 DB 접속)
-    if (fnHasPermission('instance.execute_live') && r.strStatus === 'live_requested') {
+    // LIVE DB 실행 (DBA 권한)
+    if (bHasLive && fnHasPermission('instance.execute_live') && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
           key="live-execute"
@@ -561,7 +580,7 @@ const MyDashboardPage = () => {
     }
 
     // LIVE 확인 (운영자)
-    if (fnHasPermission('instance.verify_live') && r.strStatus === 'live_deployed') {
+    if (bHasLive && fnHasPermission('instance.verify_live') && r.strStatus === 'live_deployed') {
       arrButtons.push(
         <Popconfirm key="live-v" title="LIVE 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}>
@@ -645,11 +664,6 @@ const MyDashboardPage = () => {
       </Row>
 
       {/* 필터 + 목록 */}
-      {/* 선택된 이벤트 진행 상태 스테퍼 */}
-      {objSelectedRow && (
-        <InstanceStepper objInstance={objSelectedRow} />
-      )}
-
       <Card>
         <div style={{ marginBottom: 16 }}>
           <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
@@ -662,6 +676,15 @@ const MyDashboardPage = () => {
           pagination={{ pageSize: 15 }}
           locale={{ emptyText: '해당 조건의 이벤트가 없습니다.' }}
           size="small"
+          // 선택한 행 바로 아래에 인라인 스테퍼 표시
+          expandable={{
+            expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
+            onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
+            expandedRowRender: (r) => <InstanceStepper objInstance={r} />,
+            // 기본 expand 아이콘 숨김 — 행 클릭으로 제어
+            expandIcon: () => null,
+            rowExpandable: () => true,
+          }}
           rowClassName={(r) => r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : ''}
           onRow={(r) => ({
             onClick: () => setObjSelectedRow((prev) => prev?.nId === r.nId ? null : r),
