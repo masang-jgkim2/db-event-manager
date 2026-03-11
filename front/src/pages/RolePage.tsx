@@ -172,6 +172,7 @@ const RolePage = () => {
 
       <Card>
         <AppTable
+          strTableId="roles"
           dataSource={arrRoles}
           columns={arrColumns}
           loading={bLoading}

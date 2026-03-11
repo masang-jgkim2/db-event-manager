@@ -295,6 +295,7 @@ const DbConnectionPage = () => {
 
       <Card>
         <AppTable
+          strTableId="db_connections"
           dataSource={arrConnections}
           columns={arrColumns}
           loading={bLoading}

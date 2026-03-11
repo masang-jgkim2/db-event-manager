@@ -99,6 +99,7 @@ const DashboardPage = () => {
       {/* 프로덕트 현황 */}
       <Card style={{ marginTop: 24 }} title="프로덕트 현황">
         <AppTable
+          strTableId="dashboard_products"
           dataSource={arrProducts}
           columns={arrProductColumns}
           pagination={false}

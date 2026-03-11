@@ -786,6 +786,7 @@ const MyDashboardPage = () => {
           )}
         </div>
         <AppTable
+          strTableId={`dashboard_instances_${strDashTab}`}
           dataSource={arrDisplayInstances}
           columns={arrColumns}
           loading={bLoading}

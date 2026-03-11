@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Table, theme as antdTheme } from 'antd';
 import type { TableProps, TableColumnType } from 'antd';
 import {
@@ -17,7 +17,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// 공통 컬럼 타입 재노출 (각 페이지에서 import 편의)
 export type { TableColumnType as TAppColumn };
 
 // 순번(No.) 컬럼 생성 헬퍼
@@ -31,7 +30,7 @@ export function fnMakeIndexColumn(nWidth = 55): TableColumnType<unknown> {
   };
 }
 
-// 날짜 포맷 헬퍼 (각 페이지에서 재사용)
+// 날짜 포맷 헬퍼
 export function fnFormatDate(strDate?: string | null): string {
   if (!strDate) return '-';
   return new Date(strDate).toLocaleString('ko-KR', {
@@ -42,6 +41,35 @@ export function fnFormatDate(strDate?: string | null): string {
     minute: '2-digit',
   });
 }
+
+// localStorage 키 생성
+const fnStorageKey = (strTableId: string) => `app_table_col_order_${strTableId}`;
+
+// 저장된 컬럼 순서 로드
+const fnLoadOrder = (strTableId: string, arrKeys: string[]): string[] => {
+  try {
+    const strSaved = localStorage.getItem(fnStorageKey(strTableId));
+    if (!strSaved) return arrKeys;
+    const arrSaved: string[] = JSON.parse(strSaved);
+    // 저장된 순서에 없는 새 컬럼은 뒤에 추가, 삭제된 컬럼은 제거
+    const setCurrentKeys = new Set(arrKeys);
+    const arrFiltered = arrSaved.filter((k) => setCurrentKeys.has(k));
+    const setFilteredKeys = new Set(arrFiltered);
+    const arrNew = arrKeys.filter((k) => !setFilteredKeys.has(k));
+    return [...arrFiltered, ...arrNew];
+  } catch {
+    return arrKeys;
+  }
+};
+
+// 컬럼 순서 저장
+const fnSaveOrder = (strTableId: string, arrOrder: string[]): void => {
+  try {
+    localStorage.setItem(fnStorageKey(strTableId), JSON.stringify(arrOrder));
+  } catch {
+    // localStorage 사용 불가 시 무시
+  }
+};
 
 // ─── 드래그 가능한 헤더 셀 ──────────────────────────────────
 interface IDraggableHeaderCellProps extends React.HTMLAttributes<HTMLTableCellElement> {
@@ -61,22 +89,29 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
     isDragging,
   } = useSortable({ id: strId });
 
-  // data-drag-id 는 th 에 넘기지 않음 (DOM warning 방지)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { 'data-drag-id': _dragId, style, ...restProps } = props;
+
+  // scaleX/scaleY 제거 — 드래그 중 셀 크기 변형 방지
+  const strTransform = transform
+    ? CSS.Transform.toString({ ...transform, scaleX: 1, scaleY: 1 })
+    : undefined;
 
   return (
     <th
       ref={setNodeRef}
       style={{
         ...style,
-        transform: CSS.Transform.toString(transform),
+        transform: strTransform,
         transition,
         cursor: isDragging ? 'grabbing' : 'grab',
         userSelect: 'none',
         opacity: isDragging ? 0.55 : 1,
         background: isDragging ? token.colorPrimaryBg : undefined,
         zIndex: isDragging ? 2 : undefined,
+        // 드래그 중에도 셀 크기 고정
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
       }}
       {...attributes}
       {...listeners}
@@ -93,8 +128,10 @@ function fnGetColKey<T>(col: TableColumnType<T>, nIdx: number): string {
 // ─── AppTable Props ──────────────────────────────────────────
 interface IAppTableProps<T> extends TableProps<T> {
   strEmptyText?: string;
-  // false: 컬럼 드래그 비활성화 (기본 true)
+  // 컬럼 드래그 비활성화 (기본 true)
   bDraggableColumns?: boolean;
+  // 컬럼 순서 저장용 테이블 ID (미지정 시 저장 안 함)
+  strTableId?: string;
 }
 
 // ─── 공통 테이블 컴포넌트 ───────────────────────────────────
@@ -107,36 +144,54 @@ function AppTable<T extends object>({
   style,
   columns,
   bDraggableColumns = true,
+  strTableId,
   ...restProps
 }: IAppTableProps<T>) {
   const { token } = antdTheme.useToken();
 
-  // 컬럼 key 순서를 내부 상태로 관리
   const prevColsRef = useRef(columns);
-  const [arrOrder, setArrOrder] = useState<string[]>(() =>
-    (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx)),
-  );
+  const [arrOrder, setArrOrder] = useState<string[]>(() => {
+    const arrKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
+    return strTableId ? fnLoadOrder(strTableId, arrKeys) : arrKeys;
+  });
 
-  // columns prop이 교체됐을 때 순서 초기화
+  // columns prop이 교체됐을 때 순서 재계산 (새 컬럼 반영)
   if (prevColsRef.current !== columns) {
     prevColsRef.current = columns;
     const arrNewKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
     const bSame =
       arrNewKeys.length === arrOrder.length &&
-      arrNewKeys.every((k, i) => k === arrOrder[i]);
-    if (!bSame) setArrOrder(arrNewKeys);
+      arrNewKeys.every((k) => arrOrder.includes(k));
+    if (!bSame) {
+      const arrMerged = strTableId ? fnLoadOrder(strTableId, arrNewKeys) : arrNewKeys;
+      setArrOrder(arrMerged);
+    }
   }
 
-  // 드래그 종료 → 순서 업데이트
-  const fnOnDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setArrOrder((prev) => {
-      const nFrom = prev.indexOf(String(active.id));
-      const nTo   = prev.indexOf(String(over.id));
-      return arrayMove(prev, nFrom, nTo);
-    });
-  }, []);
+  // 드래그 종료 → 순서 업데이트 + 저장
+  const fnOnDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      setArrOrder((prev) => {
+        const nFrom = prev.indexOf(String(active.id));
+        const nTo   = prev.indexOf(String(over.id));
+        const arrNext = arrayMove(prev, nFrom, nTo);
+        if (strTableId) fnSaveOrder(strTableId, arrNext);
+        return arrNext;
+      });
+    },
+    [strTableId],
+  );
+
+  // strTableId가 뒤늦게 바뀐 경우 저장된 순서 다시 로드
+  useEffect(() => {
+    if (!strTableId) return;
+    const arrKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
+    setArrOrder(fnLoadOrder(strTableId, arrKeys));
+  // columns 변경 감지는 의도적으로 제외 (prevColsRef가 담당)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strTableId]);
 
   // 현재 순서대로 컬럼 배열 재정렬 + onHeaderCell 주입
   const arrSortedColumns: TableColumnType<T>[] | undefined =
@@ -150,12 +205,12 @@ function AppTable<T extends object>({
           .filter(Boolean)
           .map((col) => ({
             ...(col as TableColumnType<T>),
-            // onHeaderCell: 해당 th 에 data-drag-id 를 주입
-            onHeaderCell: () => ({ 'data-drag-id': fnGetColKey(col as TableColumnType<T>, 0) }),
+            onHeaderCell: () => ({
+              'data-drag-id': fnGetColKey(col as TableColumnType<T>, 0),
+            }),
           }))
       : (columns as TableColumnType<T>[] | undefined);
 
-  // pagination 기본값 처리
   const objPagination =
     pagination === false
       ? false
@@ -168,7 +223,6 @@ function AppTable<T extends object>({
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // 5px 이상 이동해야 드래그 시작 (클릭과 구분)
       activationConstraint: { distance: 5 },
     }),
   );

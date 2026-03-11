@@ -169,6 +169,7 @@ const ProductPage = () => {
 
       <Card>
         <AppTable
+          strTableId="products"
           dataSource={arrProducts}
           columns={arrColumns}
           strEmptyText="등록된 프로덕트가 없습니다."

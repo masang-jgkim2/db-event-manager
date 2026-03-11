@@ -197,6 +197,7 @@ const EventPage = () => {
 
       <Card>
         <AppTable
+          strTableId="event_templates"
           dataSource={arrEvents}
           columns={arrColumns}
           strEmptyText="등록된 이벤트 템플릿이 없습니다."

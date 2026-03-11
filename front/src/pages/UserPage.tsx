@@ -251,6 +251,7 @@ const UserPage = () => {
 
       <Card>
         <AppTable
+          strTableId="users"
           dataSource={arrUsers}
           columns={arrColumns}
           loading={bLoading}

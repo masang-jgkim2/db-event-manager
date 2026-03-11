@@ -526,12 +526,16 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    // inputValues 또는 dtDeployDate 변경 시 쿼리 자동 재생성
-    const bInputChanged = req.body.strInputValues !== undefined;
-    const bDateChanged  = req.body.dtDeployDate !== undefined;
+    // inputValues / dtDeployDate 실제 변경 시에만 쿼리 재생성 (값이 동일하면 GM이 수정한 쿼리 유지)
+    const strNewInput = req.body.strInputValues;
+    const strNewDate  = req.body.dtDeployDate;
+    const bInputChanged =
+      strNewInput !== undefined && String(strNewInput).trim() !== String(objInstance.strInputValues || '').trim();
+    const bDateChanged =
+      strNewDate !== undefined && String(strNewDate) !== String(objInstance.dtDeployDate || '');
 
-    if (bInputChanged) objInstance.strInputValues = req.body.strInputValues;
-    if (bDateChanged)  objInstance.dtDeployDate   = req.body.dtDeployDate;
+    if (strNewInput !== undefined) objInstance.strInputValues = strNewInput;
+    if (strNewDate !== undefined)  objInstance.dtDeployDate   = strNewDate;
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
