@@ -1,61 +1,44 @@
 ---
-description: 이벤트 인스턴스 도메인 규칙 — 워크플로, 반영 날짜 조건, 쿼리 재생성
+description: 이벤트 인스턴스 도메인 규칙 — 워크플로, 반영 날짜 조건, DBA 쿼리 수정
 globs: {backend/src/controllers/eventInstanceController.ts,front/src/pages/MyDashboardPage.tsx,front/src/stores/useEventInstanceStore.ts}
 alwaysApply: false
 ---
 
 # 이벤트 인스턴스 도메인
 
-## 9단계 워크플로
+## 9단계 워크플로 (코드와 동일)
 
 ```
-draft → qa_requested → qa_deployed → qa_verified
-     → live_requested → live_deployed → live_verified
-     → (dev_requested → dev_deployed)
+event_created → confirm_requested → dba_confirmed
+  → qa_requested → qa_deployed → qa_verified
+  → live_requested → live_deployed → live_verified(완료)
 ```
 
-## 반영 날짜 조건 (필수 검증)
+- 반영 범위가 `['live']`만이면: `dba_confirmed` 다음에 `live_requested`로 직행 (QA 단계 스킵).
+- 상태 전이·허용 역할: `OBJ_STATUS_TRANSITIONS_BASE` 및 `fnGetTransitions(..., arrDeployScope)` 참고.
 
-```typescript
-// DEV / QA: 현재 시간 < 반영 날짜
-if (['dev', 'qa'].includes(strEnv) && dtNow >= dtDeployDate) {
-  return res.status(400).json({ strMessage: 'DEV/QA 반영은 반영 날짜 이전에만 실행할 수 있습니다.' });
-}
+## 반영 날짜 조건 (실제 검증)
 
-// LIVE: 현재 시간 >= 반영 날짜
-if (strEnv === 'live' && dtNow < dtDeployDate) {
-  return res.status(400).json({ strMessage: 'LIVE 반영은 반영 날짜 이후에만 실행할 수 있습니다.' });
-}
-```
+- **QA**: 시간 제한 없음. LIVE 반영 전 언제든 실행 가능.
+- **LIVE**: `현재 시각 >= 반영 날짜(dtDeployDate)` 일 때만 실행 허용.
+- DEV 환경 직접 실행은 API에서 차단.
+
+## DBA 쿼리 수정 가능 상태 (백엔드·프론트 동일)
+
+- `confirm_requested` (컨펌 요청)
+- `qa_requested` (QA 반영 요청)
+- `live_requested` (LIVE 반영 요청)
+
+위 3단계에서만 DBA/admin이 `strGeneratedQuery` 수정 가능. 그 외 단계는 API·UI 모두 수정 불가.
 
 ## 쿼리 재생성 조건
 
-`strInputValues` 또는 `dtDeployDate` 변경 시 `fnApplyQueryTemplate`으로 쿼리 재생성:
-```typescript
-if (objBody.strInputValues !== undefined || objBody.dtDeployDate !== undefined) {
-  const strNewQuery = fnApplyQueryTemplate(objTemplate.strQueryTemplate, strNewInputValues, strNewDeployDate);
-  objInstance.strGeneratedQuery = strNewQuery;
-}
-```
+`event_created` 상태에서만 일반 수정 가능. `strInputValues` 또는 `dtDeployDate`가 **실제로 변경된 경우에만** `fnApplyQueryTemplate`으로 쿼리 재생성 (동일 값이면 GM이 수정한 쿼리 유지).
 
 ## DB 커넥션 조회
 
-인스턴스에 `nProductId`가 반드시 포함되어야 함 (생성 시 저장):
-```typescript
-// 조회 우선순위: nProductId → strProductName(fallback)
-const objConn = fnFindActiveConnection(objInstance.nProductId, strEnv);
-```
+인스턴스 `nProductId`로 `fnFindActiveConnection(nProductId, strEnv)` 조회. `nProductId` 없으면 `strProductName`으로 프로덕트 조회 후 사용.
 
 ## IEventInstance 핵심 필드
 
-```typescript
-interface IEventInstance {
-  nId: number;
-  nProductId: number;        // DB 커넥션 조회용 (필수)
-  strProductName: string;    // 표시용
-  dtDeployDate: string;      // ISO 8601 (날짜+시분초)
-  strGeneratedQuery: string; // 수정 시 재생성
-  strStatus: TInstanceStatus;
-  arrStatusLog: IStatusLog[];
-}
-```
+- `nProductId`, `strProductName`, `dtDeployDate`, `strGeneratedQuery`, `strStatus`(TEventStatus), `arrStatusLogs`, `arrDeployScope` 등.

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
@@ -24,6 +24,61 @@ import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+
+// 다시 보지 않기 체크박스가 있는 Popconfirm (요청/숨기기 버튼용)
+interface IPopconfirmWithSkipProps {
+  actionKey: string;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  okText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  children: React.ReactElement;
+  disabled?: boolean;
+  okButtonProps?: React.ComponentProps<typeof Button>;
+}
+const PopconfirmWithSkip = ({
+  actionKey, title, description, okText = '확인', cancelText = '취소',
+  onConfirm, children, disabled, okButtonProps,
+}: IPopconfirmWithSkipProps) => {
+  const [bDontShowAgain, setBDontShowAgain] = useState(false);
+  const bSkip = typeof window !== 'undefined' && localStorage.getItem(SKIP_CONFIRM_KEY + actionKey) === '1';
+
+  const fnHandleConfirm = () => {
+    if (bDontShowAgain) localStorage.setItem(SKIP_CONFIRM_KEY + actionKey, '1');
+    onConfirm();
+  };
+
+  if (bSkip) {
+    if (disabled) return children;
+    return React.cloneElement(children, { onClick: fnHandleConfirm });
+  }
+
+  const content = (
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+      {description && <div>{description}</div>}
+      <Checkbox checked={bDontShowAgain} onChange={(e) => setBDontShowAgain(e.target.checked)}>
+        다시 보지 않기
+      </Checkbox>
+    </Space>
+  );
+
+  return (
+    <Popconfirm
+      title={title}
+      description={content}
+      okText={okText}
+      cancelText={cancelText}
+      onConfirm={fnHandleConfirm}
+      disabled={disabled}
+      okButtonProps={okButtonProps}
+    >
+      {children}
+    </Popconfirm>
+  );
+};
 
 // 처리자 표시 컴포넌트
 const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLabel: string }) => {
@@ -495,12 +550,8 @@ const MyDashboardPage = () => {
         onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
     );
 
-    // DBA: 컨펌 이후 단계에서 쿼리 직접 수정 버튼
-    const ARR_DBA_EDIT_STATUS: TEventStatus[] = [
-      'confirm_requested', 'dba_confirmed',
-      'qa_requested', 'qa_deployed', 'qa_verified',
-      'live_requested', 'live_deployed',
-    ];
+    // DBA: 쿼리 수정 버튼 — 컨펌 요청 / QA 반영 요청 / LIVE 반영 요청 상태에서만 활성화
+    const ARR_DBA_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
     if (
       (arrRoles.includes('dba') || arrRoles.includes('admin')) &&
       ARR_DBA_EDIT_STATUS.includes(r.strStatus)
@@ -520,10 +571,16 @@ const MyDashboardPage = () => {
         <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
       );
       arrButtons.push(
-        <Popconfirm key="req-confirm" title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다." okText="요청" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}>
+        <PopconfirmWithSkip
+          key="req-confirm"
+          actionKey="confirm_requested"
+          title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다."
+          okText="요청"
+          cancelText="취소"
+          onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}
+        >
           <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
-        </Popconfirm>
+        </PopconfirmWithSkip>
       );
     }
 
@@ -542,23 +599,35 @@ const MyDashboardPage = () => {
       if (bHasQa && fnHasPermission('instance.approve_qa')) {
         // QA 포함: QA 반영 요청
         arrButtons.push(
-          <Popconfirm key="qa-req" title="QA 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}>
+          <PopconfirmWithSkip
+            key="qa-req"
+            actionKey="qa_requested"
+            title="QA 반영을 요청하시겠습니까?"
+            okText="요청"
+            cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}
+          >
             <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
-          </Popconfirm>
+          </PopconfirmWithSkip>
         );
       } else if (!bHasQa && bHasLive && fnHasPermission('instance.approve_live')) {
         // LIVE only: QA 스킵 → LIVE 반영 요청
         arrButtons.push(
-          <Popconfirm key="live-req-skip" title={
-            <Space direction="vertical" size={4}>
-              <Text strong>LIVE 반영을 요청하시겠습니까?</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용으로 QA 단계가 없습니다.</Text>
-            </Space>
-          } okText="요청" cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}>
+          <PopconfirmWithSkip
+            key="live-req-skip"
+            actionKey="live_requested_skip"
+            title={
+              <Space direction="vertical" size={4}>
+                <Text strong>LIVE 반영을 요청하시겠습니까?</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용으로 QA 단계가 없습니다.</Text>
+              </Space>
+            }
+            okText="요청"
+            cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+          >
             <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
-          </Popconfirm>
+          </PopconfirmWithSkip>
         );
       }
     }
@@ -604,10 +673,16 @@ const MyDashboardPage = () => {
     // LIVE 반영 요청 (운영자) — QA 완료 후
     if (bHasQa && bHasLive && fnHasPermission('instance.approve_live') && r.strStatus === 'qa_verified') {
       arrButtons.push(
-        <Popconfirm key="live-req" title="LIVE 반영을 요청하시겠습니까?" okText="요청" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}>
+        <PopconfirmWithSkip
+          key="live-req"
+          actionKey="live_requested"
+          title="LIVE 반영을 요청하시겠습니까?"
+          okText="요청"
+          cancelText="취소"
+          onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+        >
           <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
-        </Popconfirm>
+        </PopconfirmWithSkip>
       );
     }
 
@@ -712,7 +787,8 @@ const MyDashboardPage = () => {
                 ? '숨기면 완료·숨김 탭으로 이동됩니다'
                 : '완료(라이브 검증) 상태에서만 숨길 수 있습니다'
             }>
-              <Popconfirm
+              <PopconfirmWithSkip
+                actionKey="hide_instance"
                 title="이 이벤트를 숨기시겠습니까?"
                 description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
                 okText="숨기기"
@@ -726,7 +802,7 @@ const MyDashboardPage = () => {
                   type="text"
                   disabled={r.strStatus !== 'live_verified'}
                 >숨기기</Button>
-              </Popconfirm>
+              </PopconfirmWithSkip>
             </Tooltip>
           ) : (
             <Tooltip title="진행 이벤트 탭으로 복원">
@@ -860,9 +936,9 @@ const MyDashboardPage = () => {
               </Card>
             )}
 
-            {/* 쿼리 */}
+            {/* 최종 쿼리 (컨펌 요청자·DBA 동일하게 공유) */}
             {objDetail.strGeneratedQuery && (
-              <Card size="small" title="생성된 쿼리" extra={
+              <Card size="small" title="최종 쿼리" extra={
                 <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
               }>
                 <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
@@ -880,7 +956,18 @@ const MyDashboardPage = () => {
                       <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
                       <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
                       <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
-                      {log.strComment && <div style={{ marginTop: 2 }}><Text type="secondary" style={{ fontSize: 12 }}>{log.strComment}</Text></div>}
+                      {log.strComment && (
+                        <div style={{ marginTop: 2 }}>
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
+                            }}
+                          >
+                            {log.strComment}
+                          </Text>
+                        </div>
+                      )}
                       {/* 실행 결과 인라인 표시 */}
                       {log.objExecutionResult && (
                         <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>

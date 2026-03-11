@@ -465,13 +465,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     const bIsAdmin = arrUserRoles.includes('admin');
     const bIsDba   = arrUserRoles.includes('dba');
 
-    // ── DBA 쿼리 수정 (컨펌 이후 단계에서 DBA/admin만 strGeneratedQuery 수정 가능) ──
-    // 허용 단계: confirm_requested, dba_confirmed, qa_requested, qa_deployed,
-    //            qa_verified, live_requested, live_deployed
+    // ── DBA 쿼리 수정 (요청 대기 단계에서만 — 프론트/프로세스와 동일) ──
+    // 허용 단계: 컨펌 요청, QA 반영 요청, LIVE 반영 요청
     const ARR_DBA_EDITABLE_STATUSES: TEventStatus[] = [
-      'confirm_requested', 'dba_confirmed',
-      'qa_requested', 'qa_deployed', 'qa_verified',
-      'live_requested', 'live_deployed',
+      'confirm_requested', 'qa_requested', 'live_requested',
     ];
     if (ARR_DBA_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
       if (!bIsDba && !bIsAdmin) {
