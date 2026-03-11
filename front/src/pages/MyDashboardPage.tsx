@@ -380,17 +380,19 @@ const MyDashboardPage = () => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
-  // SSE 업데이트 → 상세 모달 + 선택된 행 동기화
+  // SSE/스토어 업데이트 → 상세 모달·선택 행은 항상 최신 인스턴스로 동기화 (쿼리 수정 등 새로고침 없이 반영)
   useEffect(() => {
+    const fnFindInstance = (nId: number) =>
+      arrInstances.find((e) => e.nId === nId) ?? arrAllInstances.find((e) => e.nId === nId);
     if (objDetail) {
-      const objUpdated = arrInstances.find((e) => e.nId === objDetail.nId);
+      const objUpdated = fnFindInstance(objDetail.nId);
       if (objUpdated) setObjDetail(objUpdated);
     }
     if (objSelectedRow) {
-      const objUpdated = arrInstances.find((e) => e.nId === objSelectedRow.nId);
+      const objUpdated = fnFindInstance(objSelectedRow.nId);
       if (objUpdated) setObjSelectedRow(objUpdated);
     }
-  }, [arrInstances]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [arrInstances, arrAllInstances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 상태 변경 처리 (일반 상태 전이)
   const fnHandleAction = async (nId: number, strNextStatus: TEventStatus, strActionLabel: string) => {

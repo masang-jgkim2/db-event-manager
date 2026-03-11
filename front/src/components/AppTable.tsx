@@ -127,32 +127,44 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
   const { 'data-drag-id': _dragId, 'data-col-key': _colKey, style, children, ...restProps } = props;
   const nStartXRef = useRef(0);
   const nStartWidthRef = useRef(0);
+  const resizeTargetRef = useRef<HTMLElement | null>(null);
+  const resizePointerIdRef = useRef<number>(-1);
 
-  const fnHandleResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  // 리사이즈만: pointer 이벤트로 처리·전파 차단 → 컬럼 이동(드래그)과 완전 분리
+  const fnHandleResizePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       e.preventDefault();
       e.stopPropagation();
       if (!strColKey || !ctxResize) return;
       const th = (e.target as HTMLElement).closest('th');
       if (!th) return;
+      const targetEl = e.target as HTMLElement;
       nStartXRef.current = e.clientX;
       nStartWidthRef.current = th.offsetWidth;
+      resizeTargetRef.current = targetEl;
+      resizePointerIdRef.current = e.pointerId;
+      targetEl.setPointerCapture?.(e.pointerId);
 
-      const fnMove = (e2: MouseEvent) => {
+      const fnMove = (e2: PointerEvent) => {
         const nDelta = e2.clientX - nStartXRef.current;
         const nNew = Math.max(N_MIN_COL_WIDTH, nStartWidthRef.current + nDelta);
         ctxResize.setColWidth(strColKey, nNew);
       };
       const fnUp = () => {
-        document.removeEventListener('mousemove', fnMove);
-        document.removeEventListener('mouseup', fnUp);
+        document.removeEventListener('pointermove', fnMove);
+        document.removeEventListener('pointerup', fnUp);
+        document.removeEventListener('pointercancel', fnUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        if (resizeTargetRef.current && resizePointerIdRef.current >= 0) {
+          resizeTargetRef.current.releasePointerCapture?.(resizePointerIdRef.current);
+        }
       };
       document.body.style.cursor = 'col-resize';
       document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', fnMove);
-      document.addEventListener('mouseup', fnUp);
+      document.addEventListener('pointermove', fnMove);
+      document.addEventListener('pointerup', fnUp);
+      document.addEventListener('pointercancel', fnUp);
     },
     [strColKey, ctxResize],
   );
@@ -187,12 +199,12 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
       {strColKey && ctxResize && (
         <div
           role="presentation"
-          onMouseDown={fnHandleResizeMouseDown}
+          onPointerDown={fnHandleResizePointerDown}
           style={{
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 8,
+            width: 10,
             height: '100%',
             cursor: 'col-resize',
             zIndex: 1,
