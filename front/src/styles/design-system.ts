@@ -273,23 +273,26 @@ export function fnBuildDesignSystem(
 
     // 테이블
     Table: {
-      headerBg:           arrP[IDX_BG],
-      headerColor:        bDark ? 'rgba(255,255,255,0.85)' : arrP[IDX_DARK2],
-      headerSortActiveBg: arrP[IDX_BG_HOVER],
-      rowHoverBg:         arrP[IDX_BG],
-      rowSelectedBg:      arrP[IDX_BG_HOVER],
-      rowSelectedHoverBg: arrP[IDX_BORDER],
-      fontSize:           objTypo.nSm,
-      cellPaddingBlock:   objSpacing.nSm,
-      cellPaddingInline:  objSpacing.nMd,
+      headerBg:              arrP[IDX_BG],
+      headerColor:           bDark ? 'rgba(255,255,255,0.85)' : arrP[IDX_DARK2],
+      headerSortActiveBg:    arrP[IDX_BG_HOVER],
+      rowHoverBg:            arrP[IDX_BG],
+      rowSelectedBg:         arrP[IDX_BG_HOVER],
+      rowSelectedHoverBg:    arrP[IDX_BORDER],
+      fontSize:              objTypo.nSm,
+      headerFontSize:        objTypo.nSm,
+      cellPaddingBlock:      objSpacing.nSm,
+      cellPaddingInline:     objSpacing.nMd,
     },
 
-    // 버튼
+    // 버튼 — primary 버튼 텍스트는 배경(primary)과 대비 확보
     Button: {
-      fontWeight:          500,
-      primaryShadow:       `0 2px 0 ${arrP[IDX_PRIMARY]}33`,
-      defaultBorderColor:  arrP[IDX_BORDER],
-      defaultColor:        arrP[IDX_PRIMARY],
+      fontWeight:               500,
+      primaryShadow:            `0 2px 0 ${arrP[IDX_PRIMARY]}33`,
+      defaultBorderColor:       arrP[IDX_BORDER],
+      defaultColor:             arrP[IDX_PRIMARY],
+      // primary 버튼 텍스트/아이콘 색 (배경이 primary이므로 대비 색 자동 선택)
+      primaryColor:             fnContrastText(arrP[IDX_PRIMARY]),
     },
 
     // 태그
@@ -391,10 +394,22 @@ export function fnBuildDesignSystem(
       trackHoverBg:          arrP[IDX_HOVER],
     },
 
-    // 페이지네이션
+    // 페이지네이션 — 활성 번호 대비 확보, 비활성 번호 가시성 강화
     Pagination: {
-      itemActiveBg:      arrP[IDX_PRIMARY],
-      itemActiveBgDisabled: arrP[IDX_BG],
+      // 활성 페이지: primary 배경 + 대비 텍스트
+      itemActiveBg:          arrP[IDX_PRIMARY],
+      itemActiveColor:       fnContrastText(arrP[IDX_PRIMARY]),
+      itemActiveColorDisabled: arrP[IDX_HOVER],
+      // 비활성 페이지 번호: 충분한 명도 확보
+      colorText:             bDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.72)',
+      colorTextDisabled:     bDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
+      // 테두리
+      colorBorder:           arrP[IDX_BORDER],
+      colorPrimary:          arrP[IDX_PRIMARY],
+      colorPrimaryHover:     arrP[IDX_HOVER],
+      itemBg:                bDark ? '#1f1f1f' : '#ffffff',
+      itemLinkBg:            bDark ? '#1f1f1f' : '#ffffff',
+      fontSize:              objTypo.nSm,
     },
 
     // 탭

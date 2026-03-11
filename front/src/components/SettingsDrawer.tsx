@@ -90,29 +90,27 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
       closable
       styles={{ body: { padding: '20px 24px' } }}
     >
-      {/* 테마 모드 */}
+      {/* ① 테마 모드 */}
       <Text style={objSectionTitleStyle}>테마 모드</Text>
       <Segmented<TThemeMode>
         block
         value={strMode}
         onChange={fnSetMode}
         options={[
-          { value: 'light', icon: <SunOutlined />, label: '라이트' },
-          { value: 'dark',  icon: <MoonOutlined />, label: '다크' },
+          { value: 'light',  icon: <SunOutlined />,     label: '라이트' },
+          { value: 'dark',   icon: <MoonOutlined />,    label: '다크' },
           { value: 'system', icon: <DesktopOutlined />, label: '시스템' },
         ]}
       />
 
       <Divider />
 
-      {/* 포인트 컬러 */}
+      {/* ② 포인트 컬러 */}
       <Text style={objSectionTitleStyle}>포인트 컬러</Text>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {ARR_PRIMARY_COLORS.map((objColor) => {
           const bSelected = strPrimaryColor === objColor.strValue;
-          // 선택된 컬러의 팔레트 미리보기
           const arrPalette = fnGenPalette(objColor.strValue, bIsDark);
-
           return (
             <button
               key={objColor.strValue}
@@ -121,7 +119,7 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '8px 10px',
+                padding: '7px 10px',
                 borderRadius: token.borderRadius,
                 border: bSelected
                   ? `2px solid ${objColor.strValue}`
@@ -133,40 +131,24 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
                 textAlign: 'left',
               }}
             >
-              {/* primary 원형 스와치 */}
-              <div
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  background: objColor.strValue,
-                  flexShrink: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {bSelected && <CheckOutlined style={{ color: '#fff', fontSize: 11 }} />}
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%',
+                background: objColor.strValue, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {bSelected && <CheckOutlined style={{ color: '#fff', fontSize: 10 }} />}
               </div>
-
               <div style={{ flex: 1, minWidth: 0 }}>
-                {/* 컬러명 */}
                 <div style={{ fontSize: 12, fontWeight: bSelected ? 600 : 400, color: token.colorText, marginBottom: 3 }}>
                   {objColor.strLabel}
                 </div>
-                {/* 10단계 팔레트 스와치 */}
                 <div style={{ display: 'flex', gap: 2 }}>
                   {arrPalette.map((strSwatchColor, nIdx) => (
-                    <div
-                      key={nIdx}
-                      style={{
-                        flex: 1,
-                        height: 8,
-                        borderRadius: 2,
-                        background: strSwatchColor,
-                        opacity: nIdx === 5 ? 1 : 0.85,
-                      }}
-                    />
+                    <div key={nIdx} style={{
+                      flex: 1, height: 7, borderRadius: 2,
+                      background: strSwatchColor,
+                      outline: nIdx === 5 ? `1.5px solid ${strSwatchColor}` : 'none',
+                    }} />
                   ))}
                 </div>
               </div>
@@ -177,15 +159,13 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
 
       <Divider />
 
-      {/* 폰트 크기 */}
+      {/* ③ 본문 폰트 크기 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={objSectionTitleStyle}>폰트 크기</Text>
+        <Text style={objSectionTitleStyle}>본문 폰트 크기</Text>
         <Text type="secondary" style={{ fontSize: 12 }}>{nFontSize}px</Text>
       </div>
       <Slider
-        min={12}
-        max={25}
-        step={1}
+        min={12} max={25} step={1}
         value={nFontSize}
         onChange={fnSetFontSize}
         marks={{ 12: '12', 14: '14', 16: '16', 18: '18', 20: '20', 25: '25' }}
@@ -193,7 +173,7 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
 
       <Divider />
 
-      {/* 컴팩트 모드 */}
+      {/* ④ 컴팩트 모드 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>컴팩트 모드</Text>
@@ -204,10 +184,10 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
 
       <Divider />
 
-      {/* 사이드바 너비 안내 */}
+      {/* ⑥ 사이드바 너비 안내 */}
       <Text style={{ ...objSectionTitleStyle, marginBottom: 4 }}>사이드바 너비</Text>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        사이드바 오른쪽 경계를 좌우로 드래그하여 조절할 수 있습니다.
+        사이드바 오른쪽 경계를 좌우로 드래그하여 조절합니다.
       </Text>
     </Drawer>
   );
