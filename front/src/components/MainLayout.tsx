@@ -195,6 +195,7 @@ const MainLayout = () => {
           bottom: 0,
           zIndex: 10,
           background: ds.objSider.strBackground,
+          borderRight: ds.objSider.strRightBorder,
         }}
       >
         {/* 로고 영역 */}

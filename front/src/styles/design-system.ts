@@ -26,10 +26,10 @@ const IDX_DARK2      = 8;   // 진한 계열 2
 const IDX_DARKEST    = 9;   // 가장 진한 계열
 
 // ─── 사이드바 배경 ───────────────────────────────────────────
-// 다크모드: 매우 어두운 primary 계열
-// 라이트모드: 표준 Ant Design dark sidebar (#001529 계열)
+// 다크모드: 메인 배경(#141414)과 동일 — 경계 없이 자연스럽게 융합
+// 라이트모드: primary 계열 진한 색 + #001529 혼합
 function fnSiderBg(arrP: string[], bDark: boolean): string {
-  if (bDark) return `color-mix(in srgb, ${arrP[IDX_DARKEST]} 30%, #0a0a0a 70%)`;
+  if (bDark) return '#141414';
   return `color-mix(in srgb, ${arrP[IDX_DARKEST]} 60%, #001529 40%)`;
 }
 
@@ -116,6 +116,7 @@ export interface IDesignSystem {
     nLogoFontSize: number;       // 로고 폰트 크기 (px)
     nLogoFontWeight: number;     // 로고 폰트 굵기
     strResizeHandle: string;     // 드래그 핸들 hover 색
+    strRightBorder: string;      // 오른쪽 구분선 (다크모드: primary 계열 미세 테두리)
   };
 
   // ── 헤더 인라인 스타일 토큰
@@ -480,6 +481,10 @@ export function fnBuildDesignSystem(
       nLogoFontSize:     objTypo.nLg,
       nLogoFontWeight:   700,
       strResizeHandle:   strResizeHandle,
+      // 다크모드: 배경이 메인과 같아지므로 primary 계열 미세 구분선으로 영역 구분
+      strRightBorder:    bDark
+        ? `1px solid ${arrP[IDX_PRIMARY]}33`
+        : 'none',
     },
 
     objHeader: {
