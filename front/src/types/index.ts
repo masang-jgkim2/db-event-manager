@@ -101,6 +101,29 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
   ]},
 ];
 
+/** 권한 코드 → 한글 표시명 (액션 오류 시 필요한 권한 안내용) */
+export const OBJ_PERMISSION_DISPLAY: Record<string, string> = (() => {
+  const obj: Record<string, string> = {};
+  ARR_PERMISSION_GROUPS.forEach((g) => g.permissions.forEach((p) => { obj[p.value] = p.label; }));
+  return obj;
+})();
+
+/** 서버 403 메시지에서 권한 코드를 한글명으로 보강해 반환 (액션 오류 시 필요한 권한 안내) */
+export function fnFormatPermissionErrorMessage(strMessage: string): string {
+  if (!strMessage || !strMessage.includes('권한')) return strMessage;
+  const arrParts: string[] = [];
+  const arrKnown = Object.keys(OBJ_PERMISSION_DISPLAY);
+  for (const code of arrKnown) {
+    if (strMessage.includes(code)) {
+      arrParts.push(`${OBJ_PERMISSION_DISPLAY[code]}(${code})`);
+    }
+  }
+  if (arrParts.length > 0) {
+    return `${strMessage} 필요 권한: ${arrParts.join(', ')}`;
+  }
+  return strMessage;
+}
+
 /** 레거시 권한 → 세분화 권한으로 확장 (역할 편집 폼 초기값용) */
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],

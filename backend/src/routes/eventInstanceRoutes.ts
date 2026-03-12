@@ -5,7 +5,6 @@ import {
   fnExecuteAndDeploy,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
-import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
 import {
   fnRegisterClient, fnUnregisterClient, fnGetClientCount,
 } from '../services/sseBroadcaster';
@@ -69,14 +68,7 @@ router.put('/:id', fnUpdateInstance);
 router.patch('/:id/status', fnUpdateStatus);
 
 // POST /api/event-instances/:id/execute - QA/LIVE DB 쿼리 실행 (핵심)
-// instance.execute_qa/live 또는 세분화 권한(my_dashboard.execute_qa/live) 허용
-router.post(
-  '/:id/execute',
-  fnRequireAnyPermission(
-    'instance.execute_qa', 'instance.execute_live',
-    'my_dashboard.execute_qa', 'my_dashboard.execute_live'
-  ),
-  fnExecuteAndDeploy
-);
+// env별 단일 권한은 핸들러에서 검사 (qa → my_dashboard.execute_qa, live → my_dashboard.execute_live)
+router.post('/:id/execute', fnExecuteAndDeploy);
 
 export default router;

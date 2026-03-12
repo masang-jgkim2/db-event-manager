@@ -20,7 +20,7 @@ export const fnRequirePermission = (strPermission: TPermission) => {
     if (!arrPermissions.includes(strPermission)) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `'${strPermission}' 권한이 없습니다.`,
+        strMessage: `이 작업을 하려면 '${strPermission}' 권한이 필요합니다.`,
       });
       return;
     }
@@ -39,7 +39,7 @@ export const fnRequireAnyPermission = (...arrRequiredPermissions: TPermission[])
     if (!bHasPermission) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `다음 권한 중 하나가 필요합니다: ${arrRequiredPermissions.join(', ')}`,
+        strMessage: `이 작업을 하려면 다음 권한 중 하나가 필요합니다: ${arrRequiredPermissions.join(', ')}`,
       });
       return;
     }

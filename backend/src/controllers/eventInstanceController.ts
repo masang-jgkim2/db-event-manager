@@ -52,6 +52,16 @@ const fnGetTransitions = (
   return OBJ_STATUS_TRANSITIONS_BASE[strStatus] ?? [];
 };
 
+// 액션(다음 상태)별 필요 권한 1개 — 역할 없을 때 권한으로 통과
+const OBJ_STATUS_REQUIRED_PERMISSION: Partial<Record<TEventStatus, string>> = {
+  confirm_requested: 'my_dashboard.request_confirm',
+  dba_confirmed:      'my_dashboard.confirm',
+  qa_requested:       'my_dashboard.request_qa',
+  qa_verified:        'my_dashboard.verify_qa',
+  live_requested:     'my_dashboard.request_live',
+  live_verified:      'my_dashboard.verify_live',
+};
+
 // 현재 사용자 정보를 IStageActor로 변환
 // strActorName(body) > JWT의 strDisplayName > strUserId 순서로 폴백
 const fnMakeActor = (req: Request): IStageActor => ({
@@ -216,16 +226,19 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 역할 또는 권한으로 허용 (DBA 전용 전이: dba/admin만 허용된 경우 권한으로도 통과)
+    // 역할 또는 해당 액션의 단일 권한으로 허용
     const arrUserPerms = req.user?.arrPermissions || [];
     const bHasRole = objTransition.arrAllowedRoles.some((r) => arrUserRoles.includes(r));
-    const bDbaOnlyTransition = objTransition.arrAllowedRoles.every((r) => r === 'dba' || r === 'admin');
-    const bHasDbaPerm = bDbaOnlyTransition && [
-      'my_dashboard.confirm', 'instance.execute_qa', 'instance.execute_live',
-      'my_dashboard.execute_qa', 'my_dashboard.execute_live',
-    ].some((p) => (arrUserPerms as string[]).includes(p));
-    if (!bHasRole && !bHasDbaPerm) {
-      res.status(403).json({ bSuccess: false, strMessage: '해당 상태를 변경할 권한이 없습니다.' });
+    const strRequiredPerm = OBJ_STATUS_REQUIRED_PERMISSION[strNextStatus as TEventStatus];
+    const bHasPerm = strRequiredPerm ? (arrUserPerms as string[]).includes(strRequiredPerm) : false;
+    if (!bHasRole && !bHasPerm) {
+      const strNeed = strRequiredPerm
+        ? `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}, 또는 권한 '${strRequiredPerm}'`
+        : `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}`;
+      res.status(403).json({
+        bSuccess: false,
+        strMessage: `해당 상태를 변경할 권한이 없습니다. 필요: ${strNeed}.`,
+      });
       return;
     }
 
@@ -291,6 +304,22 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
     if (!strEnv || !['dev', 'qa', 'live'].includes(strEnv)) {
       res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 dev, qa, live 중 하나여야 합니다.' });
+      return;
+    }
+
+    // env별 단일 권한 1개 (레거시 코드도 동일 액션으로 허용) 또는 dba/admin 역할
+    const arrUserPerms = req.user?.arrPermissions || [];
+    const arrUserRoles = req.user?.arrRoles || [];
+    const bIsDbaOrAdmin = arrUserRoles.includes('dba') || arrUserRoles.includes('admin');
+    const arrPermsForEnv = strEnv === 'live'
+      ? ['my_dashboard.execute_live', 'instance.execute_live']
+      : ['my_dashboard.execute_qa', 'instance.execute_qa'];
+    const bHasPerm = arrPermsForEnv.some((p) => (arrUserPerms as string[]).includes(p));
+    if (!bIsDbaOrAdmin && !bHasPerm) {
+      res.status(403).json({
+        bSuccess: false,
+        strMessage: `이 작업을 하려면 역할 dba 또는 admin, 또는 권한 '${arrPermsForEnv[0]}'이 필요합니다.`,
+      });
       return;
     }
 

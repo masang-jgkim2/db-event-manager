@@ -23,7 +23,7 @@ import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
 } from '../types';
-import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnFormatPermissionErrorMessage } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -408,14 +408,14 @@ const MyDashboardPage = () => {
       if (result.bSuccess) {
         messageApi.success(`${strActionLabel} 처리 완료`);
         if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
-      } else {
-        messageApi.error(result.strMessage || '처리에 실패했습니다.');
-      }
-    } catch (err: any) {
-      const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
-      messageApi.error(strMsg);
+    } else {
+      messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'));
     }
-  };
+  } catch (err: any) {
+    const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
+    messageApi.error(fnFormatPermissionErrorMessage(strMsg));
+  }
+};
 
   // QA/LIVE DB 실행
   const fnHandleExecute = async (r: IEventInstance, strEnv: 'qa' | 'live') => {
@@ -446,7 +446,7 @@ const MyDashboardPage = () => {
             arrQueryResults: [],
             nTotalAffectedRows: 0,
             nElapsedMs: 0,
-            strError: result.strMessage || '실행에 실패했습니다.',
+            strError: fnFormatPermissionErrorMessage(result.strMessage || '실행에 실패했습니다.'),
             dtExecutedAt: new Date().toISOString(),
           });
           setBExecResultOpen(true);
@@ -493,7 +493,7 @@ const MyDashboardPage = () => {
       messageApi.success('이벤트가 수정되었습니다.');
       setBEditOpen(false);
     } else {
-      messageApi.error(result.strMessage || '수정에 실패했습니다.');
+      messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '수정에 실패했습니다.'));
     }
   };
 
@@ -519,7 +519,7 @@ const MyDashboardPage = () => {
           setObjDetail(result.objInstance);
         }
       } else {
-        messageApi.error(result.strMessage || '쿼리 수정에 실패했습니다.');
+        messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '쿼리 수정에 실패했습니다.'));
       }
     } finally {
       setBQuerySaving(false);
@@ -564,10 +564,10 @@ const MyDashboardPage = () => {
         onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
     );
 
-    // DBA: 쿼리 수정 버튼 — 컨펌 요청 / QA 반영 요청 / LIVE 반영 요청 상태에서만 활성화 (역할로 노출)
+    // DBA: 쿼리 수정 — 역할 또는 단일 권한 my_dashboard.query_edit
     const bIsDbaOrAdmin = arrRoles.includes('dba') || arrRoles.includes('admin');
     const ARR_DBA_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
-    if (bIsDbaOrAdmin && ARR_DBA_EDIT_STATUS.includes(r.strStatus)) {
+    if ((bIsDbaOrAdmin || fnHasPermission('my_dashboard.query_edit')) && ARR_DBA_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
           <Button size="small" icon={<CodeOutlined />} onClick={() => fnOpenQueryEdit(r)}>
@@ -577,27 +577,33 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 운영자: 작성 중 → 수정 + 컨펌 요청
-    if (fnHasPermission('instance.create') && r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId) {
-      arrButtons.push(
-        <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
-      );
-      arrButtons.push(
-        <PopconfirmWithSkip
-          key="req-confirm"
-          actionKey="confirm_requested"
-          title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다."
-          okText="요청"
-          cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}
-        >
-          <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
-        </PopconfirmWithSkip>
-      );
+    // 운영자: 작성 중 → 수정(my_dashboard.edit) + 컨펌 요청(my_dashboard.request_confirm) — 역할 없을 때 단일 권한
+    const bCanEdit = fnHasPermission('my_dashboard.edit') || fnHasPermission('instance.create');
+    const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm') || fnHasPermission('instance.create');
+    if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
+      if (bCanEdit) {
+        arrButtons.push(
+          <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
+        );
+      }
+      if (bCanRequestConfirm) {
+        arrButtons.push(
+          <PopconfirmWithSkip
+            key="req-confirm"
+            actionKey="confirm_requested"
+            title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다."
+            okText="요청"
+            cancelText="취소"
+            onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}
+          >
+            <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
+          </PopconfirmWithSkip>
+        );
+      }
     }
 
-    // DBA/관리자: 컨펌 처리 (권한 또는 역할로 노출)
-    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || fnHasPermission('instance.execute_live') || bIsDbaOrAdmin)) {
+    // DBA 컨펌 — 역할 또는 단일 권한 my_dashboard.confirm
+    if (r.strStatus === 'confirm_requested' && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.confirm'))) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -606,9 +612,9 @@ const MyDashboardPage = () => {
       );
     }
 
-    // dba_confirmed 이후 → 반영 범위에 따라 QA요청 또는 LIVE요청 버튼
+    // dba_confirmed 이후 → 반영 범위에 따라 QA요청 또는 LIVE요청 (단일 권한)
     if (r.strStatus === 'dba_confirmed') {
-      if (bHasQa && fnHasPermission('instance.approve_qa')) {
+      if (bHasQa && fnHasPermission('my_dashboard.request_qa')) {
         // QA 포함: QA 반영 요청
         arrButtons.push(
           <PopconfirmWithSkip
@@ -622,7 +628,7 @@ const MyDashboardPage = () => {
             <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
           </PopconfirmWithSkip>
         );
-      } else if (!bHasQa && bHasLive && fnHasPermission('instance.approve_live')) {
+      } else if (!bHasQa && bHasLive && fnHasPermission('my_dashboard.request_live')) {
         // LIVE only: QA 스킵 → LIVE 반영 요청
         arrButtons.push(
           <PopconfirmWithSkip
@@ -644,8 +650,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // QA DB 실행 (DBA 권한 — 권한 또는 역할로 노출)
-    if (bHasQa && (fnHasPermission('instance.execute_qa') || bIsDbaOrAdmin) && r.strStatus === 'qa_requested') {
+    // QA 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_qa
+    if (bHasQa && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_qa')) && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
           key="qa-execute"
@@ -672,8 +678,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 (운영자) — 기존 팝업(Popconfirm) 안에 취소 / 확인 / QA 반영 재요청
-    if (bHasQa && fnHasPermission('instance.verify_qa') && r.strStatus === 'qa_deployed') {
+    // QA 확인 — 단일 권한 my_dashboard.verify_qa (재요청은 my_dashboard.request_qa)
+    if (bHasQa && fnHasPermission('my_dashboard.verify_qa') && r.strStatus === 'qa_deployed') {
       arrButtons.push(
         <Popconfirm
           key="qa-v"
@@ -681,7 +687,7 @@ const MyDashboardPage = () => {
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
           title="QA 반영을 확인하셨습니까?"
           description={
-            fnHasPermission('instance.approve_qa') ? (
+            fnHasPermission('my_dashboard.request_qa') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
                 <Button
                   size="small"
@@ -716,10 +722,10 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (데이터 문제 시)
+    // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (단일 권한)
     if (bHasQa && r.strStatus === 'qa_verified') {
-      const bCanLive = bHasLive && fnHasPermission('instance.approve_live');
-      const bCanQaRereq = fnHasPermission('instance.approve_qa');
+      const bCanLive = bHasLive && fnHasPermission('my_dashboard.request_live');
+      const bCanQaRereq = fnHasPermission('my_dashboard.request_qa');
 
       if (bFunMode && bCanLive && bCanQaRereq) {
         // 재미 모드: 한 버튼에서 롱프레스 시 QA 재반영 요청으로 전환
@@ -773,8 +779,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // LIVE DB 실행 (DBA 권한 — 권한 또는 역할로 노출)
-    if (bHasLive && (fnHasPermission('instance.execute_live') || bIsDbaOrAdmin) && r.strStatus === 'live_requested') {
+    // LIVE 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_live
+    if (bHasLive && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_live')) && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
           key="live-execute"
@@ -802,8 +808,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // LIVE 확인 (운영자) — 기존 팝업(Popconfirm) 안에 취소 / 확인 / LIVE 반영 재요청
-    if (bHasLive && fnHasPermission('instance.verify_live') && r.strStatus === 'live_deployed') {
+    // LIVE 확인 — 단일 권한 my_dashboard.verify_live (재요청은 my_dashboard.request_live)
+    if (bHasLive && fnHasPermission('my_dashboard.verify_live') && r.strStatus === 'live_deployed') {
       arrButtons.push(
         <Popconfirm
           key="live-v"
@@ -811,7 +817,7 @@ const MyDashboardPage = () => {
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
           title="LIVE 반영을 확인하셨습니까?"
           description={
-            fnHasPermission('instance.approve_live') ? (
+            fnHasPermission('my_dashboard.request_live') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
                 <Button
                   size="small"
@@ -846,8 +852,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 완료(live_verified) 후: 데이터 문제 시 LIVE 재반영 요청
-    if (bHasLive && fnHasPermission('instance.approve_live') && r.strStatus === 'live_verified') {
+    // 완료(live_verified) 후: LIVE 재반영 요청 — 단일 권한 my_dashboard.request_live
+    if (bHasLive && fnHasPermission('my_dashboard.request_live') && r.strStatus === 'live_verified') {
       if (bFunMode) {
         // 재미 모드: 롱프레스 후 클릭 시에만 재요청 (실수 방지)
         arrButtons.push(
