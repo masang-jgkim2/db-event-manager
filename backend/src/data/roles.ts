@@ -83,7 +83,8 @@ const OBJ_EXPAND: Record<string, string[]> = {
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
-  'instance.create': ['instance.view', 'my_dashboard.edit', 'my_dashboard.request_confirm'],
+  // instance.create는 이벤트 수정/컨펌 요청 권한을 자동 부여하지 않음 (역할에서 별도 체크한 권한만 적용)
+  'instance.create': ['instance.view'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],

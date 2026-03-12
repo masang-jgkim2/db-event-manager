@@ -577,9 +577,9 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 운영자: 작성 중 → 수정(my_dashboard.edit) + 컨펌 요청(my_dashboard.request_confirm) — 역할 없을 때 단일 권한
-    const bCanEdit = fnHasPermission('my_dashboard.edit') || fnHasPermission('instance.create');
-    const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm') || fnHasPermission('instance.create');
+    // 운영자: 작성 중 — 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
+    const bCanEdit = fnHasPermission('my_dashboard.edit');
+    const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm');
     if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
       if (bCanEdit) {
         arrButtons.push(

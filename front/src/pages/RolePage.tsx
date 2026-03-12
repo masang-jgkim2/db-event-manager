@@ -12,7 +12,7 @@ import {
 } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
-import { ARR_PERMISSION_GROUPS, fnExpandLegacyToGranular } from '../types';
+import { ARR_PERMISSION_GROUPS } from '../types';
 
 const { Title, Text } = Typography;
 
@@ -47,11 +47,11 @@ const RolePage = () => {
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
 
-  // 추가/수정 모달 열기 (권한은 레거시 → 세분화 확장하여 폼에 반영)
+  // 추가/수정 모달 열기 — 저장된 권한만 폼에 반영 (확장하지 않음. 제외한 권한이 다시 체크되지 않도록)
   const fnOpenModal = (objRole?: IRole) => {
     if (objRole) {
       setObjEditRole(objRole);
-      const arrPerms = fnExpandLegacyToGranular(objRole.arrPermissions as string[]);
+      const arrPerms = Array.isArray(objRole.arrPermissions) ? [...objRole.arrPermissions] : [];
       form.setFieldsValue({
         strCode: objRole.strCode,
         strDisplayName: objRole.strDisplayName,
