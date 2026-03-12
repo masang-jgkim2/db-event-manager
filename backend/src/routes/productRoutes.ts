@@ -5,16 +5,16 @@ import { fnRequireAnyPermission, fnRequirePermission } from '../middleware/permi
 
 const router = Router();
 
-// GET /api/products - 목록 조회 (조회 또는 관리 권한)
-router.get('/', fnAuthMiddleware, fnRequireAnyPermission('product.view', 'product.manage'), fnGetProducts);
+// GET /api/products - 목록 조회 (보기/생성/수정/삭제/관리 중 하나)
+router.get('/', fnAuthMiddleware, fnRequireAnyPermission('product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete'), fnGetProducts);
 
-// POST /api/products - 추가 (관리 권한)
-router.post('/', fnAuthMiddleware, fnRequirePermission('product.manage'), fnCreateProduct);
+// POST /api/products - 추가 (생성 또는 관리)
+router.post('/', fnAuthMiddleware, fnRequireAnyPermission('product.manage', 'product.create'), fnCreateProduct);
 
-// PUT /api/products/:id - 수정 (관리 권한)
-router.put('/:id', fnAuthMiddleware, fnRequirePermission('product.manage'), fnUpdateProduct);
+// PUT /api/products/:id - 수정 (수정 또는 관리)
+router.put('/:id', fnAuthMiddleware, fnRequireAnyPermission('product.manage', 'product.edit'), fnUpdateProduct);
 
-// DELETE /api/products/:id - 삭제 (관리 권한)
-router.delete('/:id', fnAuthMiddleware, fnRequirePermission('product.manage'), fnDeleteProduct);
+// DELETE /api/products/:id - 삭제 (삭제 또는 관리)
+router.delete('/:id', fnAuthMiddleware, fnRequireAnyPermission('product.manage', 'product.delete'), fnDeleteProduct);
 
 export default router;

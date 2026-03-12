@@ -184,19 +184,19 @@ const App = () => {
               </ProtectedRoute>
             }
           >
-            {/* 관리자 전용 페이지 */}
+            {/* 대시보드: dashboard.view(확장으로 admin 부여) 또는 admin 역할 */}
             <Route
               path="/"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['dashboard.view']}>
                   <DashboardPage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
             <Route
               path="/products"
               element={
-                <PermissionRoute arrRequiredPerms={['product.view', 'product.manage']}>
+                <PermissionRoute arrRequiredPerms={['product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete']}>
                   <ProductPage />
                 </PermissionRoute>
               }
@@ -204,7 +204,7 @@ const App = () => {
             <Route
               path="/events"
               element={
-                <PermissionRoute arrRequiredPerms={['event_template.view', 'event_template.manage']}>
+                <PermissionRoute arrRequiredPerms={['event_template.view', 'event_template.manage', 'event_template.create', 'event_template.edit', 'event_template.delete']}>
                   <EventPage />
                 </PermissionRoute>
               }

@@ -559,12 +559,10 @@ const MyDashboardPage = () => {
         onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
     );
 
-    // DBA: 쿼리 수정 버튼 — 컨펌 요청 / QA 반영 요청 / LIVE 반영 요청 상태에서만 활성화
+    // DBA: 쿼리 수정 버튼 — 컨펌 요청 / QA 반영 요청 / LIVE 반영 요청 상태에서만 활성화 (역할로 노출)
+    const bIsDbaOrAdmin = arrRoles.includes('dba') || arrRoles.includes('admin');
     const ARR_DBA_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
-    if (
-      (arrRoles.includes('dba') || arrRoles.includes('admin')) &&
-      ARR_DBA_EDIT_STATUS.includes(r.strStatus)
-    ) {
+    if (bIsDbaOrAdmin && ARR_DBA_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
           <Button size="small" icon={<CodeOutlined />} onClick={() => fnOpenQueryEdit(r)}>
@@ -593,8 +591,8 @@ const MyDashboardPage = () => {
       );
     }
 
-    // DBA/관리자: 컨펌 처리
-    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || fnHasPermission('instance.execute_live') || arrRoles.includes('admin'))) {
+    // DBA/관리자: 컨펌 처리 (권한 또는 역할로 노출)
+    if (r.strStatus === 'confirm_requested' && (fnHasPermission('instance.execute_qa') || fnHasPermission('instance.execute_live') || bIsDbaOrAdmin)) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -641,8 +639,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // QA DB 실행 (DBA 권한)
-    if (bHasQa && fnHasPermission('instance.execute_qa') && r.strStatus === 'qa_requested') {
+    // QA DB 실행 (DBA 권한 — 권한 또는 역할로 노출)
+    if (bHasQa && (fnHasPermission('instance.execute_qa') || bIsDbaOrAdmin) && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
           key="qa-execute"
@@ -770,8 +768,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // LIVE DB 실행 (DBA 권한)
-    if (bHasLive && fnHasPermission('instance.execute_live') && r.strStatus === 'live_requested') {
+    // LIVE DB 실행 (DBA 권한 — 권한 또는 역할로 노출)
+    if (bHasLive && (fnHasPermission('instance.execute_live') || bIsDbaOrAdmin) && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
           key="live-execute"

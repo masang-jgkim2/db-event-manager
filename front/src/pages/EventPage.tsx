@@ -54,9 +54,13 @@ const EventPage = () => {
   const arrProducts = useProductStore((s) => s.arrProducts);
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
 
-  // 관리 권한 여부 (없으면 조회 전용)
+  // 세분화 권한: 생성/수정/삭제 (레거시 event_template.manage 포함)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
-  const bCanManage = arrPermissions.includes('event_template.manage');
+  const fnHas = (p: string) => arrPermissions.includes(p);
+  const bCanCreate = fnHas('event_template.create') || fnHas('event_template.manage');
+  const bCanEdit   = fnHas('event_template.edit') || fnHas('event_template.manage');
+  const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
+  const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
   // 페이지 진입 및 탭 포커스 시 자동 리페치
   useEffect(() => { fnFetchEvents(); fnFetchProducts(); }, [fnFetchEvents, fnFetchProducts]);
@@ -162,22 +166,24 @@ const EventPage = () => {
         </Text>
       ),
     },
-    // 관리 권한이 있을 때만 수정/삭제 컬럼 표시
-    ...(bCanManage ? [{
+    // 수정/삭제 권한이 있을 때만 관리 컬럼 표시
+    ...((bCanEdit || bCanDelete) ? [{
       title: '관리',
       key: 'actions',
       width: 100,
       render: (_: unknown, objRecord: IEventTemplate) => (
         <Space>
-          <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(objRecord)} />
-          <Popconfirm
-            title="정말 삭제하시겠습니까?"
-            onConfirm={() => fnHandleDelete(objRecord.nId)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {bCanEdit && <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(objRecord)} />}
+          {bCanDelete && (
+            <Popconfirm
+              title="정말 삭제하시겠습니까?"
+              onConfirm={() => fnHandleDelete(objRecord.nId)}
+              okText="삭제"
+              cancelText="취소"
+            >
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     }] : []),
@@ -188,7 +194,7 @@ const EventPage = () => {
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>이벤트 템플릿</Title>
-        {bCanManage && (
+        {bCanCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
             새로운 이벤트
           </Button>

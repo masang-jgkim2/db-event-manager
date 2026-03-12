@@ -2,22 +2,18 @@
 // 권한 코드 (세부 기능 접근 제어)
 // =============================================
 export type TPermission =
-  // 조회 권한
-  | 'product.view'              // 프로덕트 목록/상세 조회
-  | 'event_template.view'       // 이벤트 템플릿 목록/상세 조회
-  // 관리 권한 (CRUD)
-  | 'product.manage'            // 프로덕트 CRUD (view 포함)
-  | 'event_template.manage'     // 이벤트 템플릿 CRUD (view 포함)
-  | 'user.manage'               // 사용자 관리
-  | 'db.manage'                 // DB 접속 정보 관리
-  // 이벤트 인스턴스 권한
-  | 'instance.create'           // 이벤트 생성
-  | 'instance.approve_qa'       // QA 승인 요청
-  | 'instance.execute_qa'       // QA DB 실제 실행
-  | 'instance.verify_qa'        // QA 결과 확인
-  | 'instance.approve_live'     // LIVE 승인 요청
-  | 'instance.execute_live'     // LIVE DB 실제 실행
-  | 'instance.verify_live';     // LIVE 결과 확인
+  // 레거시 + 세분화 권한 (클라이언트 확장 후 둘 다 내려감)
+  | 'dashboard.view'
+  | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
+  | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
+  | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
+  | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
+  | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
+  | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
+  | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
+  | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live';
 
 // =============================================
 // 역할 모델 (동적 관리)

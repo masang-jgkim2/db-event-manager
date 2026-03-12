@@ -10,8 +10,8 @@ import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
-import type { IRole, TPermission } from '../types';
-import { OBJ_PERMISSION_LABELS } from '../types';
+import type { IRole } from '../types';
+import { ARR_PERMISSION_GROUPS, fnExpandLegacyToGranular } from '../types';
 
 const { Title, Text } = Typography;
 
@@ -38,15 +38,16 @@ const RolePage = () => {
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
 
-  // 추가/수정 모달 열기
+  // 추가/수정 모달 열기 (권한은 레거시 → 세분화 확장하여 폼에 반영)
   const fnOpenModal = (objRole?: IRole) => {
     if (objRole) {
       setObjEditRole(objRole);
+      const arrPerms = fnExpandLegacyToGranular(objRole.arrPermissions as string[]);
       form.setFieldsValue({
         strCode: objRole.strCode,
         strDisplayName: objRole.strDisplayName,
         strDescription: objRole.strDescription,
-        arrPermissions: objRole.arrPermissions,
+        arrPermissions: arrPerms,
       });
     } else {
       setObjEditRole(null);
@@ -95,9 +96,6 @@ const RolePage = () => {
       messageApi.error(error?.message || '삭제에 실패했습니다.');
     }
   };
-
-  // 전체 권한 목록 (체크박스 그룹)
-  const arrAllPermissions = Object.keys(OBJ_PERMISSION_LABELS) as TPermission[];
 
   const arrColumns = [
     fnMakeIndexColumn(),
@@ -164,7 +162,7 @@ const RolePage = () => {
       {contextHolder}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>역할 권한 관리</Title>
+        <Title level={4} style={{ margin: 0 }}>역할 권한</Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
           새로운 역할
         </Button>
@@ -237,7 +235,7 @@ const RolePage = () => {
 
           <Divider />
 
-          {/* 권한 선택 */}
+          {/* 권한 설정 — 세분화 그룹별 (보기/생성/수정/삭제 등) */}
           <Form.Item
             name="arrPermissions"
             label={
@@ -248,14 +246,17 @@ const RolePage = () => {
             }
           >
             <Checkbox.Group style={{ width: '100%' }}>
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                {arrAllPermissions.map((perm) => (
-                  <Checkbox key={perm} value={perm}>
-                    <Text code style={{ fontSize: 12 }}>{perm}</Text>
-                    <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
-                      {OBJ_PERMISSION_LABELS[perm]}
-                    </Text>
-                  </Checkbox>
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                {ARR_PERMISSION_GROUPS.map((group) => (
+                  <Card key={group.groupLabel} size="small" title={group.groupLabel} style={{ marginBottom: 0 }}>
+                    <Space wrap size="small">
+                      {group.permissions.map((p) => (
+                        <Checkbox key={p.value} value={p.value}>
+                          <Text style={{ fontSize: 13 }}>{p.label}</Text>
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </Card>
                 ))}
               </Space>
             </Checkbox.Group>

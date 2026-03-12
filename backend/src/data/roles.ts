@@ -67,6 +67,7 @@ export const fnRemoveRolePermissionsAndSave = (nRoleId: number) => {
   fnSaveRolePermissions();
 };
 
+/** 역할별 권한 합집합 (저장된 코드만) */
 export const fnGetMergedPermissions = (arrRoleCodes: string[]): string[] => {
   const setPermissions = new Set<string>();
   arrRoleCodes.forEach((strCode) => {
@@ -74,4 +75,31 @@ export const fnGetMergedPermissions = (arrRoleCodes: string[]): string[] => {
     if (objRole) fnGetPermissionsByRoleId(objRole.nId).forEach((p) => setPermissions.add(p));
   });
   return Array.from(setPermissions);
+};
+
+/** 레거시 권한 → 세분화 권한 확장 (클라이언트 응답용). admin 역할 시 대시보드/사용자/역할/DB 접속 세분화 추가 */
+const OBJ_EXPAND: Record<string, string[]> = {
+  'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
+  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm'],
+  'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
+  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
+  'instance.verify_qa': ['my_dashboard.verify_qa'],
+  'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
+  'instance.execute_live': ['my_dashboard.execute_live'],
+  'instance.verify_live': ['my_dashboard.verify_live'],
+};
+
+export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): string[] => {
+  const setOut = new Set<string>(arrRaw);
+  arrRaw.forEach((p) => {
+    const arrExp = OBJ_EXPAND[p];
+    if (arrExp) arrExp.forEach((e) => setOut.add(e));
+  });
+  if (arrRoleCodes.includes('admin')) {
+    ['dashboard.view', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'].forEach((p) => setOut.add(p));
+  }
+  return Array.from(setOut);
 };

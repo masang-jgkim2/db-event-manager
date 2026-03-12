@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
 import { fnFindUserByStrUserId } from '../data/users';
-import { fnGetMergedPermissions } from '../data/roles';
+import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
 
 const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
@@ -30,7 +30,8 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const arrPermissions = fnGetMergedPermissions(objUser.arrRoles);
+    const arrRaw = fnGetMergedPermissions(objUser.arrRoles);
+    const arrPermissions = fnExpandPermissions(arrRaw, objUser.arrRoles);
 
     const objPayload: IJwtPayload = {
       nId:            objUser.nId,
@@ -74,7 +75,8 @@ export const fnVerifyToken = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const arrPermissions = fnGetMergedPermissions(objFullUser.arrRoles);
+    const arrRaw = fnGetMergedPermissions(objFullUser.arrRoles);
+    const arrPermissions = fnExpandPermissions(arrRaw, objFullUser.arrRoles);
 
     res.json({
       bSuccess: true,

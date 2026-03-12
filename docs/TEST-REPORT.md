@@ -2,12 +2,29 @@
 
 작성일: 2025-03-10
 
+## 0. 자동 API 테스트 (백엔드)
+
+- **실행**: `backend` 디렉터리에서 `npm test`
+- **결과**: ✅ **20개 테스트 통과** (Test Suites: 1 passed, Tests: 20 passed)
+- **구성**: Jest + ts-jest + supertest, `src/__tests__/api.test.ts`
+- **내용**:
+  - 헬스: GET /api/health
+  - 인증: admin/gm01/dba01 로그인(200), 잘못된 비밀번호(401), GET /api/auth/verify
+  - 관리자 전용: GET /api/users, /api/roles, /api/db-connections (200)
+  - 권한별: GM → GET /api/products, /api/events (200), GET /api/users (403); DBA → GET /api/event-instances (200), GET /api/users (403)
+  - 프로덕트/이벤트/이벤트 인스턴스 목록 (admin)
+  - 인증 없음 → GET /api/users (401)
+  - 관리자 CRUD 요약: GET /api/roles → admin·dba·game_manager·game_designer 코드 포함, GET /api/users → arrRoles 포함
+
+---
+
 ## 1. 테스트 범위 및 한계
 
-- **자동 테스트**: 프로젝트에 단위/통합/E2E 테스트 스크립트가 **없음** (`.test.ts`, `.spec.ts` 없음, `package.json`에 `test` 스크립트 없음).
+- **자동 테스트**: 백엔드 API 테스트 **있음** (위 0절). 프론트엔드 단위/E2E는 없음.
 - **실행한 검증**:
+  - 백엔드 `npm test` (20 passed)
   - 백엔드 TypeScript 빌드 (`npm run build`)
-  - 프론트엔드 TypeScript + Vite 빌드 (`npm run build`)
+  - 프론트엔드 TypeScript + Vite 빌드 (`npm run build`) — 현재 TS 오류로 실패
   - API/페이지 목록 정리 (코드 기준)
 - **수행하지 않은 것**: 브라우저에서 직접 클릭·입력하는 수동 테스트, 로그인 후 각 페이지/기능 점검.
 

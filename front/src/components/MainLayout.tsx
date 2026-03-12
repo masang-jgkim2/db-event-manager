@@ -100,20 +100,20 @@ const MainLayout = () => {
     // ── 이벤트 그룹 ──────────────────────────────────
     const arrEventChildren = [];
 
-    // 관리자 전용: 대시보드
-    if (bIsAdmin) {
+    // 대시보드: 관리자 또는 세분화 권한
+    if (bIsAdmin || fnHasPerm('dashboard.view')) {
       arrEventChildren.push({ key: '/', icon: <DashboardOutlined />, label: '대시보드' });
     }
-    // 프로덕트 조회 또는 관리 권한
-    if (fnHasPerm('product.view') || fnHasPerm('product.manage')) {
+    // 프로덕트: 보기/생성/수정/삭제/관리 중 하나
+    if (fnHasPerm('product.view') || fnHasPerm('product.manage') || fnHasPerm('product.create') || fnHasPerm('product.edit') || fnHasPerm('product.delete')) {
       arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' });
     }
-    // 이벤트 템플릿 조회 또는 관리 권한
-    if (fnHasPerm('event_template.view') || fnHasPerm('event_template.manage')) {
+    // 이벤트 템플릿: 보기/생성/수정/삭제/관리 중 하나
+    if (fnHasPerm('event_template.view') || fnHasPerm('event_template.manage') || fnHasPerm('event_template.create') || fnHasPerm('event_template.edit') || fnHasPerm('event_template.delete')) {
       arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' });
     }
-    // DB 접속 정보: 관리 권한
-    if (fnHasPerm('db.manage')) {
+    // DB 접속 정보: 관리 또는 세분화 권한
+    if (fnHasPerm('db.manage') || fnHasPerm('db_connection.view') || fnHasPerm('db_connection.create') || fnHasPerm('db_connection.edit') || fnHasPerm('db_connection.delete') || fnHasPerm('db_connection.test')) {
       arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
     }
 
@@ -126,15 +126,15 @@ const MainLayout = () => {
       });
     }
 
-    // ── 사용자 그룹 (관리자 전용) ─────────────────────
-    if (fnHasPerm('user.manage') || bIsAdmin) {
+    // ── 사용자 그룹: 사용자/역할 보기·생성·수정·삭제·권한수정 중 하나
+    if (fnHasPerm('user.manage') || fnHasPerm('user.view') || fnHasPerm('user.create') || fnHasPerm('user.edit') || fnHasPerm('user.delete') || fnHasPerm('role.view') || fnHasPerm('role.create') || fnHasPerm('role.edit') || fnHasPerm('role.delete') || fnHasPerm('role.edit_permissions') || bIsAdmin) {
       arrResult.push({
         key: 'user-group',
         label: '사용자',
         type: 'group' as const,
         children: [
           { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
-          { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한 관리' },
+          { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한' },
         ],
       });
     }

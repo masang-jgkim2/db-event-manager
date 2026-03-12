@@ -36,6 +36,94 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'instance.verify_live':    'LIVE 확인',
 };
 
+/** 세분화 권한 그룹 (역할 권한 수정 화면용) */
+export interface IPermissionGroupItem {
+  value: string;
+  label: string;
+}
+export interface IPermissionGroup {
+  groupLabel: string;
+  permissions: IPermissionGroupItem[];
+}
+
+export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
+  { groupLabel: '대시보드', permissions: [{ value: 'dashboard.view', label: '보기' }] },
+  { groupLabel: '프로덕트', permissions: [
+    { value: 'product.view', label: '보기' },
+    { value: 'product.create', label: '생성' },
+    { value: 'product.edit', label: '수정' },
+    { value: 'product.delete', label: '삭제' },
+  ]},
+  { groupLabel: '이벤트 템플릿', permissions: [
+    { value: 'event_template.view', label: '보기' },
+    { value: 'event_template.create', label: '생성' },
+    { value: 'event_template.edit', label: '수정' },
+    { value: 'event_template.delete', label: '삭제' },
+  ]},
+  { groupLabel: 'DB 접속 정보', permissions: [
+    { value: 'db_connection.view', label: '보기' },
+    { value: 'db_connection.create', label: '생성' },
+    { value: 'db_connection.edit', label: '수정' },
+    { value: 'db_connection.delete', label: '삭제' },
+    { value: 'db_connection.test', label: '연결 테스트' },
+  ]},
+  { groupLabel: '사용자', permissions: [
+    { value: 'user.view', label: '보기' },
+    { value: 'user.create', label: '생성' },
+    { value: 'user.edit', label: '수정' },
+    { value: 'user.delete', label: '삭제' },
+    { value: 'user.reset_password', label: '비밀번호 초기화' },
+  ]},
+  { groupLabel: '역할 권한', permissions: [
+    { value: 'role.view', label: '보기' },
+    { value: 'role.create', label: '생성' },
+    { value: 'role.edit', label: '수정' },
+    { value: 'role.delete', label: '삭제' },
+    { value: 'role.edit_permissions', label: '권한 수정' },
+  ]},
+  { groupLabel: '나의 대시보드', permissions: [
+    { value: 'my_dashboard.edit', label: '인스턴스 수정' },
+    { value: 'my_dashboard.request_confirm', label: '컨펌 요청' },
+    { value: 'my_dashboard.query_edit', label: '쿼리 수정' },
+    { value: 'my_dashboard.confirm', label: 'DBA 컨펌' },
+    { value: 'my_dashboard.request_qa', label: 'QA 반영 요청' },
+    { value: 'my_dashboard.execute_qa', label: 'QA 반영 실행' },
+    { value: 'my_dashboard.verify_qa', label: 'QA 확인' },
+    { value: 'my_dashboard.request_qa_rereq', label: 'QA 재반영 요청' },
+    { value: 'my_dashboard.request_live', label: 'LIVE 반영 요청' },
+    { value: 'my_dashboard.execute_live', label: 'LIVE 반영 실행' },
+    { value: 'my_dashboard.verify_live', label: 'LIVE 확인' },
+    { value: 'my_dashboard.request_live_rereq', label: 'LIVE 재반영 요청' },
+    { value: 'my_dashboard.hide', label: '숨기기/복원' },
+  ]},
+  { groupLabel: '이벤트 생성', permissions: [
+    { value: 'instance.create', label: '이벤트 인스턴스 생성' },
+  ]},
+];
+
+/** 레거시 권한 → 세분화 권한으로 확장 (역할 편집 폼 초기값용) */
+const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
+  'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
+  'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
+  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
+  'instance.verify_qa': ['my_dashboard.verify_qa'],
+  'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
+  'instance.execute_live': ['my_dashboard.execute_live'],
+  'instance.verify_live': ['my_dashboard.verify_live'],
+  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.create'],
+};
+export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
+  const setOut = new Set<string>(arrRaw);
+  arrRaw.forEach((p) => {
+    const exp = OBJ_LEGACY_EXPAND[p];
+    if (exp) exp.forEach((e) => setOut.add(e));
+  });
+  return Array.from(setOut);
+}
+
 // =============================================
 // 역할 모델
 // =============================================
