@@ -201,6 +201,25 @@ CREATE TABLE execution_query_parts (
   FOREIGN KEY (n_result_id) REFERENCES instance_execution_results(n_id) ON DELETE CASCADE
 );
 
+-- -----------------------------------------
+-- 감사 로그 (한 사용자 전체 로그: CRUD, 로그인/로그아웃, 권한 수정 등)
+-- 이벤트 인스턴스 상태 변경은 instance_status_logs 사용, 나머지는 여기 기록
+-- -----------------------------------------
+CREATE TABLE audit_logs (
+  n_id              INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  n_actor_user_id   INT           NOT NULL COMMENT '행위자 사용자 ID',
+  str_entity        VARCHAR(50)   NOT NULL COMMENT 'user|product|db_connection|event_template|role|user_role|login|logout',
+  n_entity_id       INT           NULL COMMENT '대상 레코드 PK (login/logout 시 NULL)',
+  str_action        VARCHAR(30)   NOT NULL COMMENT 'create|update|delete|login|logout|role_assign|permission_change',
+  str_detail        TEXT          NULL COMMENT '요약 또는 변경 설명',
+  dt_created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (n_actor_user_id) REFERENCES users(n_id) ON DELETE RESTRICT,
+  INDEX idx_actor (n_actor_user_id),
+  INDEX idx_entity (str_entity, n_entity_id),
+  INDEX idx_dt (dt_created_at)
+);
+
 -- =============================================================
 -- 시드: 역할 + role_permissions
 -- =============================================================
