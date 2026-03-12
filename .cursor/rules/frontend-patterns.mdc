@@ -10,12 +10,12 @@ alwaysApply: false
 
 ```
 front/src/
-  pages/      # 각 메뉴 페이지 컴포넌트
-  components/ # 공통 컴포넌트 (MainLayout 등)
-  stores/     # Zustand 스토어 (useAuthStore, useEventInstanceStore)
+  pages/      # 각 메뉴 페이지 (MyDashboardPage 등)
+  components/ # AppTable, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore)
   api/        # API 클라이언트 (axios 래퍼)
-  hooks/      # 커스텀 훅 (useEventStream 등)
-  types/      # index.ts — 공유 인터페이스 (백엔드와 동기화)
+  hooks/      # useEventStream 등
+  types/      # 공유 인터페이스 (백엔드와 동기화)
 ```
 
 ## 권한 기반 UI 렌더링
@@ -75,6 +75,19 @@ export const fnApiGetProducts = () =>
 
 새로 생성하는 버튼은 "새로운 ~" 형식 사용:
 - "새로운 프로덕트", "새로운 이벤트", "새로운 역할", "새로운 사용자", "새로운 DB 접속 정보"
+
+## 나의 대시보드 (MyDashboardPage)
+
+- **탭**: 전체 / 관여 / 생성 / 처리할 이벤트, **완료·숨김** (숨긴 이벤트).
+- **필터**: Segmented 대신 **Select** 드롭다운.
+- **보기 전환**: 테이블(행) ↔ 카드 보기. 전환 시 페이드 아웃→전환→페이드 인, `nViewMinHeight`/`viewContentRef`로 높이 고정 후 해제해 번쩍임 완화. 카드 보기는 동일 데이터를 Row/Col/Card 그리드로 표시, 클릭 시 `InstanceStepper`.
+- **재요청 UX**: QA 확인 / LIVE 확인 시 Popconfirm(취소·확인·재요청 버튼). 굳굳 설정의 **재미 모드** 켜면 재요청은 **롱프레스**(`RequestWithLongPressButton`)로만 동작.
+- **테이블**: `AppTable` 사용. No. 컬럼 `fnMakeIndexColumn(55)` 최좌측, 확장 컬럼 `expandable.columnWidth: 24`.
+
+## AppTable (공통 테이블)
+
+- **헤더**: 좌(리사이즈) | 중앙(순서 변경 드래그) | 우(리사이즈). `data-left-col-key` / `data-right-col-key`로 인접 컬럼과 경계만 이동.
+- **더블클릭** 헤더: 셀 내용 너비 기준 컬럼 자동 맞춤. `__index`(No.) 컬럼은 항상 맨 앞(`fnEnsureIndexFirst`).
 
 ## 메뉴 구조
 

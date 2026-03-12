@@ -17,6 +17,12 @@ event_created → confirm_requested → dba_confirmed
 - 반영 범위가 `['live']`만이면: `dba_confirmed` 다음에 `live_requested`로 직행 (QA 단계 스킵).
 - 상태 전이·허용 역할: `OBJ_STATUS_TRANSITIONS_BASE` 및 `fnGetTransitions(..., arrDeployScope)` 참고.
 
+## 재요청 전이 (QA/LIVE 확인 후 재반영 요청)
+
+- `qa_verified` → `qa_requested`: QA 확인 후 QA 재반영 요청 (GM/game_designer/admin).
+- `live_deployed` → `live_requested`, `live_verified` → `live_requested`: LIVE 재반영 요청.
+- 프론트: QA 확인 / LIVE 확인 시 Popconfirm에 취소·확인·재요청 버튼. 재미 모드 시 롱프레스로 재요청(`RequestWithLongPressButton`).
+
 ## 반영 날짜 조건 (실제 검증)
 
 - **QA**: 시간 제한 없음. LIVE 반영 전 언제든 실행 가능.
