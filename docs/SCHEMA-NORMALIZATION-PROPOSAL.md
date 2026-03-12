@@ -183,7 +183,7 @@ CREATE TABLE execution_query_parts (
 ## 6. 정규화 스키마 파일
 
 - **docs/schema_normalized.sql**: 위 정규화를 반영한 전체 DDL (MySQL 기준).
-  - roles/users/products/event_templates/db_connections/event_instances + role_permissions, user_roles, product_services, instance_deploy_scopes, instance_status_logs, instance_execution_results, execution_query_parts.
+  - roles, role_permissions, users, user_roles, products, product_services, event_templates, db_connections, event_instances, instance_deploy_scopes, instance_status_logs, instance_execution_results, execution_query_parts, **audit_logs**.
   - 시드: roles, role_permissions, users, user_roles (admin 계정 1개).
 
 애플리케이션 전환 시: 기존 JSON을 읽고 쓰는 코드를 새 테이블 조회/INSERT·DELETE로 바꾸고, **instance_status_logs**는 상태 변경/실행 시마다 1건 INSERT하도록 수정해야 합니다.
@@ -193,6 +193,25 @@ CREATE TABLE execution_query_parts (
 ## 7. 인메모리·코드와 정규화 스키마 매핑
 
 정규화 스키마는 **현재 인메모리 구조(backend/src/data/*.ts) 및 타입(backend/src/types, front/src/types)** 과 1:1 대응되도록 설계됨. DB 전환 시 Repository/서비스 계층에서 아래 매핑으로 API 응답을 조립하면 기존 인터페이스를 그대로 유지할 수 있음.
+
+### 7.0 스키마 ↔ 인메모리 ↔ 코드 파일 대응표
+
+| 정규화 테이블 | 인메모리 저장소 (파일) | 코드 타입/사용처 |
+|---------------|------------------------|------------------|
+| roles | data/roles.ts (roles.json) | IRole, roleController |
+| role_permissions | (roles.arrPermissions → JSON) | IRole.arrPermissions |
+| users | data/users.ts (users.json) | IUser, userController |
+| user_roles | (users.arrRoles → JSON) | IUser.arrRoles |
+| products | data/products.ts (products.json) | IProduct, productController |
+| product_services | (products.arrServices → JSON) | IProduct.arrServices, IService |
+| event_templates | data/events.ts (events.json) | IEventTemplate, eventController |
+| db_connections | data/dbConnections.ts (dbConnections.json) | IDbConnection, dbConnectionController |
+| event_instances | data/eventInstances.ts (eventInstances.json) | IEventInstance, eventInstanceController |
+| instance_deploy_scopes | (event_instances.arrDeployScope → JSON) | IEventInstance.arrDeployScope |
+| instance_status_logs | (event_instances.arrStatusLogs → JSON) | IStatusLog[], eventInstanceController (push) |
+| instance_execution_results | (IStatusLog.objExecutionResult) | IStatusLog.objExecutionResult |
+| execution_query_parts | (objExecutionResult.arrQueryResults) | 쿼리 단위 결과 |
+| **audit_logs** | **(인메모리 없음)** | **DB 전환 시** productController, userController, eventController, dbConnectionController, roleController, authController 등에서 CRUD/로그인·로그아웃 시 INSERT |
 
 ### 7.1 엔티티 관계도 (코드 ↔ 정규화 스키마)
 
@@ -219,6 +238,10 @@ CREATE TABLE execution_query_parts (
     │       └─ (0..1) instance_execution_results → IStatusLog.objExecutionResult
     │               └─ * execution_query_parts   → arrQueryResults[]
     └─ 처리자 8명: n_*_user_id → users 조인 → IStageActor (strDisplayName, strUserId, dtProcessedAt은 아래 참고)
+
+[감사 로그 — 인메모리에는 없음, DB 전환 시 Controller에서 기록]
+  audit_logs (n_actor_user_id, str_entity, n_entity_id, str_action, str_detail)
+    → user/product/db_connection/event_template/role/user_role/login/logout 별 CRUD·로그인·로그아웃·권한 변경 이력
 ```
 
 ### 7.2 인터페이스별 테이블·조립 방법
@@ -250,7 +273,13 @@ CREATE TABLE execution_query_parts (
 | 현재 코드 (인메모리) | 정규화 DB 전환 시 |
 |----------------------|-------------------|
 | productController: arrProducts.push, fnSaveProducts | products INSERT + product_services INSERT (기존 서비스 삭제 후 재등록) |
+| productController: create/update/delete | + audit_logs INSERT (str_entity=product, str_action=create/update/delete, n_actor_user_id=req.user.nId) |
 | userController: arrUsers, arrRoles 참조 | users CRUD + user_roles 조회/INSERT/DELETE, role_permissions로 권한 합집합 계산 |
+| userController: create/update/delete | + audit_logs INSERT (str_entity=user, str_action=create/update/delete) |
+| roleController: role_permissions / user_roles 변경 | + audit_logs INSERT (str_entity=role|user_role, str_action=permission_change|role_assign) |
+| eventController: create/update/delete | event_templates CRUD + audit_logs INSERT (str_entity=event_template) |
+| dbConnectionController: create/update/delete | db_connections CRUD + audit_logs INSERT (str_entity=db_connection) |
+| authController: 로그인/로그아웃 | + audit_logs INSERT (str_entity=login|logout, n_entity_id=NULL, n_actor_user_id) |
 | eventInstanceController: arrStatusLogs.push | instance_status_logs INSERT, (실행 시) instance_execution_results + execution_query_parts INSERT |
 | eventInstanceController: objInstance.objQaDeployer = objActor 등 | event_instances.n_qa_deployer_user_id = req.user.nId UPDATE |
 | eventInstanceController: objInstance.arrDeployScope = arr | instance_deploy_scopes DELETE 후 INSERT (해당 n_instance_id, str_env) |
