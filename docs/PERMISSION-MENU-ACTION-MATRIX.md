@@ -42,7 +42,7 @@
 | | `role.delete` | 역할 삭제 | 역할 삭제(커스텀만) |
 | | `role.edit_permissions` | 역할 권한 수정 | 시스템 역할 포함 권한 체크박스 |
 | **나의 대시보드** | `my_dashboard.view` | 나의 대시보드 보기 | 목록·탭·필터·통계 |
-| | `my_dashboard.detail` | 인스턴스 상세 보기 | 상세 버튼·모달 |
+| | `my_dashboard.detail` | 상세 보기 | 상세 버튼·모달 |
 | | `my_dashboard.edit` | 이벤트 수정 | 작성 중인 본인 인스턴스 수정 |
 | | `my_dashboard.request_confirm` | 컨펌 요청 | 컨펌 요청 버튼 |
 | | `my_dashboard.query_edit` | 쿼리 수정 | DBA 쿼리 직접 수정 |
@@ -241,3 +241,15 @@
 | **game_designer** | — | 보기 | 보기 | — | — | — | 보기·상세·수정·컨펌요청·숨기기 | 보기·생성 |
 
 이 문서는 세분화 권한 **설계·정리**용이며, 실제 라우트/버튼 노출은 백엔드·프론트엔드에 위 권한을 반영한 뒤 구현하면 됩니다.
+
+---
+
+## 6. 최근 반영 사항 (구현 기준)
+
+- **메뉴 라벨**: 프로덕트 관리 → 프로덕트, 사용자 관리 → 사용자, 역할 권한 관리 → 역할 권한.
+- **보기 권한 필수**: 모든 메뉴/페이지는 해당 도메인 보기 권한 없으면 메뉴 비노출·직접 URL 403.
+- **이벤트 생성**: instance.view(보기), instance.create(생성) 분리. 페이지는 둘 중 하나로 진입, 제출 버튼은 instance.create만.
+- **DB 접속**: GET만 db_connection.view, POST/PUT/DELETE/test는 각각 create/edit/delete/test 권한. 버튼도 권한별 노출.
+- **사용자/역할 페이지**: 추가·수정·삭제·비밀번호초기화·권한수정 버튼은 해당 권한 있을 때만 노출.
+- **역할 권한 폼**: 저장된 권한만 초기값으로 표시(확장 없음). 제외한 권한이 다시 체크되지 않음.
+- **나의 대시보드**: 상세 → my_dashboard.detail, 이벤트 수정 → my_dashboard.edit, 컨펌 요청 → my_dashboard.request_confirm. instance.create는 수정/컨펌 자동 부여 안 함. PUT 수정 API는 my_dashboard.edit 필수.

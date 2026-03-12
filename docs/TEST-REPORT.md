@@ -5,16 +5,14 @@
 ## 0. 자동 API 테스트 (백엔드)
 
 - **실행**: `backend` 디렉터리에서 `npm test`
-- **결과**: ✅ **20개 테스트 통과** (Test Suites: 1 passed, Tests: 20 passed)
+- **결과**: ✅ **40개 테스트 통과** (Test Suites: 1 passed, Tests: 40 passed)
 - **구성**: Jest + ts-jest + supertest, `src/__tests__/api.test.ts`
+- **실행**: `npm test` 또는 `npm run test:api` (전체), `npm run test:permission` (권한/역할 관련만)
 - **내용**:
-  - 헬스: GET /api/health
-  - 인증: admin/gm01/dba01 로그인(200), 잘못된 비밀번호(401), GET /api/auth/verify
-  - 관리자 전용: GET /api/users, /api/roles, /api/db-connections (200)
-  - 권한별: GM → GET /api/products, /api/events (200), GET /api/users (403); DBA → GET /api/event-instances (200), GET /api/users (403)
-  - 프로덕트/이벤트/이벤트 인스턴스 목록 (admin)
-  - 인증 없음 → GET /api/users (401)
-  - 관리자 CRUD 요약: GET /api/roles → admin·dba·game_manager·game_designer 코드 포함, GET /api/users → arrRoles 포함
+  - 헬스, 인증(admin/gm01/dba01), 토큰 검증
+  - 역할·권한별 메뉴/페이지 대응 API 매트릭스: admin 전부 200, GM 프로덕트·이벤트·이벤트인스턴스 200·나머지 403, DBA(실행만) 이벤트인스턴스만 200
+  - 권한별 API: 프로덕트/이벤트 템플릿/DB 접속(보기만 시 POST·PUT·DELETE·test 403)/사용자·역할(user.view, role.view)/이벤트 인스턴스 실행
+  - 권한 추가·삭제 시나리오(재로그인 후 403·200 검증)
 
 ---
 
@@ -44,35 +42,33 @@
 | 공통 | GET | `/api/health` | 헬스 체크 |
 | 인증 | POST | `/api/auth/login` | 로그인 |
 | 인증 | GET | `/api/auth/verify` | 토큰 검증(자동 로그인) |
-| 사용자(관리자) | GET | `/api/users` | 사용자 목록 |
+| 사용자 | GET | `/api/users` | 사용자 목록 (user.view) |
 | 사용자(관리자) | POST | `/api/users` | 사용자 추가 |
 | 사용자(관리자) | PUT | `/api/users/:id` | 사용자 수정 |
 | 사용자(관리자) | DELETE | `/api/users/:id` | 사용자 삭제 |
 | 사용자(관리자) | PATCH | `/api/users/:id/password` | 비밀번호 초기화 |
-| 역할(관리자) | GET | `/api/roles` | 역할 목록 |
+| 역할 | GET | `/api/roles` | 역할 목록 (role.view) |
 | 역할(관리자) | POST | `/api/roles` | 역할 추가 |
 | 역할(관리자) | PUT | `/api/roles/:id` | 역할 수정 |
 | 역할(관리자) | DELETE | `/api/roles/:id` | 역할 삭제 |
-| 프로덕트 | GET | `/api/products` | 목록 (product.view 또는 manage) |
-| 프로덕트 | POST | `/api/products` | 추가 (product.manage) |
-| 프로덕트 | PUT | `/api/products/:id` | 수정 (product.manage) |
-| 프로덕트 | DELETE | `/api/products/:id` | 삭제 (product.manage) |
-| 이벤트 템플릿 | GET | `/api/events` | 목록 (event_template.view 또는 manage) |
-| 이벤트 템플릿 | POST | `/api/events` | 추가 (event_template.manage) |
-| 이벤트 템플릿 | PUT | `/api/events/:id` | 수정 (event_template.manage) |
-| 이벤트 템플릿 | DELETE | `/api/events/:id` | 삭제 (event_template.manage) |
+| 프로덕트 | GET | `/api/products` | 목록 (product.view 등) |
+| 프로덕트 | POST | `/api/products` | 추가 (product.create 또는 manage) |
+| 프로덕트 | PUT | `/api/products/:id` | 수정 (product.edit 또는 manage) |
+| 프로덕트 | DELETE | `/api/products/:id` | 삭제 (product.delete 또는 manage) |
+| 이벤트 템플릿 | GET | `/api/events` | 목록 (event_template.view 등) |
+| 이벤트 템플릿 | POST | `/api/events` | 추가 (event_template.create 또는 manage) |
+| 이벤트 템플릿 | PUT/DELETE | `/api/events/:id` | 수정/삭제 (event_template.edit/delete 또는 manage) |
 | 이벤트 인스턴스 | GET | `/api/event-instances/stream` | SSE 스트림 |
 | 이벤트 인스턴스 | GET | `/api/event-instances` | 목록 |
 | 이벤트 인스턴스 | GET | `/api/event-instances/:id` | 단건 조회 |
-| 이벤트 인스턴스 | POST | `/api/event-instances` | 생성 |
-| 이벤트 인스턴스 | PUT | `/api/event-instances/:id` | 수정 |
+| 이벤트 인스턴스 | POST | `/api/event-instances` | 생성 (instance.create) |
+| 이벤트 인스턴스 | PUT | `/api/event-instances/:id` | 수정 (my_dashboard.edit) |
 | 이벤트 인스턴스 | PATCH | `/api/event-instances/:id/status` | 상태 변경 |
-| 이벤트 인스턴스 | POST | `/api/event-instances/:id/execute` | QA/LIVE 실행 (execute_qa 또는 execute_live) |
-| DB 접속 | GET | `/api/db-connections` | 목록 (db.manage) |
-| DB 접속 | POST | `/api/db-connections` | 추가 (db.manage) |
-| DB 접속 | PUT | `/api/db-connections/:id` | 수정 (db.manage) |
-| DB 접속 | DELETE | `/api/db-connections/:id` | 삭제 (db.manage) |
-| DB 접속 | POST | `/api/db-connections/:id/test` | 연결 테스트 (db.manage) |
+| 이벤트 인스턴스 | POST | `/api/event-instances/:id/execute` | QA/LIVE 실행 (my_dashboard.execute_qa/live 등) |
+| DB 접속 | GET | `/api/db-connections` | 목록 (db_connection.view 또는 db.manage) |
+| DB 접속 | POST | `/api/db-connections` | 추가 (db_connection.create 또는 db.manage) |
+| DB 접속 | PUT/DELETE | `/api/db-connections/:id` | 수정/삭제 (db_connection.edit/delete 또는 db.manage) |
+| DB 접속 | POST | `/api/db-connections/:id/test` | 연결 테스트 (db_connection.test 또는 db.manage) |
 | 관리자 | POST | `/api/admin/save-test-seed` | 테스트 시드 저장 (관리자 전용) |
 
 ---
@@ -92,14 +88,14 @@
 | 경로 | 페이지 컴포넌트 | 접근 조건 |
 |------|-----------------|-----------|
 | `/login` | LoginPage | 비인증 시 (이미 로그인 시 admin → `/`, 그 외 → `/my-dashboard`) |
-| `/` | DashboardPage | AdminRoute (admin 역할) |
-| `/products` | ProductPage | product.view 또는 product.manage |
-| `/events` | EventPage | event_template.view 또는 event_template.manage |
-| `/users` | UserPage | AdminRoute (admin) |
-| `/db-connections` | DbConnectionPage | AdminRoute (admin) |
-| `/roles` | RolePage | AdminRoute (admin) |
+| `/` | DashboardPage | dashboard.view |
+| `/products` | ProductPage | product.view |
+| `/events` | EventPage | event_template.view |
+| `/users` | UserPage | user.view |
+| `/db-connections` | DbConnectionPage | db_connection.view 또는 db.manage |
+| `/roles` | RolePage | role.view |
 | `/my-dashboard` | MyDashboardPage | 인증만 (공통) |
-| `/query` | QueryPage | 인증만 (이벤트 생성) |
+| `/query` | QueryPage | instance.view 또는 instance.create |
 | `*` | DefaultRedirect | admin → `/`, 그 외 → `/my-dashboard` |
 
 ---

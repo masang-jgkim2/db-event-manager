@@ -6,27 +6,27 @@
 
 ## 1. 역할별 권한 요약 (시드 기준)
 
-| 역할 | strCode | 권한 |
-|------|---------|------|
-| **관리자** | admin | 전부 (product/event_template/user/db/instance.*) |
-| **DBA** | dba | instance.execute_qa, instance.execute_live |
-| **GM** | game_manager | product.view, event_template.view, instance.create, approve_qa, verify_qa, approve_live, verify_live |
-| **기획자** | game_designer | product.view, event_template.view, instance.create |
+| 역할 | strCode | 권한 (요약) |
+|------|---------|-------------|
+| **관리자** | admin | 전부 (product/event_template/user/db/instance.*, my_dashboard.detail·edit·request_confirm 등) |
+| **DBA** | dba | instance.execute_qa, instance.execute_live, my_dashboard.detail(상세 보기) |
+| **GM** | game_manager | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm, approve_qa, verify_qa, approve_live, verify_live |
+| **기획자** | game_designer | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm |
 
 ---
 
 ## 2. 메뉴·페이지 접근 가능 역할
 
-| 메뉴/페이지 | 경로 | 접근 가능 역할 |
-|-------------|------|----------------|
-| 대시보드 | `/` | **관리자** |
-| 프로덕트 관리 | `/products` | 관리자, **GM**, **기획자** |
-| 이벤트 템플릿 | `/events` | 관리자, **GM**, **기획자** |
-| DB 접속 정보 | `/db-connections` | **관리자** |
-| 사용자 관리 | `/users` | **관리자** |
-| 역할 권한 관리 | `/roles` | **관리자** |
-| 나의 대시보드 | `/my-dashboard` | 관리자, **DBA**, **GM**, **기획자** (전원) |
-| 이벤트 생성 | `/query` | 관리자, **GM**, **기획자** |
+| 메뉴/페이지 | 경로 | 접근 조건 (보기 권한) |
+|-------------|------|------------------------|
+| 대시보드 | `/` | **관리자** (dashboard.view) |
+| 프로덕트 | `/products` | product.view → 관리자, **GM**, **기획자** |
+| 이벤트 템플릿 | `/events` | event_template.view → 관리자, **GM**, **기획자** |
+| DB 접속 정보 | `/db-connections` | db_connection.view 또는 db.manage → **관리자** 등 |
+| 사용자 | `/users` | user.view → **관리자** 등 |
+| 역할 권한 | `/roles` | role.view → **관리자** 등 |
+| 나의 대시보드 | `/my-dashboard` | 인증만 (전원) |
+| 이벤트 생성 | `/query` | instance.view 또는 instance.create → 관리자, **GM**, **기획자** |
 
 - DBA는 **나의 대시보드**만 메뉴에 보이고, 프로덕트/이벤트/이벤트 생성 메뉴는 안 보입니다 (의도된 동작).
 
@@ -38,31 +38,29 @@
 - 전체 대시보드 표시, 프로덕트/이벤트 등 요약  
 → **관리자**로만 접근·테스트.
 
-### 3.2 프로덕트 관리 (`/products`)
-- **목록/상세 조회**: 관리자, GM, 기획자
-- **추가 / 수정 / 삭제**: **관리자**만 (product.manage)
+### 3.2 프로덕트 (`/products`)
+- **목록/상세 조회**: product.view → 관리자, GM, 기획자
+- **추가/수정/삭제**: product.create / edit / delete (또는 product.manage) → 버튼은 해당 권한 있을 때만 노출
 
 ### 3.3 이벤트 템플릿 (`/events`)
-- **목록/상세 조회**: 관리자, GM, 기획자
-- **추가 / 수정 / 삭제**: **관리자**만 (event_template.manage)
+- **목록/상세 조회**: event_template.view → 관리자, GM, 기획자
+- **추가/수정/삭제**: event_template.create / edit / delete → 버튼은 해당 권한 있을 때만 노출
 
 ### 3.4 DB 접속 정보 (`/db-connections`)
-- 목록, 추가, 수정, 삭제, 연결 테스트  
-→ **관리자**로만 접근·테스트.
+- **목록**: db_connection.view 또는 db.manage
+- **추가/수정/삭제/연결 테스트**: 각각 db_connection.create / edit / delete / test (또는 db.manage). 권한 없으면 해당 버튼 비노출·API 403.
 
-### 3.5 사용자 관리 (`/users`)
-- 목록, 추가, 수정, 삭제, 비밀번호 초기화  
-→ **관리자**로만 접근·테스트.
+### 3.5 사용자 (`/users`)
+- **목록**: user.view. **추가/수정/삭제/비밀번호 초기화**: user.create / edit / delete / reset_password → 버튼은 해당 권한 있을 때만 노출.
 
-### 3.6 역할 권한 관리 (`/roles`)
-- 목록, 추가, 수정, 삭제, 권한 체크  
-→ **관리자**로만 접근·테스트.
+### 3.6 역할 권한 (`/roles`)
+- **목록**: role.view. **추가/수정/삭제/권한 수정**: role.create / edit / delete / edit_permissions → 버튼은 해당 권한 있을 때만 노출.
 
 ### 3.7 나의 대시보드 (`/my-dashboard`) — 상태별 액션
 
 | 인스턴스 상태 | 표시/액션 | 테스트할 역할 |
 |---------------|-----------|----------------|
-| event_created | 수정, 삭제 등 | **GM**, **기획자**, 관리자 |
+| event_created | 수정, 컨펌 요청 | **GM**, **기획자**, 관리자 (my_dashboard.edit, my_dashboard.request_confirm) |
 | confirm_requested | DBA 컨펌 | **DBA**, 관리자 |
 | dba_confirmed | QA 요청 / LIVE 요청 | **GM**, 관리자 (approve_qa / approve_live) |
 | qa_requested | QA DB 실행 | **DBA**, 관리자 |
@@ -76,9 +74,8 @@
   → “이벤트 생성 + 나의 대시보드 목록·상세 + event_created 수정/삭제”만 기획자로 테스트하면 됩니다.
 
 ### 3.8 이벤트 생성 (`/query`)
-- 페이지 접근: **instance.create** 있으면 가능 → 관리자, **GM**, **기획자**
-- 이벤트 선택·쿼리 작성·생성 버튼  
-→ 관리자, **GM**, **기획자**로 테스트 (DBA는 메뉴 자체가 없고, 직접 URL 가면 403).
+- **페이지 접근**: instance.view 또는 instance.create → 관리자, **GM**, **기획자**
+- **제출(생성) 버튼**: instance.create 있을 때만 노출. 보기만 있으면 페이지는 보이지만 생성 불가.
 
 ---
 

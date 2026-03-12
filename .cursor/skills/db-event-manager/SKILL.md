@@ -42,19 +42,29 @@ front/src/
   stores/useEventInstanceStore.ts         # 인스턴스 상태 관리
   stores/useThemeStore.ts                 # bFunMode 등 테마/설정
   hooks/useEventStream.ts                 # SSE 연결 훅
-  components/MainLayout.tsx               # 사이드바 + 메뉴 권한 처리
+  components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
+  types/index.ts                          # ARR_PERMISSION_GROUPS, 권한 라벨(역할 권한 화면)
 ```
 
-## 권한 종류
+## 권한·메뉴 (세분화)
 
-```
-product.view / product.manage
-event_template.view / event_template.manage
-user.manage / db.manage
-instance.create
-instance.approve_qa / instance.execute_qa / instance.verify_qa
-instance.approve_live / instance.execute_live / instance.verify_live
-```
+- **원칙**: 모든 메뉴/페이지는 해당 **보기 권한** 필수. 없으면 메뉴 비노출·직접 URL 403.
+- **메뉴명**: 대시보드, **프로덕트**, **이벤트 템플릿**, DB 접속 정보, **사용자**, **역할 권한**, 나의 대시보드, 이벤트 생성.
+
+**권한 종류 (요약)**
+
+| 도메인 | 보기 | 생성/수정/삭제/기타 |
+|--------|------|---------------------|
+| 프로덕트 | product.view | product.create / edit / delete |
+| 이벤트 템플릿 | event_template.view | event_template.create / edit / delete |
+| DB 접속 | db_connection.view | db_connection.create / edit / delete / test |
+| 사용자 | user.view | user.create / edit / delete / reset_password |
+| 역할 | role.view | role.create / edit / delete / edit_permissions |
+| 나의 대시보드 | (인증만) | my_dashboard.detail(상세), my_dashboard.edit(이벤트 수정), my_dashboard.request_confirm, query_edit, confirm, request_qa, execute_qa, verify_qa, … |
+| 이벤트 생성 | instance.view | instance.create |
+
+- **나의 대시보드**: 상세 버튼 → `my_dashboard.detail`, 수정 버튼 → `my_dashboard.edit`, 컨펌 요청 → `my_dashboard.request_confirm`. `instance.create`는 이벤트 수정/컨펌을 자동 부여하지 않음.
+- **이벤트 생성 페이지**: 진입은 `instance.view` 또는 `instance.create`; 제출 버튼은 `instance.create`만.
 
 ## 반영 날짜 검증 규칙
 

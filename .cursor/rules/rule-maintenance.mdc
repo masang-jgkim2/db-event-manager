@@ -8,11 +8,12 @@ alwaysApply: true
 아래 상황이 발생하면 대화 마지막에 반드시 업데이트 필요 여부를 제안한다:
 
 ### 즉시 업데이트 대상
-- 새 `TPermission` 추가 → `backend-patterns.mdc` 권한 목록
-- 새 API 엔드포인트 패턴 정착 → `backend-patterns.mdc`
-- 새 페이지/컴포넌트 패턴 정착 → `frontend-patterns.mdc`
+- 새 `TPermission` 추가 → `backend-patterns.mdc` 권한 목록, `SKILL.md` 권한 종류
+- API 라우트 권한 변경(메서드별 세분화 등) → `backend-patterns.mdc`
+- 메뉴/페이지 보기 권한·버튼 권한 규칙 변경 → `frontend-patterns.mdc`, `SKILL.md`
+- 역할 권한 폼 동작 변경(예: raw 권한만 표시) → `frontend-patterns.mdc`
+- 나의 대시보드 액션 권한(상세/수정/컨펌 등) 변경 → `SKILL.md`, `frontend-patterns.mdc`
 - 이벤트 인스턴스 워크플로 변경 → `domain-event-instance.mdc`
-- 새 인터페이스/타입 추가 (`IEventInstance` 등) → `domain-event-instance.mdc`
 - 헝가리안 접두사 신규 타입 추가 → `coding-standards.mdc`
 
 ### Skill 업데이트 대상
