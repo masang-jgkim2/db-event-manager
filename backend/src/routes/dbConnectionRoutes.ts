@@ -4,26 +4,23 @@ import {
   fnDeleteDbConnection, fnTestConnection,
 } from '../controllers/dbConnectionController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
-import { fnRequirePermission } from '../middleware/permissionMiddleware';
+import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
 
 const router = Router();
+
+// db.manage 또는 세분화 권한(db_connection.*) 중 하나 있으면 통과
+const DB_ACCESS_PERMISSIONS = [
+  'db.manage',
+  'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test',
+] as const;
 
 // 모든 라우트 인증 필수
 router.use(fnAuthMiddleware);
 
-// GET /api/db-connections - 목록 조회 (db.manage 권한 필요)
-router.get('/', fnRequirePermission('db.manage'), fnGetDbConnections);
-
-// POST /api/db-connections - 추가
-router.post('/', fnRequirePermission('db.manage'), fnCreateDbConnection);
-
-// PUT /api/db-connections/:id - 수정
-router.put('/:id', fnRequirePermission('db.manage'), fnUpdateDbConnection);
-
-// DELETE /api/db-connections/:id - 삭제
-router.delete('/:id', fnRequirePermission('db.manage'), fnDeleteDbConnection);
-
-// POST /api/db-connections/:id/test - 연결 테스트
-router.post('/:id/test', fnRequirePermission('db.manage'), fnTestConnection);
+router.get('/', fnRequireAnyPermission(...DB_ACCESS_PERMISSIONS), fnGetDbConnections);
+router.post('/', fnRequireAnyPermission(...DB_ACCESS_PERMISSIONS), fnCreateDbConnection);
+router.put('/:id', fnRequireAnyPermission(...DB_ACCESS_PERMISSIONS), fnUpdateDbConnection);
+router.delete('/:id', fnRequireAnyPermission(...DB_ACCESS_PERMISSIONS), fnDeleteDbConnection);
+router.post('/:id/test', fnRequireAnyPermission(...DB_ACCESS_PERMISSIONS), fnTestConnection);
 
 export default router;

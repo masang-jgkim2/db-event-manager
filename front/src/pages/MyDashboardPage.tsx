@@ -401,14 +401,19 @@ const MyDashboardPage = () => {
     }
   }, [arrInstances, arrAllInstances]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 상태 변경 처리 (일반 상태 전이)
+  // 상태 변경 처리 (일반 상태 전이) — API 403/에러 시 서버 메시지 표시
   const fnHandleAction = async (nId: number, strNextStatus: TEventStatus, strActionLabel: string) => {
-    const result = await fnStoreUpdateStatus(nId, strNextStatus, strActionLabel, user?.strDisplayName || '');
-    if (result.bSuccess) {
-      messageApi.success(`${strActionLabel} 처리 완료`);
-      if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
-    } else {
-      messageApi.error(result.strMessage || '처리에 실패했습니다.');
+    try {
+      const result = await fnStoreUpdateStatus(nId, strNextStatus, strActionLabel, user?.strDisplayName || '');
+      if (result.bSuccess) {
+        messageApi.success(`${strActionLabel} 처리 완료`);
+        if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
+      } else {
+        messageApi.error(result.strMessage || '처리에 실패했습니다.');
+      }
+    } catch (err: any) {
+      const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
+      messageApi.error(strMsg);
     }
   };
 

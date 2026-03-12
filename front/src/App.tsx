@@ -220,9 +220,9 @@ const App = () => {
             <Route
               path="/db-connections"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['db.manage', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test']}>
                   <DbConnectionPage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
             <Route

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Card, Col, Row, Statistic, Typography, Tag, Space } from 'antd';
 import AppTable from '../components/AppTable';
 import {
@@ -15,6 +16,14 @@ const { Title } = Typography;
 const DashboardPage = () => {
   const arrProducts = useProductStore((s) => s.arrProducts);
   const arrEvents = useEventStore((s) => s.arrEvents);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
+  const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
+
+  // 페이지 진입 시 데이터 로드 (권한 있으면 API 성공 후 목록 표시)
+  useEffect(() => {
+    fnFetchProducts();
+    fnFetchEvents();
+  }, [fnFetchProducts, fnFetchEvents]);
 
   // 프로덕트 테이블 컬럼
   const arrProductColumns = [

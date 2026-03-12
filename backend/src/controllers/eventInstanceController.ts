@@ -216,9 +216,15 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 사용자의 역할 중 하나라도 허용된 역할이면 통과
+    // 역할 또는 권한으로 허용 (DBA 전용 전이: dba/admin만 허용된 경우 권한으로도 통과)
+    const arrUserPerms = req.user?.arrPermissions || [];
     const bHasRole = objTransition.arrAllowedRoles.some((r) => arrUserRoles.includes(r));
-    if (!bHasRole) {
+    const bDbaOnlyTransition = objTransition.arrAllowedRoles.every((r) => r === 'dba' || r === 'admin');
+    const bHasDbaPerm = bDbaOnlyTransition && [
+      'my_dashboard.confirm', 'instance.execute_qa', 'instance.execute_live',
+      'my_dashboard.execute_qa', 'my_dashboard.execute_live',
+    ].some((p) => (arrUserPerms as string[]).includes(p));
+    if (!bHasRole && !bHasDbaPerm) {
       res.status(403).json({ bSuccess: false, strMessage: '해당 상태를 변경할 권한이 없습니다.' });
       return;
     }

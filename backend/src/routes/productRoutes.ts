@@ -5,8 +5,8 @@ import { fnRequireAnyPermission, fnRequirePermission } from '../middleware/permi
 
 const router = Router();
 
-// GET /api/products - 목록 조회 (보기/생성/수정/삭제/관리 중 하나)
-router.get('/', fnAuthMiddleware, fnRequireAnyPermission('product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete'), fnGetProducts);
+// GET /api/products - 목록 조회 (보기/관리 등 또는 대시보드 보기 권한)
+router.get('/', fnAuthMiddleware, fnRequireAnyPermission('product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete', 'dashboard.view'), fnGetProducts);
 
 // POST /api/products - 추가 (생성 또는 관리)
 router.post('/', fnAuthMiddleware, fnRequireAnyPermission('product.manage', 'product.create'), fnCreateProduct);
