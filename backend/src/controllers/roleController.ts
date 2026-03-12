@@ -1,19 +1,30 @@
 import { Request, Response } from 'express';
-import { arrRoles, fnGetNextRoleId, fnFindRoleByCode, fnSaveRoles } from '../data/roles';
-import { arrUsers } from '../data/users';
+import {
+  arrRoles,
+  fnFindRoleByCode,
+  fnFindRoleRowById,
+  fnGetNextRoleId,
+  fnGetRolesWithPermissions,
+  fnRemoveRolePermissionsAndSave,
+  fnSaveRoleAndPermissions,
+  fnSaveRoles,
+} from '../data/roles';
+import { fnGetPermissionsByRoleId } from '../data/rolePermissions';
+import { arrUserRoles } from '../data/userRoles';
 import { IRole, TPermission } from '../types';
 
-// 역할 목록 조회
+// 역할 목록 조회 (정규화: 권한은 role_permissions에서 조립)
 export const fnGetRoles = async (_req: Request, res: Response): Promise<void> => {
   try {
-    res.json({ bSuccess: true, arrRoles });
+    const arrRolesWithPerms = fnGetRolesWithPermissions();
+    res.json({ bSuccess: true, arrRoles: arrRolesWithPerms });
   } catch (error) {
     console.error('역할 목록 조회 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 
-// 역할 추가 (커스텀 역할)
+// 역할 추가 (커스텀 역할) — 행 저장 + role_permissions 저장
 export const fnCreateRole = async (req: Request, res: Response): Promise<void> => {
   try {
     const { strCode, strDisplayName, strDescription, arrPermissions } = req.body as Partial<IRole>;
@@ -33,19 +44,30 @@ export const fnCreateRole = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const objNewRole: IRole = {
-      nId:            fnGetNextRoleId(),
+    const nId = fnGetNextRoleId();
+    const strNow = new Date().toISOString();
+    arrRoles.push({
+      nId,
       strCode,
       strDisplayName,
       strDescription: strDescription || '',
-      arrPermissions: Array.isArray(arrPermissions) ? arrPermissions as TPermission[] : [],
-      bIsSystem:      false,
-      dtCreatedAt:    new Date().toISOString(),
-      dtUpdatedAt:    new Date().toISOString(),
-    };
+      bIsSystem: false,
+      dtCreatedAt: strNow,
+      dtUpdatedAt: strNow,
+    });
+    const arrPerms = Array.isArray(arrPermissions) ? (arrPermissions as TPermission[]) : [];
+    fnSaveRoleAndPermissions(nId, arrPerms);
 
-    arrRoles.push(objNewRole);
-    fnSaveRoles();
+    const objNewRole: IRole = {
+      nId,
+      strCode,
+      strDisplayName,
+      strDescription: strDescription || '',
+      arrPermissions: arrPerms,
+      bIsSystem: false,
+      dtCreatedAt: strNow,
+      dtUpdatedAt: strNow,
+    };
     res.json({ bSuccess: true, strMessage: '역할이 생성되었습니다.', objRole: objNewRole });
   } catch (error) {
     console.error('역할 생성 오류:', error);
@@ -53,11 +75,11 @@ export const fnCreateRole = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 역할 수정
+// 역할 수정 — 행 수정 + role_permissions 갱신
 export const fnUpdateRole = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId     = Number(req.params.id);
-    const objRole = arrRoles.find((r) => r.nId === nId);
+    const nId = Number(req.params.id);
+    const objRole = fnFindRoleRowById(nId);
 
     if (!objRole) {
       res.status(404).json({ bSuccess: false, strMessage: '역할을 찾을 수 없습니다.' });
@@ -66,29 +88,33 @@ export const fnUpdateRole = async (req: Request, res: Response): Promise<void> =
 
     const { strDisplayName, strDescription, arrPermissions } = req.body;
 
-    // 시스템 역할은 권한만 수정 가능
     if (objRole.bIsSystem) {
-      if (Array.isArray(arrPermissions)) objRole.arrPermissions = arrPermissions as TPermission[];
+      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
     } else {
       if (strDisplayName !== undefined) objRole.strDisplayName = strDisplayName;
       if (strDescription !== undefined) objRole.strDescription = strDescription;
-      if (Array.isArray(arrPermissions)) objRole.arrPermissions = arrPermissions as TPermission[];
+      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
     }
-
     objRole.dtUpdatedAt = new Date().toISOString();
     fnSaveRoles();
-    res.json({ bSuccess: true, strMessage: '역할이 수정되었습니다.', objRole });
+
+    const arrPerms = fnGetPermissionsByRoleId(nId);
+    res.json({
+      bSuccess: true,
+      strMessage: '역할이 수정되었습니다.',
+      objRole: { ...objRole, arrPermissions: arrPerms },
+    });
   } catch (error) {
     console.error('역할 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 
-// 역할 삭제 (커스텀 역할만, 사용 중인 역할은 차단)
+// 역할 삭제 (커스텀 역할만) — user_roles 사용 여부 확인 후 행·권한 삭제
 export const fnDeleteRole = async (req: Request, res: Response): Promise<void> => {
   try {
-    const nId     = Number(req.params.id);
-    const objRole = arrRoles.find((r) => r.nId === nId);
+    const nId = Number(req.params.id);
+    const objRole = fnFindRoleRowById(nId);
 
     if (!objRole) {
       res.status(404).json({ bSuccess: false, strMessage: '역할을 찾을 수 없습니다.' });
@@ -100,7 +126,7 @@ export const fnDeleteRole = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const bInUse = arrUsers.some((u) => u.arrRoles.includes(objRole.strCode));
+    const bInUse = arrUserRoles.some((ur) => ur.nRoleId === nId);
     if (bInUse) {
       res.status(400).json({
         bSuccess: false,
@@ -111,6 +137,7 @@ export const fnDeleteRole = async (req: Request, res: Response): Promise<void> =
 
     const nIndex = arrRoles.findIndex((r) => r.nId === nId);
     arrRoles.splice(nIndex, 1);
+    fnRemoveRolePermissionsAndSave(nId);
     fnSaveRoles();
     res.json({ bSuccess: true, strMessage: '역할이 삭제되었습니다.' });
   } catch (error) {

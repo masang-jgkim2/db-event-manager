@@ -2,13 +2,13 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
-import { arrUsers } from '../data/users';
+import { fnFindUserByStrUserId } from '../data/users';
 import { fnGetMergedPermissions } from '../data/roles';
 
 const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
 
-// 로그인
+// 로그인 (정규화: 사용자+역할 조립 후 검증)
 export const fnLogin = async (req: Request, res: Response): Promise<void> => {
   try {
     const { strUserId, strPassword } = req.body as ILoginRequest;
@@ -18,7 +18,7 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const objUser = arrUsers.find((u) => u.strUserId === strUserId);
+    const objUser = fnFindUserByStrUserId(strUserId);
     if (!objUser) {
       res.status(401).json({ bSuccess: false, strMessage: '아이디 또는 비밀번호가 올바르지 않습니다.' });
       return;
@@ -68,8 +68,8 @@ export const fnVerifyToken = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const objFullUser = arrUsers.find((u) => u.nId === objUser.nId);
-    if (!objFullUser) {
+    const objFullUser = fnFindUserByStrUserId(req.user!.strUserId);
+    if (!objFullUser || objFullUser.nId !== objUser.nId) {
       res.status(401).json({ bSuccess: false, strMessage: '사용자를 찾을 수 없습니다.' });
       return;
     }
