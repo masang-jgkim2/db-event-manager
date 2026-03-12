@@ -75,6 +75,7 @@ CREATE TABLE db_connections (
 CREATE TABLE event_instances (
   n_id                    INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_event_template_id     INT           NOT NULL,
+  n_product_id            INT           NOT NULL COMMENT 'DB 접속 조회용 (fnFindActiveConnection)',
   str_event_label         VARCHAR(200)  NOT NULL,
   str_product_name        VARCHAR(100)  NOT NULL,
   str_service_abbr        VARCHAR(50)   NOT NULL,
@@ -84,7 +85,8 @@ CREATE TABLE event_instances (
   str_event_name          VARCHAR(200)  NOT NULL,
   str_input_values        TEXT          NULL,
   str_generated_query     LONGTEXT      NULL,
-  dt_exec_date            VARCHAR(20)   NOT NULL COMMENT 'YYYY-MM-DD',
+  dt_deploy_date          DATETIME      NOT NULL COMMENT '반영 일시 (코드: dtDeployDate ISO 8601)',
+  arr_deploy_scope        JSON          NOT NULL DEFAULT ('["qa", "live"]') COMMENT '반영 범위 qa|live (코드: arrDeployScope)',
   str_status              VARCHAR(30)   NOT NULL DEFAULT 'event_created',
 
   -- 단계별 처리자 (JSON으로 저장)
@@ -105,9 +107,11 @@ CREATE TABLE event_instances (
   dt_created_at           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   FOREIGN KEY (n_event_template_id) REFERENCES event_templates(n_id) ON DELETE RESTRICT,
+  FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE RESTRICT,
   FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE RESTRICT,
 
   INDEX idx_status (str_status),
+  INDEX idx_product_id (n_product_id),
   INDEX idx_created_by (n_created_by_user_id),
   INDEX idx_created_at (dt_created_at)
 );
