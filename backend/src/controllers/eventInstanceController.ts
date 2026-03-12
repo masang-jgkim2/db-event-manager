@@ -237,7 +237,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
         : `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}`;
       res.status(403).json({
         bSuccess: false,
-        strMessage: `해당 상태를 변경할 권한이 없습니다. 필요: ${strNeed}.`,
+        strMessage: `해당 상태를 변경할 권한이 없습니다. 필요: ${strNeed}. 역할/권한을 방금 수정했다면 로그아웃 후 다시 로그인해 주세요.`,
       });
       return;
     }
