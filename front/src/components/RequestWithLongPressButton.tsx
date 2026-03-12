@@ -4,6 +4,8 @@ import { Button, Popconfirm, Progress } from 'antd';
 const N_DURATION_MIN_MS = 2000;
 const N_DURATION_MAX_MS = 3000;
 const N_TICK_MS = 50;
+/** 게이지 바 고정 너비 — 버튼 크기와 무관하게 채워지는 속도(픽셀/초) 동일 */
+const N_GAUGE_WIDTH_PX = 120;
 
 export interface IRequestWithLongPressButtonProps {
   /** 일반 클릭 시 버튼 라벨 */
@@ -77,12 +79,14 @@ const RequestWithLongPressButton = ({
     nDurationRef.current = N_DURATION_MIN_MS + Math.random() * (N_DURATION_MAX_MS - N_DURATION_MIN_MS);
     nTimerRef.current = setInterval(() => {
       const nElapsed = Date.now() - nStartRef.current;
-      const nPct = Math.min(100, (nElapsed / nDurationRef.current) * 100);
+      const nDuration = nDurationRef.current;
+      const nPct = Math.min(100, (nElapsed / nDuration) * 100);
       setNProgress(nPct);
-      if (nPct >= 100) {
+      // 100% 도달 시 먼저 100% 표시, 잠시 후 재요청 모드 전환 (게이지 100%가 보이도록)
+      if (nElapsed >= nDuration) {
         fnClearTimer();
-        setBReRequestMode(true);
-        setNProgress(0);
+        setNProgress(100);
+        setTimeout(() => setBReRequestMode(true), 80);
       }
     }, N_TICK_MS);
   }, [fnClearTimer]);
@@ -91,9 +95,11 @@ const RequestWithLongPressButton = ({
     fnClearTimer();
     const nElapsed = Date.now() - nStartRef.current;
     if (nElapsed >= nDurationRef.current) {
-      setBReRequestMode(true);
+      setNProgress(100);
+      setTimeout(() => setBReRequestMode(true), 80);
+    } else {
+      setNProgress(0);
     }
-    setNProgress(0);
   }, [fnClearTimer]);
 
   const fnHandlePointerDown: React.PointerEventHandler = useCallback((e) => {
@@ -166,14 +172,16 @@ const RequestWithLongPressButton = ({
           </Button>
         </span>
       </Popconfirm>
-      {!bReRequestMode && nProgress > 0 && nProgress < 100 && (
-        <Progress
-          percent={Math.round(nProgress)}
-          size="small"
-          showInfo={false}
-          status="active"
-          style={{ marginBottom: 0, marginTop: 0 }}
-        />
+      {nProgress > 0 && nProgress <= 100 && !bReRequestMode && (
+        <div style={{ width: N_GAUGE_WIDTH_PX }}>
+          <Progress
+            percent={Math.round(nProgress)}
+            size="small"
+            showInfo={false}
+            status="active"
+            style={{ marginBottom: 0, marginTop: 0 }}
+          />
+        </div>
       )}
     </div>
   );

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
-  Segmented, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
+  Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
   Steps, Checkbox, Tooltip, theme as antdTheme,
 } from 'antd';
 import dayjs from 'dayjs';
@@ -12,8 +12,9 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined,
+  TableOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
-import AppTable from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
@@ -352,6 +353,8 @@ const MyDashboardPage = () => {
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
+  // QA/LIVE 확인 팝업 — 팝업 안에 취소 / 확인 / 재요청 버튼
+  const [objConfirmModal, setObjConfirmModal] = useState<{ nId: number; strType: 'qa' | 'live' } | null>(null);
 
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = antdTheme.useToken();
@@ -666,35 +669,48 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 (운영자) — 재미 모드 시 롱프레스로 QA 재반영 요청 전환
+    // QA 확인 (운영자) — 기존 팝업(Popconfirm) 안에 취소 / 확인 / QA 반영 재요청
     if (bHasQa && fnHasPermission('instance.verify_qa') && r.strStatus === 'qa_deployed') {
-      if (bFunMode && fnHasPermission('instance.approve_qa')) {
-        arrButtons.push(
-          <RequestWithLongPressButton
-            key="qa-verify-longpress"
-            primaryLabel="QA확인"
-            primaryTitle="QA 반영을 확인하셨습니까?"
-            onPrimaryConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}
-            rerequestLabel="QA 재반영 요청"
-            rerequestTitle="QA 재반영을 요청하시겠습니까?"
-            rerequestDescription="QA 확인 전 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
-            primaryButtonStyle={{ background: token.colorPrimary, border: 'none', color: '#fff' }}
-            primaryIcon={<CheckOutlined />}
-            rerequestIcon={<SyncOutlined />}
-            okText="확인"
-            rerequestOkText="재요청"
-            cancelText="취소"
-          />
-        );
-      } else {
-        arrButtons.push(
-          <Popconfirm key="qa-v" title="QA 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'qa_verified', 'QA 확인')}>
-            <Button size="small" type="primary" icon={<CheckOutlined />}>QA확인</Button>
-          </Popconfirm>
-        );
-      }
+      arrButtons.push(
+        <Popconfirm
+          key="qa-v"
+          open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'qa'}
+          onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
+          title="QA 반영을 확인하셨습니까?"
+          description={
+            fnHasPermission('instance.approve_qa') ? (
+              <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
+                <Button
+                  size="small"
+                  icon={<SyncOutlined />}
+                  block
+                  onClick={() => {
+                    fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청');
+                    setObjConfirmModal(null);
+                  }}
+                >
+                  QA 반영 재요청
+                </Button>
+              </Space>
+            ) : undefined
+          }
+          okText="확인"
+          cancelText="취소"
+          onConfirm={() => {
+            fnHandleAction(r.nId, 'qa_verified', 'QA 확인');
+            setObjConfirmModal(null);
+          }}
+        >
+          <Button
+            size="small"
+            type="primary"
+            icon={<CheckOutlined />}
+            onClick={() => setObjConfirmModal({ nId: r.nId, strType: 'qa' })}
+          >
+            QA확인
+          </Button>
+        </Popconfirm>
+      );
     }
 
     // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (데이터 문제 시)
@@ -783,35 +799,48 @@ const MyDashboardPage = () => {
       );
     }
 
-    // LIVE 확인 (운영자) — 재미 모드 시 롱프레스로 LIVE 재반영 요청 전환
+    // LIVE 확인 (운영자) — 기존 팝업(Popconfirm) 안에 취소 / 확인 / LIVE 반영 재요청
     if (bHasLive && fnHasPermission('instance.verify_live') && r.strStatus === 'live_deployed') {
-      if (bFunMode && fnHasPermission('instance.approve_live')) {
-        arrButtons.push(
-          <RequestWithLongPressButton
-            key="live-verify-longpress"
-            primaryLabel="LIVE확인"
-            primaryTitle="LIVE 반영을 확인하셨습니까?"
-            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}
-            rerequestLabel="LIVE 재반영 요청"
-            rerequestTitle="LIVE 재반영을 요청하시겠습니까?"
-            rerequestDescription="LIVE 확인 전 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
-            primaryButtonStyle={{ background: '#52c41a', border: 'none', color: '#fff' }}
-            primaryIcon={<CheckCircleOutlined />}
-            rerequestIcon={<SyncOutlined />}
-            okText="확인"
-            rerequestOkText="재요청"
-            cancelText="취소"
-          />
-        );
-      } else {
-        arrButtons.push(
-          <Popconfirm key="live-v" title="LIVE 반영을 확인하셨습니까?" okText="확인" cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_verified', 'LIVE 확인')}>
-            <Button size="small" style={{ background: '#52c41a', border: 'none', color: '#fff' }} icon={<CheckCircleOutlined />}>LIVE확인</Button>
-          </Popconfirm>
-        );
-      }
+      arrButtons.push(
+        <Popconfirm
+          key="live-v"
+          open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'live'}
+          onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
+          title="LIVE 반영을 확인하셨습니까?"
+          description={
+            fnHasPermission('instance.approve_live') ? (
+              <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
+                <Button
+                  size="small"
+                  icon={<SyncOutlined />}
+                  block
+                  onClick={() => {
+                    fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청');
+                    setObjConfirmModal(null);
+                  }}
+                >
+                  LIVE 반영 재요청
+                </Button>
+              </Space>
+            ) : undefined
+          }
+          okText="확인"
+          cancelText="취소"
+          onConfirm={() => {
+            fnHandleAction(r.nId, 'live_verified', 'LIVE 확인');
+            setObjConfirmModal(null);
+          }}
+        >
+          <Button
+            size="small"
+            style={{ background: '#52c41a', border: 'none', color: '#fff' }}
+            icon={<CheckCircleOutlined />}
+            onClick={() => setObjConfirmModal({ nId: r.nId, strType: 'live' })}
+          >
+            LIVE확인
+          </Button>
+        </Popconfirm>
+      );
     }
 
     // 완료(live_verified) 후: 데이터 문제 시 LIVE 재반영 요청
@@ -854,8 +883,43 @@ const MyDashboardPage = () => {
     return <Space wrap>{arrButtons}</Space>;
   };
 
-  // 탭 (전체이벤트 / 완료 이벤트)
+  // 탭 (진행 이벤트 / 완료·숨김)
   const [strDashTab, setStrDashTab] = useState<'active' | 'completed'>('active');
+  // 보기 형태: 테이블(행) / 카드
+  const [strViewMode, setStrViewMode] = useState<'table' | 'card'>('table');
+  // 전환 애니메이션: 빠른 연타 시 스크롤/번쩍임 방지
+  const [strViewTransition, setStrViewTransition] = useState<'idle' | 'out' | 'in'>('idle');
+  const [strViewDisplay, setStrViewDisplay] = useState<'table' | 'card'>('table'); // 전환 중 표시용
+  const [nViewMinHeight, setNViewMinHeight] = useState<number | undefined>(undefined);
+  const viewContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (strViewTransition !== 'out') return;
+    const h = viewContentRef.current?.offsetHeight;
+    if (typeof h === 'number' && h > 0) setNViewMinHeight(h);
+    const t = setTimeout(() => {
+      setStrViewMode((m) => (m === 'table' ? 'card' : 'table'));
+      setStrViewDisplay((m) => (m === 'table' ? 'card' : 'table'));
+      setStrViewTransition('in');
+    }, 180);
+    return () => clearTimeout(t);
+  }, [strViewTransition]);
+
+  useEffect(() => {
+    if (strViewTransition !== 'in') return;
+    const t = setTimeout(() => {
+      setStrViewTransition('idle');
+      setStrViewDisplay(strViewMode);
+      setNViewMinHeight(undefined);
+    }, 180);
+    return () => clearTimeout(t);
+  }, [strViewTransition, strViewMode]);
+
+  const fnToggleViewMode = useCallback(() => {
+    if (strViewTransition !== 'idle') return;
+    setStrViewDisplay(strViewMode);
+    setStrViewTransition('out');
+  }, [strViewTransition, strViewMode]);
 
   // 진행 이벤트 탭: 사용자가 직접 숨기기 버튼을 누른 이벤트만 제외
   // live_verified 완료 상태여도 숨기기 전까지는 진행탭에 남아 흐릿하게 표시됨
@@ -865,10 +929,11 @@ const MyDashboardPage = () => {
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼
+  // 테이블 컬럼 — No. + 헤더·액션 정리
   const arrColumns = [
+    fnMakeIndexColumn(55),
     {
-      title: '이벤트 이름',
+      title: '이벤트명',
       dataIndex: 'strEventName',
       key: 'strEventName',
       ellipsis: true,
@@ -880,7 +945,7 @@ const MyDashboardPage = () => {
       render: (_: unknown, r: IEventInstance) => <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag>,
     },
     {
-      title: '반영 날짜',
+      title: '반영 일시',
       dataIndex: 'dtDeployDate',
       key: 'dtDeployDate',
       width: 140,
@@ -900,19 +965,17 @@ const MyDashboardPage = () => {
       render: (s: TEventStatus) => <Tag color={OBJ_STATUS_CONFIG[s].strColor}>{OBJ_STATUS_CONFIG[s].strLabel}</Tag>,
     },
     {
-      title: '처리',
+      title: '액션',
       key: 'actions',
       width: 340,
       render: (_: unknown, r: IEventInstance) => (
-        <Space wrap>
+        <Space wrap size="small" align="start">
+          {/* 상태별 처리 버튼 (요청/확인/반영/재요청 등) */}
           {fnRenderActions(r)}
-          {/* 숨기기 — live_verified 완료 상태에서만 활성화, 누르면 완료·숨김 탭으로 이동 */}
+          <Divider type="vertical" style={{ margin: '0 4px' }} />
+          {/* 숨기기/보이기 — 완료(live_verified)에서만 숨기기 활성화 */}
           {!setHiddenIds.has(r.nId) ? (
-            <Tooltip title={
-              r.strStatus === 'live_verified'
-                ? '숨기면 완료·숨김 탭으로 이동됩니다'
-                : '완료(라이브 검증) 상태에서만 숨길 수 있습니다'
-            }>
+            <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
               <PopconfirmWithSkip
                 actionKey="hide_instance"
                 title="이 이벤트를 숨기시겠습니까?"
@@ -922,18 +985,16 @@ const MyDashboardPage = () => {
                 onConfirm={() => fnHideInstance(r.nId)}
                 disabled={r.strStatus !== 'live_verified'}
               >
-                <Button
-                  size="small"
-                  icon={<EyeInvisibleOutlined />}
-                  type="text"
-                  disabled={r.strStatus !== 'live_verified'}
-                >숨기기</Button>
+                <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
+                  숨기기
+                </Button>
               </PopconfirmWithSkip>
             </Tooltip>
           ) : (
             <Tooltip title="진행 이벤트 탭으로 복원">
-              <Button size="small" icon={<EyeTwoTone />} type="text"
-                onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
+              <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
+                보이기
+              </Button>
             </Tooltip>
           )}
         </Space>
@@ -952,6 +1013,7 @@ const MyDashboardPage = () => {
   return (
     <>
       {contextHolder}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         <Title level={4} style={{ margin: 0 }}>나의 대시보드</Title>
         {bFunMode && (
@@ -984,16 +1046,43 @@ const MyDashboardPage = () => {
           <Segmented
             options={[
               { label: `진행 이벤트 (${arrActiveInstances.length})`, value: 'active' },
-              { label: `숨긴 이벤트 (${arrCompletedInstances.length})`, value: 'completed' },
+              { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
             ]}
             value={strDashTab}
             onChange={(v) => setStrDashTab(v as 'active' | 'completed')}
           />
-          {/* 진행 이벤트 탭일 때 필터 표시 */}
-          {strDashTab === 'active' && (
-            <Segmented options={arrFilterOptions} value={strFilter} onChange={(v) => fnSetFilter(v as string)} />
-          )}
+          <Space size="middle">
+            {/* 진행 이벤트 탭일 때 필터 — 드롭다운 */}
+            {strDashTab === 'active' && (
+              <Select
+                options={arrFilterOptions}
+                value={strFilter}
+                onChange={(v) => fnSetFilter(v ?? 'all')}
+                style={{ minWidth: 180 }}
+                size="middle"
+              />
+            )}
+            {/* 테이블 / 카드 보기 전환 — 드롭다운 우측 (전환 중 연타 무시) */}
+            <Tooltip title={strViewTransition !== 'idle' ? '전환 중…' : strViewMode === 'table' ? '카드 보기' : '테이블(행) 보기'}>
+              <Button
+                type={strViewMode === 'table' ? 'default' : 'primary'}
+                icon={strViewMode === 'table' ? <AppstoreOutlined /> : <TableOutlined />}
+                onClick={fnToggleViewMode}
+                disabled={strViewTransition !== 'idle'}
+              />
+            </Tooltip>
+          </Space>
         </div>
+        <div
+          ref={viewContentRef}
+          style={{
+            minHeight: nViewMinHeight,
+            overflow: nViewMinHeight ? 'hidden' : undefined,
+            transition: 'opacity 0.18s ease',
+            opacity: strViewTransition === 'out' ? 0 : 1,
+          }}
+        >
+        {strViewDisplay === 'table' ? (
         <AppTable
           strTableId={`dashboard_instances_${strDashTab}`}
           dataSource={arrDisplayInstances}
@@ -1006,6 +1095,7 @@ const MyDashboardPage = () => {
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => <InstanceStepper objInstance={r} />,
             expandIcon: () => null,
+            columnWidth: 24, // 펼침 컬럼을 작게만 표시 (제거하지 않음)
             rowExpandable: () => true,
           }}
           // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
@@ -1019,6 +1109,73 @@ const MyDashboardPage = () => {
             style: { cursor: 'pointer' },
           })}
         />
+        ) : (
+        /* 카드 보기 */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {bLoading ? (
+            <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+          ) : arrDisplayInstances.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-secondary)' }}>해당 조건의 이벤트가 없습니다.</div>
+          ) : (
+            <Row gutter={[12, 12]}>
+              {arrDisplayInstances.map((r: IEventInstance, nIdx: number) => (
+                <Col xs={24} sm={24} md={12} lg={8} xl={6} key={r.nId}>
+                  <Card
+                    size="small"
+                    title={
+                      <Space>
+                        <span style={{ fontWeight: 600 }}>{r.strEventName}</span>
+                        <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
+                      </Space>
+                    }
+                    style={{
+                      cursor: 'pointer',
+                      borderColor: objSelectedRow?.nId === r.nId ? token.colorPrimary : undefined,
+                      boxShadow: objSelectedRow?.nId === r.nId ? `0 0 0 2px ${token.colorPrimaryBorder}` : undefined,
+                    }}
+                    onClick={() => setObjSelectedRow((prev) => prev?.nId === r.nId ? null : r)}
+                  >
+                    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                      <div><Text type="secondary">프로덕트</Text> <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag></div>
+                      <div><Text type="secondary">반영 일시</Text> {r.dtDeployDate ? new Date(r.dtDeployDate).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</div>
+                      <div><Text type="secondary">생성자</Text> {r.strCreatedBy ?? '-'}</div>
+                      <Divider style={{ margin: '8px 0' }} />
+                      <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
+                        {fnRenderActions(r)}
+                        {!setHiddenIds.has(r.nId) ? (
+                          <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+                            <PopconfirmWithSkip
+                              actionKey="hide_instance"
+                              title="이 이벤트를 숨기시겠습니까?"
+                              description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                              okText="숨기기"
+                              cancelText="취소"
+                              onConfirm={() => fnHideInstance(r.nId)}
+                              disabled={r.strStatus !== 'live_verified'}
+                            >
+                              <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
+                            </PopconfirmWithSkip>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip title="진행 이벤트 탭으로 복원">
+                            <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
+                          </Tooltip>
+                        )}
+                      </Space>
+                    </Space>
+                    {objSelectedRow?.nId === r.nId && (
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${token.colorBorderSecondary}` }} onClick={(e) => e.stopPropagation()}>
+                        <InstanceStepper objInstance={r} />
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          )}
+        </div>
+        )}
+        </div>
       </Card>
 
       {/* 상세 모달 */}

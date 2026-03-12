@@ -20,6 +20,8 @@ import { CSS } from '@dnd-kit/utilities';
 // 컬럼 너비 저장 키
 const fnWidthStorageKey = (strTableId: string) => `app_table_col_width_${strTableId}`;
 const N_MIN_COL_WIDTH = 40;
+const N_MAX_COL_WIDTH = 500;  // 더블클릭 자동 맞춤 시 상한
+const N_AUTO_FIT_PADDING = 20;  // 내용물 맞춤 시 여백
 
 export type { TableColumnType as TAppColumn };
 
@@ -49,20 +51,26 @@ export function fnFormatDate(strDate?: string | null): string {
 // localStorage 키 생성
 const fnStorageKey = (strTableId: string) => `app_table_col_order_${strTableId}`;
 
+// No. 컬럼(__index)이 있으면 항상 맨 앞에 두기
+const fnEnsureIndexFirst = (arrOrder: string[]): string[] => {
+  if (!arrOrder.includes('__index')) return arrOrder;
+  return ['__index', ...arrOrder.filter((k) => k !== '__index')];
+};
+
 // 저장된 컬럼 순서 로드
 const fnLoadOrder = (strTableId: string, arrKeys: string[]): string[] => {
   try {
     const strSaved = localStorage.getItem(fnStorageKey(strTableId));
-    if (!strSaved) return arrKeys;
+    if (!strSaved) return fnEnsureIndexFirst(arrKeys);
     const arrSaved: string[] = JSON.parse(strSaved);
     // 저장된 순서에 없는 새 컬럼은 뒤에 추가, 삭제된 컬럼은 제거
     const setCurrentKeys = new Set(arrKeys);
     const arrFiltered = arrSaved.filter((k) => setCurrentKeys.has(k));
     const setFilteredKeys = new Set(arrFiltered);
     const arrNew = arrKeys.filter((k) => !setFilteredKeys.has(k));
-    return [...arrFiltered, ...arrNew];
+    return fnEnsureIndexFirst([...arrFiltered, ...arrNew]);
   } catch {
-    return arrKeys;
+    return fnEnsureIndexFirst(arrKeys);
   }
 };
 
@@ -103,16 +111,58 @@ interface IResizeContextValue {
 }
 const ResizeContext = React.createContext<IResizeContextValue | null>(null);
 
+// colSpan 고려하여 해당 컬럼 인덱스의 셀 반환
+function fnGetCellAtColumnIndex(row: HTMLTableRowElement, nColIndex: number): HTMLTableCellElement | null {
+  let nCol = 0;
+  for (let i = 0; i < row.cells.length; i++) {
+    const cell = row.cells[i];
+    const nSpan = cell.colSpan || 1;
+    if (nColIndex >= nCol && nColIndex < nCol + nSpan) return cell as HTMLTableCellElement;
+    nCol += nSpan;
+  }
+  return null;
+}
+
+// 셀 내용의 실제 너비 측정 (레이아웃 너비가 아닌 텍스트/내용 기준)
+function fnMeasureCellContentWidth(cell: HTMLTableCellElement): number {
+  const div = document.createElement('div');
+  const style = window.getComputedStyle(cell);
+  div.style.cssText = [
+    'position:fixed',
+    'left:-9999px',
+    'top:0',
+    'white-space:nowrap',
+    'display:inline-block',
+    'font-family:' + (style.fontFamily || 'inherit'),
+    'font-size:' + (style.fontSize || 'inherit'),
+    'font-weight:' + (style.fontWeight || 'normal'),
+    'letter-spacing:' + (style.letterSpacing || 'normal'),
+    'padding-left:' + style.paddingLeft,
+    'padding-right:' + style.paddingRight,
+    'box-sizing:border-box',
+  ].join(';');
+  div.innerText = cell.innerText?.trim() || '';
+  document.body.appendChild(div);
+  const w = div.offsetWidth;
+  document.body.removeChild(div);
+  return w;
+}
+
 // ─── 드래그(순서) + 리사이즈(너비) 가능한 헤더 셀 ──────────────────────────────────
+// 좌: 리사이즈(인접 왼쪽 컬럼 줄이기) / 중앙: 순서 변경 / 우: 리사이즈(인접 오른쪽 컬럼 줄이기)
 interface IDraggableHeaderCellProps extends React.HTMLAttributes<HTMLTableCellElement> {
   'data-drag-id': string;
   'data-col-key'?: string;
+  'data-left-col-key'?: string;
+  'data-right-col-key'?: string;
 }
 
 const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
   const { token } = antdTheme.useToken();
   const strId = props['data-drag-id'];
   const strColKey = props['data-col-key'];
+  const strLeftColKey = props['data-left-col-key'];
+  const strRightColKey = props['data-right-col-key'];
   const ctxResize = React.useContext(ResizeContext);
 
   const {
@@ -124,31 +174,59 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
     isDragging,
   } = useSortable({ id: strId });
 
-  const { 'data-drag-id': _dragId, 'data-col-key': _colKey, style, children, ...restProps } = props;
+  const { 'data-drag-id': _dragId, 'data-col-key': _colKey, 'data-left-col-key': _leftKey, 'data-right-col-key': _rightKey, style, children, ...restProps } = props;
   const nStartXRef = useRef(0);
   const nStartWidthRef = useRef(0);
+  const nStartNeighborWidthRef = useRef(0);
+  const nLastAppliedRef = useRef(0);
+  const resizeRafRef = useRef<number>(0);
   const resizeTargetRef = useRef<HTMLElement | null>(null);
   const resizePointerIdRef = useRef<number>(-1);
 
-  // 리사이즈만: pointer 이벤트로 처리·전파 차단 → 컬럼 이동(드래그)과 완전 분리
+  // 리사이즈: 좌핸들 → 좌드래그 시 왼쪽 인접 컬럼이 줄고 현재 컬럼이 커짐 / 우핸들 → 우드래그 시 오른쪽 인접이 줄고 현재가 커짐
   const fnHandleResizePointerDown = useCallback(
-    (e: React.PointerEvent) => {
+    (e: React.PointerEvent, bLeft: boolean) => {
       e.preventDefault();
       e.stopPropagation();
       if (!strColKey || !ctxResize) return;
       const th = (e.target as HTMLElement).closest('th');
-      if (!th) return;
-      const targetEl = e.target as HTMLElement;
+      const table = th?.closest('table');
+      if (!th || !table) return;
+      const strNeighborKey = bLeft ? strLeftColKey : strRightColKey;
+      const neighborTh = strNeighborKey
+        ? (table.querySelector(`thead th[data-col-key="${strNeighborKey}"]`) as HTMLTableCellElement | null)
+        : null;
       nStartXRef.current = e.clientX;
       nStartWidthRef.current = th.offsetWidth;
-      resizeTargetRef.current = targetEl;
+      nStartNeighborWidthRef.current = neighborTh?.offsetWidth ?? 0;
+      resizeTargetRef.current = e.target as HTMLElement;
       resizePointerIdRef.current = e.pointerId;
-      targetEl.setPointerCapture?.(e.pointerId);
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
 
       const fnMove = (e2: PointerEvent) => {
-        const nDelta = e2.clientX - nStartXRef.current;
-        const nNew = Math.max(N_MIN_COL_WIDTH, nStartWidthRef.current + nDelta);
-        ctxResize.setColWidth(strColKey, nNew);
+        const nDelta = bLeft ? nStartXRef.current - e2.clientX : e2.clientX - nStartXRef.current;
+        let nCurrentNew: number;
+        let nNeighborNew: number;
+        if (strNeighborKey && neighborTh) {
+          // 인접 컬럼과 경계 이동: 인접은 줄고, 현재는 커짐 (합 유지)
+          nNeighborNew = Math.max(N_MIN_COL_WIDTH, nStartNeighborWidthRef.current - nDelta);
+          nCurrentNew = nStartWidthRef.current + (nStartNeighborWidthRef.current - nNeighborNew);
+          if (nCurrentNew < N_MIN_COL_WIDTH) {
+            nCurrentNew = N_MIN_COL_WIDTH;
+            nNeighborNew = nStartWidthRef.current + nStartNeighborWidthRef.current - N_MIN_COL_WIDTH;
+          }
+        } else {
+          nCurrentNew = Math.max(N_MIN_COL_WIDTH, nStartWidthRef.current + nDelta);
+          nNeighborNew = 0;
+        }
+        if (Math.abs(nCurrentNew - nLastAppliedRef.current) < 2 && !strNeighborKey) return;
+        nLastAppliedRef.current = nCurrentNew;
+        if (resizeRafRef.current) cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = requestAnimationFrame(() => {
+          resizeRafRef.current = 0;
+          ctxResize.setColWidth(strColKey, nCurrentNew);
+          if (strNeighborKey && nNeighborNew > 0) ctxResize.setColWidth(strNeighborKey, nNeighborNew);
+        });
       };
       const fnUp = () => {
         document.removeEventListener('pointermove', fnMove);
@@ -156,6 +234,10 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
         document.removeEventListener('pointercancel', fnUp);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        if (resizeRafRef.current) {
+          cancelAnimationFrame(resizeRafRef.current);
+          resizeRafRef.current = 0;
+        }
         if (resizeTargetRef.current && resizePointerIdRef.current >= 0) {
           resizeTargetRef.current.releasePointerCapture?.(resizePointerIdRef.current);
         }
@@ -165,6 +247,34 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
       document.addEventListener('pointermove', fnMove);
       document.addEventListener('pointerup', fnUp);
       document.addEventListener('pointercancel', fnUp);
+    },
+    [strColKey, strLeftColKey, strRightColKey, ctxResize],
+  );
+
+  // 더블클릭 시 데이터 행 셀 내용(실제 텍스트/내용 너비) 중 가장 큰 값으로 컬럼 너비 조절
+  const fnHandleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!strColKey || !ctxResize) return;
+      const th = (e.target as HTMLElement).closest('th');
+      const table = th?.closest('table');
+      if (!th || !table) return;
+      const nColIndex = (th as HTMLTableCellElement).cellIndex;
+      let nMaxW = 0;
+      const tbody = table.querySelector('tbody');
+      if (tbody) {
+        tbody.querySelectorAll('tr').forEach((tr) => {
+          const td = fnGetCellAtColumnIndex(tr as HTMLTableRowElement, nColIndex);
+          if (td) {
+            const w = fnMeasureCellContentWidth(td);
+            if (w > nMaxW) nMaxW = w;
+          }
+        });
+      }
+      const nNew = Math.min(
+        N_MAX_COL_WIDTH,
+        Math.max(N_MIN_COL_WIDTH, nMaxW + N_AUTO_FIT_PADDING),
+      );
+      ctxResize.setColWidth(strColKey, nNew);
     },
     [strColKey, ctxResize],
   );
@@ -176,11 +286,11 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
   return (
     <th
       ref={setNodeRef}
+      data-col-key={strColKey}
       style={{
         ...style,
         transform: strTransform,
         transition,
-        cursor: isDragging ? 'grabbing' : 'grab',
         userSelect: 'none',
         opacity: isDragging ? 0.55 : 1,
         background: isDragging ? token.colorPrimaryBg : undefined,
@@ -189,17 +299,48 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         position: 'relative',
+        padding: 0,
       }}
-      {...attributes}
-      {...listeners}
       {...restProps}
     >
-      {children}
-      {/* 컬럼 우측 리사이즈 핸들 */}
+      {/* 좌측: 리사이즈 핸들 — 좌드래그 시 왼쪽 경계(컬럼 너비) 변경 */}
       {strColKey && ctxResize && (
         <div
           role="presentation"
-          onPointerDown={fnHandleResizePointerDown}
+          onPointerDown={(e) => fnHandleResizePointerDown(e, true)}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: 10,
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 1,
+          }}
+        />
+      )}
+      {/* 중앙: 순서 변경 드래그 / 더블클릭 시 내용물 맞춤 */}
+      <div
+        style={{
+          marginLeft: 10,
+          marginRight: 10,
+          padding: '8px 0',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          minHeight: '100%',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+        {...attributes}
+        {...listeners}
+        onDoubleClick={strColKey && ctxResize ? fnHandleDoubleClick : undefined}
+      >
+        {children}
+      </div>
+      {/* 우측: 리사이즈 핸들 — 우드래그 시 우측 경계(컬럼 너비) 변경 */}
+      {strColKey && ctxResize && (
+        <div
+          role="presentation"
+          onPointerDown={(e) => fnHandleResizePointerDown(e, false)}
           style={{
             position: 'absolute',
             top: 0,
@@ -247,7 +388,7 @@ function AppTable<T extends object>({
   const prevColsRef = useRef(columns);
   const [arrOrder, setArrOrder] = useState<string[]>(() => {
     const arrKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
-    return strTableId ? fnLoadOrder(strTableId, arrKeys) : arrKeys;
+    return strTableId ? fnLoadOrder(strTableId, arrKeys) : fnEnsureIndexFirst(arrKeys);
   });
 
   // 컬럼 너비 (리사이즈 드래그로 변경, strTableId 있으면 localStorage 저장)
@@ -284,7 +425,7 @@ function AppTable<T extends object>({
     }
   }
 
-  // 드래그 종료 → 순서 업데이트 + 저장
+  // 드래그 종료 → 순서 업데이트 + 저장 (No.는 항상 맨 앞 유지)
   const fnOnDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -292,7 +433,8 @@ function AppTable<T extends object>({
       setArrOrder((prev) => {
         const nFrom = prev.indexOf(String(active.id));
         const nTo   = prev.indexOf(String(over.id));
-        const arrNext = arrayMove(prev, nFrom, nTo);
+        let arrNext = arrayMove(prev, nFrom, nTo);
+        arrNext = fnEnsureIndexFirst(arrNext);
         if (strTableId) fnSaveOrder(strTableId, arrNext);
         return arrNext;
       });
@@ -309,29 +451,31 @@ function AppTable<T extends object>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strTableId]);
 
-  // 현재 순서대로 컬럼 배열 재정렬 + 너비 반영 + onHeaderCell 주입
+  // 현재 순서대로 컬럼 배열 재정렬 + 너비 반영 + onHeaderCell 주입 (인접 컬럼 키로 경계 리사이즈)
   const arrSortedColumns: TableColumnType<T>[] | undefined =
     bDraggableColumns && columns
       ? arrOrder
-          .map((strKey) =>
-            (columns as TableColumnType<T>[]).find(
-              (col, nIdx) => fnGetColKey(col, nIdx) === strKey,
-            ),
-          )
-          .filter(Boolean)
-          .map((col) => {
-            const colTyped = col as TableColumnType<T>;
-            const strColKey = fnGetColKey(colTyped, 0);
-            const nWidth = objWidths[strColKey] ?? colTyped.width;
+          .map((strKey, nIdx) => {
+            const col = (columns as TableColumnType<T>[]).find(
+              (c, i) => fnGetColKey(c, i) === strKey,
+            ) as TableColumnType<T> | undefined;
+            if (!col) return null;
+            const strColKey = strKey;
+            const strLeftKey = arrOrder[nIdx - 1];
+            const strRightKey = arrOrder[nIdx + 1];
+            const nWidth = objWidths[strColKey] ?? col.width;
             return {
-              ...colTyped,
-              width: typeof nWidth === 'number' ? nWidth : colTyped.width,
+              ...col,
+              width: typeof nWidth === 'number' ? nWidth : col.width,
               onHeaderCell: () => ({
                 'data-drag-id': strColKey,
                 'data-col-key': strColKey,
+                'data-left-col-key': strLeftKey,
+                'data-right-col-key': strRightKey,
               }),
             };
           })
+          .filter(Boolean) as TableColumnType<T>[]
       : (columns as TableColumnType<T>[] | undefined);
 
   const objPagination =
