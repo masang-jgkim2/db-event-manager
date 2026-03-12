@@ -7,7 +7,9 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand",
+    "test:api": "jest --runInBand --testPathPattern=api.test",
+    "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\""
   },
   "keywords": [],
   "author": "",
@@ -26,14 +28,16 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jest": "^29.5.14",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/mssql": "^9.1.9",
     "@types/node": "^25.2.2",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.2.5",
-    "supertest": "^7.0.0"
+    "typescript": "^5.9.3"
   }
 }

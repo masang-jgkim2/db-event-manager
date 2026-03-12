@@ -6,10 +6,11 @@ import {
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import AppTable, { fnMakeIndexColumn, type TAppColumn } from '../components/AppTable';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
+import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
 import { ARR_PERMISSION_GROUPS, fnExpandLegacyToGranular } from '../types';
 
@@ -22,6 +23,14 @@ const RolePage = () => {
   const [objEditRole, setObjEditRole] = useState<IRole | null>(null);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+
+  // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const fnHas = (p: string) => (arrPermissions as string[]).includes(p);
+  const bCanCreate = fnHas('role.create');
+  const bCanEdit = fnHas('role.edit');
+  const bCanDelete = fnHas('role.delete');
+  const bCanEditPermissions = fnHas('role.edit_permissions');
 
   // 역할 목록 조회
   const fnLoad = useCallback(async () => {
@@ -92,8 +101,8 @@ const RolePage = () => {
       } else {
         messageApi.error(result.strMessage);
       }
-    } catch (error: any) {
-      messageApi.error(error?.message || '삭제에 실패했습니다.');
+    } catch (error: unknown) {
+      messageApi.error((error as Error)?.message || '삭제에 실패했습니다.');
     }
   };
 
@@ -132,30 +141,40 @@ const RolePage = () => {
       width: 80,
       render: (_: unknown, r: IRole) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
     },
-    {
-      title: '관리',
-      key: 'actions',
-      width: 140,
-      render: (_: unknown, r: IRole) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-            {r.bIsSystem ? '권한' : '수정'}
-          </Button>
-          {!r.bIsSystem && (
-            <Popconfirm
-              title="정말 삭제하시겠습니까?"
-              description="이 역할을 사용 중인 사용자가 있으면 삭제할 수 없습니다."
-              onConfirm={() => fnHandleDelete(r.nId)}
-              okText="삭제"
-              cancelText="취소"
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ];
+    ...(bCanEditPermissions || bCanEdit || bCanDelete
+      ? [{
+          title: '관리',
+          key: 'actions',
+          width: 140,
+          render: (_: unknown, r: IRole) => (
+            <Space>
+              {r.bIsSystem
+                ? bCanEditPermissions && (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
+                      권한
+                    </Button>
+                  )
+                : bCanEdit && (
+                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
+                      수정
+                    </Button>
+                  )}
+              {!r.bIsSystem && bCanDelete && (
+                <Popconfirm
+                  title="정말 삭제하시겠습니까?"
+                  description="이 역할을 사용 중인 사용자가 있으면 삭제할 수 없습니다."
+                  onConfirm={() => fnHandleDelete(r.nId)}
+                  okText="삭제"
+                  cancelText="취소"
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+            </Space>
+          ),
+        } as TAppColumn<IRole>]
+      : []),
+  ] as TAppColumn<IRole>[];
 
   return (
     <>
@@ -163,9 +182,11 @@ const RolePage = () => {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>역할 권한</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          새로운 역할
-        </Button>
+        {bCanCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+            새로운 역할
+          </Button>
+        )}
       </div>
 
       <Card>

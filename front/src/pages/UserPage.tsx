@@ -10,6 +10,7 @@ import {
   fnApiDeleteUser, fnApiResetPassword,
 } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
+import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
 
 const { Title, Text } = Typography;
@@ -40,6 +41,14 @@ const UserPage = () => {
   // 역할명 매핑 객체
   const objRoleMap: Record<string, string> = {};
   arrRoles.forEach((r) => { objRoleMap[r.strCode] = r.strDisplayName; });
+
+  // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const fnHas = (p: string) => arrPermissions.includes(p);
+  const bCanCreate = fnHas('user.create') || fnHas('user.manage');
+  const bCanEdit = fnHas('user.edit') || fnHas('user.manage');
+  const bCanDelete = fnHas('user.delete') || fnHas('user.manage');
+  const bCanResetPassword = fnHas('user.reset_password') || fnHas('user.manage');
 
   // 사용자 목록 조회
   const fnLoadUsers = useCallback(async () => {
@@ -194,59 +203,69 @@ const UserPage = () => {
       width: 160,
       render: (strDate: string) => <Text style={{ fontSize: 12 }}>{new Date(strDate).toLocaleString('ko-KR')}</Text>,
     },
-    {
-      title: '관리',
-      key: 'actions',
-      width: 180,
-      render: (_: unknown, objRecord: IUserRow) => (
-        <Space>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => fnOpenEdit(objRecord)}
-            title="사용자 수정"
-          >
-            수정
-          </Button>
-          <Button
-            type="text"
-            size="small"
-            icon={<KeyOutlined />}
-            onClick={() => {
-              setNResetUserId(objRecord.nId);
-              setBResetModalOpen(true);
-            }}
-            title="비밀번호 초기화"
-          />
-          <Popconfirm
-            title="정말 삭제하시겠습니까?"
-            onConfirm={() => fnHandleDelete(objRecord.nId)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(bCanEdit || bCanResetPassword || bCanDelete
+      ? [{
+          title: '관리',
+          key: 'actions',
+          width: 180,
+          render: (_: unknown, objRecord: IUserRow) => (
+            <Space>
+              {bCanEdit && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => fnOpenEdit(objRecord)}
+                  title="사용자 수정"
+                >
+                  수정
+                </Button>
+              )}
+              {bCanResetPassword && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<KeyOutlined />}
+                  onClick={() => {
+                    setNResetUserId(objRecord.nId);
+                    setBResetModalOpen(true);
+                  }}
+                  title="비밀번호 초기화"
+                />
+              )}
+              {bCanDelete && (
+                <Popconfirm
+                  title="정말 삭제하시겠습니까?"
+                  onConfirm={() => fnHandleDelete(objRecord.nId)}
+                  okText="삭제"
+                  cancelText="취소"
+                >
+                  <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+            </Space>
+          ),
+        }]
+      : []),
   ];
 
   return (
     <>
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>사용자 관리</Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            form.resetFields();
-            setBModalOpen(true);
-          }}
-        >
-          새로운 사용자
-        </Button>
+        <Title level={4} style={{ margin: 0 }}>사용자</Title>
+        {bCanCreate && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              form.resetFields();
+              setBModalOpen(true);
+            }}
+          >
+            새로운 사용자
+          </Button>
+        )}
       </div>
 
       <Card>

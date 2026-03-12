@@ -104,3 +104,57 @@
 - 기획자: 사용자 관리에서 **기획자(game_designer)** 역할을 부여한 계정으로 로그인해 테스트.
 
 위 네 가지 역할로 **모든 메뉴, 모든 페이지, 모든 권한 구간의 버튼**을 커버할 수 있습니다.
+
+---
+
+## 6. 자동화 테스트 실행 방법 (사용자별·역할별 권한 API 테스트)
+
+백엔드에서 **역할/권한에 따른 API 접근(200 vs 403)**을 자동으로 검증하는 테스트가 있습니다. 아래처럼 실행하면 됩니다.
+
+### 전체 API 테스트 (권한 포함)
+
+```bash
+cd backend
+npm test
+```
+
+또는 API 테스트 파일만 실행:
+
+```bash
+cd backend
+npm run test:api
+```
+
+### 권한·역할 관련 테스트만 실행
+
+사용자별/역할별 권한, 메뉴·페이지 대응 API만 돌리려면:
+
+```bash
+cd backend
+npm run test:permission
+```
+
+이렇게 하면 다음 항목들이 실행됩니다.
+
+- **인증 — 로그인**: admin / GM / DBA 로그인, 토큰·arrRoles·arrPermissions
+- **권한별 API (GM 토큰)**: products/events 200, users 403
+- **권한별 API (DBA 토큰)**: event-instances 200
+- **권한별 API — 프로덕트/이벤트 템플릿/DB 접속/사용자·역할**: view 있으면 200, 없으면 403
+- **역할·권한별 메뉴/페이지/기능 접근 (API 매트릭스)**: admin 전부 200, GM/DBA는 허용된 API만 200·나머지 403
+- **권한 추가/삭제 시나리오**: 권한 제거 후 403, 복원 후 재로그인 시 200
+
+### Jest로 특정 describe만 실행 (선택)
+
+특정 describe 블록 이름으로만 실행할 때:
+
+```bash
+cd backend
+npx jest --runInBand --testPathPattern=api.test --testNamePattern="역할·권한별 메뉴"
+```
+
+| 실행 목적           | 명령어 |
+|--------------------|--------|
+| 전체 테스트         | `npm test` |
+| API 테스트만       | `npm run test:api` |
+| 권한/역할 테스트만 | `npm run test:permission` |
+| 메뉴 매트릭스만     | `npx jest --runInBand --testPathPattern=api.test --testNamePattern="역할·권한별 메뉴"` |
