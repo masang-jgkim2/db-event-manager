@@ -558,11 +558,13 @@ const MyDashboardPage = () => {
     const bHasQa   = arrScope.includes('qa');
     const bHasLive = arrScope.includes('live');
 
-    // 상세 보기 (항상)
-    arrButtons.push(
-      <Button key="detail" size="small" icon={<EyeOutlined />}
-        onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
-    );
+    // 상세 보기 — my_dashboard.detail 권한 있을 때만 버튼 노출
+    if (fnHasPermission('my_dashboard.detail')) {
+      arrButtons.push(
+        <Button key="detail" size="small" icon={<EyeOutlined />}
+          onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
+      );
+    }
 
     // DBA: 쿼리 수정 — 역할 또는 단일 권한 my_dashboard.query_edit
     const bIsDbaOrAdmin = arrRoles.includes('dba') || arrRoles.includes('admin');

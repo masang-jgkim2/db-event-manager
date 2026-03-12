@@ -11,10 +11,10 @@ const STR_FILE = 'rolePermissions.json';
 
 // 시드: 파일 없거나 비어 있을 때 역할별 권한 초기 데이터
 const ARR_SEED: IRolePermissionRow[] = [
-  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 1, strPermission })),
-  ...['instance.execute_qa','instance.execute_live'].map((strPermission) => ({ nRoleId: 2, strPermission })),
-  ...['product.view','event_template.view','instance.create','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
-  ...['product.view','event_template.view','instance.create','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
+  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 1, strPermission })),
+  ...['instance.execute_qa','instance.execute_live','my_dashboard.detail'].map((strPermission) => ({ nRoleId: 2, strPermission })),
+  ...['product.view','event_template.view','instance.create','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
+  ...['product.view','event_template.view','instance.create','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
 ];
 
 export const arrRolePermissions: IRolePermissionRow[] = fnLoadJson<IRolePermissionRow>(STR_FILE, ARR_SEED);

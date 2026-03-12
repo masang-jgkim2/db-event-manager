@@ -9,7 +9,7 @@ export type TPermission =
   | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
-  | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
+  | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
   | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
   | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
   | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
