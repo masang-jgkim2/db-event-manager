@@ -14,9 +14,9 @@ const router = Router();
 
 // ──────────────────────────────────────────────────────────
 // SSE 스트림 연결 - 인증 필요 (라우터 use 보다 먼저 선언)
-// GET /api/event-instances/stream
+// GET /api/event-instances/stream (나의 대시보드 보기 권한)
 // ──────────────────────────────────────────────────────────
-router.get('/stream', fnAuthMiddleware, (req: Request, res: Response) => {
+router.get('/stream', fnAuthMiddleware, fnRequireAnyPermission('my_dashboard.view'), (req: Request, res: Response) => {
   const nUserId = req.user?.nId || 0;
 
   // SSE 헤더 설정
@@ -53,11 +53,11 @@ router.get('/stream', fnAuthMiddleware, (req: Request, res: Response) => {
 // 모든 나머지 라우트 인증 필수
 router.use(fnAuthMiddleware);
 
-// GET /api/event-instances - 목록 조회
-router.get('/', fnGetInstances);
+// GET /api/event-instances - 목록 조회 (나의 대시보드 보기 권한)
+router.get('/', fnRequireAnyPermission('my_dashboard.view'), fnGetInstances);
 
-// GET /api/event-instances/:id - 단건 조회
-router.get('/:id', fnGetInstance);
+// GET /api/event-instances/:id - 단건 조회 (나의 대시보드 보기 권한)
+router.get('/:id', fnRequireAnyPermission('my_dashboard.view'), fnGetInstance);
 
 // POST /api/event-instances - 이벤트 생성 (instance.create 권한 필요)
 router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);

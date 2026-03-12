@@ -558,7 +558,7 @@ const MyDashboardPage = () => {
     const bHasQa   = arrScope.includes('qa');
     const bHasLive = arrScope.includes('live');
 
-    // 상세 보기 — my_dashboard.detail 권한 있을 때만 버튼 노출
+    // 상세 — my_dashboard.detail 권한 있을 때만 버튼 노출
     if (fnHasPermission('my_dashboard.detail')) {
       arrButtons.push(
         <Button key="detail" size="small" icon={<EyeOutlined />}

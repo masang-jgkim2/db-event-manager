@@ -89,19 +89,26 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const arrRoles = user?.arrRoles || [];
 
   if (bIsAuthenticated) {
-    // 관리자는 대시보드, 그 외는 나의 대시보드
-    const strRedirect = arrRoles.includes('admin') ? '/' : '/my-dashboard';
+    const arrPermissions = user?.arrPermissions || [];
+    const bHasDashboard = arrRoles.includes('admin');
+    const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
+    const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
+    const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));
     return <Navigate to={strRedirect} replace />;
   }
 
   return <>{children}</>;
 };
 
-// 기본 리다이렉트 (역할에 따라 다른 페이지로)
+// 기본 리다이렉트 (역할/권한에 따라)
 const DefaultRedirect = () => {
   const user = useAuthStore((state) => state.user);
   const arrRoles = user?.arrRoles || [];
-  const strRedirect = arrRoles.includes('admin') ? '/' : '/my-dashboard';
+  const arrPermissions = user?.arrPermissions || [];
+  const bHasDashboard = arrRoles.includes('admin');
+  const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
+  const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
+  const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));
   return <Navigate to={strRedirect} replace />;
 };
 
@@ -234,8 +241,15 @@ const App = () => {
               }
             />
 
-            {/* 나의 대시보드: 인증만. 이벤트 생성: instance.view 또는 instance.create 필요 */}
-            <Route path="/my-dashboard" element={<MyDashboardPage />} />
+            {/* 나의 대시보드: my_dashboard.view 필요. 이벤트 생성: instance.view 또는 instance.create 필요 */}
+            <Route
+              path="/my-dashboard"
+              element={
+                <PermissionRoute arrRequiredPerms={['my_dashboard.view']}>
+                  <MyDashboardPage />
+                </PermissionRoute>
+              }
+            />
             <Route
               path="/query"
               element={

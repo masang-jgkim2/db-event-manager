@@ -42,7 +42,7 @@
 | | `role.delete` | 역할 삭제 | 역할 삭제(커스텀만) |
 | | `role.edit_permissions` | 역할 권한 수정 | 시스템 역할 포함 권한 체크박스 |
 | **나의 대시보드** | `my_dashboard.view` | 나의 대시보드 보기 | 목록·탭·필터·통계 |
-| | `my_dashboard.detail` | 상세 보기 | 상세 버튼·모달 |
+| | `my_dashboard.detail` | 상세 | 상세 버튼·모달 |
 | | `my_dashboard.edit` | 이벤트 수정 | 작성 중인 본인 인스턴스 수정 |
 | | `my_dashboard.request_confirm` | 컨펌 요청 | 컨펌 요청 버튼 |
 | | `my_dashboard.query_edit` | 쿼리 수정 | DBA 쿼리 직접 수정 |
@@ -155,8 +155,8 @@
 
 | 구분 | 기능 | 설명 | 제안 권한 / 비고 |
 |------|------|------|-------------------|
-| 보기 | 나의 대시보드 보기 | 목록, 탭(진행/완료·숨김), 필터, 통계 | `my_dashboard.view` (또는 인증만) |
-| 기타 | 상세 보기 | 상세 버튼 → 모달 | `my_dashboard.detail` (또는 view에 포함) |
+| 보기 | 나의 대시보드 보기 | 목록, 탭(진행/완료·숨김), 필터, 통계 | `my_dashboard.view` |
+| 기타 | 상세 | 상세 버튼 → 모달 | `my_dashboard.detail` |
 | 수정 | 이벤트 수정 | event_created 상태, 본인이 생성한 인스턴스만 수정 버튼 | `my_dashboard.edit` (현재 `instance.create` + 본인) |
 | 기타 | 컨펌 요청 | 컨펌 요청 버튼 | `my_dashboard.request_confirm` (현재 `instance.create`) |
 | 기타 | 쿼리 수정 | DBA 쿼리 직접 수정 버튼(confirm_requested, qa_requested, live_requested) | `my_dashboard.query_edit` (현재 역할 dba/admin) |
@@ -173,7 +173,7 @@
 | 기타 | 완료 이벤트 숨기기/복원 | 숨기기·복원 버튼 | `my_dashboard.hide` (또는 view에 포함) |
 
 - **메뉴**: 나의 대시보드 (경로 `/my-dashboard`)  
-- **페이지 접근**: 인증만 (모든 사용자)  
+- **페이지 접근**: `my_dashboard.view` 필수 (없으면 메뉴 비노출·페이지 403)  
 - **상태별 노출**: 위 표의 기능은 인스턴스 상태(strStatus)와 반영 범위(qa/live)에 따라 조건부 노출됨.
 
 ---
@@ -226,7 +226,7 @@
 | DB 접속 정보 | `/db-connections` | `db_connection.view` 또는 `db.manage` |
 | 사용자 | `/users` | `user.view` |
 | 역할 권한 | `/roles` | `role.view` |
-| 나의 대시보드 | `/my-dashboard` | 인증만 (모든 사용자) |
+| 나의 대시보드 | `/my-dashboard` | `my_dashboard.view` |
 | 이벤트 생성 | `/query` | `instance.view` 또는 `instance.create` |
 
 ---

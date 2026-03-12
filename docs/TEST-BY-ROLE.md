@@ -9,7 +9,7 @@
 | 역할 | strCode | 권한 (요약) |
 |------|---------|-------------|
 | **관리자** | admin | 전부 (product/event_template/user/db/instance.*, my_dashboard.detail·edit·request_confirm 등) |
-| **DBA** | dba | instance.execute_qa, instance.execute_live, my_dashboard.detail(상세 보기) |
+| **DBA** | dba | instance.execute_qa, instance.execute_live, my_dashboard.detail(상세) |
 | **GM** | game_manager | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm, approve_qa, verify_qa, approve_live, verify_live |
 | **기획자** | game_designer | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm |
 
@@ -25,7 +25,7 @@
 | DB 접속 정보 | `/db-connections` | db_connection.view 또는 db.manage → **관리자** 등 |
 | 사용자 | `/users` | user.view → **관리자** 등 |
 | 역할 권한 | `/roles` | role.view → **관리자** 등 |
-| 나의 대시보드 | `/my-dashboard` | 인증만 (전원) |
+| 나의 대시보드 | `/my-dashboard` | my_dashboard.view → 관리자, **DBA**, **GM**, **기획자** |
 | 이벤트 생성 | `/query` | instance.view 또는 instance.create → 관리자, **GM**, **기획자** |
 
 - DBA는 **나의 대시보드**만 메뉴에 보이고, 프로덕트/이벤트/이벤트 생성 메뉴는 안 보입니다 (의도된 동작).

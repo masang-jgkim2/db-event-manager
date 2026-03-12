@@ -144,9 +144,10 @@ const MainLayout = () => {
     }
 
     // ── 운영 그룹 ─────────────────────────────────────
-    const arrOpChildren = [
-      { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
-    ];
+    const arrOpChildren: { key: string; icon: React.ReactNode; label: string }[] = [];
+    if (fnHasPerm('my_dashboard.view')) {
+      arrOpChildren.push({ key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' });
+    }
     if (fnHasPerm('instance.view') || fnHasPerm('instance.create')) {
       arrOpChildren.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
     }

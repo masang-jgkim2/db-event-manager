@@ -84,7 +84,8 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'role.edit_permissions', label: '권한 수정' },
   ]},
   { groupLabel: '나의 대시보드', permissions: [
-    { value: 'my_dashboard.detail', label: '상세 보기' },
+    { value: 'my_dashboard.view', label: '보기' },
+    { value: 'my_dashboard.detail', label: '상세' },
     { value: 'my_dashboard.edit', label: '이벤트 수정' },
     { value: 'my_dashboard.request_confirm', label: '컨펌 요청' },
     { value: 'my_dashboard.query_edit', label: '쿼리 수정' },

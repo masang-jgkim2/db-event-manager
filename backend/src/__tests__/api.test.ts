@@ -346,7 +346,8 @@ describe('API 전체 테스트', () => {
     it('DBA(실행 권한만 부여 시): 이벤트인스턴스만 200, 나머지 메뉴 API 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => r.strPermission);
-      fnSetPermissionsForRole(N_ROLE_DBA, ['instance.execute_qa', 'instance.execute_live'] as TPermission[]);
+      // 나의 대시보드 목록/단건 조회에 my_dashboard.view 필요
+      fnSetPermissionsForRole(N_ROLE_DBA, ['my_dashboard.view', 'instance.execute_qa', 'instance.execute_live'] as TPermission[]);
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const token = loginRes.body.strToken;
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
