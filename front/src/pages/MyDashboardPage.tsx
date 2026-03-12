@@ -910,10 +910,41 @@ const MyDashboardPage = () => {
     const t = setTimeout(() => {
       setStrViewTransition('idle');
       setStrViewDisplay(strViewMode);
-      setNViewMinHeight(undefined);
+      // minHeight는 아래 effect에서 카드 높이로 맞춘 뒤 해제 (스크롤 깜빡임 방지)
     }, 180);
     return () => clearTimeout(t);
   }, [strViewTransition, strViewMode]);
+
+  // idle로 돌아온 뒤: 카드 보기는 컨텐츠 높이로 맞춘 뒤 해제(스크롤 깜빡임 방지), 테이블은 짧은 뒤 해제
+  const viewMinHeightCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (strViewTransition !== 'idle' || !nViewMinHeight) return;
+    if (strViewMode === 'card') {
+      const rafId = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = viewContentRef.current;
+          const inner = el?.firstElementChild;
+          const contentH = (inner?.scrollHeight ?? el?.offsetHeight) || nViewMinHeight;
+          setNViewMinHeight(contentH);
+          viewMinHeightCleanupRef.current = setTimeout(() => setNViewMinHeight(undefined), 120);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(rafId);
+        if (viewMinHeightCleanupRef.current) {
+          clearTimeout(viewMinHeightCleanupRef.current);
+          viewMinHeightCleanupRef.current = null;
+        }
+      };
+    }
+    viewMinHeightCleanupRef.current = setTimeout(() => setNViewMinHeight(undefined), 80);
+    return () => {
+      if (viewMinHeightCleanupRef.current) {
+        clearTimeout(viewMinHeightCleanupRef.current);
+        viewMinHeightCleanupRef.current = null;
+      }
+    };
+  }, [strViewTransition, nViewMinHeight, strViewMode]);
 
   const fnToggleViewMode = useCallback(() => {
     if (strViewTransition !== 'idle') return;
@@ -1077,6 +1108,7 @@ const MyDashboardPage = () => {
           ref={viewContentRef}
           style={{
             minHeight: nViewMinHeight,
+            height: nViewMinHeight,
             overflow: nViewMinHeight ? 'hidden' : undefined,
             transition: 'opacity 0.18s ease',
             opacity: strViewTransition === 'out' ? 0 : 1,
