@@ -17,6 +17,7 @@ import {
   fnApiTestDbConnection,
 } from '../api/dbConnectionApi';
 import { useProductStore } from '../stores/useProductStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection } from '../types';
 
@@ -60,6 +61,12 @@ const DbConnectionPage = () => {
   const [messageApi, contextHolder] = message.useMessage();
 
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const fnHas = (p: string) => arrPermissions.includes(p);
+  const bCanCreate = fnHas('db_connection.create') || fnHas('db.manage');
+  const bCanEdit = fnHas('db_connection.edit') || fnHas('db.manage');
+  const bCanDelete = fnHas('db_connection.delete') || fnHas('db.manage');
+  const bCanTest = fnHas('db_connection.test') || fnHas('db.manage');
 
   // 목록 조회
   const fnLoad = useCallback(async () => {
@@ -210,39 +217,47 @@ const DbConnectionPage = () => {
       width: 140,
       render: (v: string) => <Text style={{ fontSize: 11 }}>{new Date(v).toLocaleString('ko-KR')}</Text>,
     },
-    {
-      title: '관리',
-      key: 'actions',
-      width: 220,
-      render: (_: unknown, r: IDbConnection) => (
-        <Space>
-          <Button
-            size="small"
-            icon={bTesting === r.nId ? <Spin size="small" /> : <ApiOutlined />}
-            onClick={() => fnHandleTest(r)}
-            disabled={bTesting !== null}
-            title="연결 테스트"
-          >
-            테스트
-          </Button>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => fnOpenModal(r)}
-          >
-            수정
-          </Button>
-          <Popconfirm
-            title="정말 삭제하시겠습니까?"
-            onConfirm={() => fnHandleDelete(r.nId)}
-            okText="삭제"
-            cancelText="취소"
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(bCanTest || bCanEdit || bCanDelete
+      ? [{
+          title: '관리',
+          key: 'actions',
+          width: 220,
+          render: (_: unknown, r: IDbConnection) => (
+            <Space>
+              {bCanTest && (
+                <Button
+                  size="small"
+                  icon={bTesting === r.nId ? <Spin size="small" /> : <ApiOutlined />}
+                  onClick={() => fnHandleTest(r)}
+                  disabled={bTesting !== null}
+                  title="연결 테스트"
+                >
+                  테스트
+                </Button>
+              )}
+              {bCanEdit && (
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => fnOpenModal(r)}
+                >
+                  수정
+                </Button>
+              )}
+              {bCanDelete && (
+                <Popconfirm
+                  title="정말 삭제하시겠습니까?"
+                  onConfirm={() => fnHandleDelete(r.nId)}
+                  okText="삭제"
+                  cancelText="취소"
+                >
+                  <Button size="small" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+            </Space>
+          ),
+        }]
+      : []),
   ];
 
   return (
@@ -254,9 +269,11 @@ const DbConnectionPage = () => {
           <DatabaseOutlined style={{ marginRight: 8 }} />
           DB 접속 정보 관리
         </Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-          새로운 DB 접속 정보
-        </Button>
+        {bCanCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+            새로운 DB 접속 정보
+          </Button>
+        )}
       </div>
 
       {/* 테스트 결과 표시 */}
