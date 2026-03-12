@@ -11,7 +11,8 @@ export type TPermission =
   | 'user.manage'               // 사용자 관리
   | 'db.manage'                 // DB 접속 정보 관리
   // 이벤트 인스턴스 권한
-  | 'instance.create'           // 이벤트 생성
+  | 'instance.view'             // 이벤트 생성 페이지 보기
+  | 'instance.create'            // 이벤트 인스턴스 생성
   | 'instance.approve_qa'       // QA 승인 요청
   | 'instance.execute_qa'       // QA DB 실제 실행
   | 'instance.verify_qa'        // QA 결과 확인
@@ -27,6 +28,7 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'event_template.manage':   '이벤트 템플릿 관리 (CRUD)',
   'user.manage':             '사용자 관리',
   'db.manage':               'DB 접속 정보 관리',
+  'instance.view':          '이벤트 생성 보기',
   'instance.create':         '이벤트 생성',
   'instance.approve_qa':     'QA 승인',
   'instance.execute_qa':     'QA DB 실행',
@@ -97,7 +99,8 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'my_dashboard.hide', label: '숨기기/복원' },
   ]},
   { groupLabel: '이벤트 생성', permissions: [
-    { value: 'instance.create', label: '이벤트 인스턴스 생성' },
+    { value: 'instance.view', label: '보기' },
+    { value: 'instance.create', label: '생성' },
   ]},
 ];
 
@@ -136,7 +139,7 @@ const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
-  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.create'],
+  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.view', 'instance.create'],
 };
 export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
   const setOut = new Set<string>(arrRaw);

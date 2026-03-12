@@ -2,6 +2,12 @@
 
 모든 메뉴, 페이지, 버튼/기능을 **보기·생성·수정·삭제** 등 세분화된 권한 단위로 정리한 문서입니다.
 
+## 원칙: 메뉴·페이지 접근
+
+- **모든 메뉴와 페이지는 해당 도메인의 보기 권한이 있어야 노출·접근 가능**합니다.
+- **보기 권한이 없으면** 해당 메뉴는 사이드바에 보이지 않으며, URL로 직접 접근해도 403 접근 권한 없음 페이지가 표시됩니다.
+- 예: 프로덕트 메뉴/페이지 → `product.view` 필요. 사용자 메뉴/페이지 → `user.view` 필요.
+
 ---
 
 ## 1. 세분화 권한 코드 제안
@@ -30,7 +36,7 @@
 | | `user.edit` | 사용자 수정 | 이름·역할 수정 |
 | | `user.delete` | 사용자 삭제 | 사용자 삭제 |
 | | `user.reset_password` | 비밀번호 초기화 | 비밀번호 초기화 |
-| **역할 권한 관리** | `role.view` | 역할 보기 | 목록·상세 조회 |
+| **역할 권한** | `role.view` | 역할 보기 | 목록·상세 조회 |
 | | `role.create` | 역할 생성 | 새로운 역할 추가 |
 | | `role.edit` | 역할 수정 | 역할 정보 수정(커스텀 역할) |
 | | `role.delete` | 역할 삭제 | 역할 삭제(커스텀만) |
@@ -50,7 +56,8 @@
 | | `my_dashboard.verify_live` | LIVE 확인 | LIVE확인 버튼 |
 | | `my_dashboard.request_live_rereq` | LIVE 재반영 요청 | LIVE 재반영 요청 버튼 |
 | | `my_dashboard.hide` | 완료 이벤트 숨기기 | 숨기기/복원 |
-| **이벤트 생성** | `instance.create` | 이벤트 생성 | 새 이벤트 인스턴스 생성(쿼리 작성·제출) |
+| **이벤트 생성** | `instance.view` | 이벤트 생성 보기 | 이벤트 생성 페이지 진입·조회 |
+| | `instance.create` | 이벤트 생성 | 새 이벤트 인스턴스 생성(쿼리 작성·제출) |
 
 ---
 
@@ -67,11 +74,11 @@
 | 보기 | 대시보드 보기 | 프로덕트·이벤트 요약 등 대시보드 페이지 진입 및 조회 | `dashboard.view` |
 
 - **메뉴**: 대시보드 (경로 `/`)  
-- **페이지 접근**: `dashboard.view` 또는 역할 `admin`
+- **메뉴·페이지 접근**: `dashboard.view` (또는 역할 `admin`). **보기 권한 없으면 메뉴 비노출·페이지 403**
 
 ---
 
-### 2.2 이벤트 프로덕트 (프로덕트 관리)
+### 2.2 프로덕트
 
 | 구분 | 기능 | 설명 | 제안 권한 |
 |------|------|------|-----------|
@@ -80,8 +87,8 @@
 | 수정 | 프로덕트 수정 | 관리-수정(수정 버튼 → 모달) | `product.edit` |
 | 삭제 | 프로덕트 삭제 | 관리-삭제(삭제 버튼) | `product.delete` |
 
-- **메뉴**: 프로덕트 관리 (경로 `/products`)  
-- **페이지 접근**: `product.view` 또는 `product.create` 또는 `product.edit` 또는 `product.delete` (하나라도 있으면 메뉴·진입 가능)
+- **메뉴**: 프로덕트 (경로 `/products`)  
+- **메뉴·페이지 접근**: `product.view` **필수**. 보기 권한 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -95,7 +102,7 @@
 | 삭제 | 이벤트 템플릿 삭제 | 관리-삭제(삭제 버튼) | `event_template.delete` |
 
 - **메뉴**: 이벤트 템플릿 (경로 `/events`)  
-- **페이지 접근**: `event_template.view` 또는 create/edit/delete 중 하나
+- **메뉴·페이지 접근**: `event_template.view` **필수**. 보기 권한 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -110,7 +117,7 @@
 | 기타 | 연결 테스트 | 연결 테스트 버튼 | `db_connection.test` |
 
 - **메뉴**: DB 접속 정보 (경로 `/db-connections`)  
-- **페이지 접근**: 위 권한 중 하나라도 있으면 메뉴·진입 가능하도록 설정 가능
+- **메뉴·페이지 접근**: `db_connection.view`(또는 `db.manage`) **필수**. 보기 권한 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -124,8 +131,8 @@
 | 삭제 | 사용자 삭제 | 사용자 삭제(삭제 버튼) | `user.delete` |
 | 기타 | 비밀번호 초기화 | 비밀번호 초기화(모달) | `user.reset_password` |
 
-- **메뉴**: 사용자 관리 (경로 `/users`)  
-- **페이지 접근**: `user.view` 또는 create/edit/delete/reset_password 중 하나 (또는 역할 `admin`)
+- **메뉴**: 사용자 (경로 `/users`)  
+- **메뉴·페이지 접근**: `user.view` **필수**. 보기 권한 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -139,8 +146,8 @@
 | 삭제 | 역할 삭제 | 역할 삭제(커스텀 역할만, 삭제 버튼) | `role.delete` |
 | 기타 | 역할 권한 수정 | 시스템 역할의 권한 체크박스 수정(권한 버튼 → 모달) | `role.edit_permissions` |
 
-- **메뉴**: 역할 권한 관리 (경로 `/roles`)  
-- **페이지 접근**: `role.view` 또는 create/edit/delete/edit_permissions 중 하나 (또는 역할 `admin`)
+- **메뉴**: 역할 권한 (경로 `/roles`)  
+- **메뉴·페이지 접근**: `role.view` **필수**. 보기 권한 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -175,11 +182,11 @@
 
 | 구분 | 기능 | 설명 | 제안 권한 |
 |------|------|------|-----------|
-| 보기 | 이벤트 생성 페이지 보기 | 페이지 진입(이벤트·프로덕트 선택, 쿼리 작성 영역 조회) | `instance.create` (보기=생성 권한과 동일 처리 가능) |
+| 보기 | 이벤트 생성 페이지 보기 | 페이지 진입(이벤트·프로덕트 선택, 쿼리 작성 영역 조회) | `instance.view` |
 | 생성 | 이벤트 인스턴스 생성 | 쿼리 작성 후 생성(제출) 버튼으로 새 인스턴스 생성 | `instance.create` |
 
 - **메뉴**: 이벤트 생성 (경로 `/query`)  
-- **페이지 접근**: `instance.create` 없으면 403 안내(나의 대시보드 이용)
+- **메뉴·페이지 접근**: `instance.view` 또는 `instance.create` **필수**. 둘 다 없으면 메뉴 비노출·페이지 403
 
 ---
 
@@ -196,7 +203,8 @@
 | `event_template.manage` | `event_template.view`, `event_template.create`, `event_template.edit`, `event_template.delete` |
 | `user.manage` | `user.view`, `user.create`, `user.edit`, `user.delete`, `user.reset_password` |
 | `db.manage` | `db_connection.view`, `db_connection.create`, `db_connection.edit`, `db_connection.delete`, `db_connection.test` |
-| `instance.create` | `instance.create`, `my_dashboard.edit`, `my_dashboard.request_confirm` |
+| `instance.view` | `instance.view` (이벤트 생성 페이지 보기 전용) |
+| `instance.create` | `instance.view`, `instance.create`, `my_dashboard.edit`, `my_dashboard.request_confirm` |
 | `instance.approve_qa` | `my_dashboard.request_qa`, `my_dashboard.request_qa_rereq` (및 관련 UI) |
 | `instance.execute_qa` | `my_dashboard.execute_qa`, `my_dashboard.query_edit`, `my_dashboard.confirm` (역할 dba와 함께) |
 | `instance.verify_qa` | `my_dashboard.verify_qa` |
@@ -208,24 +216,24 @@
 
 ---
 
-## 4. 메뉴 노출 조건 (세분화 반영 시)
+## 4. 메뉴 노출·페이지 접근 조건 (보기 권한 필수)
 
-| 메뉴 라벨 | 경로 | 노출 조건 (세분화 권한 기준) |
-|-----------|------|-----------------------------|
-| 대시보드 | `/` | `dashboard.view` 또는 역할 `admin` |
-| 프로덕트 관리 | `/products` | `product.view` 또는 `product.create` 또는 `product.edit` 또는 `product.delete` |
-| 이벤트 템플릿 | `/events` | `event_template.view` 또는 create/edit/delete 중 하나 |
-| DB 접속 정보 | `/db-connections` | `db_connection.view` 또는 create/edit/delete/test 중 하나 |
-| 사용자 관리 | `/users` | `user.view` 또는 create/edit/delete/reset_password 중 하나 |
-| 역할 권한 관리 | `/roles` | `role.view` 또는 create/edit/delete/edit_permissions 중 하나 |
-| 나의 대시보드 | `/my-dashboard` | 항상(인증만) |
-| 이벤트 생성 | `/query` | `instance.create` |
+| 메뉴 라벨 | 경로 | 필요 권한 (보기 권한 없으면 메뉴 비노출·페이지 403) |
+|-----------|------|-----------------------------------------------------|
+| 대시보드 | `/` | `dashboard.view` (또는 역할 `admin`) |
+| 프로덕트 | `/products` | `product.view` |
+| 이벤트 템플릿 | `/events` | `event_template.view` |
+| DB 접속 정보 | `/db-connections` | `db_connection.view` 또는 `db.manage` |
+| 사용자 | `/users` | `user.view` |
+| 역할 권한 | `/roles` | `role.view` |
+| 나의 대시보드 | `/my-dashboard` | 인증만 (모든 사용자) |
+| 이벤트 생성 | `/query` | `instance.view` 또는 `instance.create` |
 
 ---
 
 ## 5. 역할별 요약 (세분화 권한 적용 시 예시)
 
-| 역할 | 대시보드 | 프로덕트 | 이벤트 템플릿 | DB접속 | 사용자 | 역할관리 | 나의 대시보드 | 이벤트 생성 |
+| 역할 | 대시보드 | 프로덕트 | 이벤트 템플릿 | DB접속 | 사용자 | 역할 권한 | 나의 대시보드 | 이벤트 생성 |
 |------|----------|----------|----------------|--------|--------|----------|----------------|-------------|
 | **admin** | 보기 | 보기·생성·수정·삭제 | 보기·생성·수정·삭제 | 전부+테스트 | 전부+비밀초기화 | 전부+권한수정 | 전부 액션 | 보기·생성 |
 | **dba** | — | — | — | — | — | — | 보기·상세·쿼리수정·컨펌·QA반영·LIVE반영·숨기기 | — |

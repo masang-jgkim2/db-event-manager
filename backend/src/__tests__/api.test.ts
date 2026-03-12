@@ -161,7 +161,7 @@ describe('API 전체 테스트', () => {
       expect(res.status).toBe(200);
     });
 
-    it('GET /api/users → 403 (관리자 전용)', async () => {
+    it('GET /api/users → 403 (user.view 없음)', async () => {
       const res = await request(app)
         .get('/api/users')
         .set('Authorization', `Bearer ${strGmToken}`);
@@ -175,13 +175,6 @@ describe('API 전체 테스트', () => {
         .get('/api/event-instances')
         .set('Authorization', `Bearer ${strDbaToken}`);
       expect(res.status).toBe(200);
-    });
-
-    it('GET /api/users → 403 (관리자 전용)', async () => {
-      const res = await request(app)
-        .get('/api/users')
-        .set('Authorization', `Bearer ${strDbaToken}`);
-      expect(res.status).toBe(403);
     });
   });
 
@@ -351,19 +344,19 @@ describe('API 전체 테스트', () => {
     });
   });
 
-  describe('권한별 API — 사용자/역할 (관리자만)', () => {
-    it('admin 역할이면 GET /api/users, GET /api/roles → 200', async () => {
+  describe('권한별 API — 사용자/역할 (보기 권한)', () => {
+    it('user.view 있으면 GET /api/users → 200, role.view 있으면 GET /api/roles → 200', async () => {
       const u = await request(app).get('/api/users').set('Authorization', `Bearer ${strAdminToken}`);
       const r = await request(app).get('/api/roles').set('Authorization', `Bearer ${strAdminToken}`);
       expect(u.status).toBe(200);
       expect(r.status).toBe(200);
     });
 
-    it('admin 아니면 GET /api/users, GET /api/roles → 403', async () => {
+    it('user.view 없으면 GET /api/users → 403, role.view 없으면 GET /api/roles → 403', async () => {
       const uGm = await request(app).get('/api/users').set('Authorization', `Bearer ${strGmToken}`);
-      const rDba = await request(app).get('/api/roles').set('Authorization', `Bearer ${strDbaToken}`);
+      const rGm = await request(app).get('/api/roles').set('Authorization', `Bearer ${strGmToken}`);
       expect(uGm.status).toBe(403);
-      expect(rDba.status).toBe(403);
+      expect(rGm.status).toBe(403);
     });
   });
 

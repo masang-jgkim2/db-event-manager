@@ -252,14 +252,16 @@ const QueryPage = () => {
   const arrUserRoles = user?.arrRoles || [];
   const arrUserPermissions = user?.arrPermissions || [];
 
-  // instance.create 권한이 없으면 접근 차단
-  if (!arrUserPermissions.includes('instance.create')) {
+  // 이벤트 생성 보기/생성 권한이 없으면 접근 차단 (보기만 있어도 페이지 진입 가능)
+  const bCanView = arrUserPermissions.includes('instance.view') || arrUserPermissions.includes('instance.create');
+  if (!bCanView) {
     return (
       <Card>
-        <Result status="403" title="접근 권한 없음" subTitle="이벤트 생성 권한이 없습니다. 나의 대시보드를 이용해주세요." />
+        <Result status="403" title="접근 권한 없음" subTitle="이벤트 생성(보기) 권한이 없습니다. 나의 대시보드를 이용해주세요." />
       </Card>
     );
   }
+  const bCanCreate = arrUserPermissions.includes('instance.create');
 
   // 이벤트가 없을 때
   if (arrProducts.length === 0 || arrEvents.length === 0) {
@@ -502,23 +504,29 @@ const QueryPage = () => {
                 )}
               </Form>
 
-              <Button
-                type="primary"
-                icon={<ThunderboltOutlined />}
-                onClick={fnGenerateQuery}
-                loading={bSubmitting}
-                block
-                size="large"
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  border: 'none',
-                  height: 48,
-                  fontWeight: 600,
-                  fontSize: 16,
-                }}
-              >
-                이벤트 생성
-              </Button>
+              {bCanCreate ? (
+                <Button
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  onClick={fnGenerateQuery}
+                  loading={bSubmitting}
+                  block
+                  size="large"
+                  style={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    border: 'none',
+                    height: 48,
+                    fontWeight: 600,
+                    fontSize: 16,
+                  }}
+                >
+                  이벤트 생성
+                </Button>
+              ) : (
+                <div style={{ padding: '12px 0', color: 'var(--ant-color-text-secondary)', fontSize: 13 }}>
+                  이벤트 생성(제출) 권한이 없습니다. 보기만 가능합니다.
+                </div>
+              )}
             </Card>
           )}
         </Col>

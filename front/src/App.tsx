@@ -196,7 +196,7 @@ const App = () => {
             <Route
               path="/products"
               element={
-                <PermissionRoute arrRequiredPerms={['product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete']}>
+                <PermissionRoute arrRequiredPerms={['product.view']}>
                   <ProductPage />
                 </PermissionRoute>
               }
@@ -204,7 +204,7 @@ const App = () => {
             <Route
               path="/events"
               element={
-                <PermissionRoute arrRequiredPerms={['event_template.view', 'event_template.manage', 'event_template.create', 'event_template.edit', 'event_template.delete']}>
+                <PermissionRoute arrRequiredPerms={['event_template.view']}>
                   <EventPage />
                 </PermissionRoute>
               }
@@ -212,15 +212,15 @@ const App = () => {
             <Route
               path="/users"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['user.view']}>
                   <UserPage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
             <Route
               path="/db-connections"
               element={
-                <PermissionRoute arrRequiredPerms={['db.manage', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test']}>
+                <PermissionRoute arrRequiredPerms={['db_connection.view', 'db.manage']}>
                   <DbConnectionPage />
                 </PermissionRoute>
               }
@@ -228,15 +228,22 @@ const App = () => {
             <Route
               path="/roles"
               element={
-                <AdminRoute>
+                <PermissionRoute arrRequiredPerms={['role.view']}>
                   <RolePage />
-                </AdminRoute>
+                </PermissionRoute>
               }
             />
 
-            {/* 공통: 나의 대시보드 + 이벤트 생성 */}
+            {/* 나의 대시보드: 인증만. 이벤트 생성: instance.view 또는 instance.create 필요 */}
             <Route path="/my-dashboard" element={<MyDashboardPage />} />
-            <Route path="/query" element={<QueryPage />} />
+            <Route
+              path="/query"
+              element={
+                <PermissionRoute arrRequiredPerms={['instance.view', 'instance.create']}>
+                  <QueryPage />
+                </PermissionRoute>
+              }
+            />
           </Route>
 
           {/* 존재하지 않는 경로 → 역할에 맞는 페이지로 */}

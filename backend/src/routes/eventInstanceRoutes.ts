@@ -5,6 +5,7 @@ import {
   fnExecuteAndDeploy,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
+import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
 import {
   fnRegisterClient, fnUnregisterClient, fnGetClientCount,
 } from '../services/sseBroadcaster';
@@ -58,8 +59,8 @@ router.get('/', fnGetInstances);
 // GET /api/event-instances/:id - 단건 조회
 router.get('/:id', fnGetInstance);
 
-// POST /api/event-instances - 이벤트 생성
-router.post('/', fnCreateInstance);
+// POST /api/event-instances - 이벤트 생성 (instance.create 권한 필요)
+router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);
 
 // PUT /api/event-instances/:id - 이벤트 수정 (event_created 상태에서만)
 router.put('/:id', fnUpdateInstance);

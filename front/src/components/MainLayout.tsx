@@ -104,16 +104,16 @@ const MainLayout = () => {
     if (bIsAdmin || fnHasPerm('dashboard.view')) {
       arrEventChildren.push({ key: '/', icon: <DashboardOutlined />, label: '대시보드' });
     }
-    // 프로덕트: 보기/생성/수정/삭제/관리 중 하나
-    if (fnHasPerm('product.view') || fnHasPerm('product.manage') || fnHasPerm('product.create') || fnHasPerm('product.edit') || fnHasPerm('product.delete')) {
-      arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트 관리' });
+    // 프로덕트: 보기 권한 있어야 메뉴 노출
+    if (fnHasPerm('product.view')) {
+      arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' });
     }
-    // 이벤트 템플릿: 보기/생성/수정/삭제/관리 중 하나
-    if (fnHasPerm('event_template.view') || fnHasPerm('event_template.manage') || fnHasPerm('event_template.create') || fnHasPerm('event_template.edit') || fnHasPerm('event_template.delete')) {
+    // 이벤트 템플릿: 보기 권한 있어야 메뉴 노출
+    if (fnHasPerm('event_template.view')) {
       arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' });
     }
-    // DB 접속 정보: 관리 또는 세분화 권한
-    if (fnHasPerm('db.manage') || fnHasPerm('db_connection.view') || fnHasPerm('db_connection.create') || fnHasPerm('db_connection.edit') || fnHasPerm('db_connection.delete') || fnHasPerm('db_connection.test')) {
+    // DB 접속 정보: 보기 권한 있어야 메뉴 노출
+    if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
       arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
     }
 
@@ -126,16 +126,20 @@ const MainLayout = () => {
       });
     }
 
-    // ── 사용자 그룹: 사용자/역할 보기·생성·수정·삭제·권한수정 중 하나
-    if (fnHasPerm('user.manage') || fnHasPerm('user.view') || fnHasPerm('user.create') || fnHasPerm('user.edit') || fnHasPerm('user.delete') || fnHasPerm('role.view') || fnHasPerm('role.create') || fnHasPerm('role.edit') || fnHasPerm('role.delete') || fnHasPerm('role.edit_permissions') || bIsAdmin) {
+    // ── 사용자 그룹: 사용자 보기 또는 역할 보기 권한 있어야 메뉴 노출
+    const arrUserGroupChildren = [];
+    if (fnHasPerm('user.view')) {
+      arrUserGroupChildren.push({ key: '/users', icon: <TeamOutlined />, label: '사용자' });
+    }
+    if (fnHasPerm('role.view')) {
+      arrUserGroupChildren.push({ key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한' });
+    }
+    if (arrUserGroupChildren.length > 0) {
       arrResult.push({
         key: 'user-group',
         label: '사용자',
         type: 'group' as const,
-        children: [
-          { key: '/users', icon: <TeamOutlined />, label: '사용자 관리' },
-          { key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한' },
-        ],
+        children: arrUserGroupChildren,
       });
     }
 
@@ -143,7 +147,7 @@ const MainLayout = () => {
     const arrOpChildren = [
       { key: '/my-dashboard', icon: <DashboardOutlined />, label: '나의 대시보드' },
     ];
-    if (fnHasPerm('instance.create')) {
+    if (fnHasPerm('instance.view') || fnHasPerm('instance.create')) {
       arrOpChildren.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
     }
 

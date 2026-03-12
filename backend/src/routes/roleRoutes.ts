@@ -3,23 +3,16 @@ import {
   fnGetRoles, fnCreateRole, fnUpdateRole, fnDeleteRole,
 } from '../controllers/roleController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
-import { fnAdminOnly } from '../middleware/roleMiddleware';
+import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
 
 const router = Router();
 
-// 모든 라우트 인증 + 관리자 권한 필수
-router.use(fnAuthMiddleware, fnAdminOnly);
+router.use(fnAuthMiddleware);
 
-// GET /api/roles - 역할 목록 조회
-router.get('/', fnGetRoles);
-
-// POST /api/roles - 역할 추가
-router.post('/', fnCreateRole);
-
-// PUT /api/roles/:id - 역할 수정
-router.put('/:id', fnUpdateRole);
-
-// DELETE /api/roles/:id - 역할 삭제
-router.delete('/:id', fnDeleteRole);
+// GET: 보기 권한. POST/PUT/DELETE: 해당 액션 권한
+router.get('/', fnRequireAnyPermission('role.view'), fnGetRoles);
+router.post('/', fnRequireAnyPermission('role.create'), fnCreateRole);
+router.put('/:id', fnRequireAnyPermission('role.edit'), fnUpdateRole);
+router.delete('/:id', fnRequireAnyPermission('role.delete'), fnDeleteRole);
 
 export default router;

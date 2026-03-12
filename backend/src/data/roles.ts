@@ -83,7 +83,7 @@ const OBJ_EXPAND: Record<string, string[]> = {
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
-  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm'],
+  'instance.create': ['instance.view', 'my_dashboard.edit', 'my_dashboard.request_confirm'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
