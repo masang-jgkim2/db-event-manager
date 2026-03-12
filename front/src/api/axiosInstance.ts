@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-// API 기본 인스턴스
+// API 기본 인스턴스 (외부 접근 시 .env에 VITE_API_URL=http://<서버IP>:4000/api 설정)
 // DB 쿼리 실행은 수십 초가 걸릴 수 있으므로 timeout을 충분히 설정
 const apiClient = axios.create({
-  baseURL: 'http://localhost:4000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
   timeout: 120000,  // 2분 (DB 쿼리 실행 대비)
   headers: {
     'Content-Type': 'application/json',
