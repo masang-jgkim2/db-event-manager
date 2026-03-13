@@ -14,6 +14,7 @@ import {
   SafetyCertificateOutlined,
   WifiOutlined,
   SettingOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -120,7 +121,11 @@ const MainLayout = () => {
     if (arrEventChildren.length > 0) {
       arrResult.push({
         key: 'event-group',
-        label: '이벤트',
+        label: (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <CalendarOutlined /> 이벤트
+          </span>
+        ),
         type: 'group' as const,
         children: arrEventChildren,
       });
@@ -137,7 +142,11 @@ const MainLayout = () => {
     if (arrUserGroupChildren.length > 0) {
       arrResult.push({
         key: 'user-group',
-        label: '사용자',
+        label: (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <TeamOutlined /> 사용자
+          </span>
+        ),
         type: 'group' as const,
         children: arrUserGroupChildren,
       });
@@ -154,7 +163,11 @@ const MainLayout = () => {
 
     arrResult.push({
       key: 'operation-group',
-      label: '운영',
+      label: (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <RocketOutlined /> 운영
+        </span>
+      ),
       type: 'group' as const,
       children: arrOpChildren,
     });
