@@ -63,7 +63,7 @@ export interface IEventInstance {
   /** 실행 대상 목록 (템플릿에 arrQueryTemplates 있을 때: DB 연결별 생성 쿼리) */
   arrExecutionTargets?: IExecutionTarget[];
   dtDeployDate: string;                   // 반영 날짜 (datetime, ISO 8601)
-  arrDeployScope: Array<'qa' | 'live'>;   // 반영 범위 (DEV 제외, 기본 ['qa','live'])
+  arrDeployScope: Array<'qa' | 'live'>;   // 쿼리 실행 대상: 단일 서버(QA만 또는 LIVE만) 또는 다중 서버(QA+LIVE)
   // 상태
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];

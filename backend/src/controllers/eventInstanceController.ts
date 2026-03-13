@@ -3,7 +3,7 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection, fnFindConnectionById } from '../data/dbConnections';
+import { fnFindActiveConnection } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -11,7 +11,7 @@ import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../servic
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계 + 재요청)
-// arrDeployScope=['live']인 경우 fnGetTransitions에서 QA 단계 스킵
+// 쿼리 실행 대상이 LIVE만(단일 서버)인 경우 fnGetTransitions에서 QA 단계 스킵
 const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
@@ -38,8 +38,8 @@ const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus;
   ],
 };
 
-// 반영 범위에 따른 동적 전이 조회
-// LIVE only: dba_confirmed → live_requested (QA 단계 스킵)
+// 쿼리 실행 대상(단일/다중 서버)에 따른 동적 전이 조회
+// LIVE만 선택 시: dba_confirmed → live_requested (QA 단계 스킵)
 const fnGetTransitions = (
   strStatus: string,
   arrScope: Array<'qa' | 'live'>
@@ -98,7 +98,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // 반영 범위 검증: DEV 불가, 최소 1개 이상, 기본값 ['qa','live']
+    // 쿼리 실행 대상 검증: DEV 불가, QA/LIVE 중 최소 1개 이상
     const arrAllowed = ['qa', 'live'];
     const arrDeployScope: Array<'qa' | 'live'> =
       Array.isArray(arrReqScope) && arrReqScope.length > 0
@@ -106,7 +106,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
         : ['qa', 'live'];
 
     if (arrDeployScope.length === 0) {
-      res.status(400).json({ bSuccess: false, strMessage: '반영 범위는 QA 또는 LIVE 중 하나 이상 선택해야 합니다.' });
+      res.status(400).json({ bSuccess: false, strMessage: '쿼리 실행 대상은 QA 또는 LIVE 중 하나 이상 선택해야 합니다.' });
       return;
     }
 
@@ -225,7 +225,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 전이 규칙 확인 (반영 범위 반영)
+    // 전이 규칙 확인 (쿼리 실행 대상 반영)
     const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
     const arrTransitions = fnGetTransitions(objInstance.strStatus, arrScope);
     const objTransition = arrTransitions.find((t) => t.strNextStatus === strNextStatus);
@@ -300,7 +300,7 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
 };
 
 // =============================================
-// QA/LIVE 반영 - 실제 DB 쿼리 실행 후 상태 전이
+// QA 쿼리 실행 / LIVE 쿼리 실행 — 실제 DB 쿼리 실행 후 상태 전이 (단일 서버 또는 다중 서버)
 // POST /api/event-instances/:id/execute
 // Body: { strEnv: 'qa' | 'live' }
 // =============================================
@@ -355,12 +355,12 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (objInstance.strStatus !== objRequiredStatus[strEnv]) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `${strEnv.toUpperCase()} 반영은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
+        strMessage: `${strEnv.toUpperCase()} 쿼리 실행은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
       });
       return;
     }
 
-    // 반영 범위에 포함된 환경인지 확인 (DEV는 항상 차단)
+    // 쿼리 실행 대상(단일/다중 서버)에 포함된 환경인지 확인 (DEV는 항상 차단)
     if (strEnv === 'dev') {
       res.status(400).json({ bSuccess: false, strMessage: 'DEV 환경 직접 실행은 지원하지 않습니다.' });
       return;
@@ -369,7 +369,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (!arrScope.includes(strEnv as 'qa' | 'live')) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `이 이벤트의 반영 범위에 ${strEnv.toUpperCase()}이 포함되어 있지 않습니다. (설정된 범위: ${arrScope.join(', ').toUpperCase()})`,
+        strMessage: `이 이벤트의 쿼리 실행 대상에 ${strEnv.toUpperCase()}이 포함되어 있지 않습니다. (설정: ${arrScope.join(', ').toUpperCase()})`,
       });
       return;
     }
@@ -403,76 +403,25 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (strEnv === 'live' && dtNow < dtDeploy) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `LIVE 반영은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 실행할 수 있습니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
+        strMessage: `LIVE 쿼리 실행은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 가능합니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
       });
       return;
     }
 
-    // 쿼리 실행: 실행 대상 목록 있으면 DB 연결별 실행, 없으면 단일 strGeneratedQuery
-    let objExecResult: IQueryExecutionResult;
-
-    const arrTargets = objInstance.arrExecutionTargets;
-    if (Array.isArray(arrTargets) && arrTargets.length > 0) {
-      // 현재 환경(strEnv)에 해당하는 대상만 필터 후 순차 실행
-      const arrAllPartResults: IQueryExecutionResult['arrQueryResults'] = [];
-      let nTotalRows = 0;
-      let nTotalMs = 0;
-      const arrExecutedQueries: string[] = [];
-
-      const arrTargetsForEnv = arrTargets.filter((item) => {
-        const c = fnFindConnectionById(item.nDbConnectionId);
-        return c?.bIsActive && c.strEnv === strEnv;
+    // 쿼리 실행: 템플릿은 DB 연결+쿼리만 정의하고 QA/LIVE 구분 없음. 실행 시 선택한 env에 대해 해당 프로덕트의 DB 접속으로 strGeneratedQuery 실행
+    const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+    if (!objDbConn) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. 이벤트 생성 시 해당 환경을 선택하려면 프로덕트에 ${strEnv.toUpperCase()} DB 접속을 등록·활성화하세요.`,
       });
-      if (arrTargetsForEnv.length === 0) {
-        res.status(400).json({
-          bSuccess: false,
-          strMessage: `${strEnv.toUpperCase()} 환경에 해당하는 DB 접속이 템플릿에 없거나 비활성화 상태입니다.`,
-        });
-        return;
-      }
-
-      for (const item of arrTargetsForEnv) {
-        const objConn = fnFindConnectionById(item.nDbConnectionId);
-        if (!objConn || !objConn.bIsActive) continue;
-        const objOne = await fnExecuteQueryWithText(objConn, item.strQuery, strEnv);
-        if (!objOne.bSuccess) {
-          res.status(200).json({
-            bSuccess: false,
-            strMessage: `쿼리 실행 실패 (${objConn.strProductName} ${objConn.strEnv}). 롤백이 완료되었습니다.`,
-            objExecutionResult: objOne,
-          });
-          return;
-        }
-        arrAllPartResults.push(...objOne.arrQueryResults);
-        nTotalRows += objOne.nTotalAffectedRows;
-        nTotalMs += objOne.nElapsedMs;
-        arrExecutedQueries.push(item.strQuery);
-      }
-
-      objExecResult = {
-        bSuccess: true,
-        strEnv,
-        strExecutedQuery: arrExecutedQueries.join('\n;\n'),
-        arrQueryResults: arrAllPartResults,
-        nTotalAffectedRows: nTotalRows,
-        nElapsedMs: nTotalMs,
-        dtExecutedAt: new Date().toISOString(),
-      };
-    } else {
-      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
-      if (!objDbConn) {
-        res.status(400).json({
-          bSuccess: false,
-          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
-        });
-        return;
-      }
-      objExecResult = await fnExecuteQueryWithText(
-        objDbConn,
-        objInstance.strGeneratedQuery,
-        strEnv
-      );
+      return;
     }
+    const objExecResult = await fnExecuteQueryWithText(
+      objDbConn,
+      objInstance.strGeneratedQuery,
+      strEnv
+    );
 
     if (!objExecResult.bSuccess) {
       // 실패 시 상태 변경 없이 오류 반환
@@ -501,7 +450,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       strStatus: strNextStatus,
       strChangedBy: objActor.strDisplayName,
       nChangedByUserId: objActor.nUserId,
-      strComment: `${strEnv.toUpperCase()} 반영 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
+      strComment: `${strEnv.toUpperCase()} 쿼리 실행 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
       dtChangedAt: new Date().toISOString(),
       objExecutionResult: {
         strEnv,
@@ -516,7 +465,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     fnBroadcastInstanceUpdate(objInstance);
     res.json({
       bSuccess: true,
-      strMessage: `${strEnv.toUpperCase()} 반영이 완료되었습니다.`,
+      strMessage: `${strEnv.toUpperCase()} 쿼리 실행이 완료되었습니다.`,
       objExecutionResult: objExecResult,
       objInstance,
     });
@@ -621,7 +570,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    // 반영 범위 — event_created 상태에서만 수정 가능
+    // 쿼리 실행 대상(단일/다중 서버) — event_created 상태에서만 수정 가능
     if (req.body.arrDeployScope !== undefined) {
       const arrAllowed = ['qa', 'live'];
       const arrNewScope: Array<'qa' | 'live'> = Array.isArray(req.body.arrDeployScope)

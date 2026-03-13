@@ -118,7 +118,7 @@ const ExecutionResultModal = ({
             ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
             : <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
           }
-          <span>{strEnv.toUpperCase()} 반영 {objResult.bSuccess ? '완료' : '실패'}</span>
+          <span>{strEnv.toUpperCase()} 쿼리 실행 {objResult.bSuccess ? '완료' : '실패'}</span>
         </Space>
       }
       open={bOpen}
@@ -266,7 +266,7 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   if (bHasQa) {
     arrSteps.push(
       { strStatus: 'qa_requested', strLabel: 'QA 요청',  strSubLabel: '' },
-      { strStatus: 'qa_deployed',  strLabel: 'QA 반영',  strSubLabel: '' },
+      { strStatus: 'qa_deployed',  strLabel: 'QA 쿼리 실행',  strSubLabel: '' },
       { strStatus: 'qa_verified',  strLabel: 'QA 확인',  strSubLabel: '' },
     );
   }
@@ -274,7 +274,7 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   if (bHasLive) {
     arrSteps.push(
       { strStatus: 'live_requested', strLabel: 'LIVE 요청', strSubLabel: '' },
-      { strStatus: 'live_deployed',  strLabel: 'LIVE 반영', strSubLabel: '' },
+      { strStatus: 'live_deployed',  strLabel: 'LIVE 쿼리 실행', strSubLabel: '' },
       { strStatus: 'live_verified',  strLabel: '완료',       strSubLabel: '' },
     );
   }
@@ -303,7 +303,7 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
       borderBottom: `1px solid ${token.colorBorderSecondary}`,
     }}>
       <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>쿼리 실행 대상:</Text>
         {arrScope.map((s) => (
           <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 11 }}>
             {s.toUpperCase()}
@@ -427,7 +427,7 @@ const MyDashboardPage = () => {
         // 성공: 실행 결과 모달 표시
         setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
         setBExecResultOpen(true);
-        messageApi.success(`${strEnv.toUpperCase()} 반영 완료`);
+        messageApi.success(`${strEnv.toUpperCase()} 쿼리 실행 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
         // 실패: objExecutionResult 있으면 모달로, 없으면(사전 검증 오류) 전용 에러 모달로
@@ -550,10 +550,10 @@ const MyDashboardPage = () => {
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
-  // 액션 버튼 렌더링 (역할 + 권한 + 상태 + 반영 범위 기반)
+  // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
-    // 이 이벤트의 반영 범위 (기본: QA+LIVE)
+    // 이 이벤트의 쿼리 실행 대상 (단일 서버 또는 다중 서버)
     const arrScope = r.arrDeployScope ?? ['qa', 'live'];
     const bHasQa   = arrScope.includes('qa');
     const bHasLive = arrScope.includes('live');
@@ -613,45 +613,45 @@ const MyDashboardPage = () => {
       );
     }
 
-    // dba_confirmed 이후 → 반영 범위에 따라 QA요청 또는 LIVE요청 (단일 권한)
+    // dba_confirmed 이후 → 쿼리 실행 대상에 따라 QA 요청 또는 LIVE 요청 (단일 권한)
     if (r.strStatus === 'dba_confirmed') {
       if (bHasQa && fnHasPermission('my_dashboard.request_qa')) {
-        // QA 포함: QA 반영 요청
+        // QA 포함: QA 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="qa-req"
             actionKey="qa_requested"
-            title="QA 반영을 요청하시겠습니까?"
+            title="QA 쿼리 실행을 요청하시겠습니까?"
             okText="요청"
             cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}
+            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 요청')}
           >
-            <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
+            <Button size="small" type="primary" icon={<SendOutlined />}>QA 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       } else if (!bHasQa && bHasLive && fnHasPermission('my_dashboard.request_live')) {
-        // LIVE only: QA 스킵 → LIVE 반영 요청
+        // LIVE만(단일 서버): QA 스킵 → LIVE 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="live-req-skip"
             actionKey="live_requested_skip"
             title={
               <Space direction="vertical" size={4}>
-                <Text strong>LIVE 반영을 요청하시겠습니까?</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용으로 QA 단계가 없습니다.</Text>
+                <Text strong>LIVE 쿼리 실행을 요청하시겠습니까?</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용(단일 서버)으로 QA 단계가 없습니다.</Text>
               </Space>
             }
             okText="요청"
             cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
-          >
-            <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
+            >
+              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       }
     }
 
-    // QA 반영 실행 — my_dashboard.execute_qa 또는 instance.execute_qa 권한만 사용
+    // QA 쿼리 실행 — my_dashboard.execute_qa 또는 instance.execute_qa 권한만 사용
     if (bHasQa && (fnHasPermission('my_dashboard.execute_qa') || fnHasPermission('instance.execute_qa')) && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
@@ -673,7 +673,7 @@ const MyDashboardPage = () => {
             icon={bExecuting === r.nId ? <Spin size="small" /> : <ThunderboltOutlined />}
             disabled={bExecuting !== null}
           >
-            QA 반영
+            QA 쿼리 실행
           </Button>
         </Popconfirm>
       );
@@ -686,7 +686,7 @@ const MyDashboardPage = () => {
           key="qa-v"
           open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'qa'}
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
-          title="QA 반영을 확인하셨습니까?"
+          title="QA 쿼리 실행을 확인하셨습니까?"
           description={
             fnHasPermission('my_dashboard.request_qa') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
@@ -695,11 +695,11 @@ const MyDashboardPage = () => {
                   icon={<SyncOutlined />}
                   block
                   onClick={() => {
-                    fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청');
+                    fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청');
                     setObjConfirmModal(null);
                   }}
                 >
-                  QA 반영 재요청
+                  QA 쿼리 실행 재요청
                 </Button>
               </Space>
             ) : undefined
@@ -723,23 +723,23 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (단일 권한)
+    // QA 확인 후: LIVE 쿼리 실행 요청 또는 QA 재요청 (단일 권한)
     if (bHasQa && r.strStatus === 'qa_verified') {
       const bCanLive = bHasLive && fnHasPermission('my_dashboard.request_live');
       const bCanQaRereq = fnHasPermission('my_dashboard.request_qa');
 
       if (bFunMode && bCanLive && bCanQaRereq) {
-        // 재미 모드: 한 버튼에서 롱프레스 시 QA 재반영 요청으로 전환
+        // 재미 모드: 한 버튼에서 롱프레스 시 QA 쿼리 실행 재요청으로 전환
         arrButtons.push(
           <RequestWithLongPressButton
             key="live-qa-longpress"
-            primaryLabel="LIVE반영 요청"
-            primaryTitle="LIVE 반영을 요청하시겠습니까?"
-            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
-            rerequestLabel="QA 재반영 요청"
-            rerequestTitle="QA 재반영을 요청하시겠습니까?"
-            rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+            primaryLabel="LIVE 쿼리 실행 요청"
+            primaryTitle="LIVE 쿼리 실행을 요청하시겠습니까?"
+            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
+            rerequestLabel="QA 쿼리 실행 재요청"
+            rerequestTitle="QA 쿼리 실행 재요청을 하시겠습니까?"
+            rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
             primaryButtonStyle={{ background: '#eb2f96', border: 'none', color: '#fff' }}
             primaryIcon={<SendOutlined />}
             rerequestIcon={<SyncOutlined />}
@@ -754,12 +754,12 @@ const MyDashboardPage = () => {
             <PopconfirmWithSkip
               key="live-req"
               actionKey="live_requested"
-              title="LIVE 반영을 요청하시겠습니까?"
+              title="LIVE 쿼리 실행을 요청하시겠습니까?"
               okText="요청"
               cancelText="취소"
-              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
             </PopconfirmWithSkip>
           );
         }
@@ -767,20 +767,20 @@ const MyDashboardPage = () => {
           arrButtons.push(
             <Popconfirm
               key="qa-rereq"
-              title="QA 재반영을 요청하시겠습니까?"
-              description="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
+              title="QA 쿼리 실행 재요청을 하시겠습니까?"
+              description="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
               okText="재요청"
               cancelText="취소"
-              onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+              onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
             >
-              <Button size="small" icon={<SyncOutlined />}>QA 재반영 요청</Button>
+              <Button size="small" icon={<SyncOutlined />}>QA 쿼리 실행 재요청</Button>
             </Popconfirm>
           );
         }
       }
     }
 
-    // LIVE 반영 실행 — my_dashboard.execute_live 또는 instance.execute_live 권한만 사용
+    // LIVE 쿼리 실행 — my_dashboard.execute_live 또는 instance.execute_live 권한만 사용
     if (bHasLive && (fnHasPermission('my_dashboard.execute_live') || fnHasPermission('instance.execute_live')) && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
@@ -803,7 +803,7 @@ const MyDashboardPage = () => {
             icon={bExecuting === r.nId ? <Spin size="small" /> : <RocketOutlined />}
             disabled={bExecuting !== null}
           >
-            LIVE 반영
+            LIVE 쿼리 실행
           </Button>
         </Popconfirm>
       );
@@ -816,7 +816,7 @@ const MyDashboardPage = () => {
           key="live-v"
           open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'live'}
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
-          title="LIVE 반영을 확인하셨습니까?"
+          title="LIVE 쿼리 실행을 확인하셨습니까?"
           description={
             fnHasPermission('my_dashboard.request_live') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
@@ -825,11 +825,11 @@ const MyDashboardPage = () => {
                   icon={<SyncOutlined />}
                   block
                   onClick={() => {
-                    fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청');
+                    fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청');
                     setObjConfirmModal(null);
                   }}
                 >
-                  LIVE 반영 재요청
+                  LIVE 쿼리 실행 재요청
                 </Button>
               </Space>
             ) : undefined
@@ -853,20 +853,20 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 완료(live_verified) 후: LIVE 재반영 요청 — 단일 권한 my_dashboard.request_live
+    // 완료(live_verified) 후: LIVE 쿼리 실행 재요청 — 단일 권한 my_dashboard.request_live
     if (bHasLive && fnHasPermission('my_dashboard.request_live') && r.strStatus === 'live_verified') {
       if (bFunMode) {
         // 재미 모드: 롱프레스 후 클릭 시에만 재요청 (실수 방지)
         arrButtons.push(
           <RequestWithLongPressButton
             key="live-rereq-longpress"
-            primaryLabel="LIVE 재반영 요청"
+            primaryLabel="LIVE 쿼리 실행 재요청"
             primaryTitle=""
             onPrimaryConfirm={() => {}}
-            rerequestLabel="LIVE 재반영 요청"
-            rerequestTitle="LIVE 재반영을 요청하시겠습니까?"
-            rerequestDescription="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
+            rerequestLabel="LIVE 쿼리 실행 재요청"
+            rerequestTitle="LIVE 쿼리 실행 재요청을 하시겠습니까?"
+            rerequestDescription="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 쿼리 실행할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청')}
             bRerequestOnly
             primaryIcon={<SyncOutlined />}
             rerequestIcon={<SyncOutlined />}
@@ -878,13 +878,13 @@ const MyDashboardPage = () => {
         arrButtons.push(
           <Popconfirm
             key="live-rereq"
-            title="LIVE 재반영을 요청하시겠습니까?"
-            description="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
-            okText="재요청"
-            cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
-          >
-            <Button size="small" icon={<SyncOutlined />}>LIVE 재반영 요청</Button>
+title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
+            description="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 쿼리 실행할 수 있도록 요청합니다."
+              okText="재요청"
+              cancelText="취소"
+              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청')}
+            >
+              <Button size="small" icon={<SyncOutlined />}>LIVE 쿼리 실행 재요청</Button>
           </Popconfirm>
         );
       }
@@ -1240,7 +1240,7 @@ const MyDashboardPage = () => {
                         ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
                         : '-'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="반영 범위">
+                    <Descriptions.Item label="쿼리 실행 대상">
                       <Space size={4}>
                         {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
                           <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
@@ -1258,11 +1258,11 @@ const MyDashboardPage = () => {
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
                     <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
-                    <ActorTag objActor={objDetail.objQaRequester} strLabel="QA반영요청자" />
-                    <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA반영자" />
+                    <ActorTag objActor={objDetail.objQaRequester} strLabel="QA 쿼리 실행 요청자" />
+                    <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA 쿼리 실행자" />
                     <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
-                    <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE반영요청자" />
-                    <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE반영자" />
+                    <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE 쿼리 실행 요청자" />
+                    <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE 쿼리 실행자" />
                     <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
                   </Space>
                 ),
@@ -1358,7 +1358,7 @@ const MyDashboardPage = () => {
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>
-                <Text strong>반영 범위</Text>
+                <Text strong>쿼리 실행 대상</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
                   <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
                 )}

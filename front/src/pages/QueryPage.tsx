@@ -30,8 +30,10 @@ import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
+import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
+import type { IDbConnection } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
@@ -49,8 +51,11 @@ const QueryPage = () => {
   const [strInputValues, setStrInputValues] = useState('');
   const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
 
-  // 반영 범위 (기본: QA→LIVE, LIVE only 가능, DEV 불가)
+  // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+
+  // DB 접속 목록 (이벤트 생성 시 QA/LIVE 선택 가능 여부 검사용)
+  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
 
   // 결과
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
@@ -65,8 +70,22 @@ const QueryPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const user = useAuthStore((s) => s.user);
 
-  // 페이지 진입 시 최신 프로덕트/이벤트 목록 로드
+  // 페이지 진입 시 최신 프로덕트/이벤트 목록 및 DB 접속 목록 로드
   useEffect(() => { fnFetchProducts(); fnFetchEvents(); }, [fnFetchProducts, fnFetchEvents]);
+  useEffect(() => {
+    let bMounted = true;
+    const fnLoad = async () => {
+      try {
+        const res = await fnApiGetDbConnections();
+        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
+          setArrDbConnections(res.arrDbConnections);
+      } catch {
+        // 권한 없음 등 실패해도 페이지는 표시
+      }
+    };
+    fnLoad();
+    return () => { bMounted = false; };
+  }, []);
   useAutoRefresh(() => { fnFetchProducts(); fnFetchEvents(); });
 
   // 선택된 프로덕트
@@ -91,6 +110,27 @@ const QueryPage = () => {
     if (!nSelectedEventId) return null;
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
+
+  // 선택된 프로덕트의 DB 접속 중 QA/LIVE 활성 접속 존재 여부 (이벤트 생성 시 QA/LIVE 체크 가능 여부)
+  const bHasQaConnection = useMemo(() => {
+    if (!nSelectedProductId) return false;
+    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'qa' && c.bIsActive);
+  }, [nSelectedProductId, arrDbConnections]);
+  const bHasLiveConnection = useMemo(() => {
+    if (!nSelectedProductId) return false;
+    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'live' && c.bIsActive);
+  }, [nSelectedProductId, arrDbConnections]);
+
+  // 프로덕트 선택 시: 쿼리 실행 대상에서 해당 프로덕트에 접속이 없는 env 제거
+  useEffect(() => {
+    if (nSelectedProductId == null) return;
+    setArrDeployScope((prev) => {
+      const next = prev.filter((env) =>
+        (env === 'qa' && bHasQaConnection) || (env === 'live' && bHasLiveConnection)
+      );
+      return next.length > 0 ? next : (bHasQaConnection ? ['qa'] : bHasLiveConnection ? ['live'] : []);
+    });
+  }, [nSelectedProductId, bHasQaConnection, bHasLiveConnection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 현재 스텝
   const nCurrentStep = useMemo(() => {
@@ -151,6 +191,7 @@ const QueryPage = () => {
         '';
       setStrInputValues(strDefault);
     }
+
   };
 
   // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리)
@@ -173,6 +214,16 @@ const QueryPage = () => {
     // 반영 날짜 필수 체크
     if (!strDeployDate) {
       messageApi.warning('반영 날짜를 선택해주세요.');
+      return;
+    }
+
+    // 쿼리 실행 대상(QA/LIVE) 선택 시 해당 프로덕트에 그 env DB 접속이 있는지 검사
+    if (arrDeployScope.includes('qa') && !bHasQaConnection) {
+      messageApi.warning('QA를 선택하려면 해당 프로덕트에 QA DB 접속 정보를 등록·활성화해주세요.');
+      return;
+    }
+    if (arrDeployScope.includes('live') && !bHasLiveConnection) {
+      messageApi.warning('LIVE를 선택하려면 해당 프로덕트에 LIVE DB 접속 정보를 등록·활성화해주세요.');
       return;
     }
 
@@ -467,44 +518,48 @@ const QueryPage = () => {
                   />
                 </Form.Item>
 
-                {/* 반영 범위 */}
+                {/* 쿼리 실행 대상: QA/LIVE 선택 시 해당 프로덕트에 그 env DB 접속이 있어야 함 */}
                 <Form.Item
                   label={
                     <Space>
-                      반영 범위
+                      쿼리 실행 대상
                       <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
-                      <Text type="secondary" style={{ fontSize: 11 }}>DEV 환경은 지원하지 않습니다</Text>
                     </Space>
                   }
+                  extra={
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      QA/LIVE 선택 시 해당 프로덕트에 해당 환경 DB 접속이 등록·활성화되어 있어야 합니다. 단일 서버: 한 환경만 선택. 다중 서버: QA와 LIVE 둘 다 선택 시 QA 반영 후 LIVE 순으로 실행됩니다.
+                    </Text>
+                  }
                 >
-                  <Space direction="vertical" size={4}>
-                    <Checkbox.Group
-                      value={arrDeployScope}
-                      onChange={(arrChecked) => {
-                        // LIVE 단독 또는 QA+LIVE만 허용, 최소 1개
-                        const arrNext = arrChecked.filter(
-                          (v): v is TDeployScope => v === 'qa' || v === 'live'
-                        );
-                        if (arrNext.length > 0) setArrDeployScope(arrNext);
-                      }}
-                    >
+                  <Checkbox.Group
+                    value={arrDeployScope}
+                    onChange={(arrChecked) => {
+                      const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
+                        if (v !== 'qa' && v !== 'live') return false;
+                        return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
+                      });
+                      if (arrNext.length > 0) setArrDeployScope(arrNext);
+                    }}
+                  >
+                    <Space>
                       {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                        <Checkbox key={opt.value} value={opt.value}>
-                          <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                        <Checkbox
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
+                        >
+                          <Tag color={opt.strColor}>{opt.label}</Tag>
+                          {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
+                            <Text type="secondary" style={{ fontSize: 11 }}> (해당 프로덕트에 {opt.value.toUpperCase()} DB 접속 없음)</Text>
+                          ) : null}
                         </Checkbox>
                       ))}
-                    </Checkbox.Group>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {arrDeployScope.includes('qa') && arrDeployScope.includes('live')
-                        ? '기본: QA 반영 후 LIVE 반영'
-                        : arrDeployScope.includes('live')
-                        ? 'LIVE 전용: QA 단계 없이 바로 LIVE 반영'
-                        : 'QA 반영만 진행'}
-                    </Text>
-                  </Space>
+                    </Space>
+                  </Checkbox.Group>
                 </Form.Item>
 
-                {/* 입력값 (형식에 따라) */}
+                {/* 쿼리 템플릿에 맞는 입력 공간 (템플릿에 따라 한 개 또는 여러 개) */}
                 {objSelectedEvent.strInputFormat !== 'none' && (
                   <Form.Item
                     label={
@@ -514,6 +569,11 @@ const QueryPage = () => {
                         {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
                         <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
                       </Space>
+                    }
+                    extra={
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        쿼리 템플릿에 맞게 입력할 수 있는 공간은 템플릿에 따라 한 개일 수도 여러 개일 수 있습니다.
+                      </Text>
                     }
                   >
                     <TextArea

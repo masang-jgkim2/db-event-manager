@@ -332,7 +332,7 @@ const EventPage = () => {
 
           <Divider>쿼리 템플릿 세트</Divider>
           <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-            각 세트마다 DB 접속, 기본 아이템값(예시), 쿼리 템플릿을 지정하세요. 이벤트 생성 시 입력값이 동일하게 치환되어 해당 DB에 실행됩니다. {'{{items}}'}, {'{{date}}'}, {'{{event_name}}'}, {'{{abbr}}'}, {'{{product}}'}, {'{{region}}'} 치환 가능.
+            각 세트는 「DB 접속 정보 + 실행할 쿼리 템플릿」 한 묶음입니다. 이벤트 생성 시 단일 서버(한 환경만) 또는 다중 서버(QA→LIVE) 쿼리로 선택하고, 입력값이 치환되어 해당 DB에 실행됩니다. {'{{items}}'}, {'{{date}}'}, {'{{event_name}}'}, {'{{abbr}}'}, {'{{product}}'}, {'{{region}}'} 치환 가능.
           </Text>
           <Form.List name="arrQueryTemplates">
             {(arrFields, { add, remove }) => {
@@ -360,12 +360,11 @@ const EventPage = () => {
                             optionLabelProp="label"
                           >
                             {arrConnForProduct.map((c) => (
-                              <Select.Option key={c.nId} value={c.nId} label={`${c.strProductName} / ${c.strEnv.toUpperCase()} / ${c.strKind || 'GAME'}`}>
+                              <Select.Option key={c.nId} value={c.nId} label={`${c.strProductName} / ${c.strKind || 'GAME'} / ${c.strHost}:${c.nPort}`}>
                                 <Space>
                                   <Tag>{c.strProductName}</Tag>
-                                  <Tag color={c.strEnv === 'live' ? 'red' : c.strEnv === 'qa' ? 'orange' : 'green'}>{c.strEnv.toUpperCase()}</Tag>
                                   <Tag color="blue">{c.strKind || 'GAME'}</Tag>
-                                  <Text type="secondary" style={{ fontSize: 12 }}>{c.strHost}:{c.nPort}</Text>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>{c.strHost}:{c.nPort} / {c.strDatabase}</Text>
                                 </Space>
                               </Select.Option>
                             ))}

@@ -274,7 +274,7 @@ export interface IEventTemplate {
 // 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 // =============================================
 
-// 반영 범위 — DEV는 UI에서 선택 불가(백엔드 차단), QA→LIVE가 기본값
+// 단일 서버 쿼리(한 환경) vs 다중 서버 쿼리(QA+LIVE) — DEV는 UI 선택 불가(백엔드 차단)
 export type TDeployScope = 'qa' | 'live';
 export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strColor: string }[] = [
   { value: 'qa',   label: 'QA',   strColor: 'orange' },
