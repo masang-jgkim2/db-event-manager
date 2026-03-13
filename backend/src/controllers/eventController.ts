@@ -13,7 +13,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     const {
       nProductId, strEventLabel, strDescription,
       strCategory, strType, strInputFormat,
-      strDefaultItems, strQueryTemplate,
+      strDefaultItems, strQueryTemplate, arrQueryTemplates,
     } = req.body;
 
     if (!nProductId || !strEventLabel || !strCategory || !strType || !strInputFormat) {
@@ -35,6 +35,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
       strInputFormat,
       strDefaultItems: strDefaultItems || '',
       strQueryTemplate: strQueryTemplate || '',
+      arrQueryTemplates: Array.isArray(arrQueryTemplates) ? arrQueryTemplates : undefined,
       dtCreatedAt: new Date().toISOString(),
     };
 
@@ -61,7 +62,7 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     const fields = [
       'nProductId', 'strEventLabel', 'strDescription',
       'strCategory', 'strType', 'strInputFormat',
-      'strDefaultItems', 'strQueryTemplate',
+      'strDefaultItems', 'strQueryTemplate', 'arrQueryTemplates',
     ];
 
     for (const key of fields) {

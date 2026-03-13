@@ -3,7 +3,7 @@ import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
-  Steps, Checkbox, Tooltip, theme as antdTheme,
+  Steps, Checkbox, Tooltip, theme as antdTheme, Collapse,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -360,7 +360,6 @@ const MyDashboardPage = () => {
   const { token } = antdTheme.useToken();
 
   const user = useAuthStore((s) => s.user);
-  const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
 
   // 전역 이벤트 인스턴스 스토어 (SSE 실시간 업데이트 포함)
@@ -533,19 +532,20 @@ const MyDashboardPage = () => {
   };
 
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
-  const OBJ_ACTION_ROLES: Record<string, string[]> = {
-    event_created: ['game_manager', 'game_designer', 'admin'],
-    confirm_requested: ['dba', 'admin'],
-    dba_confirmed: ['game_manager', 'game_designer', 'admin'],
-    qa_requested: ['dba', 'admin'],
-    qa_deployed: ['game_manager', 'game_designer', 'admin'],
-    qa_verified: ['game_manager', 'game_designer', 'admin'],
-    live_requested: ['dba', 'admin'],
-    live_deployed: ['game_manager', 'game_designer', 'admin'],
+  // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
+  const OBJ_ACTION_PERMISSIONS: Record<string, string[]> = {
+    event_created: ['my_dashboard.request_confirm'],
+    confirm_requested: ['my_dashboard.confirm'],
+    qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
+    qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq'],
+    qa_verified: ['my_dashboard.request_live', 'my_dashboard.request_qa_rereq'],
+    live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],
+    live_deployed: ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
+    live_verified: ['my_dashboard.request_live_rereq'],
   };
   const nTotal = arrAllInstances.length;
   const nMyAction = arrAllInstances.filter((e) =>
-    OBJ_ACTION_ROLES[e.strStatus]?.some((r) => arrRoles.includes(r))
+    OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
   ).length;
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
@@ -566,10 +566,9 @@ const MyDashboardPage = () => {
       );
     }
 
-    // DBA: 쿼리 수정 — 역할 또는 단일 권한 my_dashboard.query_edit
-    const bIsDbaOrAdmin = arrRoles.includes('dba') || arrRoles.includes('admin');
-    const ARR_DBA_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
-    if ((bIsDbaOrAdmin || fnHasPermission('my_dashboard.query_edit')) && ARR_DBA_EDIT_STATUS.includes(r.strStatus)) {
+    // 쿼리 수정 — my_dashboard.query_edit 권한만 사용
+    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
+    if (fnHasPermission('my_dashboard.query_edit') && ARR_QUERY_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
           <Button size="small" icon={<CodeOutlined />} onClick={() => fnOpenQueryEdit(r)}>
@@ -604,8 +603,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // DBA 컨펌 — 역할 또는 단일 권한 my_dashboard.confirm
-    if (r.strStatus === 'confirm_requested' && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.confirm'))) {
+    // DBA 컨펌 — my_dashboard.confirm 권한만 사용
+    if (r.strStatus === 'confirm_requested' && fnHasPermission('my_dashboard.confirm')) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -652,8 +651,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // QA 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_qa
-    if (bHasQa && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_qa')) && r.strStatus === 'qa_requested') {
+    // QA 반영 실행 — my_dashboard.execute_qa 또는 instance.execute_qa 권한만 사용
+    if (bHasQa && (fnHasPermission('my_dashboard.execute_qa') || fnHasPermission('instance.execute_qa')) && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
           key="qa-execute"
@@ -781,8 +780,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // LIVE 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_live
-    if (bHasLive && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_live')) && r.strStatus === 'live_requested') {
+    // LIVE 반영 실행 — my_dashboard.execute_live 또는 instance.execute_live 권한만 사용
+    if (bHasLive && (fnHasPermission('my_dashboard.execute_live') || fnHasPermission('instance.execute_live')) && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
           key="live-execute"
@@ -971,7 +970,7 @@ const MyDashboardPage = () => {
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼 — No. + 헤더·액션 정리
+  // 테이블 컬럼 — No. + 헤더·액션 정리 (PK 컬럼은 숨김)
   const arrColumns = [
     fnMakeIndexColumn(55),
     {
@@ -1221,109 +1220,119 @@ const MyDashboardPage = () => {
         </div>
       </Card>
 
-      {/* 상세 모달 */}
+      {/* 상세 모달 — 각 섹션 접기/펼치기, 입력값·쿼리는 기본 접힘 */}
       <Modal title="이벤트 상세" open={bDetailOpen} onCancel={() => setBDetailOpen(false)} footer={null} width={780}>
         {objDetail && (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            {/* 기본 정보 */}
-            <Card size="small" title="기본 정보">
-              <Descriptions column={2} size="small">
-                <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
-                <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
-                <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
-                <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
-                <Descriptions.Item label="반영 날짜">
-                  {objDetail.dtDeployDate
-                    ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
-                    : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="반영 범위">
-                  <Space size={4}>
-                    {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
-                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
-                    ))}
+          <Collapse
+            defaultActiveKey={['basic', 'actors', 'history']}
+            items={[
+              {
+                key: 'basic',
+                label: '기본 정보',
+                children: (
+                  <Descriptions column={2} size="small">
+                    <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
+                    <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
+                    <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="반영 날짜">
+                      {objDetail.dtDeployDate
+                        ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
+                        : '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="반영 범위">
+                      <Space size={4}>
+                        {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
+                          <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
+                        ))}
+                      </Space>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
+                  </Descriptions>
+                ),
+              },
+              {
+                key: 'actors',
+                label: '단계별 처리자',
+                children: (
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
+                    <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
+                    <ActorTag objActor={objDetail.objQaRequester} strLabel="QA반영요청자" />
+                    <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA반영자" />
+                    <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
+                    <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE반영요청자" />
+                    <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE반영자" />
+                    <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
                   </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
-              </Descriptions>
-            </Card>
-
-            {/* 단계별 처리자 */}
-            <Card size="small" title="단계별 처리자">
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
-                <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
-                <ActorTag objActor={objDetail.objQaRequester} strLabel="QA반영요청자" />
-                <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA반영자" />
-                <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
-                <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE반영요청자" />
-                <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE반영자" />
-                <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
-              </Space>
-            </Card>
-
-            {/* 입력값 */}
-            {objDetail.strInputValues && (
-              <Card size="small" title="입력값">
-                <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>
-              </Card>
-            )}
-
-            {/* 최종 쿼리 (컨펌 요청자·DBA 동일하게 공유) */}
-            {objDetail.strGeneratedQuery && (
-              <Card size="small" title="최종 쿼리" extra={
-                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
-              }>
-                <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                  style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
-              </Card>
-            )}
-
-            {/* 진행 이력 (실행 결과 포함) */}
-            <Card size="small" title="진행 이력">
-              <Timeline
-                items={objDetail.arrStatusLogs.map((log) => ({
-                  color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
-                  children: (
-                    <div>
-                      <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
-                      <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
-                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
-                      {log.strComment && (
-                        <div style={{ marginTop: 2 }}>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
-                            }}
-                          >
-                            {log.strComment}
-                          </Text>
+                ),
+              },
+              ...(objDetail.strInputValues
+                ? [{
+                    key: 'input',
+                    label: '입력값',
+                    children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
+                  }]
+                : []),
+              ...(objDetail.strGeneratedQuery
+                ? [{
+                    key: 'query',
+                    label: '최종 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
                         </div>
-                      )}
-                      {/* 실행 결과 인라인 표시 */}
-                      {log.objExecutionResult && (
-                        <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>
-                          <Space>
-                            <Tag color={log.objExecutionResult.strEnv === 'qa' ? 'orange' : 'red'}>
-                              {log.objExecutionResult.strEnv.toUpperCase()}
-                            </Tag>
-                            <Text style={{ fontSize: 12 }}>
-                              처리 {log.objExecutionResult.nTotalAffectedRows}건
-                            </Text>
-                            <Divider type="vertical" />
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              {log.objExecutionResult.nElapsedMs}ms
-                            </Text>
-                          </Space>
+                        <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                      </Space>
+                    ),
+                  }]
+                : []),
+              {
+                key: 'history',
+                label: '진행 이력',
+                children: (
+                  <Timeline
+                    items={objDetail.arrStatusLogs.map((log) => ({
+                      color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
+                      children: (
+                        <div>
+                          <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                          <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
+                          <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
+                          {log.strComment && (
+                            <div style={{ marginTop: 2 }}>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
+                                }}
+                              >
+                                {log.strComment}
+                              </Text>
+                            </div>
+                          )}
+                          {log.objExecutionResult && (
+                            <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>
+                              <Space>
+                                <Tag color={log.objExecutionResult.strEnv === 'qa' ? 'orange' : 'red'}>
+                                  {log.objExecutionResult.strEnv.toUpperCase()}
+                                </Tag>
+                                <Text style={{ fontSize: 12 }}>처리 {log.objExecutionResult.nTotalAffectedRows}건</Text>
+                                <Divider type="vertical" />
+                                <Text type="secondary" style={{ fontSize: 11 }}>{log.objExecutionResult.nElapsedMs}ms</Text>
+                              </Space>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            </Card>
-          </Space>
+                      ),
+                    }))}
+                  />
+                ),
+              },
+            ]}
+          />
         )}
       </Modal>
 

@@ -15,11 +15,13 @@ export const fnGetDbConnections = async (_req: Request, res: Response): Promise<
   }
 };
 
+const ARR_DB_KIND: IDbConnection['strKind'][] = ['GAME', 'WEB', 'LOG'];
+
 // DB 접속 정보 추가
 export const fnCreateDbConnection = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
-      nProductId, strEnv, strDbType,
+      nProductId, strKind, strEnv, strDbType,
       strHost, nPort, strDatabase, strUser, strPassword,
     } = req.body as Partial<IDbConnection>;
 
@@ -28,9 +30,11 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
       return;
     }
 
-    // 동일 프로덕트 + 환경 중복 확인
+    const strKindVal = strKind && ARR_DB_KIND.includes(strKind) ? strKind : 'GAME';
+
+    // 동일 프로덕트 + 환경 + 종류 중복 확인
     const objExisting = arrDbConnections.find(
-      (c) => c.nProductId === nProductId && c.strEnv === strEnv
+      (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.strKind === strKindVal
     );
     if (objExisting) {
       const objProduct     = arrProducts.find((p) => p.nId === nProductId);
@@ -38,7 +42,7 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
       res.status(409).json({
         bSuccess: false,
         strErrorCode: 'DUPLICATE',
-        strMessage: `[${strProductName}] 프로덕트의 [${strEnv.toUpperCase()}] 환경 접속 정보가 이미 등록되어 있습니다. 기존 항목을 수정해주세요.`,
+        strMessage: `[${strProductName}] 프로덕트의 [${strEnv.toUpperCase()}] 환경 [${strKindVal}] 접속 정보가 이미 등록되어 있습니다. 기존 항목을 수정해주세요.`,
       });
       return;
     }
@@ -51,14 +55,15 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
       nId:          fnGetNextDbConnectionId(),
       nProductId,
       strProductName,
-      strEnv:       strEnv as IDbConnection['strEnv'],
-      strDbType:    strDbType as IDbConnection['strDbType'],
+      strKind:       strKindVal,
+      strEnv:        strEnv as IDbConnection['strEnv'],
+      strDbType:     strDbType as IDbConnection['strDbType'],
       strHost,
-      nPort:        nFinalPort,
+      nPort:         nFinalPort,
       strDatabase,
       strUser,
       strPassword,
-      bIsActive:    true,
+      bIsActive:     true,
       dtCreatedAt:  new Date().toISOString(),
       dtUpdatedAt:  new Date().toISOString(),
     };
@@ -87,7 +92,7 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
       return;
     }
 
-    const { strHost, nPort, strDatabase, strUser, strPassword, strDbType, bIsActive } = req.body;
+    const { strHost, nPort, strDatabase, strUser, strPassword, strDbType, strKind, bIsActive } = req.body;
 
     if (strHost     !== undefined) objConn.strHost     = strHost;
     if (nPort       !== undefined) objConn.nPort       = nPort;
@@ -95,6 +100,7 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
     if (strUser     !== undefined) objConn.strUser     = strUser;
     if (strPassword !== undefined && strPassword !== '••••••••') objConn.strPassword = strPassword;
     if (strDbType   !== undefined) objConn.strDbType   = strDbType;
+    if (strKind     !== undefined && ARR_DB_KIND.includes(strKind)) objConn.strKind = strKind;
     if (bIsActive   !== undefined) objConn.bIsActive   = bIsActive;
     objConn.dtUpdatedAt = new Date().toISOString();
     fnSaveDbConnections();

@@ -12,8 +12,10 @@ export type TPermission =
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
   | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
   | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
+  | 'my_dashboard.edit_any'   // 타인 작성 이벤트(event_created) 수정 (역할 대신 권한으로 제어)
   | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
-  | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live';
+  | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live'
+  | 'system.save_test_seed';  // 테스트 시드 저장 (관리 기능)
 
 // =============================================
 // 역할 모델 (동적 관리)
@@ -73,10 +75,14 @@ export interface ILoginResponse {
 // =============================================
 // DB 접속 정보
 // =============================================
+// DB 접속 종류 (GAME/WEB/LOG 구분)
+export type TDbConnectionKind = 'GAME' | 'WEB' | 'LOG';
+
 export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;           // 자동 매핑
+  strKind: TDbConnectionKind;       // 접속 종류 (GAME, WEB, LOG)
   strEnv: 'dev' | 'qa' | 'live';   // 환경 구분
   strDbType: 'mssql' | 'mysql';    // DB 드라이버 종류
   strHost: string;

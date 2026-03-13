@@ -38,6 +38,12 @@ export interface IStageActor {
   dtProcessedAt: string;      // 처리 시각
 }
 
+// 실행 대상 1건: DB 접속 ID + 생성된 쿼리 (템플릿에 arrQueryTemplates 있을 때)
+export interface IExecutionTarget {
+  nDbConnectionId: number;
+  strQuery: string;
+}
+
 export interface IEventInstance {
   nId: number;
   // 템플릿 정보
@@ -52,7 +58,10 @@ export interface IEventInstance {
   // 생성자 입력 정보
   strEventName: string;
   strInputValues: string;
+  /** 단일 쿼리 (레거시 또는 템플릿에 arrQueryTemplates 없을 때) */
   strGeneratedQuery: string;
+  /** 실행 대상 목록 (템플릿에 arrQueryTemplates 있을 때: DB 연결별 생성 쿼리) */
+  arrExecutionTargets?: IExecutionTarget[];
   dtDeployDate: string;                   // 반영 날짜 (datetime, ISO 8601)
   arrDeployScope: Array<'qa' | 'live'>;   // 반영 범위 (DEV 제외, 기본 ['qa','live'])
   // 상태

@@ -62,8 +62,8 @@ router.get('/:id', fnRequireAnyPermission('my_dashboard.view'), fnGetInstance);
 // POST /api/event-instances - 이벤트 생성 (instance.create 권한 필요)
 router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);
 
-// PUT /api/event-instances/:id - 이벤트 수정 (event_created 상태에서만, my_dashboard.edit 필요)
-router.put('/:id', fnRequireAnyPermission('my_dashboard.edit'), fnUpdateInstance);
+// PUT /api/event-instances/:id - 이벤트 수정 (my_dashboard.edit) 또는 DBA 쿼리 수정(my_dashboard.query_edit)
+router.put('/:id', fnRequireAnyPermission('my_dashboard.edit', 'my_dashboard.query_edit'), fnUpdateInstance);
 
 // PATCH /api/event-instances/:id/status - 상태 변경
 router.patch('/:id/status', fnUpdateStatus);

@@ -87,6 +87,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'my_dashboard.view', label: '보기' },
     { value: 'my_dashboard.detail', label: '상세' },
     { value: 'my_dashboard.edit', label: '이벤트 수정' },
+    { value: 'my_dashboard.edit_any', label: '타인 이벤트 수정' },
     { value: 'my_dashboard.request_confirm', label: '컨펌 요청' },
     { value: 'my_dashboard.query_edit', label: '쿼리 수정' },
     { value: 'my_dashboard.confirm', label: 'DBA 컨펌' },
@@ -103,6 +104,9 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
   { groupLabel: '이벤트 생성', permissions: [
     { value: 'instance.view', label: '보기' },
     { value: 'instance.create', label: '생성' },
+  ]},
+  { groupLabel: '시스템', permissions: [
+    { value: 'system.save_test_seed', label: '테스트 시드 저장' },
   ]},
 ];
 
@@ -243,6 +247,13 @@ export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
   { value: 'none', label: '입력 없음' },
 ];
 
+// 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿
+export interface IQueryTemplateItem {
+  nDbConnectionId: number;
+  strDefaultItems?: string;
+  strQueryTemplate: string;
+}
+
 // 이벤트 템플릿
 export interface IEventTemplate {
   nId: number;
@@ -254,7 +265,8 @@ export interface IEventTemplate {
   strType: TEventType;            // 이벤트 유형 (삭제/지급/초기화)
   strInputFormat: TInputFormat;   // 입력 형식
   strDefaultItems: string;        // 기본 아이템 값 (예시값)
-  strQueryTemplate: string;       // SQL 쿼리 템플릿
+  strQueryTemplate: string;       // SQL 쿼리 템플릿 (레거시 단일)
+  arrQueryTemplates?: IQueryTemplateItem[];  // 종류별 쿼리 템플릿 (있으면 이걸 사용)
   dtCreatedAt: string;
 }
 
@@ -314,11 +326,16 @@ export interface IQueryExecutionResult {
   dtExecutedAt: string;
 }
 
+// DB 접속 종류
+export type TDbConnectionKind = 'GAME' | 'WEB' | 'LOG';
+export const ARR_DB_CONNECTION_KINDS: TDbConnectionKind[] = ['GAME', 'WEB', 'LOG'];
+
 // DB 접속 정보
 export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;
+  strKind: TDbConnectionKind;
   strEnv: 'dev' | 'qa' | 'live';
   strDbType: 'mssql' | 'mysql';
   strHost: string;
@@ -368,6 +385,7 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
+  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
   dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
   arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
   strStatus: TEventStatus;

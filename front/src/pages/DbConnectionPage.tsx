@@ -19,9 +19,16 @@ import {
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IDbConnection } from '../types';
+import type { IDbConnection, TDbConnectionKind } from '../types';
+import { ARR_DB_CONNECTION_KINDS } from '../types';
 
 const { Title, Text } = Typography;
+
+const OBJ_KIND_COLOR: Record<TDbConnectionKind, string> = {
+  GAME: 'blue',
+  WEB: 'geekblue',
+  LOG: 'purple',
+};
 
 // 환경 태그 색상
 const OBJ_ENV_COLOR: Record<string, string> = {
@@ -90,13 +97,13 @@ const DbConnectionPage = () => {
       setObjEditConn(objConn);
       form.setFieldsValue({
         ...objConn,
+        strKind: objConn.strKind || 'GAME',
         strPassword: '',  // 비밀번호는 재입력 요구
       });
     } else {
       setObjEditConn(null);
       form.resetFields();
-      // 기본 포트 설정
-      form.setFieldValue('nPort', 1433);
+      form.setFieldsValue({ nPort: 1433, strKind: 'GAME' });
     }
     setBModalOpen(true);
   };
@@ -182,6 +189,15 @@ const DbConnectionPage = () => {
         <Tag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
           {v.toUpperCase()}
         </Tag>
+      ),
+    },
+    {
+      title: '종류',
+      dataIndex: 'strKind',
+      key: 'strKind',
+      width: 80,
+      render: (v: TDbConnectionKind) => (
+        <Tag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</Tag>
       ),
     },
     {
@@ -368,6 +384,21 @@ const DbConnectionPage = () => {
               </Select>
             </Form.Item>
           )}
+
+          {/* 접속 종류 (GAME/WEB/LOG) */}
+          <Form.Item
+            name="strKind"
+            label="접속 종류"
+            rules={[{ required: true, message: '종류를 선택해주세요.' }]}
+          >
+            <Select placeholder="종류 선택">
+              {ARR_DB_CONNECTION_KINDS.map((k) => (
+                <Select.Option key={k} value={k}>
+                  <Tag color={OBJ_KIND_COLOR[k]}>{k}</Tag>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
 
           <Form.Item
             name="strDbType"

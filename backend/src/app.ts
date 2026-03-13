@@ -12,7 +12,11 @@ import adminRoutes from './routes/adminRoutes';
 
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+// 개발/ E2E 시 프론트 포트가 5173 또는 5174일 수 있음
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);

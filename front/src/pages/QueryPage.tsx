@@ -144,16 +144,29 @@ const QueryPage = () => {
       // 이벤트 이름 자동 생성
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
-      // 기본 아이템값이 있으면 자동 채움
-      if (objEvent.strDefaultItems) {
-        setStrInputValues(objEvent.strDefaultItems);
-      } else {
-        setStrInputValues('');
-      }
+      // 기본 아이템값: 템플릿 공통값 우선, 없으면 세트가 있을 때 첫 세트 기본값 사용
+      const strDefault =
+        (objEvent.strDefaultItems && objEvent.strDefaultItems.trim()) ||
+        (objEvent.arrQueryTemplates?.[0]?.strDefaultItems?.trim()) ||
+        '';
+      setStrInputValues(strDefault);
     }
   };
 
-  // === 이벤트 생성 (서버 저장) ===
+  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리)
+  const fnApplyTemplate = (strTemplate: string): string => {
+    const strDateOnly = strDeployDate.slice(0, 10);
+    let str = strTemplate;
+    str = str.replace(/\{\{items\}\}/g, strInputValues.trim());
+    str = str.replace(/\{\{date\}\}/g, strDateOnly);
+    str = str.replace(/\{\{event_name\}\}/g, strEventName);
+    str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
+    str = str.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
+    str = str.replace(/\{\{region\}\}/g, objSelectedService?.strRegion || '');
+    return str;
+  };
+
+  // === 이벤트 생성 (템플릿 + 입력값만 사용, 서버 저장) ===
   const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
 
@@ -169,23 +182,28 @@ const QueryPage = () => {
       return;
     }
 
-    let strQuery = objSelectedEvent.strQueryTemplate;
+    const arrQueryTemplates = objSelectedEvent.arrQueryTemplates?.filter((qt) => qt.nDbConnectionId && qt.strQueryTemplate?.trim());
+    let strQuery: string;
+    let arrExecutionTargets: Array<{ nDbConnectionId: number; strQuery: string }> | undefined;
 
-    // 치환 변수 처리 ({{date}}에는 날짜 부분만 넣음 YYYY-MM-DD)
-    const strDateOnly = strDeployDate.slice(0, 10);
-    strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
-    strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
-    strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
-    strQuery = strQuery.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
-    strQuery = strQuery.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
-    strQuery = strQuery.replace(/\{\{region\}\}/g, objSelectedService?.strRegion || '');
+    if (arrQueryTemplates?.length) {
+      // DB 연결별 쿼리 템플릿 사용 — 동일 입력값으로 각 템플릿 치환
+      arrExecutionTargets = arrQueryTemplates.map((qt) => ({
+        nDbConnectionId: qt.nDbConnectionId,
+        strQuery: fnApplyTemplate(qt.strQueryTemplate),
+      }));
+      strQuery = arrExecutionTargets.map((t) => t.strQuery).join('\n;\n');
+    } else {
+      // 단일 쿼리 템플릿
+      strQuery = fnApplyTemplate(objSelectedEvent.strQueryTemplate || '');
+    }
 
     setStrGeneratedQuery(strQuery);
 
-    // 서버에 이벤트 인스턴스 저장
+    // 서버에 이벤트 인스턴스 저장 (템플릿 기반 생성 쿼리만 전달)
     setBSubmitting(true);
     try {
-      const objResult = await fnApiCreateInstance({
+      const objPayload: Record<string, unknown> = {
         nEventTemplateId: objSelectedEvent.nId,
         nProductId: objSelectedProduct?.nId || 0,
         strEventLabel: objSelectedEvent.strEventLabel,
@@ -200,7 +218,12 @@ const QueryPage = () => {
         dtDeployDate: strDeployDate,
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
-      });
+      };
+      if (arrExecutionTargets?.length) {
+        objPayload.arrExecutionTargets = arrExecutionTargets;
+      }
+
+      const objResult = await fnApiCreateInstance(objPayload);
 
       if (objResult.bSuccess) {
         messageApi.success('이벤트가 생성되었습니다!');

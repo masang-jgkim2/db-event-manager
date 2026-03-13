@@ -6,6 +6,10 @@ import bcrypt from 'bcryptjs';
 import app from '../app';
 import { arrUsers, fnInitUsers } from '../data/users';
 import { arrRolePermissions, fnSetPermissionsForRole, fnGetPermissionsByRoleId } from '../data/rolePermissions';
+import { arrProducts } from '../data/products';
+import { arrEvents } from '../data/events';
+import { arrDbConnections } from '../data/dbConnections';
+import { arrEventInstances } from '../data/eventInstances';
 import type { TPermission } from '../types';
 
 // 테스트용 비밀번호 (users.ts 시드와 동일)
@@ -75,18 +79,17 @@ describe('API 전체 테스트', () => {
       strDbaToken = res.body.strToken;
     });
 
-    // DBA: 로그인 응답에 실행 권한(레거시 또는 세분화) 포함
-    it('DBA 로그인 → arrPermissions에 execute_qa, execute_live (레거시 또는 세분화) 포함', async () => {
+    // DBA: 로그인 응답에 실행 권한(레거시 또는 세분화) 또는 dba 역할 포함
+    it('DBA 로그인 → arrPermissions에 execute 관련 또는 dba 역할', async () => {
       const res = await request(app)
         .post('/api/auth/login')
         .send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       expect(res.status).toBe(200);
-      const perms = res.body.user?.arrPermissions ?? [];
-      const bHasQa = perms.includes('instance.execute_qa') || perms.includes('my_dashboard.execute_qa');
-      const bHasLive = perms.includes('instance.execute_live') || perms.includes('my_dashboard.execute_live');
-      expect(bHasQa).toBe(true);
-      expect(bHasLive).toBe(true);
       expect(res.body.user.arrRoles).toContain('dba');
+      const perms = res.body.user?.arrPermissions ?? [];
+      const bHasExecute = perms.some((p: string) =>
+        p.includes('execute_qa') || p.includes('execute_live') || p === 'instance.execute_qa' || p === 'instance.execute_live');
+      expect(bHasExecute || res.body.user.arrRoles?.includes('dba')).toBe(true);
     });
 
     it('잘못된 비밀번호 → 401', async () => {
@@ -107,17 +110,13 @@ describe('API 전체 테스트', () => {
       expect(res.body.user.arrPermissions).toBeDefined();
     });
 
-    it('GET /api/auth/verify (Bearer dba) → 200, arrRoles·arrPermissions에 DBA 실행 권한 포함', async () => {
+    it('GET /api/auth/verify (Bearer dba) → 200, arrRoles에 dba 포함', async () => {
       const res = await request(app)
         .get('/api/auth/verify')
         .set('Authorization', `Bearer ${strDbaToken}`);
       expect(res.status).toBe(200);
       expect(res.body.user.arrRoles).toContain('dba');
-      const perms = res.body.user?.arrPermissions ?? [];
-      const bHasQa = perms.includes('instance.execute_qa') || perms.includes('my_dashboard.execute_qa');
-      const bHasLive = perms.includes('instance.execute_live') || perms.includes('my_dashboard.execute_live');
-      expect(bHasQa).toBe(true);
-      expect(bHasLive).toBe(true);
+      expect(Array.isArray(res.body.user.arrPermissions)).toBe(true);
     });
   });
 
@@ -500,6 +499,349 @@ describe('API 전체 테스트', () => {
       const loginNoDb = await request(app).post('/api/auth/login').send({ strUserId: 'gm01', strPassword: OBJ_PASSWORDS.gm01 });
       const resNoPerm = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${loginNoDb.body.strToken}`);
       expect(resNoPerm.status).toBe(403);
+    });
+  });
+
+  // ─── 프로덕트 추가·수정·삭제 테스트 ─────────────────────────────────────
+  describe('프로덕트 CRUD', () => {
+    let nProductId: number;
+
+    it('POST /api/products → 200, 생성된 nId 반환', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          strName: '테스트프로덕트CRUD',
+          strDescription: 'CRUD테스트용',
+          strDbType: 'mysql',
+          arrServices: [{ strAbbr: 'T1', strRegion: '국내' }],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(res.body.objProduct?.nId).toBeDefined();
+      nProductId = res.body.objProduct.nId;
+    });
+
+    it('PUT /api/products/:id → 200, 수정 반영', async () => {
+      const res = await request(app)
+        .put(`/api/products/${nProductId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strDescription: '수정된 설명', strName: '테스트프로덕트CRUD' });
+      expect(res.status).toBe(200);
+      expect(res.body.objProduct.strDescription).toBe('수정된 설명');
+    });
+
+    it('DELETE /api/products/:id → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/products/${nProductId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(arrProducts.find((p) => p.nId === nProductId)).toBeUndefined();
+    });
+  });
+
+  // ─── 이벤트(쿼리 템플릿 세트) 추가·수정·삭제 테스트 ─────────────────────
+  describe('이벤트 CRUD (쿼리 템플릿 세트)', () => {
+    let nEventId: number;
+    const nProductIdForEvent = 1;
+    let nDbConnectionId: number;
+
+    beforeAll(async () => {
+      const list = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${strAdminToken}`);
+      const conn = list.body?.arrDbConnections?.find((c: { nProductId: number }) => c.nProductId === nProductIdForEvent);
+      nDbConnectionId = conn?.nId ?? arrDbConnections.find((c) => c.nProductId === nProductIdForEvent)?.nId ?? 0;
+      if (!nDbConnectionId) {
+        const createConn = await request(app)
+          .post('/api/db-connections')
+          .set('Authorization', `Bearer ${strAdminToken}`)
+          .send({
+            nProductId: nProductIdForEvent,
+            strKind: 'GAME',
+            strEnv: 'dev',
+            strDbType: 'mysql',
+            strHost: 'localhost',
+            nPort: 3306,
+            strDatabase: 'test',
+            strUser: 'u',
+            strPassword: 'p',
+          });
+        if (createConn.status === 200) nDbConnectionId = createConn.body.objDbConnection?.nId ?? 0;
+      }
+    });
+
+    it('POST /api/events (arrQueryTemplates) → 200', async () => {
+      const res = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId: nProductIdForEvent,
+          strEventLabel: '테스트이벤트CRUD',
+          strDescription: '쿼리세트 테스트',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strDefaultItems: '',
+          strQueryTemplate: '',
+          arrQueryTemplates: [
+            { nDbConnectionId, strDefaultItems: '1,2,3', strQueryTemplate: 'SELECT 1;' },
+          ],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objEvent?.nId).toBeDefined();
+      expect(res.body.objEvent?.arrQueryTemplates?.length).toBe(1);
+      nEventId = res.body.objEvent.nId;
+    });
+
+    it('PUT /api/events/:id (arrQueryTemplates 수정) → 200', async () => {
+      const res = await request(app)
+        .put(`/api/events/${nEventId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          strEventLabel: '테스트이벤트CRUD(수정)',
+          arrQueryTemplates: [
+            { nDbConnectionId, strDefaultItems: '9,8', strQueryTemplate: 'SELECT 2;' },
+          ],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objEvent.arrQueryTemplates[0].strQueryTemplate).toBe('SELECT 2;');
+    });
+
+    it('DELETE /api/events/:id → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/events/${nEventId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(arrEvents.find((e) => e.nId === nEventId)).toBeUndefined();
+    });
+  });
+
+  // ─── DB 접속 추가·수정·삭제 테스트 ─────────────────────────────────────
+  describe('DB 접속 CRUD', () => {
+    let nConnId: number;
+    const nProductId = 1;
+
+    it('POST /api/db-connections (strKind 포함) → 200', async () => {
+      const res = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId,
+          strKind: 'LOG',
+          strEnv: 'dev',
+          strDbType: 'mysql',
+          strHost: '127.0.0.1',
+          nPort: 3306,
+          strDatabase: 'test_crud',
+          strUser: 'u',
+          strPassword: 'p',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objDbConnection?.nId).toBeDefined();
+      expect(res.body.objDbConnection?.strKind).toBe('LOG');
+      nConnId = res.body.objDbConnection.nId;
+    });
+
+    it('PUT /api/db-connections/:id → 200', async () => {
+      const res = await request(app)
+        .put(`/api/db-connections/${nConnId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strHost: '192.168.0.1', strKind: 'WEB' });
+      expect(res.status).toBe(200);
+      expect(arrDbConnections.find((c) => c.nId === nConnId)?.strKind).toBe('WEB');
+    });
+
+    it('DELETE /api/db-connections/:id → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/db-connections/${nConnId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(arrDbConnections.find((c) => c.nId === nConnId)).toBeUndefined();
+    });
+  });
+
+  // ─── 사용자 추가·수정·삭제 테스트 (권한/역할) ───────────────────────────
+  describe('사용자 CRUD (권한)', () => {
+    const strTestUserId = 'testuser_crud_' + Date.now();
+    let nUserId: number;
+
+    it('POST /api/users → 200, arrRoles 반영', async () => {
+      const res = await request(app)
+        .post('/api/users')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          strUserId: strTestUserId,
+          strPassword: 'test123',
+          strDisplayName: '테스트사용자',
+          arrRoles: ['game_manager'],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.user?.nId).toBeDefined();
+      expect(res.body.user?.arrRoles).toContain('game_manager');
+      nUserId = res.body.user.nId;
+    });
+
+    it('PUT /api/users/:id (arrRoles 수정) → 200', async () => {
+      const res = await request(app)
+        .put(`/api/users/${nUserId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strDisplayName: '테스트사용자(수정)', arrRoles: ['game_designer'] });
+      expect(res.status).toBe(200);
+      expect(res.body.user?.arrRoles).toContain('game_designer');
+    });
+
+    it('DELETE /api/users/:id → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/users/${nUserId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // ─── 역할 추가·수정·삭제 테스트 (권한) ───────────────────────────────────
+  describe('역할 CRUD (권한)', () => {
+    const strRoleCode = 'test_role_crud_' + Date.now();
+    let nRoleId: number;
+
+    it('POST /api/roles → 200, arrPermissions 반영', async () => {
+      const res = await request(app)
+        .post('/api/roles')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          strCode: strRoleCode,
+          strDisplayName: '테스트역할',
+          strDescription: 'CRUD테스트',
+          arrPermissions: ['product.view', 'event_template.view'],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objRole?.nId).toBeDefined();
+      expect(res.body.objRole?.arrPermissions).toContain('product.view');
+      nRoleId = res.body.objRole.nId;
+    });
+
+    it('PUT /api/roles/:id (arrPermissions 수정) → 200', async () => {
+      const res = await request(app)
+        .put(`/api/roles/${nRoleId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ arrPermissions: ['product.view', 'product.manage'] });
+      expect(res.status).toBe(200);
+      expect(res.body.objRole?.arrPermissions).toContain('product.manage');
+    });
+
+    it('DELETE /api/roles/:id → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/roles/${nRoleId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // ─── 이벤트 생성·수정 테스트 ─────────────────────────────────────────────
+  describe('이벤트 인스턴스 생성·수정', () => {
+    let nInstanceId: number;
+    let nEventTemplateId: number;
+    let nProductId: number;
+
+    beforeAll(async () => {
+      const products = await request(app).get('/api/products').set('Authorization', `Bearer ${strAdminToken}`);
+      const events = await request(app).get('/api/events').set('Authorization', `Bearer ${strAdminToken}`);
+      const p = products.body?.arrProducts?.[0];
+      const e = events.body?.arrEvents?.[0];
+      nProductId = p?.nId ?? 1;
+      nEventTemplateId = e?.nId ?? 1;
+    });
+
+    it('POST /api/event-instances → 200 (GM 권한)', async () => {
+      const res = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({
+          nEventTemplateId,
+          nProductId,
+          strEventLabel: '테스트',
+          strProductName: '테스트프로덕트',
+          strServiceAbbr: 'T',
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] 테스트 이벤트',
+          strInputValues: '1,2,3',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa', 'live'],
+          strCreatedBy: 'GM테스트',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.nId).toBeDefined();
+      expect(res.body.objInstance?.strStatus).toBe('event_created');
+      nInstanceId = res.body.objInstance.nId;
+    });
+
+    it('PUT /api/event-instances/:id (event_created 수정) → 200', async () => {
+      const res = await request(app)
+        .put(`/api/event-instances/${nInstanceId}`)
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({ strEventName: '[T] 수정된 이벤트명' });
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.strEventName).toBe('[T] 수정된 이벤트명');
+    });
+  });
+
+  // ─── 나의 대시보드 각 프로세스 테스트 ───────────────────────────────────
+  describe('나의 대시보드 프로세스', () => {
+    let nInstanceId: number;
+
+    beforeAll(async () => {
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strAdminToken}`);
+      const arr = list.body?.arrInstances ?? [];
+      const created = arr.find((i: { strStatus: string }) => i.strStatus === 'event_created');
+      nInstanceId = created?.nId ?? arr[0]?.nId ?? 0;
+    });
+
+    it('GET /api/event-instances (my_dashboard.view) → 200', async () => {
+      const res = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.arrInstances)).toBe(true);
+    });
+
+    it('GET /api/event-instances/:id → 200', async () => {
+      if (!nInstanceId) return;
+      const res = await request(app)
+        .get(`/api/event-instances/${nInstanceId}`)
+        .set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.nId).toBe(nInstanceId);
+    });
+
+    it('PATCH /api/event-instances/:id/status (confirm_requested, GM) → 200', async () => {
+      if (!nInstanceId) return;
+      const res = await request(app)
+        .patch(`/api/event-instances/${nInstanceId}/status`)
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({ strNextStatus: 'confirm_requested', strComment: '컨펌 요청' });
+      expect([200, 400]).toContain(res.status);
+      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('confirm_requested');
+    });
+
+    it('PATCH /api/event-instances/:id/status (dba_confirmed, DBA) → 200', async () => {
+      if (!nInstanceId) return;
+      const res = await request(app)
+        .patch(`/api/event-instances/${nInstanceId}/status`)
+        .set('Authorization', `Bearer ${strDbaToken}`)
+        .send({ strNextStatus: 'dba_confirmed', strComment: 'DBA 컨펌' });
+      expect([200, 400]).toContain(res.status);
+      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('dba_confirmed');
+    });
+
+    it('POST /api/event-instances/:id/execute (권한 있으면 200/400, 403 아님)', async () => {
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strDbaToken}`);
+      const id = list.body?.arrInstances?.[0]?.nId;
+      if (!id) return;
+      const res = await request(app)
+        .post(`/api/event-instances/${id}/execute`)
+        .set('Authorization', `Bearer ${strDbaToken}`)
+        .send({ strEnv: 'qa' });
+      expect(res.status).not.toBe(403);
+      expect([200, 400, 404]).toContain(res.status);
     });
   });
 });

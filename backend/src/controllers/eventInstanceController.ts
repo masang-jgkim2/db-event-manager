@@ -3,7 +3,7 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection } from '../data/dbConnections';
+import { fnFindActiveConnection, fnFindConnectionById } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -52,7 +52,7 @@ const fnGetTransitions = (
   return OBJ_STATUS_TRANSITIONS_BASE[strStatus] ?? [];
 };
 
-// 액션(다음 상태)별 필요 권한 1개 — 역할 없을 때 권한으로 통과
+// 액션(다음 상태)별 필요 권한 — 수행 여부는 권한만으로 판단 (역할 사용 안 함)
 const OBJ_STATUS_REQUIRED_PERMISSION: Partial<Record<TEventStatus, string>> = {
   confirm_requested: 'my_dashboard.request_confirm',
   dba_confirmed:      'my_dashboard.confirm',
@@ -60,6 +60,18 @@ const OBJ_STATUS_REQUIRED_PERMISSION: Partial<Record<TEventStatus, string>> = {
   qa_verified:        'my_dashboard.verify_qa',
   live_requested:     'my_dashboard.request_live',
   live_verified:      'my_dashboard.verify_live',
+};
+
+// 상태별 "다음 액션 가능" 권한 목록 — my_action 필터용 (권한 기반)
+const OBJ_STATUS_ACTION_PERMISSIONS: Partial<Record<TEventStatus, string[]>> = {
+  event_created:      ['my_dashboard.request_confirm'],
+  confirm_requested:  ['my_dashboard.confirm'],
+  qa_requested:        ['my_dashboard.execute_qa', 'instance.execute_qa'],
+  qa_deployed:        ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq'],
+  qa_verified:        ['my_dashboard.request_live', 'my_dashboard.request_qa_rereq'],
+  live_requested:     ['my_dashboard.execute_live', 'instance.execute_live'],
+  live_deployed:      ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
+  live_verified:       ['my_dashboard.request_live_rereq'],
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
@@ -77,7 +89,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     const {
       nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
-      strEventName, strInputValues, strGeneratedQuery, dtDeployDate,
+      strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets, dtDeployDate,
       arrDeployScope: arrReqScope, strCreatedBy,
     } = req.body;
 
@@ -118,6 +130,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strEventName,
       strInputValues: strInputValues || '',
       strGeneratedQuery: strGeneratedQuery || '',
+      arrExecutionTargets: Array.isArray(arrExecutionTargets) ? arrExecutionTargets : undefined,
       dtDeployDate,
       arrDeployScope,
       strStatus: 'event_created' as TEventStatus,
@@ -181,15 +194,12 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
       arrFiltered = arrFiltered.filter((e) => e.nCreatedByUserId === nUserId);
     }
 
-    // 내가 처리해야 할 이벤트 (역할 기반)
+    // 내가 처리해야 할 이벤트 (권한 기반)
     if (strFilter === 'my_action') {
-      const arrUserRoles = req.user?.arrRoles || [];
+      const arrUserPerms = req.user?.arrPermissions || [];
       arrFiltered = arrFiltered.filter((e) => {
-        const arrScope = e.arrDeployScope ?? ['qa', 'live'];
-        const arrTrans = fnGetTransitions(e.strStatus, arrScope);
-        return arrTrans.some((t) =>
-          t.arrAllowedRoles.some((r) => arrUserRoles.includes(r))
-        );
+        const arrPerms = OBJ_STATUS_ACTION_PERMISSIONS[e.strStatus as TEventStatus];
+        return arrPerms?.some((p) => (arrUserPerms as string[]).includes(p)) ?? false;
       });
     }
 
@@ -208,7 +218,6 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
   try {
     const nId = Number(req.params.id);
     const { strNextStatus, strComment } = req.body;
-    const arrUserRoles = req.user?.arrRoles || [];
 
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
@@ -226,18 +235,16 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 역할 또는 해당 액션의 단일 권한으로 허용
+    // 해당 액션의 필요 권한으로만 허용 (역할 미사용)
     const arrUserPerms = req.user?.arrPermissions || [];
-    const bHasRole = objTransition.arrAllowedRoles.some((r) => arrUserRoles.includes(r));
     const strRequiredPerm = OBJ_STATUS_REQUIRED_PERMISSION[strNextStatus as TEventStatus];
     const bHasPerm = strRequiredPerm ? (arrUserPerms as string[]).includes(strRequiredPerm) : false;
-    if (!bHasRole && !bHasPerm) {
-      const strNeed = strRequiredPerm
-        ? `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}, 또는 권한 '${strRequiredPerm}'`
-        : `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}`;
+    if (!bHasPerm) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `해당 상태를 변경할 권한이 없습니다. 필요: ${strNeed}. 역할/권한을 방금 수정했다면 로그아웃 후 다시 로그인해 주세요.`,
+        strMessage: strRequiredPerm
+          ? `해당 상태를 변경할 권한이 없습니다. 필요: '${strRequiredPerm}'. 권한을 방금 수정했다면 로그아웃 후 다시 로그인해 주세요.`
+          : '해당 상태를 변경할 권한이 없습니다.',
       });
       return;
     }
@@ -307,18 +314,16 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // env별 단일 권한 1개 (레거시 코드도 동일 액션으로 허용) 또는 dba/admin 역할
+    // env별 실행 권한만으로 허용 (역할 미사용)
     const arrUserPerms = req.user?.arrPermissions || [];
-    const arrUserRoles = req.user?.arrRoles || [];
-    const bIsDbaOrAdmin = arrUserRoles.includes('dba') || arrUserRoles.includes('admin');
     const arrPermsForEnv = strEnv === 'live'
       ? ['my_dashboard.execute_live', 'instance.execute_live']
       : ['my_dashboard.execute_qa', 'instance.execute_qa'];
     const bHasPerm = arrPermsForEnv.some((p) => (arrUserPerms as string[]).includes(p));
-    if (!bIsDbaOrAdmin && !bHasPerm) {
+    if (!bHasPerm) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `이 작업을 하려면 역할 dba 또는 admin, 또는 권한 '${arrPermsForEnv[0]}'이 필요합니다.`,
+        strMessage: `이 작업을 하려면 권한 '${arrPermsForEnv[0]}' 또는 '${arrPermsForEnv[1]}'이 필요합니다.`,
       });
       return;
     }
@@ -384,16 +389,6 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 활성 DB 접속 정보 조회
-    const objDbConn = fnFindActiveConnection(nProductId, strEnv);
-    if (!objDbConn) {
-      res.status(400).json({
-        bSuccess: false,
-        strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
-      });
-      return;
-    }
-
     // ── 반영 날짜 시점 체크 ────────────────────────────────
     // QA  : 시간 제한 없음 — LIVE 반영 전 언제든지 실행 가능
     // LIVE : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
@@ -413,12 +408,71 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 쿼리 실행
-    const objExecResult: IQueryExecutionResult = await fnExecuteQueryWithText(
-      objDbConn,
-      objInstance.strGeneratedQuery,
-      strEnv
-    );
+    // 쿼리 실행: 실행 대상 목록 있으면 DB 연결별 실행, 없으면 단일 strGeneratedQuery
+    let objExecResult: IQueryExecutionResult;
+
+    const arrTargets = objInstance.arrExecutionTargets;
+    if (Array.isArray(arrTargets) && arrTargets.length > 0) {
+      // 현재 환경(strEnv)에 해당하는 대상만 필터 후 순차 실행
+      const arrAllPartResults: IQueryExecutionResult['arrQueryResults'] = [];
+      let nTotalRows = 0;
+      let nTotalMs = 0;
+      const arrExecutedQueries: string[] = [];
+
+      const arrTargetsForEnv = arrTargets.filter((item) => {
+        const c = fnFindConnectionById(item.nDbConnectionId);
+        return c?.bIsActive && c.strEnv === strEnv;
+      });
+      if (arrTargetsForEnv.length === 0) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${strEnv.toUpperCase()} 환경에 해당하는 DB 접속이 템플릿에 없거나 비활성화 상태입니다.`,
+        });
+        return;
+      }
+
+      for (const item of arrTargetsForEnv) {
+        const objConn = fnFindConnectionById(item.nDbConnectionId);
+        if (!objConn || !objConn.bIsActive) continue;
+        const objOne = await fnExecuteQueryWithText(objConn, item.strQuery, strEnv);
+        if (!objOne.bSuccess) {
+          res.status(200).json({
+            bSuccess: false,
+            strMessage: `쿼리 실행 실패 (${objConn.strProductName} ${objConn.strEnv}). 롤백이 완료되었습니다.`,
+            objExecutionResult: objOne,
+          });
+          return;
+        }
+        arrAllPartResults.push(...objOne.arrQueryResults);
+        nTotalRows += objOne.nTotalAffectedRows;
+        nTotalMs += objOne.nElapsedMs;
+        arrExecutedQueries.push(item.strQuery);
+      }
+
+      objExecResult = {
+        bSuccess: true,
+        strEnv,
+        strExecutedQuery: arrExecutedQueries.join('\n;\n'),
+        arrQueryResults: arrAllPartResults,
+        nTotalAffectedRows: nTotalRows,
+        nElapsedMs: nTotalMs,
+        dtExecutedAt: new Date().toISOString(),
+      };
+    } else {
+      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      if (!objDbConn) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
+        });
+        return;
+      }
+      objExecResult = await fnExecuteQueryWithText(
+        objDbConn,
+        objInstance.strGeneratedQuery,
+        strEnv
+      );
+    }
 
     if (!objExecResult.bSuccess) {
       // 실패 시 상태 변경 없이 오류 반환
@@ -511,18 +565,17 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const arrUserRoles = req.user?.arrRoles || [];
-    const bIsAdmin = arrUserRoles.includes('admin');
-    const bIsDba   = arrUserRoles.includes('dba');
+    const arrUserPerms = req.user?.arrPermissions || [];
+    const bHasQueryEdit = (arrUserPerms as string[]).includes('my_dashboard.query_edit');
+    const bHasEditAny = (arrUserPerms as string[]).includes('my_dashboard.edit_any');
 
-    // ── DBA 쿼리 수정 (요청 대기 단계에서만 — 프론트/프로세스와 동일) ──
-    // 허용 단계: 컨펌 요청, QA 반영 요청, LIVE 반영 요청
-    const ARR_DBA_EDITABLE_STATUSES: TEventStatus[] = [
+    // ── 쿼리 수정 (요청 대기 단계) — my_dashboard.query_edit 권한만 사용
+    const ARR_QUERY_EDITABLE_STATUSES: TEventStatus[] = [
       'confirm_requested', 'qa_requested', 'live_requested',
     ];
-    if (ARR_DBA_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
-      if (!bIsDba && !bIsAdmin) {
-        res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 DBA 권한이 있어야 쿼리를 수정할 수 있습니다.' });
+    if (ARR_QUERY_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
+      if (!bHasQueryEdit) {
+        res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 쿼리 수정 권한(my_dashboard.query_edit)이 필요합니다.' });
         return;
       }
       if (req.body.strGeneratedQuery !== undefined) {
@@ -543,14 +596,20 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // ── 일반 수정 (event_created 상태에서 생성자 또는 admin만) ──
+    // ── 일반 수정 (event_created): 생성자+my_dashboard.edit 또는 my_dashboard.edit_any
     if (objInstance.strStatus !== 'event_created') {
       res.status(400).json({ bSuccess: false, strMessage: '현재 상태에서는 수정할 수 없습니다.' });
       return;
     }
 
-    if (objInstance.nCreatedByUserId !== req.user?.nId && !bIsAdmin) {
-      res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다.' });
+    const bIsCreator = objInstance.nCreatedByUserId === req.user?.nId;
+    const bHasEdit = (arrUserPerms as string[]).includes('my_dashboard.edit');
+    if (!bIsCreator && !bHasEditAny) {
+      res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다. 타인 이벤트 수정은 my_dashboard.edit_any 권한이 필요합니다.' });
+      return;
+    }
+    if (bIsCreator && !bHasEdit && !bHasEditAny) {
+      res.status(403).json({ bSuccess: false, strMessage: '이벤트 수정 권한(my_dashboard.edit)이 필요합니다.' });
       return;
     }
 
@@ -586,16 +645,34 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
-      if (objTemplate?.strQueryTemplate) {
-        objInstance.strGeneratedQuery = fnApplyQueryTemplate(
-          objTemplate.strQueryTemplate,
-          objInstance.strInputValues,
-          objInstance.dtDeployDate,
-          objInstance.strEventName,
-          objInstance.strServiceAbbr,
-          objInstance.strProductName,
-          objInstance.strServiceRegion
-        );
+      if (objTemplate) {
+        const arrTemplates = objTemplate.arrQueryTemplates;
+        if (Array.isArray(arrTemplates) && arrTemplates.length > 0) {
+          objInstance.arrExecutionTargets = arrTemplates.map((qt) => ({
+            nDbConnectionId: qt.nDbConnectionId,
+            strQuery: fnApplyQueryTemplate(
+              qt.strQueryTemplate,
+              objInstance.strInputValues,
+              objInstance.dtDeployDate,
+              objInstance.strEventName,
+              objInstance.strServiceAbbr,
+              objInstance.strProductName,
+              objInstance.strServiceRegion
+            ),
+          }));
+          objInstance.strGeneratedQuery = objInstance.arrExecutionTargets.map((t) => t.strQuery).join('\n;\n');
+        } else if (objTemplate.strQueryTemplate) {
+          objInstance.strGeneratedQuery = fnApplyQueryTemplate(
+            objTemplate.strQueryTemplate,
+            objInstance.strInputValues,
+            objInstance.dtDeployDate,
+            objInstance.strEventName,
+            objInstance.strServiceAbbr,
+            objInstance.strProductName,
+            objInstance.strServiceRegion
+          );
+          objInstance.arrExecutionTargets = undefined;
+        }
       }
     }
 
