@@ -256,10 +256,12 @@ describe('API 전체 테스트', () => {
     it('product.view·dashboard.view 없으면 GET /api/products → 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
+      // GET /api/products 허용 권한 전부 제거 (product.*, dashboard.view)
+      const arrGetProductPerms = ['product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete', 'dashboard.view'];
       const withoutProductOrDashboard = backup
         .map((p) => p.strPermission)
-        .filter((s) => s !== 'product.view' && s !== 'product.manage' && s !== 'dashboard.view') as TPermission[];
-      fnSetPermissionsForRole(N_ROLE_DBA, withoutProductOrDashboard.length ? withoutProductOrDashboard : ['my_dashboard.execute_qa']);
+        .filter((s) => !arrGetProductPerms.includes(s)) as TPermission[];
+      fnSetPermissionsForRole(N_ROLE_DBA, withoutProductOrDashboard.length ? withoutProductOrDashboard : ['my_dashboard.view', 'my_dashboard.execute_qa']);
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const res = await request(app).get('/api/products').set('Authorization', `Bearer ${loginRes.body.strToken}`);
       fnSetPermissionsForRole(N_ROLE_DBA, backup.map((p) => p.strPermission as TPermission));
@@ -280,10 +282,17 @@ describe('API 전체 테스트', () => {
     });
 
     it('product.create 등 없으면 POST /api/products → 403', async () => {
+      const N_ROLE_DBA = 2;
+      const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => r.strPermission);
+      // product.create, product.manage 제거 후 재로그인해 권한 없는 토큰으로 요청
+      const withoutCreate = backup.filter((s) => s !== 'product.create' && s !== 'product.manage') as TPermission[];
+      fnSetPermissionsForRole(N_ROLE_DBA, withoutCreate.length ? withoutCreate : ['my_dashboard.view', 'my_dashboard.execute_qa']);
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const res = await request(app)
         .post('/api/products')
-        .set('Authorization', `Bearer ${strDbaToken}`)
+        .set('Authorization', `Bearer ${loginRes.body.strToken}`)
         .send({ strName: 'X', strDescription: 'X', strDbType: 'mysql', arrServices: [] });
+      fnSetPermissionsForRole(N_ROLE_DBA, backup as TPermission[]);
       expect(res.status).toBe(403);
     });
   });
