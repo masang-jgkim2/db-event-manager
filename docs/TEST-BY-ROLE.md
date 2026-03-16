@@ -6,12 +6,12 @@
 
 ## 1. 역할별 권한 요약 (시드 기준)
 
-| 역할 | strCode | 권한 (요약) |
-|------|---------|-------------|
-| **관리자** | admin | 전부 (product/event_template/user/db/instance.*, my_dashboard.detail·edit·request_confirm 등) |
-| **DBA** | dba | instance.execute_qa, instance.execute_live, my_dashboard.detail(상세) |
-| **GM** | game_manager | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm, approve_qa, verify_qa, approve_live, verify_live |
-| **기획자** | game_designer | product.view, event_template.view, instance.create, my_dashboard.detail·edit·request_confirm |
+| 역할 | strCode | 권한 수(시드) | 권한 (요약) |
+|------|---------|---------------|-------------|
+| **관리자** | admin | 19 | product/event_template/user/db/instance.*, my_dashboard.*, system.save_test_seed 등 전부 |
+| **DBA** | dba | **5** | my_dashboard.view(보기), detail(상세), confirm(DBA 컨펌), execute_qa(QA 반영 실행), execute_live(LIVE 반영 실행) |
+| **GM** | game_manager | 11 | product.view, event_template.view, instance.create, my_dashboard.view·detail·edit·request_confirm, approve_qa·verify_qa·approve_live·verify_live |
+| **기획자** | game_designer | 7 | product.view, event_template.view, instance.create, my_dashboard.view·detail·edit·request_confirm |
 
 ---
 
@@ -95,12 +95,30 @@
 
 ## 5. 테스트 계정 (시드 기준)
 
-- **admin** / (비밀번호) → 관리자  
-- **gm01** / (비밀번호) → GM  
-- **dba01** / (비밀번호) → DBA  
-- 기획자: 사용자 관리에서 **기획자(game_designer)** 역할을 부여한 계정으로 로그인해 테스트.
+- **admin** / admin123 → 관리자  
+- **gm01** / gm123 → GM  
+- **dba01** / dba123 → DBA  
+- **planner01** / planner123 → 기획자 (시드에 포함, 없으면 테스트 시 자동 추가)
 
 위 네 가지 역할로 **모든 메뉴, 모든 페이지, 모든 권한 구간의 버튼**을 커버할 수 있습니다.
+
+---
+
+## 5-1. 권한 수·설정 화면·유저 화면 검증 체크리스트
+
+자동 테스트(`api.test.ts` → `역할별 권한 수·로그인 권한·API 접근 검증`)에서 아래를 검증합니다.
+
+| 검증 항목 | 내용 |
+|-----------|------|
+| **권한 수** | GET /api/roles → DBA 역할 권한 수 ≥ 5, my_dashboard.view·detail·confirm·execute_qa·execute_live 포함 |
+| **설정 화면** | 역할 권한 페이지에서 DBA 편집 시 "나의 대시보드" 그룹에 위 5개 체크 표시 (동일 데이터) |
+| **admin** | 로그인 후 products, events, db-connections, users, roles, event-instances 모두 200 |
+| **DBA** | 로그인 후 event-instances·db-connections 200, products·events·users·roles 403 |
+| **GM** | 로그인 후 products·events·event-instances·db-connections 200, users·roles 403 |
+| **기획자** | 로그인 후 products·events·event-instances·db-connections 200, users·roles 403 |
+
+**수동 확인 (유저 화면)**  
+- DBA(dba01) 로그인 → 나의 대시보드 메뉴 노출, 상세 버튼, confirm_requested 시 DBA 컨펌 버튼, qa_requested 시 QA 반영 실행, live_requested 시 LIVE 반영 실행 버튼 노출·동작 여부.
 
 ---
 
@@ -133,9 +151,9 @@ npm run test:permission
 
 이렇게 하면 다음 항목들이 실행됩니다.
 
+- **역할별 권한 수·로그인 권한·API 접근 검증**: DBA 권한 수 ≥5 및 필수 5개 포함, DBA 로그인 시 arrPermissions에 보기·상세·컨펌·QA반영실행·LIVE반영실행 포함, admin/DBA/GM/기획자(planner01) 각각 로그인 후 기대 API 200/403
 - **인증 — 로그인**: admin / GM / DBA 로그인, 토큰·arrRoles·arrPermissions
-- **권한별 API (GM 토큰)**: products/events 200, users 403
-- **권한별 API (DBA 토큰)**: event-instances 200
+- **권한별 API (GM/DBA 토큰)**: products/events/event-instances 200 또는 403
 - **권한별 API — 프로덕트/이벤트 템플릿/DB 접속/사용자·역할**: view 있으면 200, 없으면 403
 - **역할·권한별 메뉴/페이지/기능 접근 (API 매트릭스)**: admin 전부 200, GM/DBA는 허용된 API만 200·나머지 403
 - **권한 추가/삭제 시나리오**: 권한 제거 후 403, 복원 후 재로그인 시 200

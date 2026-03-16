@@ -20,6 +20,7 @@ const ARR_SEED: IUserRow[] = [
   { nId: 1, strUserId: 'admin', strPassword: '__PENDING__', strDisplayName: '관리자', dtCreatedAt: new Date().toISOString() },
   { nId: 2, strUserId: 'gm01', strPassword: '__PENDING__', strDisplayName: 'GM_홍길동', dtCreatedAt: new Date().toISOString() },
   { nId: 3, strUserId: 'dba01', strPassword: '__PENDING__', strDisplayName: 'DBA_김철수', dtCreatedAt: new Date().toISOString() },
+  { nId: 4, strUserId: 'planner01', strPassword: '__PENDING__', strDisplayName: '기획자_이영희', dtCreatedAt: new Date().toISOString() },
 ];
 
 export const arrUsers: IUserRow[] = fnLoadJson<IUserRow>(STR_FILE, ARR_SEED);
@@ -71,6 +72,7 @@ export const fnInitUsers = async () => {
     admin: 'admin123',
     gm01:  'gm123',
     dba01: 'dba123',
+    planner01: 'planner123',
   };
 
   for (const objUser of arrUsers) {

@@ -4,7 +4,8 @@
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import app from '../app';
-import { arrUsers, fnInitUsers } from '../data/users';
+import { arrUsers, fnInitUsers, fnSaveUsers } from '../data/users';
+import { arrUserRoles, fnSetRolesForUser, fnSaveUserRoles } from '../data/userRoles';
 import { arrRolePermissions, fnSetPermissionsForRole, fnGetPermissionsByRoleId } from '../data/rolePermissions';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
@@ -17,6 +18,7 @@ const OBJ_PASSWORDS: Record<string, string> = {
   admin: 'admin123',
   gm01:  'gm123',
   dba01: 'dba123',
+  planner01: 'planner123',
 };
 
 describe('API 전체 테스트', () => {
@@ -26,11 +28,29 @@ describe('API 전체 테스트', () => {
 
   beforeAll(async () => {
     await fnInitUsers();
+    // 기획자(planner01) 시드 유저 — users.json에 3명만 있으면 추가 (전 역할 테스트용)
+    if (!arrUsers.some((u) => u.strUserId === 'planner01')) {
+      const nId = 4;
+      const strHash = await bcrypt.hash(OBJ_PASSWORDS.planner01, 10);
+      arrUsers.push({
+        nId,
+        strUserId: 'planner01',
+        strPassword: strHash,
+        strDisplayName: '기획자_이영희',
+        dtCreatedAt: new Date().toISOString(),
+      });
+      fnSaveUsers();
+      if (!arrUserRoles.some((r) => r.nUserId === nId && r.nRoleId === 4)) {
+        fnSetRolesForUser(nId, [4]);
+        fnSaveUserRoles();
+      }
+    }
     // 테스트에서 사용할 비밀번호로 통일 (저장소 상태와 무관하게 동일 결과 보장)
     const arrSeedPwds = [
       { nId: 1, strPwd: OBJ_PASSWORDS.admin },
       { nId: 2, strPwd: OBJ_PASSWORDS.gm01 },
       { nId: 3, strPwd: OBJ_PASSWORDS.dba01 },
+      { nId: 4, strPwd: OBJ_PASSWORDS.planner01 },
     ];
     for (const { nId, strPwd } of arrSeedPwds) {
       const u = arrUsers.find((x) => x.nId === nId);
@@ -240,6 +260,85 @@ describe('API 전체 테스트', () => {
       expect(adminUser).toBeDefined();
       expect(Array.isArray(adminUser.arrRoles)).toBe(true);
       expect(adminUser.arrRoles).toContain('admin');
+    });
+  });
+
+  // ─── 역할별 권한 수·설정 화면·유저 화면(API) 검증 ─────────────────────────────
+  describe('역할별 권한 수·로그인 권한·API 접근 검증', () => {
+    // DBA는 시드/보정 기준 최소 5개, 필수 5개 포함 (설정 화면에서 보기·상세·컨펌·QA반영실행·LIVE반영실행 체크)
+    it('GET /api/roles → DBA 역할에 보기·상세·컨펌·QA반영실행·LIVE반영실행 포함, 권한 수 >= 5', async () => {
+      const res = await request(app)
+        .get('/api/roles')
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      const arr = res.body.arrRoles ?? [];
+      const rDba = arr.find((x: { strCode: string }) => x.strCode === 'dba');
+      expect(rDba).toBeDefined();
+      const nActual = Array.isArray(rDba.arrPermissions) ? rDba.arrPermissions.length : 0;
+      expect(nActual).toBeGreaterThanOrEqual(5);
+      expect(rDba.arrPermissions).toContain('my_dashboard.view');
+      expect(rDba.arrPermissions).toContain('my_dashboard.detail');
+      expect(rDba.arrPermissions).toContain('my_dashboard.confirm');
+      expect(rDba.arrPermissions).toContain('my_dashboard.execute_qa');
+      expect(rDba.arrPermissions).toContain('my_dashboard.execute_live');
+    });
+
+    it('DBA 로그인 → arrPermissions에 보기·상세·컨펌·QA반영실행·LIVE반영실행 포함', async () => {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
+      expect(res.status).toBe(200);
+      const perms = res.body.user?.arrPermissions ?? [];
+      expect(perms).toContain('my_dashboard.view');
+      expect(perms).toContain('my_dashboard.detail');
+      expect(perms).toContain('my_dashboard.confirm');
+      expect(perms).toContain('my_dashboard.execute_qa');
+      expect(perms).toContain('my_dashboard.execute_live');
+    });
+
+    it('admin 로그인 → 모든 메뉴 대응 API(보기) 200', async () => {
+      const token = strAdminToken;
+      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+    });
+
+    it('DBA(dba01) 로그인 → 나의대시보드·DB접속 200, 프로덕트·이벤트·사용자·역할 403', async () => {
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
+      const token = loginRes.body.strToken;
+      expect(loginRes.status).toBe(200);
+      await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+    });
+
+    it('GM(gm01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
+      const token = strGmToken;
+      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+    });
+
+    it('기획자(planner01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
+      expect(loginRes.status).toBe(200);
+      const token = loginRes.body.strToken;
+      expect(loginRes.body.user.arrRoles).toContain('game_designer');
+      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
   });
 
