@@ -111,17 +111,19 @@ const QueryPage = () => {
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
 
-  // 선택된 프로덕트의 DB 접속 중 QA/LIVE 활성 접속 존재 여부 (이벤트 생성 시 QA/LIVE 체크 가능 여부)
+  // 이벤트 생성 시 QA/LIVE 체크 가능 여부: 해당 프로덕트에 해당 env DB 접속이 있는지. 목록 미로드 시 둘 다 선택 가능
   const bHasQaConnection = useMemo(() => {
-    if (!nSelectedProductId) return false;
+    if (arrDbConnections.length === 0) return true;
+    if (!nSelectedProductId) return true;
     return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'qa' && c.bIsActive);
   }, [nSelectedProductId, arrDbConnections]);
   const bHasLiveConnection = useMemo(() => {
-    if (!nSelectedProductId) return false;
+    if (arrDbConnections.length === 0) return true;
+    if (!nSelectedProductId) return true;
     return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'live' && c.bIsActive);
   }, [nSelectedProductId, arrDbConnections]);
 
-  // 프로덕트 선택 시: 쿼리 실행 대상에서 해당 프로덕트에 접속이 없는 env 제거
+  // 프로덕트 선택 시: 쿼리 실행 대상에서 해당 프로덕트에 없는 env 제거
   useEffect(() => {
     if (nSelectedProductId == null) return;
     setArrDeployScope((prev) => {
@@ -233,25 +235,11 @@ const QueryPage = () => {
       return;
     }
 
-    const arrQueryTemplates = objSelectedEvent.arrQueryTemplates?.filter((qt) => qt.nDbConnectionId && qt.strQueryTemplate?.trim());
-    let strQuery: string;
-    let arrExecutionTargets: Array<{ nDbConnectionId: number; strQuery: string }> | undefined;
-
-    if (arrQueryTemplates?.length) {
-      // DB 연결별 쿼리 템플릿 사용 — 동일 입력값으로 각 템플릿 치환
-      arrExecutionTargets = arrQueryTemplates.map((qt) => ({
-        nDbConnectionId: qt.nDbConnectionId,
-        strQuery: fnApplyTemplate(qt.strQueryTemplate),
-      }));
-      strQuery = arrExecutionTargets.map((t) => t.strQuery).join('\n;\n');
-    } else {
-      // 단일 쿼리 템플릿
-      strQuery = fnApplyTemplate(objSelectedEvent.strQueryTemplate || '');
-    }
-
+    // 단일 쿼리 템플릿만 사용 (기존 마이그레이션 데이터는 arrQueryTemplates[0]에 있을 수 있음)
+    const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
+    const strQuery = fnApplyTemplate(strTemplate);
     setStrGeneratedQuery(strQuery);
 
-    // 서버에 이벤트 인스턴스 저장 (템플릿 기반 생성 쿼리만 전달)
     setBSubmitting(true);
     try {
       const objPayload: Record<string, unknown> = {
@@ -270,9 +258,6 @@ const QueryPage = () => {
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
       };
-      if (arrExecutionTargets?.length) {
-        objPayload.arrExecutionTargets = arrExecutionTargets;
-      }
 
       const objResult = await fnApiCreateInstance(objPayload);
 
@@ -528,7 +513,8 @@ const QueryPage = () => {
                   }
                   extra={
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      QA/LIVE 선택 시 해당 프로덕트에 해당 환경 DB 접속이 등록·활성화되어 있어야 합니다. 단일 서버: 한 환경만 선택. 다중 서버: QA와 LIVE 둘 다 선택 시 QA 반영 후 LIVE 순으로 실행됩니다.
+                      QA/LIVE 선택 시 해당 프로덕트에 해당 환경 DB 접속이 등록·활성화되어 있어야 합니다. 단일: 한 환경만. 다중: QA 반영 후 LIVE 순으로 실행.
+                      {arrDbConnections.length === 0 && ' DB 접속 목록 미로드 시 둘 다 선택 가능하며, 실행 단계에서 검사됩니다.'}
                     </Text>
                   }
                 >

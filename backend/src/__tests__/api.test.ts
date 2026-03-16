@@ -341,29 +341,28 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('GM: 프로덕트·이벤트·이벤트인스턴스 보기 200, 사용자/역할/DB접속 403', async () => {
+    it('GM: 프로덕트·이벤트·이벤트인스턴스 보기 200, 사용자/역할 403, DB접속은 my_dashboard.view로 200', async () => {
       const token = strGmToken;
       await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('DBA(실행 권한만 부여 시): 이벤트인스턴스만 200, 나머지 메뉴 API 403', async () => {
+    it('DBA(실행 권한만 부여 시): 이벤트인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => r.strPermission);
-      // 나의 대시보드 목록/단건 조회에 my_dashboard.view 필요
       fnSetPermissionsForRole(N_ROLE_DBA, ['my_dashboard.view', 'instance.execute_qa', 'instance.execute_live'] as TPermission[]);
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const token = loginRes.body.strToken;
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       fnSetPermissionsForRole(N_ROLE_DBA, backup as TPermission[]);
     });
   });
@@ -397,19 +396,17 @@ describe('API 전체 테스트', () => {
       fnSetPermissionsForRole(N_ROLE_GM, backup.map((p) => p.strPermission as TPermission));
     });
 
-    it('db.manage·db_connection.* 없으면 GET /api/db-connections → 403', async () => {
-      // GM은 DB 접속 권한 없음 → 403
-      const resGm = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${strGmToken}`);
-      expect(resGm.status).toBe(403);
-      // (DBA는 현재 데이터에서 db_connection.* 보유 시 200이므로, 권한 제거 후 403 검증)
-      const N_ROLE_DBA = 2;
-      const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
-      const withoutDb = backup.map((p) => p.strPermission).filter((s) => s !== 'db.manage' && !s.startsWith('db_connection.')) as TPermission[];
-      fnSetPermissionsForRole(N_ROLE_DBA, withoutDb.length ? withoutDb : ['my_dashboard.execute_qa']);
-      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
-      const resNoDb = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${loginRes.body.strToken}`);
-      fnSetPermissionsForRole(N_ROLE_DBA, backup.map((p) => p.strPermission as TPermission));
-      expect(resNoDb.status).toBe(403);
+    it('db_connection.view·db.manage·my_dashboard.view·instance.create 모두 없으면 GET /api/db-connections → 403', async () => {
+      const N_ROLE_GM = 3;
+      const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_GM).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
+      const withoutAnyDbView = backup
+        .map((p) => p.strPermission)
+        .filter((s) => s !== 'db.manage' && !s.startsWith('db_connection.') && s !== 'my_dashboard.view' && s !== 'instance.create') as TPermission[];
+      fnSetPermissionsForRole(N_ROLE_GM, withoutAnyDbView.length ? withoutAnyDbView : ['product.view', 'event_template.view']);
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'gm01', strPassword: OBJ_PASSWORDS.gm01 });
+      const res = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${loginRes.body.strToken}`);
+      fnSetPermissionsForRole(N_ROLE_GM, backup.map((p) => p.strPermission as TPermission));
+      expect(res.status).toBe(403);
     });
   });
 
@@ -484,7 +481,7 @@ describe('API 전체 테스트', () => {
       expect(resRestore.status).toBe(200);
     });
 
-    it('db.manage 추가 시 GET /api/db-connections → 200, 제거 후 재로그인 시 403', async () => {
+    it('db.manage 추가 시 GET /api/db-connections → 200, db.manage·my_dashboard.view·instance.create 제거 후 403', async () => {
       arrBackupPerms = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_GM).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
       const arrWithDb = [...fnGetPermissionsByRoleId(N_ROLE_GM), 'db.manage'] as TPermission[];
       fnSetPermissionsForRole(N_ROLE_GM, arrWithDb);
@@ -494,8 +491,10 @@ describe('API 전체 테스트', () => {
       const resWithPerm = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${loginRes.body.strToken}`);
       expect(resWithPerm.status).toBe(200);
 
-      const arrWithoutDb = arrBackupPerms.map((p) => p.strPermission).filter((p) => p !== 'db.manage') as TPermission[];
-      fnSetPermissionsForRole(N_ROLE_GM, arrWithoutDb);
+      const arrWithoutDbView = arrBackupPerms
+        .map((p) => p.strPermission)
+        .filter((p) => p !== 'db.manage' && p !== 'my_dashboard.view' && p !== 'instance.create') as TPermission[];
+      fnSetPermissionsForRole(N_ROLE_GM, arrWithoutDbView.length ? arrWithoutDbView : ['product.view', 'event_template.view']);
       const loginNoDb = await request(app).post('/api/auth/login').send({ strUserId: 'gm01', strPassword: OBJ_PASSWORDS.gm01 });
       const resNoPerm = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${loginNoDb.body.strToken}`);
       expect(resNoPerm.status).toBe(403);

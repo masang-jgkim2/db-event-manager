@@ -297,13 +297,28 @@ export type TEventStatus =
 export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
   event_created:      { strLabel: '작성 중',         strColor: 'default' },
   confirm_requested:  { strLabel: '컨펌 요청',       strColor: 'blue' },
-  dba_confirmed:      { strLabel: 'DBA 컨펌',       strColor: 'cyan' },
-  qa_requested:       { strLabel: 'QA 반영 요청',   strColor: 'geekblue' },
-  qa_deployed:        { strLabel: 'QA 반영',        strColor: 'orange' },
+  dba_confirmed:      { strLabel: '컨펌 완료',       strColor: 'cyan' },
+  qa_requested:       { strLabel: '쿼리 요청',      strColor: 'geekblue' },
+  qa_deployed:        { strLabel: '쿼리 반영 완료',  strColor: 'orange' },
   qa_verified:        { strLabel: 'QA 확인',        strColor: 'gold' },
-  live_requested:     { strLabel: 'LIVE 반영 요청', strColor: 'magenta' },
-  live_deployed:      { strLabel: 'LIVE 반영',      strColor: 'volcano' },
+  live_requested:     { strLabel: '쿼리 요청',      strColor: 'magenta' },
+  live_deployed:      { strLabel: '쿼리 반영 완료', strColor: 'volcano' },
   live_verified:      { strLabel: '완료',            strColor: 'green' },
+};
+
+// 프로세스 진행에 따른 현재 환경 (QA / LIVE / DEV 중 하나만 표시)
+export type TDisplayEnv = 'DEV' | 'QA' | 'LIVE';
+export const fnGetDisplayEnv = (strStatus: TEventStatus): TDisplayEnv | null => {
+  if (strStatus.startsWith('live_')) return 'LIVE';
+  if (strStatus.startsWith('qa_')) return 'QA';
+  if (strStatus === 'event_created' || strStatus === 'confirm_requested' || strStatus === 'dba_confirmed') return 'DEV';
+  return null;
+};
+
+export const OBJ_DISPLAY_ENV_COLOR: Record<TDisplayEnv, string> = {
+  DEV: 'default',
+  QA: 'orange',
+  LIVE: 'red',
 };
 
 // 쿼리 개별 실행 결과

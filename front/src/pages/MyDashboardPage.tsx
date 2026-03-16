@@ -23,7 +23,7 @@ import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
 } from '../types';
-import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnFormatPermissionErrorMessage } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -258,24 +258,24 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   const bHasLive = arrScope.includes('live');
 
   const arrSteps = [
-    { strStatus: 'event_created',     strLabel: '작성',          strSubLabel: '' },
+    { strStatus: 'event_created',     strLabel: '작성 중',       strSubLabel: '' },
     { strStatus: 'confirm_requested', strLabel: '컨펌 요청',     strSubLabel: '' },
-    { strStatus: 'dba_confirmed',     strLabel: 'DBA 컨펌',      strSubLabel: '' },
+    { strStatus: 'dba_confirmed',     strLabel: '컨펌 완료',     strSubLabel: '' },
   ];
 
   if (bHasQa) {
     arrSteps.push(
-      { strStatus: 'qa_requested', strLabel: 'QA 요청',  strSubLabel: '' },
-      { strStatus: 'qa_deployed',  strLabel: 'QA 쿼리 실행',  strSubLabel: '' },
-      { strStatus: 'qa_verified',  strLabel: 'QA 확인',  strSubLabel: '' },
+      { strStatus: 'qa_requested', strLabel: '쿼리 요청',       strSubLabel: '(QA)' },
+      { strStatus: 'qa_deployed',  strLabel: '쿼리 반영 완료',  strSubLabel: '(QA)' },
+      { strStatus: 'qa_verified',  strLabel: 'QA 확인',         strSubLabel: '' },
     );
   }
 
   if (bHasLive) {
     arrSteps.push(
-      { strStatus: 'live_requested', strLabel: 'LIVE 요청', strSubLabel: '' },
-      { strStatus: 'live_deployed',  strLabel: 'LIVE 쿼리 실행', strSubLabel: '' },
-      { strStatus: 'live_verified',  strLabel: '완료',       strSubLabel: '' },
+      { strStatus: 'live_requested', strLabel: '쿼리 요청',       strSubLabel: '(LIVE)' },
+      { strStatus: 'live_deployed',  strLabel: '쿼리 반영 완료', strSubLabel: '(LIVE)' },
+      { strStatus: 'live_verified',  strLabel: '완료',            strSubLabel: '' },
     );
   }
 
@@ -303,13 +303,13 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
       borderBottom: `1px solid ${token.colorBorderSecondary}`,
     }}>
       <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>쿼리 실행 대상:</Text>
-        {arrScope.map((s) => (
-          <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 11 }}>
-            {s.toUpperCase()}
-          </Tag>
-        ))}
-        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>진행 단계:</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>환경:</Text>
+        {fnGetDisplayEnv(objInstance.strStatus) ? (
+          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(objInstance.strStatus)!]} style={{ fontSize: 11 }}>{fnGetDisplayEnv(objInstance.strStatus)}</Tag>
+        ) : (
+          <span style={{ fontSize: 11 }}>—</span>
+        )}
+        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
         <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
           {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
         </Tag>
@@ -999,6 +999,15 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       width: 100,
     },
     {
+      title: '환경',
+      key: 'env',
+      width: 72,
+      render: (_: unknown, r: IEventInstance) => {
+        const env = fnGetDisplayEnv(r.strStatus);
+        return env ? <Tag color={OBJ_DISPLAY_ENV_COLOR[env]}>{env}</Tag> : '—';
+      },
+    },
+    {
       title: '상태',
       dataIndex: 'strStatus',
       key: 'strStatus',
@@ -1165,8 +1174,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Card
                     size="small"
                     title={
-                      <Space>
+                      <Space wrap size={4}>
                         <span style={{ fontWeight: 600 }}>{r.strEventName}</span>
+                        {fnGetDisplayEnv(r.strStatus) && (
+                          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</Tag>
+                        )}
                         <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
                       </Space>
                     }
@@ -1240,12 +1252,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
                         : '-'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="쿼리 실행 대상">
-                      <Space size={4}>
-                        {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
-                          <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
-                        ))}
-                      </Space>
+                    <Descriptions.Item label="환경">
+                      {fnGetDisplayEnv(objDetail.strStatus)
+                        ? <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(objDetail.strStatus)!]}>{fnGetDisplayEnv(objDetail.strStatus)}</Tag>
+                        : '—'}
                     </Descriptions.Item>
                     <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
                   </Descriptions>
@@ -1358,7 +1368,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>
-                <Text strong>쿼리 실행 대상</Text>
+                <Text strong>환경</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
                   <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
                 )}
@@ -1381,10 +1391,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     ))}
                   </Checkbox.Group>
                 ) : (
-                  <Space>
-                    {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => (
-                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
-                    ))}
+                  <Space size={4}>
+                    {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
+                      const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+                      return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                    })}
                   </Space>
                 )}
               </div>

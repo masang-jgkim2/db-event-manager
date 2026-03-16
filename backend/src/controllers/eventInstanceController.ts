@@ -408,7 +408,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 쿼리 실행: 템플릿은 DB 연결+쿼리만 정의하고 QA/LIVE 구분 없음. 실행 시 선택한 env에 대해 해당 프로덕트의 DB 접속으로 strGeneratedQuery 실행
+    // 쿼리 실행: 프로덕트 + env 단일 접속으로 strGeneratedQuery 실행 (단일 쿼리 템플릿 롤백)
     const objDbConn = fnFindActiveConnection(nProductId, strEnv);
     if (!objDbConn) {
       res.status(400).json({
@@ -594,34 +594,18 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
-      if (objTemplate) {
-        const arrTemplates = objTemplate.arrQueryTemplates;
-        if (Array.isArray(arrTemplates) && arrTemplates.length > 0) {
-          objInstance.arrExecutionTargets = arrTemplates.map((qt) => ({
-            nDbConnectionId: qt.nDbConnectionId,
-            strQuery: fnApplyQueryTemplate(
-              qt.strQueryTemplate,
-              objInstance.strInputValues,
-              objInstance.dtDeployDate,
-              objInstance.strEventName,
-              objInstance.strServiceAbbr,
-              objInstance.strProductName,
-              objInstance.strServiceRegion
-            ),
-          }));
-          objInstance.strGeneratedQuery = objInstance.arrExecutionTargets.map((t) => t.strQuery).join('\n;\n');
-        } else if (objTemplate.strQueryTemplate) {
-          objInstance.strGeneratedQuery = fnApplyQueryTemplate(
-            objTemplate.strQueryTemplate,
-            objInstance.strInputValues,
-            objInstance.dtDeployDate,
-            objInstance.strEventName,
-            objInstance.strServiceAbbr,
-            objInstance.strProductName,
-            objInstance.strServiceRegion
-          );
-          objInstance.arrExecutionTargets = undefined;
-        }
+      const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
+      if (strTemplate) {
+        objInstance.strGeneratedQuery = fnApplyQueryTemplate(
+          strTemplate,
+          objInstance.strInputValues,
+          objInstance.dtDeployDate,
+          objInstance.strEventName,
+          objInstance.strServiceAbbr,
+          objInstance.strProductName,
+          objInstance.strServiceRegion
+        );
+        objInstance.arrExecutionTargets = undefined;
       }
     }
 

@@ -62,6 +62,7 @@ const DbConnectionPage = () => {
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditConn, setObjEditConn] = useState<IDbConnection | null>(null);
+  const [objSelectedRow, setObjSelectedRow] = useState<IDbConnection | null>(null);  // 확장된 행(선택된 행)
   const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
   const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
   const [form] = Form.useForm();
@@ -153,8 +154,9 @@ const DbConnectionPage = () => {
     }
   };
 
-  // 연결 테스트
+  // 연결 테스트 — 선택 행을 해당 행으로 확장한 뒤 테스트 실행
   const fnHandleTest = async (objConn: IDbConnection) => {
+    setObjSelectedRow(objConn);
     setBTesting(objConn.nId);
     setObjTestResult(null);
     try {
@@ -170,6 +172,61 @@ const DbConnectionPage = () => {
     } finally {
       setBTesting(null);
     }
+  };
+
+  // 선택된 행 아래에 표시할 연결 테스트 상태/결과 패널
+  const fnRenderTestPanel = (r: IDbConnection) => {
+    const bIsTesting = bTesting === r.nId;
+    const objResultForRow = objTestResult?.nId === r.nId ? objTestResult.result : null;
+
+    if (bIsTesting) {
+      return (
+        <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)' }}>
+          <Spin tip="연결 테스트 중..." />
+        </div>
+      );
+    }
+    if (objResultForRow) {
+      return (
+        <div style={{ padding: 12, background: 'var(--ant-color-fill-quaternary)' }}>
+          <Card
+            size="small"
+            style={{ margin: 0, borderColor: objResultForRow.bSuccess ? '#52c41a' : '#ff4d4f' }}
+          >
+            {objResultForRow.bSuccess ? (
+              <>
+                <Text strong style={{ color: '#52c41a' }}>
+                  <CheckCircleOutlined style={{ marginRight: 6 }} />
+                  연결 성공
+                </Text>
+                {objResultForRow.objDbInfo && (
+                  <Descriptions size="small" column={3} style={{ marginTop: 8 }}>
+                    <Descriptions.Item label="DB명">{objResultForRow.objDbInfo.strDatabase}</Descriptions.Item>
+                    <Descriptions.Item label="사용자">{objResultForRow.objDbInfo.strUser}</Descriptions.Item>
+                    <Descriptions.Item label="서버">{objResultForRow.objDbInfo.strServer}</Descriptions.Item>
+                    <Descriptions.Item label="버전">{objResultForRow.objDbInfo.strVersion}</Descriptions.Item>
+                    <Descriptions.Item label="서버 시각">{objResultForRow.objDbInfo.strServerTime}</Descriptions.Item>
+                  </Descriptions>
+                )}
+              </>
+            ) : (
+              <Alert
+                type="error"
+                showIcon
+                icon={<CloseCircleOutlined />}
+                message="연결 실패"
+                description={objResultForRow.strError}
+              />
+            )}
+          </Card>
+        </div>
+      );
+    }
+    return (
+      <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
+        <Text type="secondary">관리 열의 「테스트」 버튼을 클릭하면 연결 테스트 결과가 여기에 표시됩니다.</Text>
+      </div>
+    );
   };
 
   const arrColumns = [
@@ -239,7 +296,7 @@ const DbConnectionPage = () => {
           key: 'actions',
           width: 220,
           render: (_: unknown, r: IDbConnection) => (
-            <Space>
+            <Space onClick={(e) => e.stopPropagation()}>
               {bCanTest && (
                 <Button
                   size="small"
@@ -292,40 +349,6 @@ const DbConnectionPage = () => {
         )}
       </div>
 
-      {/* 테스트 결과 표시 */}
-      {objTestResult && (
-        <Card
-          size="small"
-          style={{ marginBottom: 16, borderColor: objTestResult.result.bSuccess ? '#52c41a' : '#ff4d4f' }}
-        >
-          {objTestResult.result.bSuccess ? (
-            <>
-              <Text strong style={{ color: '#52c41a' }}>
-                <CheckCircleOutlined style={{ marginRight: 6 }} />
-                연결 성공
-              </Text>
-              {objTestResult.result.objDbInfo && (
-                <Descriptions size="small" column={3} style={{ marginTop: 8 }}>
-                  <Descriptions.Item label="DB명">{objTestResult.result.objDbInfo.strDatabase}</Descriptions.Item>
-                  <Descriptions.Item label="사용자">{objTestResult.result.objDbInfo.strUser}</Descriptions.Item>
-                  <Descriptions.Item label="서버">{objTestResult.result.objDbInfo.strServer}</Descriptions.Item>
-                  <Descriptions.Item label="버전">{objTestResult.result.objDbInfo.strVersion}</Descriptions.Item>
-                  <Descriptions.Item label="서버 시각">{objTestResult.result.objDbInfo.strServerTime}</Descriptions.Item>
-                </Descriptions>
-              )}
-            </>
-          ) : (
-            <Alert
-              type="error"
-              showIcon
-              icon={<CloseCircleOutlined />}
-              message="연결 실패"
-              description={objTestResult.result.strError}
-            />
-          )}
-        </Card>
-      )}
-
       <Card>
         <AppTable
           strTableId="db_connections"
@@ -334,6 +357,19 @@ const DbConnectionPage = () => {
           loading={bLoading}
           pagination={false}
           strEmptyText="등록된 DB 접속 정보가 없습니다."
+          expandable={{
+            expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
+            onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
+            expandedRowRender: (r) => fnRenderTestPanel(r),
+            expandIcon: () => null,
+            columnWidth: 24,
+            rowExpandable: () => true,
+          }}
+          rowClassName={(r: IDbConnection) => (r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : '')}
+          onRow={(r: IDbConnection) => ({
+            onClick: () => setObjSelectedRow((prev) => (prev?.nId === r.nId ? null : r)),
+            style: { cursor: 'pointer' },
+          })}
         />
       </Card>
 

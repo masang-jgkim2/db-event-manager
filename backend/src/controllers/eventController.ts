@@ -71,6 +71,11 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       }
     }
 
+    // 단일 쿼리 템플릿 저장 시 세트 비움 (롤백)
+    if (req.body.strQueryTemplate !== undefined) {
+      (arrEvents[nIndex] as any).arrQueryTemplates = undefined;
+    }
+
     // 프로덕트명 갱신
     if (req.body.nProductId !== undefined) {
       const objProduct = arrProducts.find((p) => p.nId === req.body.nProductId);
