@@ -140,7 +140,7 @@ const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
-  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
+  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],

@@ -842,5 +842,37 @@ describe('API 전체 테스트', () => {
       expect(res.status).not.toBe(403);
       expect([200, 400, 404]).toContain(res.status);
     });
+
+    // 쿼리 수정 권한: my_dashboard.query_edit 없으면 confirm_requested/qa_requested/live_requested 단계에서 PUT(strGeneratedQuery) → 403
+    it('query_edit 없이 쿼리 수정 PUT → 403', async () => {
+      const N_ROLE_DBA = 2;
+      const backup = fnGetPermissionsByRoleId(N_ROLE_DBA);
+      // DBA 역할에서 query_edit 제거 (execute_qa만 부여 시 확장으로도 query_edit 안 붙음)
+      fnSetPermissionsForRole(N_ROLE_DBA, ['my_dashboard.view', 'my_dashboard.detail', 'instance.execute_qa', 'instance.execute_live'] as TPermission[]);
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
+      const token = loginRes.body?.strToken;
+      expect(loginRes.status).toBe(200);
+      expect(token).toBeDefined();
+      const perms = loginRes.body.user?.arrPermissions ?? [];
+      expect(perms).not.toContain('my_dashboard.query_edit');
+
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`);
+      const arr = list.body?.arrInstances ?? [];
+      const inConfirm = arr.find((i: { strStatus: string }) => i.strStatus === 'confirm_requested');
+      const inQaReq = arr.find((i: { strStatus: string }) => i.strStatus === 'qa_requested');
+      const id = (inConfirm ?? inQaReq ?? arr[0])?.nId;
+      if (!id) {
+        fnSetPermissionsForRole(N_ROLE_DBA, backup);
+        return;
+      }
+      const res = await request(app)
+        .put(`/api/event-instances/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ strGeneratedQuery: 'SELECT 1;' });
+      expect(res.status).toBe(403);
+      expect(res.body?.strMessage).toMatch(/query_edit|쿼리 수정/);
+
+      fnSetPermissionsForRole(N_ROLE_DBA, backup);
+    });
   });
 });

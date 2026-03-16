@@ -57,8 +57,9 @@ const QueryPage = () => {
   // DB 접속 목록 (이벤트 생성 시 QA/LIVE 선택 가능 여부 검사용)
   const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
 
-  // 결과
+  // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
+  const [arrExecutionTargets, setArrExecutionTargets] = useState<Array<{ nDbConnectionId: number; strQuery: string }>>([]);
 
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -180,6 +181,7 @@ const QueryPage = () => {
   const fnHandleEventChange = (nId: number) => {
     setNSelectedEventId(nId);
     setStrGeneratedQuery('');
+    setArrExecutionTargets([]);
 
     const objEvent = arrEvents.find((e) => e.nId === nId);
     if (objEvent && strSelectedAbbr) {
@@ -235,9 +237,27 @@ const QueryPage = () => {
       return;
     }
 
-    // 단일 쿼리 템플릿만 사용 (기존 마이그레이션 데이터는 arrQueryTemplates[0]에 있을 수 있음)
-    const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
-    const strQuery = fnApplyTemplate(strTemplate);
+    // 다중 쿼리 템플릿 여부: arrQueryTemplates가 1개 이상이면 다중
+    const arrSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+    const bMultiQuery = arrSets.length > 0;
+
+    let strQuery = '';
+    const arrTargets: Array<{ nDbConnectionId: number; strQuery: string }> = [];
+
+    if (bMultiQuery) {
+      for (let i = 0; i < arrSets.length; i++) {
+        const s = arrSets[i];
+        const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim());
+        arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
+      }
+      setArrExecutionTargets(arrTargets);
+      // 미리보기: 세트별 쿼리를 구분자로 합쳐서 표시
+      strQuery = arrTargets.map((t, idx) => `-- === 세트 ${idx + 1} (연결 ID: ${t.nDbConnectionId}) ===\n${t.strQuery}`).join('\n\n');
+    } else {
+      const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
+      strQuery = fnApplyTemplate(strTemplate);
+      setArrExecutionTargets([]);
+    }
     setStrGeneratedQuery(strQuery);
 
     setBSubmitting(true);
@@ -253,11 +273,14 @@ const QueryPage = () => {
         strType: objSelectedEvent.strType,
         strEventName,
         strInputValues: strInputValues.trim(),
-        strGeneratedQuery: strQuery,
+        strGeneratedQuery: bMultiQuery ? (arrTargets[0]?.strQuery ?? '') : strQuery,
         dtDeployDate: strDeployDate,
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
       };
+      if (bMultiQuery && arrTargets.length > 0) {
+        (objPayload as any).arrExecutionTargets = arrTargets;
+      }
 
       const objResult = await fnApiCreateInstance(objPayload);
 
@@ -290,6 +313,7 @@ const QueryPage = () => {
     setStrInputValues('');
     setStrDeployDate('');
     setStrGeneratedQuery('');
+    setArrExecutionTargets([]);
     setArrDeployScope(['qa', 'live']);
   };
 
@@ -446,6 +470,13 @@ const QueryPage = () => {
                   </Select.Option>
                 ))}
               </Select>
+              {objSelectedEvent && (
+                <Space wrap style={{ marginTop: 8 }}>
+                  {(objSelectedEvent.arrQueryTemplates?.length ?? 0) > 0 && (
+                    <Tag color="blue">다중 쿼리 ({objSelectedEvent.arrQueryTemplates!.length}세트)</Tag>
+                  )}
+                </Space>
+              )}
               {objSelectedEvent?.strDescription && (
                 <Alert
                   message={objSelectedEvent.strDescription}

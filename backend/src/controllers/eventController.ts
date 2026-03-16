@@ -71,8 +71,10 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    // 단일 쿼리 템플릿 저장 시 세트 비움 (롤백)
-    if (req.body.strQueryTemplate !== undefined) {
+    // 단일 쿼리 모드일 때만 세트 비움: strQueryTemplate을 보냈고, arrQueryTemplates를 안 보냈거나 비어 있을 때
+    const bSingleMode = req.body.strQueryTemplate !== undefined
+      && (!Array.isArray(req.body.arrQueryTemplates) || req.body.arrQueryTemplates.length === 0);
+    if (bSingleMode) {
       (arrEvents[nIndex] as any).arrQueryTemplates = undefined;
     }
 

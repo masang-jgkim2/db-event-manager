@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Typography,
   Button,
@@ -13,14 +13,17 @@ import {
   Card,
   Row,
   Col,
+  Tabs,
 } from 'antd';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, TEventCategory, TEventType, TInputFormat } from '../types';
+import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat } from '../types';
+import type { IDbConnection } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
 const { Title, Text } = Typography;
@@ -39,9 +42,14 @@ const objTypeColor: Record<string, string> = {
   '초기화': 'orange',
 };
 
+// 쿼리 모드: 단일(한 연결 한 쿼리) / 다중(여러 연결·세트)
+type TQueryMode = 'single' | 'multi';
+
 const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
+  const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
+  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -61,24 +69,48 @@ const EventPage = () => {
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
   const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
-  // 페이지 진입 시 이벤트/프로덕트 로드
+  // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드
   useEffect(() => { fnFetchEvents(); fnFetchProducts(); }, [fnFetchEvents, fnFetchProducts]);
+  useEffect(() => {
+    let bMounted = true;
+    const fnLoad = async () => {
+      try {
+        const res = await fnApiGetDbConnections();
+        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
+          setArrDbConnections(res.arrDbConnections);
+      } catch {
+        // 권한 없으면 빈 배열 유지
+      }
+    };
+    fnLoad();
+    return () => { bMounted = false; };
+  }, []);
   useAutoRefresh(fnFetchEvents);
 
   const fnOpenModal = (objEvent?: IEventTemplate) => {
     if (objEvent) {
       setObjEditEvent(objEvent);
-      // 롤백: 단일 쿼리 템플릿만 사용. 기존 arrQueryTemplates 있으면 첫 세트 값 사용
-      const strQuery = objEvent.arrQueryTemplates?.[0]?.strQueryTemplate ?? objEvent.strQueryTemplate ?? '';
-      const strDefault = objEvent.arrQueryTemplates?.[0]?.strDefaultItems ?? objEvent.strDefaultItems ?? '';
-      form.setFieldsValue({
-        ...objEvent,
-        strQueryTemplate: strQuery,
-        strDefaultItems: strDefault,
-      });
+      const bMulti = (objEvent.arrQueryTemplates?.length ?? 0) > 0;
+      setStrQueryMode(bMulti ? 'multi' : 'single');
+      if (bMulti) {
+        form.setFieldsValue({
+          ...objEvent,
+          arrQueryTemplates: objEvent.arrQueryTemplates,
+        });
+      } else {
+        const strQuery = objEvent.arrQueryTemplates?.[0]?.strQueryTemplate ?? objEvent.strQueryTemplate ?? '';
+        const strDefault = objEvent.arrQueryTemplates?.[0]?.strDefaultItems ?? objEvent.strDefaultItems ?? '';
+        form.setFieldsValue({
+          ...objEvent,
+          strQueryTemplate: strQuery,
+          strDefaultItems: strDefault,
+        });
+      }
     } else {
       setObjEditEvent(null);
+      setStrQueryMode('single');
       form.resetFields();
+      form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
   };
@@ -93,17 +125,32 @@ const EventPage = () => {
     try {
       const objValues = await form.validateFields();
       const objProduct = arrProducts.find((p) => p.nId === objValues.nProductId);
-      const objEventData = {
+      const bMulti = strQueryMode === 'multi';
+
+      const objEventData: Record<string, unknown> = {
         ...objValues,
         strProductName: objProduct?.strName || '',
-        strQueryTemplate: objValues.strQueryTemplate ?? '',
-        strDefaultItems: objValues.strDefaultItems ?? '',
-        arrQueryTemplates: undefined, // 롤백: 단일 쿼리만 사용, 세트 비움
+        strQueryTemplate: bMulti ? '' : (objValues.strQueryTemplate ?? ''),
+        strDefaultItems: bMulti ? '' : (objValues.strDefaultItems ?? ''),
+        arrQueryTemplates: bMulti
+          ? (objValues.arrQueryTemplates ?? []).filter(
+              (s: IQueryTemplateItem) => s.nDbConnectionId && (s.strQueryTemplate ?? '').trim()
+            ).map((s: IQueryTemplateItem) => ({
+              nDbConnectionId: Number(s.nDbConnectionId),
+              strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
+              strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+            }))
+          : undefined,
       };
 
+      if (bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
+        messageApi.warning('다중 쿼리에서는 연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
+        return;
+      }
+
       const result = objEditEvent
-        ? await fnUpdateEvent(objEditEvent.nId, objEventData)
-        : await fnAddEvent(objEventData);
+        ? await fnUpdateEvent(objEditEvent.nId, objEventData as Parameters<typeof fnUpdateEvent>[1])
+        : await fnAddEvent(objEventData as Parameters<typeof fnAddEvent>[0]);
 
       if (result.bSuccess) {
         messageApi.success(result.strMessage);
@@ -122,6 +169,13 @@ const EventPage = () => {
   };
 
   // 입력 형식 라벨
+  // 다중 쿼리 탭에서 선택된 프로덕트에 해당하는 DB 접속만 표시
+  const nProductIdWatch = Form.useWatch('nProductId', form);
+  const arrConnectionsByProduct = useMemo(() => {
+    if (!nProductIdWatch) return [];
+    return arrDbConnections.filter((c) => c.nProductId === nProductIdWatch && c.bIsActive);
+  }, [arrDbConnections, nProductIdWatch]);
+
   const fnGetInputFormatLabel = (strFormat: TInputFormat) => {
     return ARR_INPUT_FORMATS.find((f) => f.value === strFormat)?.label || strFormat;
   };
@@ -223,7 +277,7 @@ const EventPage = () => {
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          {/* 기본 정보 */}
+          {/* 기본 정보 (탭 공통) */}
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -297,21 +351,88 @@ const EventPage = () => {
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
           </Form.Item>
 
-          <Form.Item name="strDefaultItems" label="기본 아이템값 (예시)">
-            <TextArea rows={2} placeholder="예: 7902, 9471 (이벤트 생성 시 입력란 예시로 사용)" style={{ fontFamily: 'monospace', fontSize: 12 }} />
-          </Form.Item>
-
-          <Form.Item
-            name="strQueryTemplate"
-            label="쿼리 템플릿"
-            rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
-          >
-            <TextArea
-              rows={6}
-              placeholder={'{{items}}, {{date}}, {{event_name}}, {{abbr}}, {{product}}, {{region}} 치환 가능'}
-              style={{ fontFamily: 'monospace', fontSize: 12 }}
-            />
-          </Form.Item>
+          <Tabs
+            activeKey={strQueryMode}
+            onChange={(k) => setStrQueryMode(k as TQueryMode)}
+            items={[
+              {
+                key: 'single',
+                label: '단일 쿼리',
+                children: (
+                  <>
+                    <Form.Item name="strDefaultItems" label="기본 아이템값 (예시)">
+                      <TextArea rows={2} placeholder="예: 7902, 9471 (이벤트 생성 시 입력란 예시로 사용)" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                    </Form.Item>
+                    <Form.Item
+                      name="strQueryTemplate"
+                      label="쿼리 템플릿"
+                      rules={strQueryMode === 'single' ? [{ required: true, message: '쿼리 템플릿을 입력하세요.' }] : []}
+                    >
+                      <TextArea
+                        rows={6}
+                        placeholder={'{{items}}, {{date}}, {{event_name}}, {{abbr}}, {{product}}, {{region}} 치환 가능'}
+                        style={{ fontFamily: 'monospace', fontSize: 12 }}
+                      />
+                    </Form.Item>
+                  </>
+                ),
+              },
+              {
+                key: 'multi',
+                label: '다중 쿼리',
+                children: (
+                  <>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                      세트별로 <strong>DB 구분</strong>(종류·접속 등)과 쿼리 템플릿을 지정합니다. QA/LIVE 반영은 이벤트 생성 시 선택하며, 보통 QA 후 LIVE 순으로 진행합니다. 입력값 1개가 모든 세트에 동일 적용됩니다.
+                    </Text>
+                    <Form.List name="arrQueryTemplates">
+                      {(fields, { add, remove }) => (
+                        <>
+                          {fields.map(({ key, name, ...restField }) => (
+                            <Card key={key} size="small" style={{ marginBottom: 12 }} title={<Space>세트 {name + 1}</Space>} extra={fields.length > 1 ? <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => remove(name)} /> : null}>
+                              <Form.Item
+                                {...restField}
+                                name={[name, 'nDbConnectionId']}
+                                label="연결 DB (DB 구분: 종류·접속·DB명 등)"
+                                rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
+                                extra="환경(QA/LIVE) 구분이 아니라, 어떤 DB에 쿼리를 실행할지 구분합니다. QA/LIVE 반영은 이벤트 생성 시 결정됩니다."
+                              >
+                                <Select placeholder="DB 접속 선택 (종류·호스트·DB명)" showSearch optionFilterProp="children">
+                                  {arrConnectionsByProduct.map((c) => (
+                                    <Select.Option key={c.nId} value={c.nId}>
+                                      <Space wrap>
+                                        <Tag color="blue">{c.strKind || 'GAME'}</Tag>
+                                        <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
+                                        <Tag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</Tag>
+                                      </Space>
+                                    </Select.Option>
+                                  ))}
+                                </Select>
+                              </Form.Item>
+                              <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
+                                <Input placeholder="예: 1,2,3" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                              </Form.Item>
+                              <Form.Item
+                                {...restField}
+                                name={[name, 'strQueryTemplate']}
+                                label="쿼리 템플릿"
+                                rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
+                              >
+                                <TextArea rows={4} placeholder="{{items}}, {{date}} 등 치환 가능" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                              </Form.Item>
+                            </Card>
+                          ))}
+                          <Button type="dashed" onClick={() => add({ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' })} block style={{ marginBottom: 8 }}>
+                            세트 추가
+                          </Button>
+                        </>
+                      )}
+                    </Form.List>
+                  </>
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
     </>
