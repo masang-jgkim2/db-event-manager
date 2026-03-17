@@ -1285,21 +1285,35 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
                   }]
                 : []),
-              ...(objDetail.strGeneratedQuery
-                ? [{
-                    key: 'query',
-                    label: '최종 쿼리',
+              ...(objDetail.arrExecutionTargets?.length
+                ? objDetail.arrExecutionTargets.map((t, idx) => ({
+                    key: `query-set-${idx}`,
+                    label: `쿼리 세트 ${idx + 1}`,
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
                         </div>
-                        <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                        <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
                           style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
                       </Space>
                     ),
-                  }]
-                : []),
+                  }))
+                : objDetail.strGeneratedQuery
+                  ? [{
+                      key: 'query',
+                      label: '최종 쿼리',
+                      children: (
+                        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                          <div style={{ textAlign: 'right' }}>
+                            <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                          </div>
+                          <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                            style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                        </Space>
+                      ),
+                    }]
+                  : []),
               {
                 key: 'history',
                 label: '진행 이력',

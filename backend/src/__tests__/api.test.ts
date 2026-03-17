@@ -713,6 +713,106 @@ describe('API 전체 테스트', () => {
     });
   });
 
+  // ─── 다중 세트 E2E: 템플릿(2세트) → 이벤트 생성 → 진행 ─────────────────
+  describe('다중 세트 E2E 테스트', () => {
+    const nProductId = 1;
+    let nConn1: number;
+    let nConn2: number;
+    let nEventTemplateId: number;
+    let nInstanceId: number;
+
+    beforeAll(async () => {
+      const list = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${strAdminToken}`);
+      const conns = (list.body?.arrDbConnections ?? []).filter((c: { nProductId: number }) => c.nProductId === nProductId);
+      nConn1 = conns[0]?.nId ?? arrDbConnections.find((c) => c.nProductId === nProductId)?.nId ?? 0;
+      nConn2 = conns[1]?.nId ?? arrDbConnections.filter((c) => c.nProductId === nProductId)[1]?.nId ?? nConn1;
+    });
+
+    it('다중 세트 이벤트 템플릿 생성 (2세트, 임의 쿼리)', async () => {
+      const res = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId,
+          strEventLabel: '다중세트 테스트 이벤트',
+          strDescription: 'E2E 다중 쿼리 세트 테스트',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strDefaultItems: '',
+          strQueryTemplate: '',
+          arrQueryTemplates: [
+            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1, {{items}} AS Items;' },
+            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+          ],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objEvent?.nId).toBeDefined();
+      expect(res.body.objEvent?.arrQueryTemplates?.length).toBe(2);
+      nEventTemplateId = res.body.objEvent.nId;
+    });
+
+    it('다중 세트로 이벤트 인스턴스 생성 (arrExecutionTargets 2건)', async () => {
+      const dtDeploy = new Date(Date.now() + 86400000).toISOString();
+      const res = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({
+          nEventTemplateId,
+          nProductId,
+          strEventLabel: '다중세트 테스트 이벤트',
+          strProductName: '출조낚시왕',
+          strServiceAbbr: 'FH',
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[FH] 다중 세트 테스트',
+          strInputValues: '100,101\u0001200,201',
+          strGeneratedQuery: 'SELECT 1 AS Set1, 100,101 AS Items;',
+          arrExecutionTargets: [
+            { nDbConnectionId: nConn1, strQuery: 'SELECT 1 AS Set1, 100,101 AS Items;' },
+            { nDbConnectionId: nConn2, strQuery: 'SELECT 2 AS Set2, 200,201 AS Items;' },
+          ],
+          dtDeployDate: dtDeploy,
+          arrDeployScope: ['qa', 'live'],
+          strCreatedBy: 'GM테스트',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.nId).toBeDefined();
+      expect(res.body.objInstance?.strStatus).toBe('event_created');
+      expect(res.body.objInstance?.arrExecutionTargets?.length).toBe(2);
+      nInstanceId = res.body.objInstance.nId;
+    });
+
+    it('인스턴스 상세 조회 시 쿼리 세트 2개 반환', async () => {
+      const res = await request(app)
+        .get(`/api/event-instances/${nInstanceId}`)
+        .set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.arrExecutionTargets?.length).toBe(2);
+      expect(res.body.objInstance?.arrExecutionTargets?.[0]?.strQuery).toContain('Set1');
+      expect(res.body.objInstance?.arrExecutionTargets?.[1]?.strQuery).toContain('Set2');
+    });
+
+    it('이벤트 진행: 컨펌 요청 (confirm_requested)', async () => {
+      const res = await request(app)
+        .patch(`/api/event-instances/${nInstanceId}/status`)
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({ strNextStatus: 'confirm_requested', strComment: '다중세트 E2E 컨펌 요청' });
+      expect([200, 400]).toContain(res.status);
+      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('confirm_requested');
+    });
+
+    it('DBA 컨펌 (dba_confirmed)', async () => {
+      const res = await request(app)
+        .patch(`/api/event-instances/${nInstanceId}/status`)
+        .set('Authorization', `Bearer ${strDbaToken}`)
+        .send({ strNextStatus: 'dba_confirmed', strComment: '다중세트 E2E DBA 컨펌' });
+      expect([200, 400]).toContain(res.status);
+      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('dba_confirmed');
+    });
+  });
+
   // ─── DB 접속 추가·수정·삭제 테스트 ─────────────────────────────────────
   describe('DB 접속 CRUD', () => {
     let nConnId: number;

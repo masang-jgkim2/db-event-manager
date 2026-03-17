@@ -16,6 +16,7 @@ import {
   Result,
   Alert,
   Checkbox,
+  Tabs,
 } from 'antd';
 import {
   CodeOutlined,
@@ -39,6 +40,9 @@ import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
+// 다중 세트 입력값을 서버의 strInputValues 한 필드에 저장할 때 사용하는 구분자
+const MULTI_INPUT_DELIMITER = '\u0001';
+
 const QueryPage = () => {
   const navigate = useNavigate();
   // 선택 상태
@@ -49,6 +53,8 @@ const QueryPage = () => {
   // 입력 상태
   const [strEventName, setStrEventName] = useState('');
   const [strInputValues, setStrInputValues] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 입력값 (인덱스 = 세트 순서) */
+  const [arrInputValues, setArrInputValues] = useState<string[]>([]);
   const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
 
   // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
@@ -112,6 +118,13 @@ const QueryPage = () => {
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
 
+  // 다중 쿼리 세트 (템플릿에 1개 이상 유효한 세트가 있을 때)
+  const arrSets = useMemo(() => {
+    if (!objSelectedEvent) return [];
+    return objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+  }, [objSelectedEvent]);
+  const bMultiQuery = arrSets.length > 0;
+
   // 이벤트 생성 시 QA/LIVE 체크 가능 여부: 해당 프로덕트에 해당 env DB 접속이 있는지. 목록 미로드 시 둘 다 선택 가능
   const bHasQaConnection = useMemo(() => {
     if (arrDbConnections.length === 0) return true;
@@ -159,6 +172,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
 
@@ -174,6 +188,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
   };
@@ -185,24 +200,29 @@ const QueryPage = () => {
 
     const objEvent = arrEvents.find((e) => e.nId === nId);
     if (objEvent && strSelectedAbbr) {
-      // 이벤트 이름 자동 생성
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
-      // 기본 아이템값: 템플릿 공통값 우선, 없으면 세트가 있을 때 첫 세트 기본값 사용
-      const strDefault =
-        (objEvent.strDefaultItems && objEvent.strDefaultItems.trim()) ||
-        (objEvent.arrQueryTemplates?.[0]?.strDefaultItems?.trim()) ||
-        '';
-      setStrInputValues(strDefault);
+      const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      if (arrNewSets.length > 0) {
+        setArrInputValues(arrNewSets.map((s) => (s.strDefaultItems ?? '').trim()));
+        setStrInputValues('');
+      } else {
+        const strDefault =
+          (objEvent.strDefaultItems && objEvent.strDefaultItems.trim()) ||
+          (objEvent.arrQueryTemplates?.[0]?.strDefaultItems?.trim()) ||
+          '';
+        setStrInputValues(strDefault);
+        setArrInputValues([]);
+      }
     }
-
   };
 
-  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리)
-  const fnApplyTemplate = (strTemplate: string): string => {
+  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride로 세트별 입력 사용
+  const fnApplyTemplate = (strTemplate: string, strItemsOverride?: string): string => {
+    const strItems = strItemsOverride !== undefined ? strItemsOverride.trim() : strInputValues.trim();
     const strDateOnly = strDeployDate.slice(0, 10);
     let str = strTemplate;
-    str = str.replace(/\{\{items\}\}/g, strInputValues.trim());
+    str = str.replace(/\{\{items\}\}/g, strItems);
     str = str.replace(/\{\{date\}\}/g, strDateOnly);
     str = str.replace(/\{\{event_name\}\}/g, strEventName);
     str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
@@ -231,15 +251,19 @@ const QueryPage = () => {
       return;
     }
 
-    // 입력값 필요한데 비어있으면 경고
-    if (objSelectedEvent.strInputFormat !== 'none' && !strInputValues.trim()) {
-      messageApi.warning('입력값을 입력해주세요.');
-      return;
+    // 입력값 검증: 다중 세트면 세트별 입력 모두 필수, 단일이면 strInputValues
+    if (objSelectedEvent.strInputFormat !== 'none') {
+      if (bMultiQuery) {
+        const bAllFilled = arrInputValues.length === arrSets.length && arrInputValues.every((v) => (v ?? '').trim().length > 0);
+        if (!bAllFilled) {
+          messageApi.warning('모든 쿼리 세트의 입력값을 입력해주세요.');
+          return;
+        }
+      } else if (!strInputValues.trim()) {
+        messageApi.warning('입력값을 입력해주세요.');
+        return;
+      }
     }
-
-    // 다중 쿼리 템플릿 여부: arrQueryTemplates가 1개 이상이면 다중
-    const arrSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
-    const bMultiQuery = arrSets.length > 0;
 
     let strQuery = '';
     const arrTargets: Array<{ nDbConnectionId: number; strQuery: string }> = [];
@@ -247,7 +271,8 @@ const QueryPage = () => {
     if (bMultiQuery) {
       for (let i = 0; i < arrSets.length; i++) {
         const s = arrSets[i];
-        const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim());
+        const strItems = (arrInputValues[i] ?? '').trim();
+        const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strItems);
         arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
       }
       setArrExecutionTargets(arrTargets);
@@ -262,6 +287,9 @@ const QueryPage = () => {
 
     setBSubmitting(true);
     try {
+      const strPayloadInputValues = bMultiQuery
+        ? arrInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
+        : strInputValues.trim();
       const objPayload: Record<string, unknown> = {
         nEventTemplateId: objSelectedEvent.nId,
         nProductId: objSelectedProduct?.nId || 0,
@@ -272,7 +300,7 @@ const QueryPage = () => {
         strCategory: objSelectedEvent.strCategory,
         strType: objSelectedEvent.strType,
         strEventName,
-        strInputValues: strInputValues.trim(),
+        strInputValues: strPayloadInputValues,
         strGeneratedQuery: bMultiQuery ? (arrTargets[0]?.strQuery ?? '') : strQuery,
         dtDeployDate: strDeployDate,
         arrDeployScope,
@@ -311,6 +339,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
     setArrExecutionTargets([]);
@@ -576,31 +605,67 @@ const QueryPage = () => {
                   </Checkbox.Group>
                 </Form.Item>
 
-                {/* 쿼리 템플릿에 맞는 입력 공간 (템플릿에 따라 한 개 또는 여러 개) */}
+                {/* 쿼리 템플릿에 맞는 입력 공간: 다중 세트면 탭으로 세트별, 단일이면 1개 */}
                 {objSelectedEvent.strInputFormat !== 'none' && (
-                  <Form.Item
-                    label={
-                      <Space>
-                        {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
-                        {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
-                        {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
-                      </Space>
-                    }
-                    extra={
-                      <Text type="secondary" style={{ fontSize: 11 }}>
-                        쿼리 템플릿에 맞게 입력할 수 있는 공간은 템플릿에 따라 한 개일 수도 여러 개일 수 있습니다.
-                      </Text>
-                    }
-                  >
-                    <TextArea
-                      value={strInputValues}
-                      onChange={(e) => setStrInputValues(e.target.value)}
-                      rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
-                      placeholder={fnGetInputPlaceholder()}
-                      style={{ fontFamily: 'monospace', fontSize: 13 }}
-                    />
-                  </Form.Item>
+                  bMultiQuery ? (
+                    <Form.Item
+                      label={
+                        <Space>
+                          <Text strong>쿼리 세트별 입력값</Text>
+                          {objSelectedEvent.strInputFormat === 'item_number' && ' — 아이템 번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && ' — 아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
+                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        </Space>
+                      }
+                    >
+                      <Tabs
+                        type="card"
+                        items={arrSets.map((_, idx) => ({
+                          key: String(idx),
+                          label: `쿼리 세트 ${idx + 1}`,
+                          children: (
+                            <TextArea
+                              value={arrInputValues[idx] ?? ''}
+                              onChange={(e) => {
+                                const next = [...arrInputValues];
+                                while (next.length <= idx) next.push('');
+                                next[idx] = e.target.value;
+                                setArrInputValues(next);
+                              }}
+                              rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
+                              placeholder={fnGetInputPlaceholder()}
+                              style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8 }}
+                            />
+                          ),
+                        }))}
+                      />
+                    </Form.Item>
+                  ) : (
+                    <Form.Item
+                      label={
+                        <Space>
+                          {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
+                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        </Space>
+                      }
+                      extra={
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          쿼리 템플릿에 맞게 입력해주세요.
+                        </Text>
+                      }
+                    >
+                      <TextArea
+                        value={strInputValues}
+                        onChange={(e) => setStrInputValues(e.target.value)}
+                        rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
+                        placeholder={fnGetInputPlaceholder()}
+                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                      />
+                    </Form.Item>
+                  )
                 )}
               </Form>
 
@@ -651,7 +716,6 @@ const QueryPage = () => {
           >
             {strGeneratedQuery ? (
               <>
-                {/* 이벤트 이름 표시 */}
                 <Alert
                   message={
                     <Space>
@@ -663,20 +727,47 @@ const QueryPage = () => {
                   showIcon
                   style={{ marginBottom: 12 }}
                 />
-                <TextArea
-                  value={strGeneratedQuery}
-                  readOnly
-                  autoSize={{ minRows: 10, maxRows: 25 }}
-                  style={{
-                    fontFamily: "'Consolas', 'Monaco', monospace",
-                    fontSize: 13,
-                    background: '#1e1e1e',
-                    color: '#d4d4d4',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: 16,
-                  }}
-                />
+                {arrExecutionTargets.length > 0 ? (
+                  <Tabs
+                    type="card"
+                    items={arrExecutionTargets.map((t, idx) => ({
+                      key: String(idx),
+                      label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                      children: (
+                        <TextArea
+                          value={t.strQuery}
+                          readOnly
+                          autoSize={{ minRows: 8, maxRows: 20 }}
+                          style={{
+                            fontFamily: "'Consolas', 'Monaco', monospace",
+                            fontSize: 12,
+                            background: '#1e1e1e',
+                            color: '#d4d4d4',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: 12,
+                            marginTop: 8,
+                          }}
+                        />
+                      ),
+                    }))}
+                  />
+                ) : (
+                  <TextArea
+                    value={strGeneratedQuery}
+                    readOnly
+                    autoSize={{ minRows: 10, maxRows: 25 }}
+                    style={{
+                      fontFamily: "'Consolas', 'Monaco', monospace",
+                      fontSize: 13,
+                      background: '#1e1e1e',
+                      color: '#d4d4d4',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: 16,
+                    }}
+                  />
+                )}
               </>
             ) : (
               <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>
