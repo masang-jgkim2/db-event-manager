@@ -1,4 +1,5 @@
 // Express 앱 생성 (라우트·미들웨어만 구성, listen 없음 — 테스트에서 supertest로 사용)
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/authRoutes';
@@ -12,9 +13,15 @@ import adminRoutes from './routes/adminRoutes';
 
 const app = express();
 
-// 개발/ E2E 시 프론트 포트가 5173 또는 5174일 수 있음
+// localhost + IP(외부 접속) 허용 — 동일 서버를 IP로 접근해도 로그인 등 동작
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174'],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
+    if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return cb(null, true);
+    if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);
+    cb(null, false);
+  },
   credentials: true,
 }));
 app.use(express.json());
@@ -29,7 +36,13 @@ app.use('/api/roles', roleRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (_req, res) => {
-  res.json({ bSuccess: true, strMessage: '서버가 정상 동작 중입니다.' });
+  const strCwd = process.cwd();
+  const strDataDir = path.join(strCwd, 'data');
+  res.json({
+    bSuccess: true,
+    strMessage: '서버가 정상 동작 중입니다.',
+    strDataDir,  // 외부/로컬 접속 시 동일 백엔드인지 확인용
+  });
 });
 
 export default app;

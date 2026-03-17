@@ -11,21 +11,22 @@ const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
 // 로그인 (정규화: 사용자+역할 조립 후 검증)
 export const fnLogin = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { strUserId, strPassword } = req.body as ILoginRequest;
-
-    if (!strUserId || !strPassword) {
+    const strUserIdTrim = typeof req.body?.strUserId === 'string' ? req.body.strUserId.trim() : '';
+    const strPassword = req.body?.strPassword;
+    if (!strUserIdTrim || !strPassword) {
       res.status(400).json({ bSuccess: false, strMessage: '아이디와 비밀번호를 입력해주세요.' });
       return;
     }
-
-    const objUser = fnFindUserByStrUserId(strUserId);
+    const objUser = fnFindUserByStrUserId(strUserIdTrim);
     if (!objUser) {
+      console.log(`[로그인] 사용자 없음 | strUserId=${JSON.stringify(strUserIdTrim)}`);
       res.status(401).json({ bSuccess: false, strMessage: '아이디 또는 비밀번호가 올바르지 않습니다.' });
       return;
     }
 
     const bIsPasswordValid = await bcrypt.compare(strPassword, objUser.strPassword);
     if (!bIsPasswordValid) {
+      console.log(`[로그인] 비밀번호 불일치 | strUserId=${objUser.strUserId}`);
       res.status(401).json({ bSuccess: false, strMessage: '아이디 또는 비밀번호가 올바르지 않습니다.' });
       return;
     }

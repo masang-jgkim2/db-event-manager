@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "test": "jest --runInBand",
     "test:api": "jest --runInBand --testPathPattern=api.test",
-    "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\""
+    "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\"",
+    "reset-password": "node scripts/reset-password.js"
   },
   "keywords": [],
   "author": "",
