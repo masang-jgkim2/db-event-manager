@@ -1036,17 +1036,14 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       width: 100,
     },
     {
-      title: '반영 범위',
-      key: 'deployScope',
+      title: '반영',
+      key: 'scope',
       width: 72,
-      render: (_: unknown, r: IEventInstance) => (
-        <Space size={4}>
-          {(r.arrDeployScope ?? ['qa', 'live']).map((s) => {
-            const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-            return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
-          })}
-        </Space>
-      ),
+      render: (_: unknown, r: IEventInstance) => {
+        const env = fnGetDisplayEnv(r.strStatus);
+        const scope = env ?? 'DEV';
+        return <Tag color={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</Tag>;
+      },
     },
     {
       title: '상태',
