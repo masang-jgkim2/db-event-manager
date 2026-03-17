@@ -91,24 +91,24 @@ const EventPage = () => {
     if (objEvent) {
       setObjEditEvent(objEvent);
       const bMulti = (objEvent.arrQueryTemplates?.length ?? 0) > 0;
-      setStrQueryMode(bMulti ? 'multi' : 'single');
+      setStrQueryMode('multi'); // 단일 쿼리 탭 숨김 → 항상 다중으로 표시
       if (bMulti) {
         form.setFieldsValue({
           ...objEvent,
           arrQueryTemplates: objEvent.arrQueryTemplates,
         });
       } else {
-        const strQuery = objEvent.arrQueryTemplates?.[0]?.strQueryTemplate ?? objEvent.strQueryTemplate ?? '';
-        const strDefault = objEvent.arrQueryTemplates?.[0]?.strDefaultItems ?? objEvent.strDefaultItems ?? '';
+        // 기존 단일 템플릿 → 다중 폼에 1세트로 표시 (연결 DB는 사용자가 선택)
+        const strQuery = objEvent.strQueryTemplate ?? '';
+        const strDefault = objEvent.strDefaultItems ?? '';
         form.setFieldsValue({
           ...objEvent,
-          strQueryTemplate: strQuery,
-          strDefaultItems: strDefault,
+          arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
         });
       }
     } else {
       setObjEditEvent(null);
-      setStrQueryMode('single');
+      setStrQueryMode('multi');
       form.resetFields();
       form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
@@ -144,7 +144,7 @@ const EventPage = () => {
       };
 
       if (bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
-        messageApi.warning('다중 쿼리에서는 연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
+        messageApi.warning('연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
         return;
       }
 
@@ -351,35 +351,14 @@ const EventPage = () => {
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
           </Form.Item>
 
+          {/* 단일 쿼리 탭 숨김 — 필요 시 items에 single 추가 */}
           <Tabs
             activeKey={strQueryMode}
             onChange={(k) => setStrQueryMode(k as TQueryMode)}
             items={[
               {
-                key: 'single',
-                label: '단일 쿼리',
-                children: (
-                  <>
-                    <Form.Item name="strDefaultItems" label="기본 아이템값 (예시)">
-                      <TextArea rows={2} placeholder="예: 7902, 9471 (이벤트 생성 시 입력란 예시로 사용)" style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                    </Form.Item>
-                    <Form.Item
-                      name="strQueryTemplate"
-                      label="쿼리 템플릿"
-                      rules={strQueryMode === 'single' ? [{ required: true, message: '쿼리 템플릿을 입력하세요.' }] : []}
-                    >
-                      <TextArea
-                        rows={6}
-                        placeholder={'{{items}}, {{date}}, {{event_name}}, {{abbr}}, {{product}}, {{region}} 치환 가능'}
-                        style={{ fontFamily: 'monospace', fontSize: 12 }}
-                      />
-                    </Form.Item>
-                  </>
-                ),
-              },
-              {
                 key: 'multi',
-                label: '다중 쿼리',
+                label: '쿼리 템플릿',
                 children: (
                   <>
                     <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
