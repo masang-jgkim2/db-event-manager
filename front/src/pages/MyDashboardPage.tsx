@@ -3,7 +3,7 @@ import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
-  Steps, Checkbox, Tooltip, theme as antdTheme, Collapse,
+  Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -27,6 +27,9 @@ import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPL
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
+const MULTI_INPUT_DELIMITER = '\u0001';
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
@@ -304,12 +307,13 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
       borderBottom: `1px solid ${token.colorBorderSecondary}`,
     }}>
       <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>환경:</Text>
-        {fnGetDisplayEnv(objInstance.strStatus) ? (
-          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(objInstance.strStatus)!]} style={{ fontSize: 11 }}>{fnGetDisplayEnv(objInstance.strStatus)}</Tag>
-        ) : (
-          <span style={{ fontSize: 11 }}>—</span>
-        )}
+        <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
+        <Space size={4}>
+          {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
+            const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+            return opt ? <Tag key={s} color={opt.strColor} style={{ fontSize: 11 }}>{opt.label}</Tag> : null;
+          })}
+        </Space>
         <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
         <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
           {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
@@ -342,12 +346,16 @@ const MyDashboardPage = () => {
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
   const [strEditEventName, setStrEditEventName] = useState('');
   const [strEditInputValues, setStrEditInputValues] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 입력값 (수정 모달) */
+  const [arrEditInputValues, setArrEditInputValues] = useState<string[]>([]);
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
   // DBA 쿼리 수정 모달
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
   const [strQueryEditValue, setStrQueryEditValue] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 쿼리 (쿼리 수정 모달) */
+  const [arrQueryEditValues, setArrQueryEditValues] = useState<string[]>([]);
   const [bQuerySaving, setBQuerySaving] = useState(false);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
@@ -470,22 +478,36 @@ const MyDashboardPage = () => {
     }
   };
 
-  // 수정 모달 열기
+  // 수정 모달 열기 (다중 세트면 입력값을 세트별 배열로 분리)
   const fnOpenEdit = (r: IEventInstance) => {
     setObjEditInstance(r);
     setStrEditEventName(r.strEventName);
-    setStrEditInputValues(r.strInputValues);
+    const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
+    if (bMulti && r.arrExecutionTargets?.length) {
+      const nSets = r.arrExecutionTargets.length;
+      const strInput = r.strInputValues ?? '';
+      const parts = strInput.split(MULTI_INPUT_DELIMITER);
+      const arr = Array.from({ length: nSets }, (_, i) => parts[i] ?? '');
+      setArrEditInputValues(arr);
+      setStrEditInputValues('');
+    } else {
+      setStrEditInputValues(r.strInputValues ?? '');
+      setArrEditInputValues([]);
+    }
     setStrEditDeployDate(r.dtDeployDate);
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
     setBEditOpen(true);
   };
 
-  // 수정 저장
+  // 수정 저장 (다중 세트면 세트별 입력값을 구분자로 합쳐 전송)
   const fnSaveEdit = async () => {
     if (!objEditInstance) return;
+    const strPayloadInputValues = objEditInstance.arrExecutionTargets?.length
+      ? arrEditInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
+      : strEditInputValues;
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
-      strInputValues: strEditInputValues,
+      strInputValues: strPayloadInputValues,
       dtDeployDate: strEditDeployDate,
       arrDeployScope: arrEditDeployScope,
     });
@@ -497,21 +519,35 @@ const MyDashboardPage = () => {
     }
   };
 
-  // DBA 쿼리 수정 모달 열기
+  // DBA 쿼리 수정 모달 열기 (다중 세트면 세트별 쿼리 배열로)
   const fnOpenQueryEdit = (r: IEventInstance) => {
     setObjQueryEditInstance(r);
-    setStrQueryEditValue(r.strGeneratedQuery);
+    const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
+    if (bMulti && r.arrExecutionTargets) {
+      setArrQueryEditValues(r.arrExecutionTargets.map((t) => t.strQuery ?? ''));
+      setStrQueryEditValue('');
+    } else {
+      setStrQueryEditValue(r.strGeneratedQuery ?? '');
+      setArrQueryEditValues([]);
+    }
     setBQueryEditOpen(true);
   };
 
-  // DBA 쿼리 수정 저장
+  // DBA 쿼리 수정 저장 (다중 세트면 arrExecutionTargets 전송)
   const fnSaveQueryEdit = async () => {
     if (!objQueryEditInstance) return;
     setBQuerySaving(true);
     try {
-      const result = await fnStoreUpdateInstance(objQueryEditInstance.nId, {
-        strGeneratedQuery: strQueryEditValue,
-      });
+      const bMulti = (objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0;
+      const payload: Record<string, unknown> = bMulti && objQueryEditInstance.arrExecutionTargets
+        ? {
+            arrExecutionTargets: objQueryEditInstance.arrExecutionTargets.map((t, i) => ({
+              nDbConnectionId: t.nDbConnectionId,
+              strQuery: arrQueryEditValues[i] ?? t.strQuery ?? '',
+            })),
+          }
+        : { strGeneratedQuery: strQueryEditValue };
+      const result = await fnStoreUpdateInstance(objQueryEditInstance.nId, payload);
       if (result.bSuccess) {
         messageApi.success('쿼리가 수정되었습니다.');
         setBQueryEditOpen(false);
@@ -1000,13 +1036,17 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       width: 100,
     },
     {
-      title: '환경',
-      key: 'env',
+      title: '반영 범위',
+      key: 'deployScope',
       width: 72,
-      render: (_: unknown, r: IEventInstance) => {
-        const env = fnGetDisplayEnv(r.strStatus);
-        return env ? <Tag color={OBJ_DISPLAY_ENV_COLOR[env]}>{env}</Tag> : '—';
-      },
+      render: (_: unknown, r: IEventInstance) => (
+        <Space size={4}>
+          {(r.arrDeployScope ?? ['qa', 'live']).map((s) => {
+            const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+            return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+          })}
+        </Space>
+      ),
     },
     {
       title: '상태',
@@ -1253,10 +1293,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
                         : '-'}
                     </Descriptions.Item>
-                    <Descriptions.Item label="환경">
-                      {fnGetDisplayEnv(objDetail.strStatus)
-                        ? <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(objDetail.strStatus)!]}>{fnGetDisplayEnv(objDetail.strStatus)}</Tag>
-                        : '—'}
+                    <Descriptions.Item label="반영 범위">
+                      <Space size={4}>
+                        {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
+                          const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+                          return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                        })}
+                      </Space>
                     </Descriptions.Item>
                     <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
                   </Descriptions>
@@ -1278,27 +1321,46 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   </Space>
                 ),
               },
-              ...(objDetail.strInputValues
-                ? [{
-                    key: 'input',
-                    label: '입력값',
-                    children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
-                  }]
-                : []),
               ...(objDetail.arrExecutionTargets?.length
-                ? objDetail.arrExecutionTargets.map((t, idx) => ({
-                    key: `query-set-${idx}`,
-                    label: `쿼리 세트 ${idx + 1}`,
-                    children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                        <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
-                        </div>
-                        <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
-                      </Space>
-                    ),
-                  }))
+                ? (() => {
+                    const arrInputParts = (objDetail.strInputValues ?? '').split(MULTI_INPUT_DELIMITER);
+                    return objDetail.arrExecutionTargets!.map((t, idx) => {
+                      const strSetInput = arrInputParts[idx] ?? arrInputParts[0] ?? '';
+                      return {
+                        key: `query-set-${idx}`,
+                        label: `쿼리 세트 ${idx + 1}`,
+                        children: (
+                          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                            {strSetInput !== '' && (
+                              <div>
+                                <Text type="secondary" style={{ fontSize: 12 }}>입력값 (이 세트)</Text>
+                                <div style={{ marginTop: 4, padding: 8, background: token.colorFillTertiary, borderRadius: token.borderRadius }}>
+                                  <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{strSetInput}</Text>
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
+                              </div>
+                              <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                                style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                            </div>
+                          </Space>
+                        ),
+                      };
+                    });
+                  })()
+                : objDetail.strInputValues
+                  ? [{
+                      key: 'input',
+                      label: '입력값',
+                      children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
+                    }]
+                  : []),
+              ...(objDetail.arrExecutionTargets?.length
+                ? []
                 : objDetail.strGeneratedQuery
                   ? [{
                       key: 'query',
@@ -1383,7 +1445,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>
-                <Text strong>환경</Text>
+                <Text strong>반영 범위</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
                   <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
                 )}
@@ -1428,18 +1490,71 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 onChange={(date) => setStrEditDeployDate(date ? date.toISOString() : '')}
               />
             </div>
-            <div>
-              <Space style={{ marginBottom: 4 }}>
-                <Text strong>입력값 (아이템/퀘스트)</Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
-              </Space>
-              <TextArea
-                value={strEditInputValues}
-                onChange={(e) => setStrEditInputValues(e.target.value)}
-                rows={5}
-                style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
-              />
-            </div>
+            {(objEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
+              <>
+                <div>
+                  <Space style={{ marginBottom: 4 }}>
+                    <Text strong>입력값 (아이템/퀘스트)</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>세트별 입력 · 수정 시 쿼리 자동 재생성</Text>
+                  </Space>
+                  <Tabs
+                    type="card"
+                    style={{ marginTop: 8 }}
+                    items={objEditInstance.arrExecutionTargets!.map((_, idx) => ({
+                      key: String(idx),
+                      label: `세트 ${idx + 1} 입력값`,
+                      children: (
+                        <TextArea
+                          value={arrEditInputValues[idx] ?? ''}
+                          onChange={(e) => {
+                            const next = [...arrEditInputValues];
+                            while (next.length <= idx) next.push('');
+                            next[idx] = e.target.value;
+                            setArrEditInputValues(next);
+                          }}
+                          rows={4}
+                          style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        />
+                      ),
+                    }))}
+                  />
+                </div>
+                <div>
+                  <Space style={{ marginBottom: 4 }}>
+                    <Text strong>쿼리 (읽기 전용)</Text>
+                  </Space>
+                  <Tabs
+                    type="card"
+                    style={{ marginTop: 8 }}
+                    items={objEditInstance.arrExecutionTargets!.map((t, idx) => ({
+                      key: String(idx),
+                      label: `쿼리 세트 ${idx + 1}`,
+                      children: (
+                        <TextArea
+                          value={t.strQuery}
+                          readOnly
+                          rows={6}
+                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary }}
+                        />
+                      ),
+                    }))}
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <Space style={{ marginBottom: 4 }}>
+                  <Text strong>입력값 (아이템/퀘스트)</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
+                </Space>
+                <TextArea
+                  value={strEditInputValues}
+                  onChange={(e) => setStrEditInputValues(e.target.value)}
+                  rows={5}
+                  style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
+                />
+              </div>
+            )}
           </Space>
         )}
       </Modal>
@@ -1473,16 +1588,47 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               message="DBA 전용 쿼리 직접 수정"
               description={`이벤트: ${objQueryEditInstance.strEventName} | 수정 이력이 진행 로그에 기록됩니다.`}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
-            </div>
-            <Input.TextArea
-              value={strQueryEditValue}
-              onChange={(e) => setStrQueryEditValue(e.target.value)}
-              autoSize={{ minRows: 10, maxRows: 25 }}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
-              placeholder="SQL 쿼리를 입력하세요..."
-            />
+            {(objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
+              <Tabs
+                type="card"
+                items={objQueryEditInstance.arrExecutionTargets!.map((t, idx) => ({
+                  key: String(idx),
+                  label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                  children: (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
+                      </div>
+                      <Input.TextArea
+                        value={arrQueryEditValues[idx] ?? ''}
+                        onChange={(e) => {
+                          const next = [...arrQueryEditValues];
+                          while (next.length <= idx) next.push('');
+                          next[idx] = e.target.value;
+                          setArrQueryEditValues(next);
+                        }}
+                        autoSize={{ minRows: 10, maxRows: 25 }}
+                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        placeholder="SQL 쿼리를 입력하세요..."
+                      />
+                    </div>
+                  ),
+                }))}
+              />
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
+                </div>
+                <Input.TextArea
+                  value={strQueryEditValue}
+                  onChange={(e) => setStrQueryEditValue(e.target.value)}
+                  autoSize={{ minRows: 10, maxRows: 25 }}
+                  style={{ fontFamily: 'monospace', fontSize: 13 }}
+                  placeholder="SQL 쿼리를 입력하세요..."
+                />
+              </>
+            )}
           </Space>
         )}
       </Modal>

@@ -563,11 +563,11 @@ const QueryPage = () => {
                   />
                 </Form.Item>
 
-                {/* 쿼리 실행 대상: QA/LIVE 선택 시 해당 프로덕트에 그 env DB 접속이 있어야 함 */}
+                {/* 반영 범위: QA/LIVE 선택 시 해당 프로덕트에 그 env DB 접속이 있어야 함 */}
                 <Form.Item
                   label={
                     <Space>
-                      쿼리 실행 대상
+                      반영 범위
                       <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
                     </Space>
                   }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Typography,
   Button,
@@ -17,7 +17,6 @@ import {
 } from 'antd';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
-const QUERY_TABS_ADD_KEY = '__add__';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -45,6 +44,117 @@ const objTypeColor: Record<string, string> = {
 
 // 쿼리 모드: 단일(한 연결 한 쿼리) / 다중(여러 연결·세트)
 type TQueryMode = 'single' | 'multi';
+
+const QUERY_TABS_ADD_KEY = '__add__';
+
+// Form.List 렌더 prop 안에서는 훅 호출 불가 → 별도 컴포넌트로 분리
+type TQueryTemplatesTabContentProps = {
+  fields: { key: number; name: number; [k: string]: unknown }[];
+  add: (defaultValue: unknown) => void;
+  remove: (index: number) => void;
+  arrConnectionsByProduct: IDbConnection[];
+  activeKey: string;
+  setActiveKey: (k: string) => void;
+  justAddedRef: React.MutableRefObject<boolean>;
+};
+const QueryTemplatesTabContent = ({
+  fields,
+  add,
+  remove,
+  arrConnectionsByProduct,
+  activeKey,
+  setActiveKey,
+  justAddedRef,
+}: TQueryTemplatesTabContentProps) => {
+  useEffect(() => {
+    if (justAddedRef.current && fields.length > 0) {
+      justAddedRef.current = false;
+      setActiveKey(String(fields[fields.length - 1].key));
+      return;
+    }
+    // 세트 삭제 시: 현재 활성 탭이 없어지면 마지막 세트 탭으로 전환
+    if (fields.length > 0) {
+      const keys = new Set(fields.map((f) => String(f.key)));
+      if (!keys.has(activeKey) && activeKey !== QUERY_TABS_ADD_KEY) {
+        setActiveKey(String(fields[fields.length - 1].key));
+      }
+    }
+  }, [fields.length, fields, setActiveKey, justAddedRef, activeKey]);
+
+  const tabItems = [
+    ...fields.map(({ key, name, ...restField }) => ({
+      key: String(key),
+      label: `세트 ${name + 1}`,
+      children: (
+        <div style={{ paddingTop: 8 }}>
+          {fields.length > 1 && (
+            <div style={{ textAlign: 'right', marginBottom: 8 }}>
+              <Button type="text" danger size="small" icon={<MinusCircleOutlined />} onClick={() => remove(name)}>
+                이 세트 삭제
+              </Button>
+            </div>
+          )}
+          <Form.Item
+            {...restField}
+            name={[name, 'nDbConnectionId']}
+            label="연결 DB (DB 구분: 종류·접속·DB명 등)"
+            rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
+            extra="환경(QA/LIVE) 구분이 아니라, 어떤 DB에 쿼리를 실행할지 구분합니다. QA/LIVE 반영은 이벤트 생성 시 결정됩니다."
+          >
+            <Select placeholder="DB 접속 선택 (종류·호스트·DB명)" showSearch optionFilterProp="children">
+              {arrConnectionsByProduct.map((c) => (
+                <Select.Option key={c.nId} value={c.nId}>
+                  <Space wrap>
+                    <Tag color="blue">{c.strKind || 'GAME'}</Tag>
+                    <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
+                    <Tag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</Tag>
+                  </Space>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
+            <Input placeholder="예: 1,2,3" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </Form.Item>
+          <Form.Item
+            {...restField}
+            name={[name, 'strQueryTemplate']}
+            label="쿼리 템플릿"
+            rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
+          >
+            <TextArea rows={4} placeholder="{{items}}, {{date}} 등 치환 가능" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </Form.Item>
+        </div>
+      ),
+    })),
+    {
+      key: QUERY_TABS_ADD_KEY,
+      label: '+ 세트 추가',
+      children: (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
+          새 쿼리 세트를 추가하려면 「+ 세트 추가」 탭을 클릭하세요.
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <Tabs
+      type="card"
+      activeKey={activeKey}
+      onTabClick={(key) => {
+        if (key === QUERY_TABS_ADD_KEY) {
+          add({ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
+          justAddedRef.current = true;
+          setActiveKey(QUERY_TABS_ADD_KEY);
+        } else {
+          setActiveKey(key);
+        }
+      }}
+      items={tabItems}
+    />
+  );
+};
 
 const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
@@ -370,87 +480,17 @@ const EventPage = () => {
                       세트별로 <strong>DB 구분</strong>(종류·접속 등)과 쿼리 템플릿을 지정합니다. QA/LIVE 반영은 이벤트 생성 시 선택하며, 보통 QA 후 LIVE 순으로 진행합니다. 입력값 1개가 모든 세트에 동일 적용됩니다.
                     </Text>
                     <Form.List name="arrQueryTemplates">
-                      {(fields, { add, remove }) => {
-                        // 세트 추가 탭 클릭 후 새 세트가 생기면 해당 탭으로 전환
-                        useEffect(() => {
-                          if (bQueryTabsJustAddedRef.current && fields.length > 0) {
-                            bQueryTabsJustAddedRef.current = false;
-                            setStrQueryTabsActiveKey(String(fields[fields.length - 1].key));
-                          }
-                        }, [fields.length, fields]);
-                        const tabItems = [
-                          ...fields.map(({ key, name, ...restField }) => ({
-                            key: String(key),
-                            label: `세트 ${name + 1}`,
-                            children: (
-                              <div style={{ paddingTop: 8 }}>
-                                {fields.length > 1 && (
-                                  <div style={{ textAlign: 'right', marginBottom: 8 }}>
-                                    <Button type="text" danger size="small" icon={<MinusCircleOutlined />} onClick={() => remove(name)}>
-                                      이 세트 삭제
-                                    </Button>
-                                  </div>
-                                )}
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'nDbConnectionId']}
-                                  label="연결 DB (DB 구분: 종류·접속·DB명 등)"
-                                  rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
-                                  extra="환경(QA/LIVE) 구분이 아니라, 어떤 DB에 쿼리를 실행할지 구분합니다. QA/LIVE 반영은 이벤트 생성 시 결정됩니다."
-                                >
-                                  <Select placeholder="DB 접속 선택 (종류·호스트·DB명)" showSearch optionFilterProp="children">
-                                    {arrConnectionsByProduct.map((c) => (
-                                      <Select.Option key={c.nId} value={c.nId}>
-                                        <Space wrap>
-                                          <Tag color="blue">{c.strKind || 'GAME'}</Tag>
-                                          <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
-                                          <Tag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</Tag>
-                                        </Space>
-                                      </Select.Option>
-                                    ))}
-                                  </Select>
-                                </Form.Item>
-                                <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
-                                  <Input placeholder="예: 1,2,3" style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                                </Form.Item>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'strQueryTemplate']}
-                                  label="쿼리 템플릿"
-                                  rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
-                                >
-                                  <TextArea rows={4} placeholder="{{items}}, {{date}} 등 치환 가능" style={{ fontFamily: 'monospace', fontSize: 12 }} />
-                                </Form.Item>
-                              </div>
-                            ),
-                          })),
-                          {
-                            key: QUERY_TABS_ADD_KEY,
-                            label: '+ 세트 추가',
-                            children: (
-                              <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
-                                새 쿼리 세트를 추가하려면 「+ 세트 추가」 탭을 클릭하세요.
-                              </div>
-                            ),
-                          },
-                        ];
-                        return (
-                          <Tabs
-                            type="card"
-                            activeKey={strQueryTabsActiveKey}
-                            onTabClick={(key) => {
-                              if (key === QUERY_TABS_ADD_KEY) {
-                                add({ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
-                                bQueryTabsJustAddedRef.current = true;
-                                setStrQueryTabsActiveKey(QUERY_TABS_ADD_KEY);
-                              } else {
-                                setStrQueryTabsActiveKey(key);
-                              }
-                            }}
-                            items={tabItems}
-                          />
-                        );
-                      }}
+                      {(fields, { add, remove }) => (
+                        <QueryTemplatesTabContent
+                          fields={fields}
+                          add={add}
+                          remove={remove}
+                          arrConnectionsByProduct={arrConnectionsByProduct}
+                          activeKey={strQueryTabsActiveKey}
+                          setActiveKey={setStrQueryTabsActiveKey}
+                          justAddedRef={bQueryTabsJustAddedRef}
+                        />
+                      )}
                     </Form.List>
                   </>
                 ),
