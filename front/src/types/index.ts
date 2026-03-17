@@ -293,16 +293,16 @@ export type TEventStatus =
   | 'live_deployed'       // DBA LIVE 반영
   | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
-// 상태 라벨/색상 매핑
+// 상태 라벨/색상 — 나의 대시보드 권한 이름과 동일 (작성 중→생성, 완료 유지)
 export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
-  event_created:      { strLabel: '작성 중',         strColor: 'default' },
+  event_created:      { strLabel: '생성',            strColor: 'default' },
   confirm_requested:  { strLabel: '컨펌 요청',       strColor: 'blue' },
-  dba_confirmed:      { strLabel: '컨펌 완료',       strColor: 'cyan' },
-  qa_requested:       { strLabel: '쿼리 요청',      strColor: 'geekblue' },
-  qa_deployed:        { strLabel: '쿼리 반영 완료',  strColor: 'orange' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strColor: 'cyan' },
+  qa_requested:       { strLabel: 'QA 반영 요청',   strColor: 'geekblue' },
+  qa_deployed:        { strLabel: 'QA 반영 실행',    strColor: 'orange' },
   qa_verified:        { strLabel: 'QA 확인',        strColor: 'gold' },
-  live_requested:     { strLabel: '쿼리 요청',      strColor: 'magenta' },
-  live_deployed:      { strLabel: '쿼리 반영 완료', strColor: 'volcano' },
+  live_requested:     { strLabel: 'LIVE 반영 요청',  strColor: 'magenta' },
+  live_deployed:      { strLabel: 'LIVE 반영 실행',  strColor: 'volcano' },
   live_verified:      { strLabel: '완료',            strColor: 'green' },
 };
 
