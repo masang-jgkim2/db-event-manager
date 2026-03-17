@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { useAuthStore } from '../stores/useAuthStore';
-
-const STR_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+import { STR_API_BASE } from '../api/axiosInstance';
 
 // SSE 연결 및 이벤트 인스턴스 실시간 동기화 훅
 // MainLayout에 한 번만 마운트하면 앱 전체에서 동작

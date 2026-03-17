@@ -1,9 +1,16 @@
 import axios from 'axios';
 
-// API 기본 인스턴스 (외부 접근 시 .env에 VITE_API_URL=http://<서버IP>:4000/api 설정)
+// VITE_API_URL 미설정 시 접속한 호스트(localhost 또는 외부 IP)로 API 요청 — start.bat 한 번에 로컬/외부 동시 사용
+const fnGetApiBaseUrl = (): string => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined') return `${window.location.protocol}//${window.location.hostname}:4000/api`;
+  return 'http://localhost:4000/api';
+};
+export const STR_API_BASE = fnGetApiBaseUrl();
+
 // DB 쿼리 실행은 수십 초가 걸릴 수 있으므로 timeout을 충분히 설정
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:4000/api',
+  baseURL: STR_API_BASE,
   timeout: 120000,  // 2분 (DB 쿼리 실행 대비)
   headers: {
     'Content-Type': 'application/json',

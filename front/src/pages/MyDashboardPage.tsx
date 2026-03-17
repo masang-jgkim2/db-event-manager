@@ -257,25 +257,26 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   const bHasQa = arrScope.includes('qa');
   const bHasLive = arrScope.includes('live');
 
-  const arrSteps = [
-    { strStatus: 'event_created',     strLabel: '작성 중',       strSubLabel: '' },
-    { strStatus: 'confirm_requested', strLabel: '컨펌 요청',     strSubLabel: '' },
-    { strStatus: 'dba_confirmed',     strLabel: '컨펌 완료',     strSubLabel: '' },
+  // OBJ_STATUS_CONFIG 기준으로 라벨 사용 (간소화 표시 일원화)
+  const arrSteps: { strStatus: TEventStatus; strLabel: string; strSubLabel: string }[] = [
+    { strStatus: 'event_created',     strLabel: OBJ_STATUS_CONFIG.event_created.strLabel,     strSubLabel: '' },
+    { strStatus: 'confirm_requested', strLabel: OBJ_STATUS_CONFIG.confirm_requested.strLabel, strSubLabel: '' },
+    { strStatus: 'dba_confirmed',     strLabel: OBJ_STATUS_CONFIG.dba_confirmed.strLabel,     strSubLabel: '' },
   ];
 
   if (bHasQa) {
     arrSteps.push(
-      { strStatus: 'qa_requested', strLabel: '쿼리 요청',       strSubLabel: '(QA)' },
-      { strStatus: 'qa_deployed',  strLabel: '쿼리 반영 완료',  strSubLabel: '(QA)' },
-      { strStatus: 'qa_verified',  strLabel: 'QA 확인',         strSubLabel: '' },
+      { strStatus: 'qa_requested', strLabel: OBJ_STATUS_CONFIG.qa_requested.strLabel, strSubLabel: '(QA)' },
+      { strStatus: 'qa_deployed',  strLabel: OBJ_STATUS_CONFIG.qa_deployed.strLabel,  strSubLabel: '(QA)' },
+      { strStatus: 'qa_verified',  strLabel: OBJ_STATUS_CONFIG.qa_verified.strLabel,  strSubLabel: '' },
     );
   }
 
   if (bHasLive) {
     arrSteps.push(
-      { strStatus: 'live_requested', strLabel: '쿼리 요청',       strSubLabel: '(LIVE)' },
-      { strStatus: 'live_deployed',  strLabel: '쿼리 반영 완료', strSubLabel: '(LIVE)' },
-      { strStatus: 'live_verified',  strLabel: '완료',            strSubLabel: '' },
+      { strStatus: 'live_requested', strLabel: OBJ_STATUS_CONFIG.live_requested.strLabel, strSubLabel: '(LIVE)' },
+      { strStatus: 'live_deployed',  strLabel: OBJ_STATUS_CONFIG.live_deployed.strLabel,  strSubLabel: '(LIVE)' },
+      { strStatus: 'live_verified',  strLabel: OBJ_STATUS_CONFIG.live_verified.strLabel,  strSubLabel: '' },
     );
   }
 
@@ -578,7 +579,7 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 운영자: 작성 중 — 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
+    // 생성(event_created): 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
     const bCanEdit = fnHasPermission('my_dashboard.edit');
     const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm');
     if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
