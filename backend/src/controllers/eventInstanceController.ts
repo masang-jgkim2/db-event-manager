@@ -3,7 +3,7 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection } from '../data/dbConnections';
+import { fnFindActiveConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -408,29 +408,108 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 쿼리 실행: 프로덕트 + env 단일 접속으로 strGeneratedQuery 실행 (단일 쿼리 템플릿 롤백)
-    const objDbConn = fnFindActiveConnection(nProductId, strEnv);
-    if (!objDbConn) {
-      res.status(400).json({
-        bSuccess: false,
-        strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. 이벤트 생성 시 해당 환경을 선택하려면 프로덕트에 ${strEnv.toUpperCase()} DB 접속을 등록·활성화하세요.`,
-      });
-      return;
-    }
-    const objExecResult = await fnExecuteQueryWithText(
-      objDbConn,
-      objInstance.strGeneratedQuery,
-      strEnv
-    );
+    // 쿼리 실행: 다중 세트(arrExecutionTargets 2개 이상)면 세트별로 동일 종류(strKind)의 요청 env 접속으로 실행
+    // 쿼리 세트 1개면 동일 쿼리를 요청 env 접속으로 실행
+    let objExecResult: IQueryExecutionResult;
 
-    if (!objExecResult.bSuccess) {
-      // 실패 시 상태 변경 없이 오류 반환
-      res.status(200).json({
-        bSuccess: false,
-        strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
-        objExecutionResult: objExecResult,
-      });
-      return;
+    const nSetCount = objInstance.arrExecutionTargets?.length ?? 0;
+
+    if (nSetCount === 1) {
+      // 쿼리 세트 1개: 요청 env에 맞는 접속으로 동일 쿼리 실행
+      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      if (!objDbConn) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. DB 접속 정보를 등록·활성화하세요.`,
+        });
+        return;
+      }
+      const strQuery = objInstance.arrExecutionTargets![0].strQuery;
+      objExecResult = await fnExecuteQueryWithText(objDbConn, strQuery, strEnv);
+      if (!objExecResult.bSuccess) {
+        res.status(200).json({
+          bSuccess: false,
+          strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
+          objExecutionResult: objExecResult,
+        });
+        return;
+      }
+    } else if (nSetCount > 1) {
+      // 다중 세트: 각 세트의 쿼리를 "같은 프로덕트·같은 종류(strKind)"의 요청 env 접속으로 실행 (저장된 연결이 QA여도 LIVE 접속으로 실행)
+      let nTotalAffectedRows = 0;
+      let nTotalElapsedMs = 0;
+      const arrAllQueryResults: IQueryExecutionResult['arrQueryResults'] = [];
+      let strExecutedQuery = '';
+
+      for (let i = 0; i < objInstance.arrExecutionTargets!.length; i++) {
+        const t = objInstance.arrExecutionTargets![i];
+        const objTemplateConn = fnFindConnectionById(t.nDbConnectionId);
+        if (!objTemplateConn) {
+          res.status(400).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1}: DB 접속 ID ${t.nDbConnectionId}를 찾을 수 없습니다.`,
+          });
+          return;
+        }
+        const strKind = objTemplateConn.strKind ?? 'GAME';
+        let objConn = objTemplateConn.strEnv === strEnv && objTemplateConn.bIsActive
+          ? objTemplateConn
+          : fnFindActiveConnectionByKind(nProductId, strEnv, strKind as 'GAME' | 'WEB' | 'LOG');
+        if (!objConn) {
+          res.status(400).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} 환경의 ${strKind} DB 접속이 없거나 비활성화 상태입니다. DB 접속 정보를 확인하세요.`,
+          });
+          return;
+        }
+        const oneResult = await fnExecuteQueryWithText(objConn, t.strQuery, strEnv);
+        if (!oneResult.bSuccess) {
+          res.status(200).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`,
+            objExecutionResult: oneResult,
+          });
+          return;
+        }
+        nTotalAffectedRows += oneResult.nTotalAffectedRows;
+        nTotalElapsedMs += oneResult.nElapsedMs;
+        arrAllQueryResults.push(...oneResult.arrQueryResults);
+        strExecutedQuery += (strExecutedQuery ? '\n\n' : '') + `-- 세트 ${i + 1}\n` + oneResult.strExecutedQuery;
+      }
+
+      objExecResult = {
+        bSuccess: true,
+        strEnv,
+        strExecutedQuery,
+        arrQueryResults: arrAllQueryResults,
+        nTotalAffectedRows,
+        nElapsedMs: nTotalElapsedMs,
+        dtExecutedAt: new Date().toISOString(),
+      };
+    } else {
+      // 단일: 프로덕트+env 접속 1건으로 strGeneratedQuery 실행
+      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      if (!objDbConn) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. 이벤트 생성 시 해당 환경을 선택하려면 프로덕트에 ${strEnv.toUpperCase()} DB 접속을 등록·활성화하세요.`,
+        });
+        return;
+      }
+      objExecResult = await fnExecuteQueryWithText(
+        objDbConn,
+        objInstance.strGeneratedQuery,
+        strEnv
+      );
+
+      if (!objExecResult.bSuccess) {
+        res.status(200).json({
+          bSuccess: false,
+          strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
+          objExecutionResult: objExecResult,
+        });
+        return;
+      }
     }
 
     // 실행 성공 → 상태 전이 + 처리자 기록
@@ -529,7 +608,14 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
       if (req.body.strGeneratedQuery !== undefined) {
         objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
-        // 쿼리 수정 이력 추가
+      }
+      if (req.body.arrExecutionTargets !== undefined) {
+        objInstance.arrExecutionTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        if (objInstance.arrExecutionTargets?.length) {
+          objInstance.strGeneratedQuery = objInstance.arrExecutionTargets[0].strQuery;
+        }
+      }
+      if (req.body.strGeneratedQuery !== undefined || req.body.arrExecutionTargets !== undefined) {
         const objActor = fnMakeActor(req);
         objInstance.arrStatusLogs.push({
           strStatus: objInstance.strStatus,
@@ -594,18 +680,39 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
-      const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
-      if (strTemplate) {
-        objInstance.strGeneratedQuery = fnApplyQueryTemplate(
-          strTemplate,
-          objInstance.strInputValues,
-          objInstance.dtDeployDate,
-          objInstance.strEventName,
-          objInstance.strServiceAbbr,
-          objInstance.strProductName,
-          objInstance.strServiceRegion
-        );
-        objInstance.arrExecutionTargets = undefined;
+      const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      if (arrSets.length > 0) {
+        const MULTI_INPUT_DELIMITER = '\u0001';
+        const arrParts = (objInstance.strInputValues ?? '').split(MULTI_INPUT_DELIMITER).map((s) => s.trim());
+        const arrTargets = arrSets.map((s, i) => {
+          const strItems = arrParts[i] ?? arrParts[0] ?? '';
+          const strQuery = fnApplyQueryTemplate(
+            (s.strQueryTemplate ?? '').trim(),
+            strItems,
+            objInstance.dtDeployDate,
+            objInstance.strEventName,
+            objInstance.strServiceAbbr,
+            objInstance.strProductName,
+            objInstance.strServiceRegion
+          );
+          return { nDbConnectionId: s.nDbConnectionId, strQuery };
+        });
+        objInstance.arrExecutionTargets = arrTargets;
+        objInstance.strGeneratedQuery = arrTargets[0]?.strQuery ?? '';
+      } else {
+        const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
+        if (strTemplate) {
+          objInstance.strGeneratedQuery = fnApplyQueryTemplate(
+            strTemplate,
+            objInstance.strInputValues,
+            objInstance.dtDeployDate,
+            objInstance.strEventName,
+            objInstance.strServiceAbbr,
+            objInstance.strProductName,
+            objInstance.strServiceRegion
+          );
+          objInstance.arrExecutionTargets = undefined;
+        }
       }
     }
 
