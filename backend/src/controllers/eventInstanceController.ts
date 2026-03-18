@@ -3,7 +3,7 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection } from '../data/dbConnections';
+import { fnFindActiveConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -11,7 +11,7 @@ import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../servic
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계 + 재요청)
-// arrDeployScope=['live']인 경우 fnGetTransitions에서 QA 단계 스킵
+// 쿼리 실행 대상이 LIVE만(단일 서버)인 경우 fnGetTransitions에서 QA 단계 스킵
 const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus; arrAllowedRoles: string[] }[]> = {
   event_created:      [{ strNextStatus: 'confirm_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] }],
   confirm_requested:  [{ strNextStatus: 'dba_confirmed',     arrAllowedRoles: ['dba', 'admin'] }],
@@ -38,8 +38,8 @@ const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus;
   ],
 };
 
-// 반영 범위에 따른 동적 전이 조회
-// LIVE only: dba_confirmed → live_requested (QA 단계 스킵)
+// 쿼리 실행 대상(단일/다중 서버)에 따른 동적 전이 조회
+// LIVE만 선택 시: dba_confirmed → live_requested (QA 단계 스킵)
 const fnGetTransitions = (
   strStatus: string,
   arrScope: Array<'qa' | 'live'>
@@ -52,7 +52,7 @@ const fnGetTransitions = (
   return OBJ_STATUS_TRANSITIONS_BASE[strStatus] ?? [];
 };
 
-// 액션(다음 상태)별 필요 권한 1개 — 역할 없을 때 권한으로 통과
+// 액션(다음 상태)별 필요 권한 — 수행 여부는 권한만으로 판단 (역할 사용 안 함)
 const OBJ_STATUS_REQUIRED_PERMISSION: Partial<Record<TEventStatus, string>> = {
   confirm_requested: 'my_dashboard.request_confirm',
   dba_confirmed:      'my_dashboard.confirm',
@@ -60,6 +60,18 @@ const OBJ_STATUS_REQUIRED_PERMISSION: Partial<Record<TEventStatus, string>> = {
   qa_verified:        'my_dashboard.verify_qa',
   live_requested:     'my_dashboard.request_live',
   live_verified:      'my_dashboard.verify_live',
+};
+
+// 상태별 "다음 액션 가능" 권한 목록 — my_action 필터용 (권한 기반)
+const OBJ_STATUS_ACTION_PERMISSIONS: Partial<Record<TEventStatus, string[]>> = {
+  event_created:      ['my_dashboard.request_confirm'],
+  confirm_requested:  ['my_dashboard.confirm'],
+  qa_requested:        ['my_dashboard.execute_qa', 'instance.execute_qa'],
+  qa_deployed:        ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq'],
+  qa_verified:        ['my_dashboard.request_live', 'my_dashboard.request_qa_rereq'],
+  live_requested:     ['my_dashboard.execute_live', 'instance.execute_live'],
+  live_deployed:      ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
+  live_verified:       ['my_dashboard.request_live_rereq'],
 };
 
 // 현재 사용자 정보를 IStageActor로 변환
@@ -77,7 +89,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     const {
       nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
-      strEventName, strInputValues, strGeneratedQuery, dtDeployDate,
+      strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets, dtDeployDate,
       arrDeployScope: arrReqScope, strCreatedBy,
     } = req.body;
 
@@ -86,7 +98,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // 반영 범위 검증: DEV 불가, 최소 1개 이상, 기본값 ['qa','live']
+    // 쿼리 실행 대상 검증: DEV 불가, QA/LIVE 중 최소 1개 이상
     const arrAllowed = ['qa', 'live'];
     const arrDeployScope: Array<'qa' | 'live'> =
       Array.isArray(arrReqScope) && arrReqScope.length > 0
@@ -94,7 +106,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
         : ['qa', 'live'];
 
     if (arrDeployScope.length === 0) {
-      res.status(400).json({ bSuccess: false, strMessage: '반영 범위는 QA 또는 LIVE 중 하나 이상 선택해야 합니다.' });
+      res.status(400).json({ bSuccess: false, strMessage: '쿼리 실행 대상은 QA 또는 LIVE 중 하나 이상 선택해야 합니다.' });
       return;
     }
 
@@ -118,6 +130,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strEventName,
       strInputValues: strInputValues || '',
       strGeneratedQuery: strGeneratedQuery || '',
+      arrExecutionTargets: Array.isArray(arrExecutionTargets) ? arrExecutionTargets : undefined,
       dtDeployDate,
       arrDeployScope,
       strStatus: 'event_created' as TEventStatus,
@@ -181,15 +194,12 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
       arrFiltered = arrFiltered.filter((e) => e.nCreatedByUserId === nUserId);
     }
 
-    // 내가 처리해야 할 이벤트 (역할 기반)
+    // 내가 처리해야 할 이벤트 (권한 기반)
     if (strFilter === 'my_action') {
-      const arrUserRoles = req.user?.arrRoles || [];
+      const arrUserPerms = req.user?.arrPermissions || [];
       arrFiltered = arrFiltered.filter((e) => {
-        const arrScope = e.arrDeployScope ?? ['qa', 'live'];
-        const arrTrans = fnGetTransitions(e.strStatus, arrScope);
-        return arrTrans.some((t) =>
-          t.arrAllowedRoles.some((r) => arrUserRoles.includes(r))
-        );
+        const arrPerms = OBJ_STATUS_ACTION_PERMISSIONS[e.strStatus as TEventStatus];
+        return arrPerms?.some((p) => (arrUserPerms as string[]).includes(p)) ?? false;
       });
     }
 
@@ -208,7 +218,6 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
   try {
     const nId = Number(req.params.id);
     const { strNextStatus, strComment } = req.body;
-    const arrUserRoles = req.user?.arrRoles || [];
 
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
@@ -216,7 +225,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 전이 규칙 확인 (반영 범위 반영)
+    // 전이 규칙 확인 (쿼리 실행 대상 반영)
     const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
     const arrTransitions = fnGetTransitions(objInstance.strStatus, arrScope);
     const objTransition = arrTransitions.find((t) => t.strNextStatus === strNextStatus);
@@ -226,18 +235,16 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // 역할 또는 해당 액션의 단일 권한으로 허용
+    // 해당 액션의 필요 권한으로만 허용 (역할 미사용)
     const arrUserPerms = req.user?.arrPermissions || [];
-    const bHasRole = objTransition.arrAllowedRoles.some((r) => arrUserRoles.includes(r));
     const strRequiredPerm = OBJ_STATUS_REQUIRED_PERMISSION[strNextStatus as TEventStatus];
     const bHasPerm = strRequiredPerm ? (arrUserPerms as string[]).includes(strRequiredPerm) : false;
-    if (!bHasRole && !bHasPerm) {
-      const strNeed = strRequiredPerm
-        ? `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}, 또는 권한 '${strRequiredPerm}'`
-        : `역할 ${objTransition.arrAllowedRoles.join(' 또는 ')}`;
+    if (!bHasPerm) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `해당 상태를 변경할 권한이 없습니다. 필요: ${strNeed}. 역할/권한을 방금 수정했다면 로그아웃 후 다시 로그인해 주세요.`,
+        strMessage: strRequiredPerm
+          ? `해당 상태를 변경할 권한이 없습니다. 필요: '${strRequiredPerm}'. 권한을 방금 수정했다면 로그아웃 후 다시 로그인해 주세요.`
+          : '해당 상태를 변경할 권한이 없습니다.',
       });
       return;
     }
@@ -293,7 +300,7 @@ export const fnGetInstance = async (req: Request, res: Response): Promise<void> 
 };
 
 // =============================================
-// QA/LIVE 반영 - 실제 DB 쿼리 실행 후 상태 전이
+// QA 쿼리 실행 / LIVE 쿼리 실행 — 실제 DB 쿼리 실행 후 상태 전이 (단일 서버 또는 다중 서버)
 // POST /api/event-instances/:id/execute
 // Body: { strEnv: 'qa' | 'live' }
 // =============================================
@@ -307,18 +314,16 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // env별 단일 권한 1개 (레거시 코드도 동일 액션으로 허용) 또는 dba/admin 역할
+    // env별 실행 권한만으로 허용 (역할 미사용)
     const arrUserPerms = req.user?.arrPermissions || [];
-    const arrUserRoles = req.user?.arrRoles || [];
-    const bIsDbaOrAdmin = arrUserRoles.includes('dba') || arrUserRoles.includes('admin');
     const arrPermsForEnv = strEnv === 'live'
       ? ['my_dashboard.execute_live', 'instance.execute_live']
       : ['my_dashboard.execute_qa', 'instance.execute_qa'];
     const bHasPerm = arrPermsForEnv.some((p) => (arrUserPerms as string[]).includes(p));
-    if (!bIsDbaOrAdmin && !bHasPerm) {
+    if (!bHasPerm) {
       res.status(403).json({
         bSuccess: false,
-        strMessage: `이 작업을 하려면 역할 dba 또는 admin, 또는 권한 '${arrPermsForEnv[0]}'이 필요합니다.`,
+        strMessage: `이 작업을 하려면 권한 '${arrPermsForEnv[0]}' 또는 '${arrPermsForEnv[1]}'이 필요합니다.`,
       });
       return;
     }
@@ -350,12 +355,12 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (objInstance.strStatus !== objRequiredStatus[strEnv]) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `${strEnv.toUpperCase()} 반영은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
+        strMessage: `${strEnv.toUpperCase()} 쿼리 실행은 '${objRequiredStatus[strEnv]}' 상태에서만 가능합니다. 현재: ${objInstance.strStatus}`,
       });
       return;
     }
 
-    // 반영 범위에 포함된 환경인지 확인 (DEV는 항상 차단)
+    // 쿼리 실행 대상(단일/다중 서버)에 포함된 환경인지 확인 (DEV는 항상 차단)
     if (strEnv === 'dev') {
       res.status(400).json({ bSuccess: false, strMessage: 'DEV 환경 직접 실행은 지원하지 않습니다.' });
       return;
@@ -364,7 +369,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (!arrScope.includes(strEnv as 'qa' | 'live')) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `이 이벤트의 반영 범위에 ${strEnv.toUpperCase()}이 포함되어 있지 않습니다. (설정된 범위: ${arrScope.join(', ').toUpperCase()})`,
+        strMessage: `이 이벤트의 쿼리 실행 대상에 ${strEnv.toUpperCase()}이 포함되어 있지 않습니다. (설정: ${arrScope.join(', ').toUpperCase()})`,
       });
       return;
     }
@@ -384,16 +389,6 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // 활성 DB 접속 정보 조회
-    const objDbConn = fnFindActiveConnection(nProductId, strEnv);
-    if (!objDbConn) {
-      res.status(400).json({
-        bSuccess: false,
-        strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다.`,
-      });
-      return;
-    }
-
     // ── 반영 날짜 시점 체크 ────────────────────────────────
     // QA  : 시간 제한 없음 — LIVE 반영 전 언제든지 실행 가능
     // LIVE : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
@@ -408,26 +403,113 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     if (strEnv === 'live' && dtNow < dtDeploy) {
       res.status(400).json({
         bSuccess: false,
-        strMessage: `LIVE 반영은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 실행할 수 있습니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
+        strMessage: `LIVE 쿼리 실행은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 가능합니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
       });
       return;
     }
 
-    // 쿼리 실행
-    const objExecResult: IQueryExecutionResult = await fnExecuteQueryWithText(
-      objDbConn,
-      objInstance.strGeneratedQuery,
-      strEnv
-    );
+    // 쿼리 실행: 다중 세트(arrExecutionTargets 2개 이상)면 세트별로 동일 종류(strKind)의 요청 env 접속으로 실행
+    // 쿼리 세트 1개면 동일 쿼리를 요청 env 접속으로 실행
+    let objExecResult: IQueryExecutionResult;
 
-    if (!objExecResult.bSuccess) {
-      // 실패 시 상태 변경 없이 오류 반환
-      res.status(200).json({
-        bSuccess: false,
-        strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
-        objExecutionResult: objExecResult,
-      });
-      return;
+    const nSetCount = objInstance.arrExecutionTargets?.length ?? 0;
+
+    if (nSetCount === 1) {
+      // 쿼리 세트 1개: 요청 env에 맞는 접속으로 동일 쿼리 실행
+      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      if (!objDbConn) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. DB 접속 정보를 등록·활성화하세요.`,
+        });
+        return;
+      }
+      const strQuery = objInstance.arrExecutionTargets![0].strQuery;
+      objExecResult = await fnExecuteQueryWithText(objDbConn, strQuery, strEnv);
+      if (!objExecResult.bSuccess) {
+        res.status(200).json({
+          bSuccess: false,
+          strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
+          objExecutionResult: objExecResult,
+        });
+        return;
+      }
+    } else if (nSetCount > 1) {
+      // 다중 세트: 각 세트의 쿼리를 "같은 프로덕트·같은 종류(strKind)"의 요청 env 접속으로 실행 (저장된 연결이 QA여도 LIVE 접속으로 실행)
+      let nTotalAffectedRows = 0;
+      let nTotalElapsedMs = 0;
+      const arrAllQueryResults: IQueryExecutionResult['arrQueryResults'] = [];
+      let strExecutedQuery = '';
+
+      for (let i = 0; i < objInstance.arrExecutionTargets!.length; i++) {
+        const t = objInstance.arrExecutionTargets![i];
+        const objTemplateConn = fnFindConnectionById(t.nDbConnectionId);
+        if (!objTemplateConn) {
+          res.status(400).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1}: DB 접속 ID ${t.nDbConnectionId}를 찾을 수 없습니다.`,
+          });
+          return;
+        }
+        const strKind = objTemplateConn.strKind ?? 'GAME';
+        let objConn = objTemplateConn.strEnv === strEnv && objTemplateConn.bIsActive
+          ? objTemplateConn
+          : fnFindActiveConnectionByKind(nProductId, strEnv, strKind as 'GAME' | 'WEB' | 'LOG');
+        if (!objConn) {
+          res.status(400).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} 환경의 ${strKind} DB 접속이 없거나 비활성화 상태입니다. DB 접속 정보를 확인하세요.`,
+          });
+          return;
+        }
+        const oneResult = await fnExecuteQueryWithText(objConn, t.strQuery, strEnv);
+        if (!oneResult.bSuccess) {
+          res.status(200).json({
+            bSuccess: false,
+            strMessage: `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`,
+            objExecutionResult: oneResult,
+          });
+          return;
+        }
+        nTotalAffectedRows += oneResult.nTotalAffectedRows;
+        nTotalElapsedMs += oneResult.nElapsedMs;
+        arrAllQueryResults.push(...oneResult.arrQueryResults);
+        strExecutedQuery += (strExecutedQuery ? '\n\n' : '') + `-- 세트 ${i + 1}\n` + oneResult.strExecutedQuery;
+      }
+
+      objExecResult = {
+        bSuccess: true,
+        strEnv,
+        strExecutedQuery,
+        arrQueryResults: arrAllQueryResults,
+        nTotalAffectedRows,
+        nElapsedMs: nTotalElapsedMs,
+        dtExecutedAt: new Date().toISOString(),
+      };
+    } else {
+      // 단일: 프로덕트+env 접속 1건으로 strGeneratedQuery 실행
+      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      if (!objDbConn) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. 이벤트 생성 시 해당 환경을 선택하려면 프로덕트에 ${strEnv.toUpperCase()} DB 접속을 등록·활성화하세요.`,
+        });
+        return;
+      }
+      objExecResult = await fnExecuteQueryWithText(
+        objDbConn,
+        objInstance.strGeneratedQuery,
+        strEnv
+      );
+
+      if (!objExecResult.bSuccess) {
+        res.status(200).json({
+          bSuccess: false,
+          strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
+          objExecutionResult: objExecResult,
+        });
+        return;
+      }
     }
 
     // 실행 성공 → 상태 전이 + 처리자 기록
@@ -447,7 +529,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       strStatus: strNextStatus,
       strChangedBy: objActor.strDisplayName,
       nChangedByUserId: objActor.nUserId,
-      strComment: `${strEnv.toUpperCase()} 반영 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
+      strComment: `${strEnv.toUpperCase()} 쿼리 실행 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
       dtChangedAt: new Date().toISOString(),
       objExecutionResult: {
         strEnv,
@@ -462,7 +544,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     fnBroadcastInstanceUpdate(objInstance);
     res.json({
       bSuccess: true,
-      strMessage: `${strEnv.toUpperCase()} 반영이 완료되었습니다.`,
+      strMessage: `${strEnv.toUpperCase()} 쿼리 실행이 완료되었습니다.`,
       objExecutionResult: objExecResult,
       objInstance,
     });
@@ -511,23 +593,29 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const arrUserRoles = req.user?.arrRoles || [];
-    const bIsAdmin = arrUserRoles.includes('admin');
-    const bIsDba   = arrUserRoles.includes('dba');
+    const arrUserPerms = req.user?.arrPermissions || [];
+    const bHasQueryEdit = (arrUserPerms as string[]).includes('my_dashboard.query_edit');
+    const bHasEditAny = (arrUserPerms as string[]).includes('my_dashboard.edit_any');
 
-    // ── DBA 쿼리 수정 (요청 대기 단계에서만 — 프론트/프로세스와 동일) ──
-    // 허용 단계: 컨펌 요청, QA 반영 요청, LIVE 반영 요청
-    const ARR_DBA_EDITABLE_STATUSES: TEventStatus[] = [
+    // ── 쿼리 수정 (요청 대기 단계) — my_dashboard.query_edit 권한만 사용
+    const ARR_QUERY_EDITABLE_STATUSES: TEventStatus[] = [
       'confirm_requested', 'qa_requested', 'live_requested',
     ];
-    if (ARR_DBA_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
-      if (!bIsDba && !bIsAdmin) {
-        res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 DBA 권한이 있어야 쿼리를 수정할 수 있습니다.' });
+    if (ARR_QUERY_EDITABLE_STATUSES.includes(objInstance.strStatus)) {
+      if (!bHasQueryEdit) {
+        res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 쿼리 수정 권한(my_dashboard.query_edit)이 필요합니다.' });
         return;
       }
       if (req.body.strGeneratedQuery !== undefined) {
         objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
-        // 쿼리 수정 이력 추가
+      }
+      if (req.body.arrExecutionTargets !== undefined) {
+        objInstance.arrExecutionTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        if (objInstance.arrExecutionTargets?.length) {
+          objInstance.strGeneratedQuery = objInstance.arrExecutionTargets[0].strQuery;
+        }
+      }
+      if (req.body.strGeneratedQuery !== undefined || req.body.arrExecutionTargets !== undefined) {
         const objActor = fnMakeActor(req);
         objInstance.arrStatusLogs.push({
           strStatus: objInstance.strStatus,
@@ -543,14 +631,20 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    // ── 일반 수정 (event_created 상태에서 생성자 또는 admin만) ──
+    // ── 일반 수정 (event_created): 생성자+my_dashboard.edit 또는 my_dashboard.edit_any
     if (objInstance.strStatus !== 'event_created') {
       res.status(400).json({ bSuccess: false, strMessage: '현재 상태에서는 수정할 수 없습니다.' });
       return;
     }
 
-    if (objInstance.nCreatedByUserId !== req.user?.nId && !bIsAdmin) {
-      res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다.' });
+    const bIsCreator = objInstance.nCreatedByUserId === req.user?.nId;
+    const bHasEdit = (arrUserPerms as string[]).includes('my_dashboard.edit');
+    if (!bIsCreator && !bHasEditAny) {
+      res.status(403).json({ bSuccess: false, strMessage: '본인이 생성한 이벤트만 수정할 수 있습니다. 타인 이벤트 수정은 my_dashboard.edit_any 권한이 필요합니다.' });
+      return;
+    }
+    if (bIsCreator && !bHasEdit && !bHasEditAny) {
+      res.status(403).json({ bSuccess: false, strMessage: '이벤트 수정 권한(my_dashboard.edit)이 필요합니다.' });
       return;
     }
 
@@ -562,7 +656,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    // 반영 범위 — event_created 상태에서만 수정 가능
+    // 쿼리 실행 대상(단일/다중 서버) — event_created 상태에서만 수정 가능
     if (req.body.arrDeployScope !== undefined) {
       const arrAllowed = ['qa', 'live'];
       const arrNewScope: Array<'qa' | 'live'> = Array.isArray(req.body.arrDeployScope)
@@ -586,16 +680,39 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
-      if (objTemplate?.strQueryTemplate) {
-        objInstance.strGeneratedQuery = fnApplyQueryTemplate(
-          objTemplate.strQueryTemplate,
-          objInstance.strInputValues,
-          objInstance.dtDeployDate,
-          objInstance.strEventName,
-          objInstance.strServiceAbbr,
-          objInstance.strProductName,
-          objInstance.strServiceRegion
-        );
+      const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      if (arrSets.length > 0) {
+        const MULTI_INPUT_DELIMITER = '\u0001';
+        const arrParts = (objInstance.strInputValues ?? '').split(MULTI_INPUT_DELIMITER).map((s) => s.trim());
+        const arrTargets = arrSets.map((s, i) => {
+          const strItems = arrParts[i] ?? arrParts[0] ?? '';
+          const strQuery = fnApplyQueryTemplate(
+            (s.strQueryTemplate ?? '').trim(),
+            strItems,
+            objInstance.dtDeployDate,
+            objInstance.strEventName,
+            objInstance.strServiceAbbr,
+            objInstance.strProductName,
+            objInstance.strServiceRegion
+          );
+          return { nDbConnectionId: s.nDbConnectionId, strQuery };
+        });
+        objInstance.arrExecutionTargets = arrTargets;
+        objInstance.strGeneratedQuery = arrTargets[0]?.strQuery ?? '';
+      } else {
+        const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
+        if (strTemplate) {
+          objInstance.strGeneratedQuery = fnApplyQueryTemplate(
+            strTemplate,
+            objInstance.strInputValues,
+            objInstance.dtDeployDate,
+            objInstance.strEventName,
+            objInstance.strServiceAbbr,
+            objInstance.strProductName,
+            objInstance.strServiceRegion
+          );
+          objInstance.arrExecutionTargets = undefined;
+        }
       }
     }
 

@@ -13,7 +13,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     const {
       nProductId, strEventLabel, strDescription,
       strCategory, strType, strInputFormat,
-      strDefaultItems, strQueryTemplate,
+      strDefaultItems, strQueryTemplate, arrQueryTemplates,
     } = req.body;
 
     if (!nProductId || !strEventLabel || !strCategory || !strType || !strInputFormat) {
@@ -35,6 +35,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
       strInputFormat,
       strDefaultItems: strDefaultItems || '',
       strQueryTemplate: strQueryTemplate || '',
+      arrQueryTemplates: Array.isArray(arrQueryTemplates) ? arrQueryTemplates : undefined,
       dtCreatedAt: new Date().toISOString(),
     };
 
@@ -61,13 +62,20 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     const fields = [
       'nProductId', 'strEventLabel', 'strDescription',
       'strCategory', 'strType', 'strInputFormat',
-      'strDefaultItems', 'strQueryTemplate',
+      'strDefaultItems', 'strQueryTemplate', 'arrQueryTemplates',
     ];
 
     for (const key of fields) {
       if (req.body[key] !== undefined) {
         (arrEvents[nIndex] as any)[key] = req.body[key];
       }
+    }
+
+    // 단일 쿼리 모드일 때만 세트 비움: strQueryTemplate을 보냈고, arrQueryTemplates를 안 보냈거나 비어 있을 때
+    const bSingleMode = req.body.strQueryTemplate !== undefined
+      && (!Array.isArray(req.body.arrQueryTemplates) || req.body.arrQueryTemplates.length === 0);
+    if (bSingleMode) {
+      (arrEvents[nIndex] as any).arrQueryTemplates = undefined;
     }
 
     // 프로덕트명 갱신

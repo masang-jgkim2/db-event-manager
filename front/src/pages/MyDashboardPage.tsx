@@ -3,7 +3,7 @@ import {
   Typography, Card, Tag, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
-  Steps, Checkbox, Tooltip, theme as antdTheme,
+  Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
 import dayjs from 'dayjs';
 import {
@@ -23,10 +23,13 @@ import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
 } from '../types';
-import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnFormatPermissionErrorMessage } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
+const MULTI_INPUT_DELIMITER = '\u0001';
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
@@ -118,7 +121,7 @@ const ExecutionResultModal = ({
             ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
             : <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
           }
-          <span>{strEnv.toUpperCase()} 반영 {objResult.bSuccess ? '완료' : '실패'}</span>
+          <span>{strEnv.toUpperCase()} 쿼리 실행 {objResult.bSuccess ? '완료' : '실패'}</span>
         </Space>
       }
       open={bOpen}
@@ -257,25 +260,26 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   const bHasQa = arrScope.includes('qa');
   const bHasLive = arrScope.includes('live');
 
-  const arrSteps = [
-    { strStatus: 'event_created',     strLabel: '작성',          strSubLabel: '' },
-    { strStatus: 'confirm_requested', strLabel: '컨펌 요청',     strSubLabel: '' },
-    { strStatus: 'dba_confirmed',     strLabel: 'DBA 컨펌',      strSubLabel: '' },
+  // OBJ_STATUS_CONFIG 기준으로 라벨 사용 (간소화 표시 일원화)
+  const arrSteps: { strStatus: TEventStatus; strLabel: string; strSubLabel: string }[] = [
+    { strStatus: 'event_created',     strLabel: OBJ_STATUS_CONFIG.event_created.strLabel,     strSubLabel: '' },
+    { strStatus: 'confirm_requested', strLabel: OBJ_STATUS_CONFIG.confirm_requested.strLabel, strSubLabel: '' },
+    { strStatus: 'dba_confirmed',     strLabel: OBJ_STATUS_CONFIG.dba_confirmed.strLabel,     strSubLabel: '' },
   ];
 
   if (bHasQa) {
     arrSteps.push(
-      { strStatus: 'qa_requested', strLabel: 'QA 요청',  strSubLabel: '' },
-      { strStatus: 'qa_deployed',  strLabel: 'QA 반영',  strSubLabel: '' },
-      { strStatus: 'qa_verified',  strLabel: 'QA 확인',  strSubLabel: '' },
+      { strStatus: 'qa_requested', strLabel: OBJ_STATUS_CONFIG.qa_requested.strLabel, strSubLabel: '(QA)' },
+      { strStatus: 'qa_deployed',  strLabel: OBJ_STATUS_CONFIG.qa_deployed.strLabel,  strSubLabel: '(QA)' },
+      { strStatus: 'qa_verified',  strLabel: OBJ_STATUS_CONFIG.qa_verified.strLabel,  strSubLabel: '' },
     );
   }
 
   if (bHasLive) {
     arrSteps.push(
-      { strStatus: 'live_requested', strLabel: 'LIVE 요청', strSubLabel: '' },
-      { strStatus: 'live_deployed',  strLabel: 'LIVE 반영', strSubLabel: '' },
-      { strStatus: 'live_verified',  strLabel: '완료',       strSubLabel: '' },
+      { strStatus: 'live_requested', strLabel: OBJ_STATUS_CONFIG.live_requested.strLabel, strSubLabel: '(LIVE)' },
+      { strStatus: 'live_deployed',  strLabel: OBJ_STATUS_CONFIG.live_deployed.strLabel,  strSubLabel: '(LIVE)' },
+      { strStatus: 'live_verified',  strLabel: OBJ_STATUS_CONFIG.live_verified.strLabel,  strSubLabel: '' },
     );
   }
 
@@ -304,12 +308,13 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
     }}>
       <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
-        {arrScope.map((s) => (
-          <Tag key={s} color={s === 'qa' ? 'orange' : 'red'} style={{ fontSize: 11 }}>
-            {s.toUpperCase()}
-          </Tag>
-        ))}
-        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>진행 단계:</Text>
+        <Space size={4}>
+          {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
+            const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+            return opt ? <Tag key={s} color={opt.strColor} style={{ fontSize: 11 }}>{opt.label}</Tag> : null;
+          })}
+        </Space>
+        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
         <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
           {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
         </Tag>
@@ -341,12 +346,16 @@ const MyDashboardPage = () => {
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
   const [strEditEventName, setStrEditEventName] = useState('');
   const [strEditInputValues, setStrEditInputValues] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 입력값 (수정 모달) */
+  const [arrEditInputValues, setArrEditInputValues] = useState<string[]>([]);
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
   // DBA 쿼리 수정 모달
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
   const [strQueryEditValue, setStrQueryEditValue] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 쿼리 (쿼리 수정 모달) */
+  const [arrQueryEditValues, setArrQueryEditValues] = useState<string[]>([]);
   const [bQuerySaving, setBQuerySaving] = useState(false);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
@@ -360,7 +369,6 @@ const MyDashboardPage = () => {
   const { token } = antdTheme.useToken();
 
   const user = useAuthStore((s) => s.user);
-  const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
 
   // 전역 이벤트 인스턴스 스토어 (SSE 실시간 업데이트 포함)
@@ -428,7 +436,7 @@ const MyDashboardPage = () => {
         // 성공: 실행 결과 모달 표시
         setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
         setBExecResultOpen(true);
-        messageApi.success(`${strEnv.toUpperCase()} 반영 완료`);
+        messageApi.success(`${strEnv.toUpperCase()} 쿼리 실행 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
         // 실패: objExecutionResult 있으면 모달로, 없으면(사전 검증 오류) 전용 에러 모달로
@@ -470,22 +478,36 @@ const MyDashboardPage = () => {
     }
   };
 
-  // 수정 모달 열기
+  // 수정 모달 열기 (다중 세트면 입력값을 세트별 배열로 분리)
   const fnOpenEdit = (r: IEventInstance) => {
     setObjEditInstance(r);
     setStrEditEventName(r.strEventName);
-    setStrEditInputValues(r.strInputValues);
+    const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
+    if (bMulti && r.arrExecutionTargets?.length) {
+      const nSets = r.arrExecutionTargets.length;
+      const strInput = r.strInputValues ?? '';
+      const parts = strInput.split(MULTI_INPUT_DELIMITER);
+      const arr = Array.from({ length: nSets }, (_, i) => parts[i] ?? '');
+      setArrEditInputValues(arr);
+      setStrEditInputValues('');
+    } else {
+      setStrEditInputValues(r.strInputValues ?? '');
+      setArrEditInputValues([]);
+    }
     setStrEditDeployDate(r.dtDeployDate);
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
     setBEditOpen(true);
   };
 
-  // 수정 저장
+  // 수정 저장 (다중 세트면 세트별 입력값을 구분자로 합쳐 전송)
   const fnSaveEdit = async () => {
     if (!objEditInstance) return;
+    const strPayloadInputValues = objEditInstance.arrExecutionTargets?.length
+      ? arrEditInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
+      : strEditInputValues;
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
-      strInputValues: strEditInputValues,
+      strInputValues: strPayloadInputValues,
       dtDeployDate: strEditDeployDate,
       arrDeployScope: arrEditDeployScope,
     });
@@ -497,21 +519,35 @@ const MyDashboardPage = () => {
     }
   };
 
-  // DBA 쿼리 수정 모달 열기
+  // DBA 쿼리 수정 모달 열기 (다중 세트면 세트별 쿼리 배열로)
   const fnOpenQueryEdit = (r: IEventInstance) => {
     setObjQueryEditInstance(r);
-    setStrQueryEditValue(r.strGeneratedQuery);
+    const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
+    if (bMulti && r.arrExecutionTargets) {
+      setArrQueryEditValues(r.arrExecutionTargets.map((t) => t.strQuery ?? ''));
+      setStrQueryEditValue('');
+    } else {
+      setStrQueryEditValue(r.strGeneratedQuery ?? '');
+      setArrQueryEditValues([]);
+    }
     setBQueryEditOpen(true);
   };
 
-  // DBA 쿼리 수정 저장
+  // DBA 쿼리 수정 저장 (다중 세트면 arrExecutionTargets 전송)
   const fnSaveQueryEdit = async () => {
     if (!objQueryEditInstance) return;
     setBQuerySaving(true);
     try {
-      const result = await fnStoreUpdateInstance(objQueryEditInstance.nId, {
-        strGeneratedQuery: strQueryEditValue,
-      });
+      const bMulti = (objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0;
+      const payload: Record<string, unknown> = bMulti && objQueryEditInstance.arrExecutionTargets
+        ? {
+            arrExecutionTargets: objQueryEditInstance.arrExecutionTargets.map((t, i) => ({
+              nDbConnectionId: t.nDbConnectionId,
+              strQuery: arrQueryEditValues[i] ?? t.strQuery ?? '',
+            })),
+          }
+        : { strGeneratedQuery: strQueryEditValue };
+      const result = await fnStoreUpdateInstance(objQueryEditInstance.nId, payload);
       if (result.bSuccess) {
         messageApi.success('쿼리가 수정되었습니다.');
         setBQueryEditOpen(false);
@@ -533,27 +569,28 @@ const MyDashboardPage = () => {
   };
 
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
-  const OBJ_ACTION_ROLES: Record<string, string[]> = {
-    event_created: ['game_manager', 'game_designer', 'admin'],
-    confirm_requested: ['dba', 'admin'],
-    dba_confirmed: ['game_manager', 'game_designer', 'admin'],
-    qa_requested: ['dba', 'admin'],
-    qa_deployed: ['game_manager', 'game_designer', 'admin'],
-    qa_verified: ['game_manager', 'game_designer', 'admin'],
-    live_requested: ['dba', 'admin'],
-    live_deployed: ['game_manager', 'game_designer', 'admin'],
+  // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
+  const OBJ_ACTION_PERMISSIONS: Record<string, string[]> = {
+    event_created: ['my_dashboard.request_confirm'],
+    confirm_requested: ['my_dashboard.confirm'],
+    qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
+    qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq'],
+    qa_verified: ['my_dashboard.request_live', 'my_dashboard.request_qa_rereq'],
+    live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],
+    live_deployed: ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
+    live_verified: ['my_dashboard.request_live_rereq'],
   };
   const nTotal = arrAllInstances.length;
   const nMyAction = arrAllInstances.filter((e) =>
-    OBJ_ACTION_ROLES[e.strStatus]?.some((r) => arrRoles.includes(r))
+    OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
   ).length;
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
-  // 액션 버튼 렌더링 (역할 + 권한 + 상태 + 반영 범위 기반)
+  // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
-    // 이 이벤트의 반영 범위 (기본: QA+LIVE)
+    // 이 이벤트의 쿼리 실행 대상 (단일 서버 또는 다중 서버)
     const arrScope = r.arrDeployScope ?? ['qa', 'live'];
     const bHasQa   = arrScope.includes('qa');
     const bHasLive = arrScope.includes('live');
@@ -566,10 +603,9 @@ const MyDashboardPage = () => {
       );
     }
 
-    // DBA: 쿼리 수정 — 역할 또는 단일 권한 my_dashboard.query_edit
-    const bIsDbaOrAdmin = arrRoles.includes('dba') || arrRoles.includes('admin');
-    const ARR_DBA_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
-    if ((bIsDbaOrAdmin || fnHasPermission('my_dashboard.query_edit')) && ARR_DBA_EDIT_STATUS.includes(r.strStatus)) {
+    // 쿼리 수정 — my_dashboard.query_edit 권한만 사용
+    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
+    if (fnHasPermission('my_dashboard.query_edit') && ARR_QUERY_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
           <Button size="small" icon={<CodeOutlined />} onClick={() => fnOpenQueryEdit(r)}>
@@ -579,7 +615,7 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 운영자: 작성 중 — 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
+    // 생성(event_created): 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
     const bCanEdit = fnHasPermission('my_dashboard.edit');
     const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm');
     if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
@@ -604,8 +640,8 @@ const MyDashboardPage = () => {
       }
     }
 
-    // DBA 컨펌 — 역할 또는 단일 권한 my_dashboard.confirm
-    if (r.strStatus === 'confirm_requested' && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.confirm'))) {
+    // DBA 컨펌 — my_dashboard.confirm 권한만 사용
+    if (r.strStatus === 'confirm_requested' && fnHasPermission('my_dashboard.confirm')) {
       arrButtons.push(
         <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
           onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
@@ -614,46 +650,46 @@ const MyDashboardPage = () => {
       );
     }
 
-    // dba_confirmed 이후 → 반영 범위에 따라 QA요청 또는 LIVE요청 (단일 권한)
+    // dba_confirmed 이후 → 쿼리 실행 대상에 따라 QA 요청 또는 LIVE 요청 (단일 권한)
     if (r.strStatus === 'dba_confirmed') {
       if (bHasQa && fnHasPermission('my_dashboard.request_qa')) {
-        // QA 포함: QA 반영 요청
+        // QA 포함: QA 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="qa-req"
             actionKey="qa_requested"
-            title="QA 반영을 요청하시겠습니까?"
+            title="QA 쿼리 실행을 요청하시겠습니까?"
             okText="요청"
             cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 반영 요청')}
+            onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 요청')}
           >
-            <Button size="small" type="primary" icon={<SendOutlined />}>QA반영 요청</Button>
+            <Button size="small" type="primary" icon={<SendOutlined />}>QA 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       } else if (!bHasQa && bHasLive && fnHasPermission('my_dashboard.request_live')) {
-        // LIVE only: QA 스킵 → LIVE 반영 요청
+        // LIVE만(단일 서버): QA 스킵 → LIVE 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="live-req-skip"
             actionKey="live_requested_skip"
             title={
               <Space direction="vertical" size={4}>
-                <Text strong>LIVE 반영을 요청하시겠습니까?</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용으로 QA 단계가 없습니다.</Text>
+                <Text strong>LIVE 쿼리 실행을 요청하시겠습니까?</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>이 이벤트는 LIVE 전용(단일 서버)으로 QA 단계가 없습니다.</Text>
               </Space>
             }
             okText="요청"
             cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
-          >
-            <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
+            >
+              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       }
     }
 
-    // QA 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_qa
-    if (bHasQa && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_qa')) && r.strStatus === 'qa_requested') {
+    // QA 쿼리 실행 — my_dashboard.execute_qa 또는 instance.execute_qa 권한만 사용
+    if (bHasQa && (fnHasPermission('my_dashboard.execute_qa') || fnHasPermission('instance.execute_qa')) && r.strStatus === 'qa_requested') {
       arrButtons.push(
         <Popconfirm
           key="qa-execute"
@@ -674,7 +710,7 @@ const MyDashboardPage = () => {
             icon={bExecuting === r.nId ? <Spin size="small" /> : <ThunderboltOutlined />}
             disabled={bExecuting !== null}
           >
-            QA 반영
+            QA 쿼리 실행
           </Button>
         </Popconfirm>
       );
@@ -687,7 +723,7 @@ const MyDashboardPage = () => {
           key="qa-v"
           open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'qa'}
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
-          title="QA 반영을 확인하셨습니까?"
+          title="QA 쿼리 실행을 확인하셨습니까?"
           description={
             fnHasPermission('my_dashboard.request_qa') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
@@ -696,11 +732,11 @@ const MyDashboardPage = () => {
                   icon={<SyncOutlined />}
                   block
                   onClick={() => {
-                    fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청');
+                    fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청');
                     setObjConfirmModal(null);
                   }}
                 >
-                  QA 반영 재요청
+                  QA 쿼리 실행 재요청
                 </Button>
               </Space>
             ) : undefined
@@ -724,23 +760,23 @@ const MyDashboardPage = () => {
       );
     }
 
-    // QA 확인 후: LIVE 반영 요청 또는 QA 재반영 요청 (단일 권한)
+    // QA 확인 후: LIVE 쿼리 실행 요청 또는 QA 재요청 (단일 권한)
     if (bHasQa && r.strStatus === 'qa_verified') {
       const bCanLive = bHasLive && fnHasPermission('my_dashboard.request_live');
       const bCanQaRereq = fnHasPermission('my_dashboard.request_qa');
 
       if (bFunMode && bCanLive && bCanQaRereq) {
-        // 재미 모드: 한 버튼에서 롱프레스 시 QA 재반영 요청으로 전환
+        // 재미 모드: 한 버튼에서 롱프레스 시 QA 쿼리 실행 재요청으로 전환
         arrButtons.push(
           <RequestWithLongPressButton
             key="live-qa-longpress"
-            primaryLabel="LIVE반영 요청"
-            primaryTitle="LIVE 반영을 요청하시겠습니까?"
-            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
-            rerequestLabel="QA 재반영 요청"
-            rerequestTitle="QA 재반영을 요청하시겠습니까?"
-            rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+            primaryLabel="LIVE 쿼리 실행 요청"
+            primaryTitle="LIVE 쿼리 실행을 요청하시겠습니까?"
+            onPrimaryConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
+            rerequestLabel="QA 쿼리 실행 재요청"
+            rerequestTitle="QA 쿼리 실행 재요청을 하시겠습니까?"
+            rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
             primaryButtonStyle={{ background: '#eb2f96', border: 'none', color: '#fff' }}
             primaryIcon={<SendOutlined />}
             rerequestIcon={<SyncOutlined />}
@@ -755,12 +791,12 @@ const MyDashboardPage = () => {
             <PopconfirmWithSkip
               key="live-req"
               actionKey="live_requested"
-              title="LIVE 반영을 요청하시겠습니까?"
+              title="LIVE 쿼리 실행을 요청하시겠습니까?"
               okText="요청"
               cancelText="취소"
-              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 반영 요청')}
+              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE반영 요청</Button>
+              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
             </PopconfirmWithSkip>
           );
         }
@@ -768,21 +804,21 @@ const MyDashboardPage = () => {
           arrButtons.push(
             <Popconfirm
               key="qa-rereq"
-              title="QA 재반영을 요청하시겠습니까?"
-              description="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 반영할 수 있도록 요청합니다."
+              title="QA 쿼리 실행 재요청을 하시겠습니까?"
+              description="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
               okText="재요청"
               cancelText="취소"
-              onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 재반영 요청')}
+              onConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
             >
-              <Button size="small" icon={<SyncOutlined />}>QA 재반영 요청</Button>
+              <Button size="small" icon={<SyncOutlined />}>QA 쿼리 실행 재요청</Button>
             </Popconfirm>
           );
         }
       }
     }
 
-    // LIVE 반영 실행 — 역할 또는 단일 권한 my_dashboard.execute_live
-    if (bHasLive && (bIsDbaOrAdmin || fnHasPermission('my_dashboard.execute_live')) && r.strStatus === 'live_requested') {
+    // LIVE 쿼리 실행 — my_dashboard.execute_live 또는 instance.execute_live 권한만 사용
+    if (bHasLive && (fnHasPermission('my_dashboard.execute_live') || fnHasPermission('instance.execute_live')) && r.strStatus === 'live_requested') {
       arrButtons.push(
         <Popconfirm
           key="live-execute"
@@ -804,7 +840,7 @@ const MyDashboardPage = () => {
             icon={bExecuting === r.nId ? <Spin size="small" /> : <RocketOutlined />}
             disabled={bExecuting !== null}
           >
-            LIVE 반영
+            LIVE 쿼리 실행
           </Button>
         </Popconfirm>
       );
@@ -817,7 +853,7 @@ const MyDashboardPage = () => {
           key="live-v"
           open={objConfirmModal?.nId === r.nId && objConfirmModal?.strType === 'live'}
           onOpenChange={(bOpen) => { if (!bOpen) setObjConfirmModal(null); }}
-          title="LIVE 반영을 확인하셨습니까?"
+          title="LIVE 쿼리 실행을 확인하셨습니까?"
           description={
             fnHasPermission('my_dashboard.request_live') ? (
               <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
@@ -826,11 +862,11 @@ const MyDashboardPage = () => {
                   icon={<SyncOutlined />}
                   block
                   onClick={() => {
-                    fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청');
+                    fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청');
                     setObjConfirmModal(null);
                   }}
                 >
-                  LIVE 반영 재요청
+                  LIVE 쿼리 실행 재요청
                 </Button>
               </Space>
             ) : undefined
@@ -854,20 +890,20 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 완료(live_verified) 후: LIVE 재반영 요청 — 단일 권한 my_dashboard.request_live
+    // 완료(live_verified) 후: LIVE 쿼리 실행 재요청 — 단일 권한 my_dashboard.request_live
     if (bHasLive && fnHasPermission('my_dashboard.request_live') && r.strStatus === 'live_verified') {
       if (bFunMode) {
         // 재미 모드: 롱프레스 후 클릭 시에만 재요청 (실수 방지)
         arrButtons.push(
           <RequestWithLongPressButton
             key="live-rereq-longpress"
-            primaryLabel="LIVE 재반영 요청"
+            primaryLabel="LIVE 쿼리 실행 재요청"
             primaryTitle=""
             onPrimaryConfirm={() => {}}
-            rerequestLabel="LIVE 재반영 요청"
-            rerequestTitle="LIVE 재반영을 요청하시겠습니까?"
-            rerequestDescription="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
-            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
+            rerequestLabel="LIVE 쿼리 실행 재요청"
+            rerequestTitle="LIVE 쿼리 실행 재요청을 하시겠습니까?"
+            rerequestDescription="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 쿼리 실행할 수 있도록 요청합니다."
+            onRerequestConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청')}
             bRerequestOnly
             primaryIcon={<SyncOutlined />}
             rerequestIcon={<SyncOutlined />}
@@ -879,13 +915,13 @@ const MyDashboardPage = () => {
         arrButtons.push(
           <Popconfirm
             key="live-rereq"
-            title="LIVE 재반영을 요청하시겠습니까?"
-            description="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 반영할 수 있도록 요청합니다."
-            okText="재요청"
-            cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 재반영 요청')}
-          >
-            <Button size="small" icon={<SyncOutlined />}>LIVE 재반영 요청</Button>
+title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
+            description="완료 확인 후 데이터에 문제가 있을 때, DBA가 다시 LIVE 쿼리 실행할 수 있도록 요청합니다."
+              okText="재요청"
+              cancelText="취소"
+              onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 재요청')}
+            >
+              <Button size="small" icon={<SyncOutlined />}>LIVE 쿼리 실행 재요청</Button>
           </Popconfirm>
         );
       }
@@ -971,7 +1007,7 @@ const MyDashboardPage = () => {
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼 — No. + 헤더·액션 정리
+  // 테이블 컬럼 — No. + 헤더·액션 정리 (PK 컬럼은 숨김)
   const arrColumns = [
     fnMakeIndexColumn(55),
     {
@@ -998,6 +1034,16 @@ const MyDashboardPage = () => {
       dataIndex: 'strCreatedBy',
       key: 'strCreatedBy',
       width: 100,
+    },
+    {
+      title: '반영',
+      key: 'scope',
+      width: 72,
+      render: (_: unknown, r: IEventInstance) => {
+        const env = fnGetDisplayEnv(r.strStatus);
+        const scope = env ?? 'DEV';
+        return <Tag color={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</Tag>;
+      },
     },
     {
       title: '상태',
@@ -1166,8 +1212,11 @@ const MyDashboardPage = () => {
                   <Card
                     size="small"
                     title={
-                      <Space>
+                      <Space wrap size={4}>
                         <span style={{ fontWeight: 600 }}>{r.strEventName}</span>
+                        {fnGetDisplayEnv(r.strStatus) && (
+                          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</Tag>
+                        )}
                         <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
                       </Space>
                     }
@@ -1221,109 +1270,153 @@ const MyDashboardPage = () => {
         </div>
       </Card>
 
-      {/* 상세 모달 */}
+      {/* 상세 모달 — 각 섹션 접기/펼치기, 입력값·쿼리는 기본 접힘 */}
       <Modal title="이벤트 상세" open={bDetailOpen} onCancel={() => setBDetailOpen(false)} footer={null} width={780}>
         {objDetail && (
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            {/* 기본 정보 */}
-            <Card size="small" title="기본 정보">
-              <Descriptions column={2} size="small">
-                <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
-                <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
-                <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
-                <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
-                <Descriptions.Item label="반영 날짜">
-                  {objDetail.dtDeployDate
-                    ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
-                    : '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="반영 범위">
-                  <Space size={4}>
-                    {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => (
-                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
-                    ))}
+          <Collapse
+            defaultActiveKey={['basic', 'actors', 'history']}
+            items={[
+              {
+                key: 'basic',
+                label: '기본 정보',
+                children: (
+                  <Descriptions column={2} size="small">
+                    <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
+                    <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
+                    <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="반영 날짜">
+                      {objDetail.dtDeployDate
+                        ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
+                        : '-'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="반영 범위">
+                      <Space size={4}>
+                        {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
+                          const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+                          return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                        })}
+                      </Space>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
+                  </Descriptions>
+                ),
+              },
+              {
+                key: 'actors',
+                label: '단계별 처리자',
+                children: (
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
+                    <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
+                    <ActorTag objActor={objDetail.objQaRequester} strLabel="QA 쿼리 실행 요청자" />
+                    <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA 쿼리 실행자" />
+                    <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
+                    <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE 쿼리 실행 요청자" />
+                    <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE 쿼리 실행자" />
+                    <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
                   </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
-              </Descriptions>
-            </Card>
-
-            {/* 단계별 처리자 */}
-            <Card size="small" title="단계별 처리자">
-              <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
-                <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
-                <ActorTag objActor={objDetail.objQaRequester} strLabel="QA반영요청자" />
-                <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA반영자" />
-                <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
-                <ActorTag objActor={objDetail.objLiveRequester} strLabel="LIVE반영요청자" />
-                <ActorTag objActor={objDetail.objLiveDeployer} strLabel="LIVE반영자" />
-                <ActorTag objActor={objDetail.objLiveVerifier} strLabel="LIVE확인자" />
-              </Space>
-            </Card>
-
-            {/* 입력값 */}
-            {objDetail.strInputValues && (
-              <Card size="small" title="입력값">
-                <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>
-              </Card>
-            )}
-
-            {/* 최종 쿼리 (컨펌 요청자·DBA 동일하게 공유) */}
-            {objDetail.strGeneratedQuery && (
-              <Card size="small" title="최종 쿼리" extra={
-                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
-              }>
-                <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                  style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
-              </Card>
-            )}
-
-            {/* 진행 이력 (실행 결과 포함) */}
-            <Card size="small" title="진행 이력">
-              <Timeline
-                items={objDetail.arrStatusLogs.map((log) => ({
-                  color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
-                  children: (
-                    <div>
-                      <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
-                      <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
-                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
-                      {log.strComment && (
-                        <div style={{ marginTop: 2 }}>
-                          <Text
-                            style={{
-                              fontSize: 12,
-                              color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
-                            }}
-                          >
-                            {log.strComment}
-                          </Text>
-                        </div>
-                      )}
-                      {/* 실행 결과 인라인 표시 */}
-                      {log.objExecutionResult && (
-                        <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>
-                          <Space>
-                            <Tag color={log.objExecutionResult.strEnv === 'qa' ? 'orange' : 'red'}>
-                              {log.objExecutionResult.strEnv.toUpperCase()}
-                            </Tag>
-                            <Text style={{ fontSize: 12 }}>
-                              처리 {log.objExecutionResult.nTotalAffectedRows}건
-                            </Text>
-                            <Divider type="vertical" />
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              {log.objExecutionResult.nElapsedMs}ms
-                            </Text>
+                ),
+              },
+              ...(objDetail.arrExecutionTargets?.length
+                ? (() => {
+                    const arrInputParts = (objDetail.strInputValues ?? '').split(MULTI_INPUT_DELIMITER);
+                    return objDetail.arrExecutionTargets!.map((t, idx) => {
+                      const strSetInput = arrInputParts[idx] ?? arrInputParts[0] ?? '';
+                      return {
+                        key: `query-set-${idx}`,
+                        label: `쿼리 세트 ${idx + 1}`,
+                        children: (
+                          <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                            {strSetInput !== '' && (
+                              <div>
+                                <Text type="secondary" style={{ fontSize: 12 }}>입력값 (이 세트)</Text>
+                                <div style={{ marginTop: 4, padding: 8, background: token.colorFillTertiary, borderRadius: token.borderRadius }}>
+                                  <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{strSetInput}</Text>
+                                </div>
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
+                              </div>
+                              <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                                style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                            </div>
                           </Space>
+                        ),
+                      };
+                    });
+                  })()
+                : objDetail.strInputValues
+                  ? [{
+                      key: 'input',
+                      label: '입력값',
+                      children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
+                    }]
+                  : []),
+              ...(objDetail.arrExecutionTargets?.length
+                ? []
+                : objDetail.strGeneratedQuery
+                  ? [{
+                      key: 'query',
+                      label: '최종 쿼리',
+                      children: (
+                        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                          <div style={{ textAlign: 'right' }}>
+                            <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                          </div>
+                          <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
+                            style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                        </Space>
+                      ),
+                    }]
+                  : []),
+              {
+                key: 'history',
+                label: '진행 이력',
+                children: (
+                  <Timeline
+                    items={objDetail.arrStatusLogs.map((log) => ({
+                      color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
+                      children: (
+                        <div>
+                          <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                          <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
+                          <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
+                          {log.strComment && (
+                            <div style={{ marginTop: 2 }}>
+                              <Text
+                                style={{
+                                  fontSize: 12,
+                                  color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
+                                }}
+                              >
+                                {log.strComment}
+                              </Text>
+                            </div>
+                          )}
+                          {log.objExecutionResult && (
+                            <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>
+                              <Space>
+                                <Tag color={log.objExecutionResult.strEnv === 'qa' ? 'orange' : 'red'}>
+                                  {log.objExecutionResult.strEnv.toUpperCase()}
+                                </Tag>
+                                <Text style={{ fontSize: 12 }}>처리 {log.objExecutionResult.nTotalAffectedRows}건</Text>
+                                <Divider type="vertical" />
+                                <Text type="secondary" style={{ fontSize: 11 }}>{log.objExecutionResult.nElapsedMs}ms</Text>
+                              </Space>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            </Card>
-          </Space>
+                      ),
+                    }))}
+                  />
+                ),
+              },
+            ]}
+          />
         )}
       </Modal>
 
@@ -1372,10 +1465,11 @@ const MyDashboardPage = () => {
                     ))}
                   </Checkbox.Group>
                 ) : (
-                  <Space>
-                    {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => (
-                      <Tag key={s} color={s === 'qa' ? 'orange' : 'red'}>{s.toUpperCase()}</Tag>
-                    ))}
+                  <Space size={4}>
+                    {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
+                      const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+                      return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                    })}
                   </Space>
                 )}
               </div>
@@ -1393,18 +1487,71 @@ const MyDashboardPage = () => {
                 onChange={(date) => setStrEditDeployDate(date ? date.toISOString() : '')}
               />
             </div>
-            <div>
-              <Space style={{ marginBottom: 4 }}>
-                <Text strong>입력값 (아이템/퀘스트)</Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
-              </Space>
-              <TextArea
-                value={strEditInputValues}
-                onChange={(e) => setStrEditInputValues(e.target.value)}
-                rows={5}
-                style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
-              />
-            </div>
+            {(objEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
+              <>
+                <div>
+                  <Space style={{ marginBottom: 4 }}>
+                    <Text strong>입력값 (아이템/퀘스트)</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>세트별 입력 · 수정 시 쿼리 자동 재생성</Text>
+                  </Space>
+                  <Tabs
+                    type="card"
+                    style={{ marginTop: 8 }}
+                    items={objEditInstance.arrExecutionTargets!.map((_, idx) => ({
+                      key: String(idx),
+                      label: `세트 ${idx + 1} 입력값`,
+                      children: (
+                        <TextArea
+                          value={arrEditInputValues[idx] ?? ''}
+                          onChange={(e) => {
+                            const next = [...arrEditInputValues];
+                            while (next.length <= idx) next.push('');
+                            next[idx] = e.target.value;
+                            setArrEditInputValues(next);
+                          }}
+                          rows={4}
+                          style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        />
+                      ),
+                    }))}
+                  />
+                </div>
+                <div>
+                  <Space style={{ marginBottom: 4 }}>
+                    <Text strong>쿼리 (읽기 전용)</Text>
+                  </Space>
+                  <Tabs
+                    type="card"
+                    style={{ marginTop: 8 }}
+                    items={objEditInstance.arrExecutionTargets!.map((t, idx) => ({
+                      key: String(idx),
+                      label: `쿼리 세트 ${idx + 1}`,
+                      children: (
+                        <TextArea
+                          value={t.strQuery}
+                          readOnly
+                          rows={6}
+                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary }}
+                        />
+                      ),
+                    }))}
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <Space style={{ marginBottom: 4 }}>
+                  <Text strong>입력값 (아이템/퀘스트)</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
+                </Space>
+                <TextArea
+                  value={strEditInputValues}
+                  onChange={(e) => setStrEditInputValues(e.target.value)}
+                  rows={5}
+                  style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
+                />
+              </div>
+            )}
           </Space>
         )}
       </Modal>
@@ -1438,16 +1585,47 @@ const MyDashboardPage = () => {
               message="DBA 전용 쿼리 직접 수정"
               description={`이벤트: ${objQueryEditInstance.strEventName} | 수정 이력이 진행 로그에 기록됩니다.`}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
-            </div>
-            <Input.TextArea
-              value={strQueryEditValue}
-              onChange={(e) => setStrQueryEditValue(e.target.value)}
-              autoSize={{ minRows: 10, maxRows: 25 }}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
-              placeholder="SQL 쿼리를 입력하세요..."
-            />
+            {(objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
+              <Tabs
+                type="card"
+                items={objQueryEditInstance.arrExecutionTargets!.map((t, idx) => ({
+                  key: String(idx),
+                  label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                  children: (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                        <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
+                      </div>
+                      <Input.TextArea
+                        value={arrQueryEditValues[idx] ?? ''}
+                        onChange={(e) => {
+                          const next = [...arrQueryEditValues];
+                          while (next.length <= idx) next.push('');
+                          next[idx] = e.target.value;
+                          setArrQueryEditValues(next);
+                        }}
+                        autoSize={{ minRows: 10, maxRows: 25 }}
+                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        placeholder="SQL 쿼리를 입력하세요..."
+                      />
+                    </div>
+                  ),
+                }))}
+              />
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
+                </div>
+                <Input.TextArea
+                  value={strQueryEditValue}
+                  onChange={(e) => setStrQueryEditValue(e.target.value)}
+                  autoSize={{ minRows: 10, maxRows: 25 }}
+                  style={{ fontFamily: 'monospace', fontSize: 13 }}
+                  placeholder="SQL 쿼리를 입력하세요..."
+                />
+              </>
+            )}
           </Space>
         )}
       </Modal>

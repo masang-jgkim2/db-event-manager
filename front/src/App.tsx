@@ -39,23 +39,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// 관리자 전용 라우트 가드
-const AdminRoute = ({ children }: { children: React.ReactNode }) => {
-  const user = useAuthStore((state) => state.user);
-  const arrRoles = user?.arrRoles || [];
-
-  if (!arrRoles.includes('admin')) {
-    return (
-      <Result
-        status="403"
-        title="접근 권한 없음"
-        subTitle="관리자만 접근할 수 있는 페이지입니다."
-      />
-    );
-  }
-
-  return <>{children}</>;
-};
+// 권한 기반 라우트 가드 (특정 권한 필요 시 PermissionRoute 사용, 역할은 사용하지 않음)
 
 // 특정 권한 기반 라우트 가드 (하나라도 보유하면 통과)
 const PermissionRoute = ({
@@ -90,7 +74,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (bIsAuthenticated) {
     const arrPermissions = user?.arrPermissions || [];
-    const bHasDashboard = arrRoles.includes('admin');
+    const bHasDashboard = arrPermissions.includes('dashboard.view');
     const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
     const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
     const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));
@@ -100,12 +84,11 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// 기본 리다이렉트 (역할/권한에 따라)
+// 기본 리다이렉트 (권한에 따라, 역할 미사용)
 const DefaultRedirect = () => {
   const user = useAuthStore((state) => state.user);
-  const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
-  const bHasDashboard = arrRoles.includes('admin');
+  const bHasDashboard = arrPermissions.includes('dashboard.view');
   const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
   const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
   const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));

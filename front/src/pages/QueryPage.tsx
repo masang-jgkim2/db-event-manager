@@ -16,6 +16,7 @@ import {
   Result,
   Alert,
   Checkbox,
+  Tabs,
 } from 'antd';
 import {
   CodeOutlined,
@@ -30,12 +31,17 @@ import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
+import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
+import type { IDbConnection } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// 다중 세트 입력값을 서버의 strInputValues 한 필드에 저장할 때 사용하는 구분자
+const MULTI_INPUT_DELIMITER = '\u0001';
 
 const QueryPage = () => {
   const navigate = useNavigate();
@@ -47,13 +53,19 @@ const QueryPage = () => {
   // 입력 상태
   const [strEventName, setStrEventName] = useState('');
   const [strInputValues, setStrInputValues] = useState('');
+  /** 다중 쿼리 세트일 때 세트별 입력값 (인덱스 = 세트 순서) */
+  const [arrInputValues, setArrInputValues] = useState<string[]>([]);
   const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
 
-  // 반영 범위 (기본: QA→LIVE, LIVE only 가능, DEV 불가)
+  // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
 
-  // 결과
+  // DB 접속 목록 (이벤트 생성 시 QA/LIVE 선택 가능 여부 검사용)
+  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
+
+  // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
+  const [arrExecutionTargets, setArrExecutionTargets] = useState<Array<{ nDbConnectionId: number; strQuery: string }>>([]);
 
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -65,8 +77,22 @@ const QueryPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const user = useAuthStore((s) => s.user);
 
-  // 페이지 진입 시 최신 프로덕트/이벤트 목록 로드
+  // 페이지 진입 시 최신 프로덕트/이벤트 목록 및 DB 접속 목록 로드
   useEffect(() => { fnFetchProducts(); fnFetchEvents(); }, [fnFetchProducts, fnFetchEvents]);
+  useEffect(() => {
+    let bMounted = true;
+    const fnLoad = async () => {
+      try {
+        const res = await fnApiGetDbConnections();
+        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
+          setArrDbConnections(res.arrDbConnections);
+      } catch {
+        // 권한 없음 등 실패해도 페이지는 표시
+      }
+    };
+    fnLoad();
+    return () => { bMounted = false; };
+  }, []);
   useAutoRefresh(() => { fnFetchProducts(); fnFetchEvents(); });
 
   // 선택된 프로덕트
@@ -92,6 +118,36 @@ const QueryPage = () => {
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
 
+  // 다중 쿼리 세트 (템플릿에 1개 이상 유효한 세트가 있을 때)
+  const arrSets = useMemo(() => {
+    if (!objSelectedEvent) return [];
+    return objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+  }, [objSelectedEvent]);
+  const bMultiQuery = arrSets.length > 0;
+
+  // 이벤트 생성 시 QA/LIVE 체크 가능 여부: 해당 프로덕트에 해당 env DB 접속이 있는지. 목록 미로드 시 둘 다 선택 가능
+  const bHasQaConnection = useMemo(() => {
+    if (arrDbConnections.length === 0) return true;
+    if (!nSelectedProductId) return true;
+    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'qa' && c.bIsActive);
+  }, [nSelectedProductId, arrDbConnections]);
+  const bHasLiveConnection = useMemo(() => {
+    if (arrDbConnections.length === 0) return true;
+    if (!nSelectedProductId) return true;
+    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'live' && c.bIsActive);
+  }, [nSelectedProductId, arrDbConnections]);
+
+  // 프로덕트 선택 시: 쿼리 실행 대상에서 해당 프로덕트에 없는 env 제거
+  useEffect(() => {
+    if (nSelectedProductId == null) return;
+    setArrDeployScope((prev) => {
+      const next = prev.filter((env) =>
+        (env === 'qa' && bHasQaConnection) || (env === 'live' && bHasLiveConnection)
+      );
+      return next.length > 0 ? next : (bHasQaConnection ? ['qa'] : bHasLiveConnection ? ['live'] : []);
+    });
+  }, [nSelectedProductId, bHasQaConnection, bHasLiveConnection]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 현재 스텝
   const nCurrentStep = useMemo(() => {
     if (strGeneratedQuery) return 4;
@@ -116,6 +172,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
 
@@ -131,6 +188,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
   };
@@ -138,22 +196,42 @@ const QueryPage = () => {
   const fnHandleEventChange = (nId: number) => {
     setNSelectedEventId(nId);
     setStrGeneratedQuery('');
+    setArrExecutionTargets([]);
 
     const objEvent = arrEvents.find((e) => e.nId === nId);
     if (objEvent && strSelectedAbbr) {
-      // 이벤트 이름 자동 생성
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
-      // 기본 아이템값이 있으면 자동 채움
-      if (objEvent.strDefaultItems) {
-        setStrInputValues(objEvent.strDefaultItems);
-      } else {
+      const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      if (arrNewSets.length > 0) {
+        setArrInputValues(arrNewSets.map((s) => (s.strDefaultItems ?? '').trim()));
         setStrInputValues('');
+      } else {
+        const strDefault =
+          (objEvent.strDefaultItems && objEvent.strDefaultItems.trim()) ||
+          (objEvent.arrQueryTemplates?.[0]?.strDefaultItems?.trim()) ||
+          '';
+        setStrInputValues(strDefault);
+        setArrInputValues([]);
       }
     }
   };
 
-  // === 이벤트 생성 (서버 저장) ===
+  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride로 세트별 입력 사용
+  const fnApplyTemplate = (strTemplate: string, strItemsOverride?: string): string => {
+    const strItems = strItemsOverride !== undefined ? strItemsOverride.trim() : strInputValues.trim();
+    const strDateOnly = strDeployDate.slice(0, 10);
+    let str = strTemplate;
+    str = str.replace(/\{\{items\}\}/g, strItems);
+    str = str.replace(/\{\{date\}\}/g, strDateOnly);
+    str = str.replace(/\{\{event_name\}\}/g, strEventName);
+    str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
+    str = str.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
+    str = str.replace(/\{\{region\}\}/g, objSelectedService?.strRegion || '');
+    return str;
+  };
+
+  // === 이벤트 생성 (템플릿 + 입력값만 사용, 서버 저장) ===
   const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
 
@@ -163,29 +241,56 @@ const QueryPage = () => {
       return;
     }
 
-    // 입력값 필요한데 비어있으면 경고
-    if (objSelectedEvent.strInputFormat !== 'none' && !strInputValues.trim()) {
-      messageApi.warning('입력값을 입력해주세요.');
+    // 쿼리 실행 대상(QA/LIVE) 선택 시 해당 프로덕트에 그 env DB 접속이 있는지 검사
+    if (arrDeployScope.includes('qa') && !bHasQaConnection) {
+      messageApi.warning('QA를 선택하려면 해당 프로덕트에 QA DB 접속 정보를 등록·활성화해주세요.');
+      return;
+    }
+    if (arrDeployScope.includes('live') && !bHasLiveConnection) {
+      messageApi.warning('LIVE를 선택하려면 해당 프로덕트에 LIVE DB 접속 정보를 등록·활성화해주세요.');
       return;
     }
 
-    let strQuery = objSelectedEvent.strQueryTemplate;
+    // 입력값 검증: 다중 세트면 세트별 입력 모두 필수, 단일이면 strInputValues
+    if (objSelectedEvent.strInputFormat !== 'none') {
+      if (bMultiQuery) {
+        const bAllFilled = arrInputValues.length === arrSets.length && arrInputValues.every((v) => (v ?? '').trim().length > 0);
+        if (!bAllFilled) {
+          messageApi.warning('모든 쿼리 세트의 입력값을 입력해주세요.');
+          return;
+        }
+      } else if (!strInputValues.trim()) {
+        messageApi.warning('입력값을 입력해주세요.');
+        return;
+      }
+    }
 
-    // 치환 변수 처리 ({{date}}에는 날짜 부분만 넣음 YYYY-MM-DD)
-    const strDateOnly = strDeployDate.slice(0, 10);
-    strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
-    strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
-    strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
-    strQuery = strQuery.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
-    strQuery = strQuery.replace(/\{\{product\}\}/g, objSelectedProduct?.strName || '');
-    strQuery = strQuery.replace(/\{\{region\}\}/g, objSelectedService?.strRegion || '');
+    let strQuery = '';
+    const arrTargets: Array<{ nDbConnectionId: number; strQuery: string }> = [];
 
+    if (bMultiQuery) {
+      for (let i = 0; i < arrSets.length; i++) {
+        const s = arrSets[i];
+        const strItems = (arrInputValues[i] ?? '').trim();
+        const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strItems);
+        arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
+      }
+      setArrExecutionTargets(arrTargets);
+      // 미리보기: 세트별 쿼리를 구분자로 합쳐서 표시
+      strQuery = arrTargets.map((t, idx) => `-- === 세트 ${idx + 1} (연결 ID: ${t.nDbConnectionId}) ===\n${t.strQuery}`).join('\n\n');
+    } else {
+      const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
+      strQuery = fnApplyTemplate(strTemplate);
+      setArrExecutionTargets([]);
+    }
     setStrGeneratedQuery(strQuery);
 
-    // 서버에 이벤트 인스턴스 저장
     setBSubmitting(true);
     try {
-      const objResult = await fnApiCreateInstance({
+      const strPayloadInputValues = bMultiQuery
+        ? arrInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
+        : strInputValues.trim();
+      const objPayload: Record<string, unknown> = {
         nEventTemplateId: objSelectedEvent.nId,
         nProductId: objSelectedProduct?.nId || 0,
         strEventLabel: objSelectedEvent.strEventLabel,
@@ -195,12 +300,17 @@ const QueryPage = () => {
         strCategory: objSelectedEvent.strCategory,
         strType: objSelectedEvent.strType,
         strEventName,
-        strInputValues: strInputValues.trim(),
-        strGeneratedQuery: strQuery,
+        strInputValues: strPayloadInputValues,
+        strGeneratedQuery: bMultiQuery ? (arrTargets[0]?.strQuery ?? '') : strQuery,
         dtDeployDate: strDeployDate,
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
-      });
+      };
+      if (bMultiQuery && arrTargets.length > 0) {
+        (objPayload as any).arrExecutionTargets = arrTargets;
+      }
+
+      const objResult = await fnApiCreateInstance(objPayload);
 
       if (objResult.bSuccess) {
         messageApi.success('이벤트가 생성되었습니다!');
@@ -229,8 +339,10 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
+    setArrInputValues([]);
     setStrDeployDate('');
     setStrGeneratedQuery('');
+    setArrExecutionTargets([]);
     setArrDeployScope(['qa', 'live']);
   };
 
@@ -387,6 +499,13 @@ const QueryPage = () => {
                   </Select.Option>
                 ))}
               </Select>
+              {objSelectedEvent && (
+                <Space wrap style={{ marginTop: 8 }}>
+                  {(objSelectedEvent.arrQueryTemplates?.length ?? 0) > 0 && (
+                    <Tag color="blue">다중 쿼리 ({objSelectedEvent.arrQueryTemplates!.length}세트)</Tag>
+                  )}
+                </Space>
+              )}
               {objSelectedEvent?.strDescription && (
                 <Alert
                   message={objSelectedEvent.strDescription}
@@ -444,63 +563,109 @@ const QueryPage = () => {
                   />
                 </Form.Item>
 
-                {/* 반영 범위 */}
+                {/* 반영 범위: QA/LIVE 선택 시 해당 프로덕트에 그 env DB 접속이 있어야 함 */}
                 <Form.Item
                   label={
                     <Space>
                       반영 범위
                       <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
-                      <Text type="secondary" style={{ fontSize: 11 }}>DEV 환경은 지원하지 않습니다</Text>
                     </Space>
                   }
+                  extra={
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      QA/LIVE 선택 시 해당 프로덕트에 해당 환경 DB 접속이 등록·활성화되어 있어야 합니다. 단일: 한 환경만. 다중: QA 반영 후 LIVE 순으로 실행.
+                      {arrDbConnections.length === 0 && ' DB 접속 목록 미로드 시 둘 다 선택 가능하며, 실행 단계에서 검사됩니다.'}
+                    </Text>
+                  }
                 >
-                  <Space direction="vertical" size={4}>
-                    <Checkbox.Group
-                      value={arrDeployScope}
-                      onChange={(arrChecked) => {
-                        // LIVE 단독 또는 QA+LIVE만 허용, 최소 1개
-                        const arrNext = arrChecked.filter(
-                          (v): v is TDeployScope => v === 'qa' || v === 'live'
-                        );
-                        if (arrNext.length > 0) setArrDeployScope(arrNext);
-                      }}
-                    >
+                  <Checkbox.Group
+                    value={arrDeployScope}
+                    onChange={(arrChecked) => {
+                      const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
+                        if (v !== 'qa' && v !== 'live') return false;
+                        return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
+                      });
+                      if (arrNext.length > 0) setArrDeployScope(arrNext);
+                    }}
+                  >
+                    <Space>
                       {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                        <Checkbox key={opt.value} value={opt.value}>
-                          <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                        <Checkbox
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
+                        >
+                          <Tag color={opt.strColor}>{opt.label}</Tag>
+                          {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
+                            <Text type="secondary" style={{ fontSize: 11 }}> (해당 프로덕트에 {opt.value.toUpperCase()} DB 접속 없음)</Text>
+                          ) : null}
                         </Checkbox>
                       ))}
-                    </Checkbox.Group>
-                    <Text type="secondary" style={{ fontSize: 11 }}>
-                      {arrDeployScope.includes('qa') && arrDeployScope.includes('live')
-                        ? '기본: QA 반영 후 LIVE 반영'
-                        : arrDeployScope.includes('live')
-                        ? 'LIVE 전용: QA 단계 없이 바로 LIVE 반영'
-                        : 'QA 반영만 진행'}
-                    </Text>
-                  </Space>
+                    </Space>
+                  </Checkbox.Group>
                 </Form.Item>
 
-                {/* 입력값 (형식에 따라) */}
+                {/* 쿼리 템플릿에 맞는 입력 공간: 다중 세트면 탭으로 세트별, 단일이면 1개 */}
                 {objSelectedEvent.strInputFormat !== 'none' && (
-                  <Form.Item
-                    label={
-                      <Space>
-                        {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
-                        {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
-                        {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
-                      </Space>
-                    }
-                  >
-                    <TextArea
-                      value={strInputValues}
-                      onChange={(e) => setStrInputValues(e.target.value)}
-                      rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
-                      placeholder={fnGetInputPlaceholder()}
-                      style={{ fontFamily: 'monospace', fontSize: 13 }}
-                    />
-                  </Form.Item>
+                  bMultiQuery ? (
+                    <Form.Item
+                      label={
+                        <Space>
+                          <Text strong>쿼리 세트별 입력값</Text>
+                          {objSelectedEvent.strInputFormat === 'item_number' && ' — 아이템 번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && ' — 아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
+                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        </Space>
+                      }
+                    >
+                      <Tabs
+                        type="card"
+                        items={arrSets.map((_, idx) => ({
+                          key: String(idx),
+                          label: `쿼리 세트 ${idx + 1}`,
+                          children: (
+                            <TextArea
+                              value={arrInputValues[idx] ?? ''}
+                              onChange={(e) => {
+                                const next = [...arrInputValues];
+                                while (next.length <= idx) next.push('');
+                                next[idx] = e.target.value;
+                                setArrInputValues(next);
+                              }}
+                              rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
+                              placeholder={fnGetInputPlaceholder()}
+                              style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8 }}
+                            />
+                          ),
+                        }))}
+                      />
+                    </Form.Item>
+                  ) : (
+                    <Form.Item
+                      label={
+                        <Space>
+                          {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
+                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        </Space>
+                      }
+                      extra={
+                        <Text type="secondary" style={{ fontSize: 11 }}>
+                          쿼리 템플릿에 맞게 입력해주세요.
+                        </Text>
+                      }
+                    >
+                      <TextArea
+                        value={strInputValues}
+                        onChange={(e) => setStrInputValues(e.target.value)}
+                        rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
+                        placeholder={fnGetInputPlaceholder()}
+                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                      />
+                    </Form.Item>
+                  )
                 )}
               </Form>
 
@@ -551,7 +716,6 @@ const QueryPage = () => {
           >
             {strGeneratedQuery ? (
               <>
-                {/* 이벤트 이름 표시 */}
                 <Alert
                   message={
                     <Space>
@@ -563,20 +727,47 @@ const QueryPage = () => {
                   showIcon
                   style={{ marginBottom: 12 }}
                 />
-                <TextArea
-                  value={strGeneratedQuery}
-                  readOnly
-                  autoSize={{ minRows: 10, maxRows: 25 }}
-                  style={{
-                    fontFamily: "'Consolas', 'Monaco', monospace",
-                    fontSize: 13,
-                    background: '#1e1e1e',
-                    color: '#d4d4d4',
-                    border: 'none',
-                    borderRadius: 8,
-                    padding: 16,
-                  }}
-                />
+                {arrExecutionTargets.length > 0 ? (
+                  <Tabs
+                    type="card"
+                    items={arrExecutionTargets.map((t, idx) => ({
+                      key: String(idx),
+                      label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                      children: (
+                        <TextArea
+                          value={t.strQuery}
+                          readOnly
+                          autoSize={{ minRows: 8, maxRows: 20 }}
+                          style={{
+                            fontFamily: "'Consolas', 'Monaco', monospace",
+                            fontSize: 12,
+                            background: '#1e1e1e',
+                            color: '#d4d4d4',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: 12,
+                            marginTop: 8,
+                          }}
+                        />
+                      ),
+                    }))}
+                  />
+                ) : (
+                  <TextArea
+                    value={strGeneratedQuery}
+                    readOnly
+                    autoSize={{ minRows: 10, maxRows: 25 }}
+                    style={{
+                      fontFamily: "'Consolas', 'Monaco', monospace",
+                      fontSize: 13,
+                      background: '#1e1e1e',
+                      color: '#d4d4d4',
+                      border: 'none',
+                      borderRadius: 8,
+                      padding: 16,
+                    }}
+                  />
+                )}
               </>
             ) : (
               <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>

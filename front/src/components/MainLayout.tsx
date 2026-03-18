@@ -87,12 +87,11 @@ const MainLayout = () => {
     };
   }, [fnSetSiderWidth]);
 
-  const arrRoles = user?.arrRoles || [];
   const arrPermissions = user?.arrPermissions || [];
+  const arrRoles = user?.arrRoles || []; // UI 표시용(첫 역할 라벨), 접근 제어는 권한만 사용
 
-  // 권한 보유 여부 헬퍼
+  // 권한 보유 여부 헬퍼 (역할 대신 권한만 사용)
   const fnHasPerm = (strPerm: string) => arrPermissions.includes(strPerm);
-  const bIsAdmin = arrRoles.includes('admin');
 
   // 권한 기반 사이드바 메뉴 동적 생성
   const arrMenuItems = useMemo(() => {
@@ -101,8 +100,8 @@ const MainLayout = () => {
     // ── 이벤트 그룹 ──────────────────────────────────
     const arrEventChildren = [];
 
-    // 대시보드: 관리자 또는 세분화 권한
-    if (bIsAdmin || fnHasPerm('dashboard.view')) {
+    // 대시보드: dashboard.view 권한
+    if (fnHasPerm('dashboard.view')) {
       arrEventChildren.push({ key: '/', icon: <DashboardOutlined />, label: '대시보드' });
     }
     // 프로덕트: 보기 권한 있어야 메뉴 노출
@@ -174,7 +173,7 @@ const MainLayout = () => {
 
     return arrResult;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrRoles, arrPermissions]);
+  }, [arrPermissions]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -237,7 +236,7 @@ const MainLayout = () => {
                 color: ds.objSider.strLogoText,
               }}
             >
-              이벤트 매니저
+              DB Process Manager
             </span>
           )}
         </div>

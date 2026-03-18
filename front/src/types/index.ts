@@ -87,6 +87,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'my_dashboard.view', label: '보기' },
     { value: 'my_dashboard.detail', label: '상세' },
     { value: 'my_dashboard.edit', label: '이벤트 수정' },
+    { value: 'my_dashboard.edit_any', label: '타인 이벤트 수정' },
     { value: 'my_dashboard.request_confirm', label: '컨펌 요청' },
     { value: 'my_dashboard.query_edit', label: '쿼리 수정' },
     { value: 'my_dashboard.confirm', label: 'DBA 컨펌' },
@@ -103,6 +104,9 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
   { groupLabel: '이벤트 생성', permissions: [
     { value: 'instance.view', label: '보기' },
     { value: 'instance.create', label: '생성' },
+  ]},
+  { groupLabel: '시스템', permissions: [
+    { value: 'system.save_test_seed', label: '테스트 시드 저장' },
   ]},
 ];
 
@@ -136,7 +140,7 @@ const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
-  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.query_edit', 'my_dashboard.confirm'],
+  'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
@@ -243,6 +247,13 @@ export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
   { value: 'none', label: '입력 없음' },
 ];
 
+// 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿
+export interface IQueryTemplateItem {
+  nDbConnectionId: number;
+  strDefaultItems?: string;
+  strQueryTemplate: string;
+}
+
 // 이벤트 템플릿
 export interface IEventTemplate {
   nId: number;
@@ -254,7 +265,8 @@ export interface IEventTemplate {
   strType: TEventType;            // 이벤트 유형 (삭제/지급/초기화)
   strInputFormat: TInputFormat;   // 입력 형식
   strDefaultItems: string;        // 기본 아이템 값 (예시값)
-  strQueryTemplate: string;       // SQL 쿼리 템플릿
+  strQueryTemplate: string;       // SQL 쿼리 템플릿 (레거시 단일)
+  arrQueryTemplates?: IQueryTemplateItem[];  // 종류별 쿼리 템플릿 (있으면 이걸 사용)
   dtCreatedAt: string;
 }
 
@@ -262,7 +274,7 @@ export interface IEventTemplate {
 // 이벤트 인스턴스 (운영자가 생성한 실제 이벤트)
 // =============================================
 
-// 반영 범위 — DEV는 UI에서 선택 불가(백엔드 차단), QA→LIVE가 기본값
+// 단일 서버 쿼리(한 환경) vs 다중 서버 쿼리(QA+LIVE) — DEV는 UI 선택 불가(백엔드 차단)
 export type TDeployScope = 'qa' | 'live';
 export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strColor: string }[] = [
   { value: 'qa',   label: 'QA',   strColor: 'orange' },
@@ -281,17 +293,32 @@ export type TEventStatus =
   | 'live_deployed'       // DBA LIVE 반영
   | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
-// 상태 라벨/색상 매핑
+// 상태 라벨/색상 — 나의 대시보드 권한 이름과 동일 (작성 중→생성, 완료 유지)
 export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
-  event_created:      { strLabel: '작성 중',         strColor: 'default' },
+  event_created:      { strLabel: '생성',            strColor: 'default' },
   confirm_requested:  { strLabel: '컨펌 요청',       strColor: 'blue' },
-  dba_confirmed:      { strLabel: 'DBA 컨펌',       strColor: 'cyan' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strColor: 'cyan' },
   qa_requested:       { strLabel: 'QA 반영 요청',   strColor: 'geekblue' },
-  qa_deployed:        { strLabel: 'QA 반영',        strColor: 'orange' },
+  qa_deployed:        { strLabel: 'QA 반영 실행',    strColor: 'orange' },
   qa_verified:        { strLabel: 'QA 확인',        strColor: 'gold' },
-  live_requested:     { strLabel: 'LIVE 반영 요청', strColor: 'magenta' },
-  live_deployed:      { strLabel: 'LIVE 반영',      strColor: 'volcano' },
+  live_requested:     { strLabel: 'LIVE 반영 요청',  strColor: 'magenta' },
+  live_deployed:      { strLabel: 'LIVE 반영 실행',  strColor: 'volcano' },
   live_verified:      { strLabel: '완료',            strColor: 'green' },
+};
+
+// 프로세스 진행에 따른 현재 환경 (QA / LIVE / DEV 중 하나만 표시)
+export type TDisplayEnv = 'DEV' | 'QA' | 'LIVE';
+export const fnGetDisplayEnv = (strStatus: TEventStatus): TDisplayEnv | null => {
+  if (strStatus.startsWith('live_')) return 'LIVE';
+  if (strStatus.startsWith('qa_')) return 'QA';
+  if (strStatus === 'event_created' || strStatus === 'confirm_requested' || strStatus === 'dba_confirmed') return 'DEV';
+  return null;
+};
+
+export const OBJ_DISPLAY_ENV_COLOR: Record<TDisplayEnv, string> = {
+  DEV: 'default',
+  QA: 'orange',
+  LIVE: 'red',
 };
 
 // 쿼리 개별 실행 결과
@@ -314,11 +341,16 @@ export interface IQueryExecutionResult {
   dtExecutedAt: string;
 }
 
+// DB 접속 종류
+export type TDbConnectionKind = 'GAME' | 'WEB' | 'LOG';
+export const ARR_DB_CONNECTION_KINDS: TDbConnectionKind[] = ['GAME', 'WEB', 'LOG'];
+
 // DB 접속 정보
 export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;
+  strKind: TDbConnectionKind;
   strEnv: 'dev' | 'qa' | 'live';
   strDbType: 'mssql' | 'mysql';
   strHost: string;
@@ -368,6 +400,7 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
+  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
   dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
   arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
   strStatus: TEventStatus;

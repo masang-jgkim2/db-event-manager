@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Typography,
   Button,
@@ -13,15 +13,17 @@ import {
   Card,
   Row,
   Col,
-  Divider,
+  Tabs,
 } from 'antd';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, TEventCategory, TEventType, TInputFormat } from '../types';
+import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat } from '../types';
+import type { IDbConnection } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
 const { Title, Text } = Typography;
@@ -40,11 +42,130 @@ const objTypeColor: Record<string, string> = {
   '초기화': 'orange',
 };
 
+// 쿼리 모드: 단일(한 연결 한 쿼리) / 다중(여러 연결·세트)
+type TQueryMode = 'single' | 'multi';
+
+const QUERY_TABS_ADD_KEY = '__add__';
+
+// Form.List 렌더 prop 안에서는 훅 호출 불가 → 별도 컴포넌트로 분리
+type TQueryTemplatesTabContentProps = {
+  fields: { key: number; name: number; [k: string]: unknown }[];
+  add: (defaultValue: unknown) => void;
+  remove: (index: number) => void;
+  arrConnectionsByProduct: IDbConnection[];
+  activeKey: string;
+  setActiveKey: (k: string) => void;
+  justAddedRef: React.MutableRefObject<boolean>;
+};
+const QueryTemplatesTabContent = ({
+  fields,
+  add,
+  remove,
+  arrConnectionsByProduct,
+  activeKey,
+  setActiveKey,
+  justAddedRef,
+}: TQueryTemplatesTabContentProps) => {
+  useEffect(() => {
+    if (justAddedRef.current && fields.length > 0) {
+      justAddedRef.current = false;
+      setActiveKey(String(fields[fields.length - 1].key));
+      return;
+    }
+    // 세트 삭제 시: 현재 활성 탭이 없어지면 마지막 세트 탭으로 전환
+    if (fields.length > 0) {
+      const keys = new Set(fields.map((f) => String(f.key)));
+      if (!keys.has(activeKey) && activeKey !== QUERY_TABS_ADD_KEY) {
+        setActiveKey(String(fields[fields.length - 1].key));
+      }
+    }
+  }, [fields.length, fields, setActiveKey, justAddedRef, activeKey]);
+
+  const tabItems = [
+    ...fields.map(({ key, name, ...restField }) => ({
+      key: String(key),
+      label: `세트 ${name + 1}`,
+      children: (
+        <div style={{ paddingTop: 8 }}>
+          {fields.length > 1 && (
+            <div style={{ textAlign: 'right', marginBottom: 8 }}>
+              <Button type="text" danger size="small" icon={<MinusCircleOutlined />} onClick={() => remove(name)}>
+                이 세트 삭제
+              </Button>
+            </div>
+          )}
+          <Form.Item
+            {...restField}
+            name={[name, 'nDbConnectionId']}
+            label="연결 DB (DB 구분: 종류·접속·DB명 등)"
+            rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
+            extra="환경(QA/LIVE) 구분이 아니라, 어떤 DB에 쿼리를 실행할지 구분합니다. QA/LIVE 반영은 이벤트 생성 시 결정됩니다."
+          >
+            <Select placeholder="DB 접속 선택 (종류·호스트·DB명)" showSearch optionFilterProp="children">
+              {arrConnectionsByProduct.map((c) => (
+                <Select.Option key={c.nId} value={c.nId}>
+                  <Space wrap>
+                    <Tag color="blue">{c.strKind || 'GAME'}</Tag>
+                    <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
+                    <Tag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</Tag>
+                  </Space>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
+            <Input placeholder="예: 1,2,3" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </Form.Item>
+          <Form.Item
+            {...restField}
+            name={[name, 'strQueryTemplate']}
+            label="쿼리 템플릿"
+            rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
+          >
+            <TextArea rows={4} placeholder="{{items}}, {{date}} 등 치환 가능" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+          </Form.Item>
+        </div>
+      ),
+    })),
+    {
+      key: QUERY_TABS_ADD_KEY,
+      label: '+ 세트 추가',
+      children: (
+        <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
+          새 쿼리 세트를 추가하려면 「+ 세트 추가」 탭을 클릭하세요.
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <Tabs
+      type="card"
+      activeKey={activeKey}
+      onTabClick={(key) => {
+        if (key === QUERY_TABS_ADD_KEY) {
+          add({ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
+          justAddedRef.current = true;
+          setActiveKey(QUERY_TABS_ADD_KEY);
+        } else {
+          setActiveKey(key);
+        }
+      }}
+      items={tabItems}
+    />
+  );
+};
+
 const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
+  const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
+  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  /** 쿼리 템플릿 탭 활성 키 (세트 1, 세트 2, … 또는 __add__) */
+  const [strQueryTabsActiveKey, setStrQueryTabsActiveKey] = useState('0');
+  const bQueryTabsJustAddedRef = useRef(false);
 
   const arrEvents = useEventStore((s) => s.arrEvents);
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
@@ -62,17 +183,49 @@ const EventPage = () => {
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
   const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
-  // 페이지 진입 및 탭 포커스 시 자동 리페치
+  // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드
   useEffect(() => { fnFetchEvents(); fnFetchProducts(); }, [fnFetchEvents, fnFetchProducts]);
+  useEffect(() => {
+    let bMounted = true;
+    const fnLoad = async () => {
+      try {
+        const res = await fnApiGetDbConnections();
+        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
+          setArrDbConnections(res.arrDbConnections);
+      } catch {
+        // 권한 없으면 빈 배열 유지
+      }
+    };
+    fnLoad();
+    return () => { bMounted = false; };
+  }, []);
   useAutoRefresh(fnFetchEvents);
 
   const fnOpenModal = (objEvent?: IEventTemplate) => {
+    setStrQueryTabsActiveKey('0');
     if (objEvent) {
       setObjEditEvent(objEvent);
-      form.setFieldsValue(objEvent);
+      const bMulti = (objEvent.arrQueryTemplates?.length ?? 0) > 0;
+      setStrQueryMode('multi'); // 단일 쿼리 탭 숨김 → 항상 다중으로 표시
+      if (bMulti) {
+        form.setFieldsValue({
+          ...objEvent,
+          arrQueryTemplates: objEvent.arrQueryTemplates,
+        });
+      } else {
+        // 기존 단일 템플릿 → 다중 폼에 1세트로 표시 (연결 DB는 사용자가 선택)
+        const strQuery = objEvent.strQueryTemplate ?? '';
+        const strDefault = objEvent.strDefaultItems ?? '';
+        form.setFieldsValue({
+          ...objEvent,
+          arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
+        });
+      }
     } else {
       setObjEditEvent(null);
+      setStrQueryMode('multi');
       form.resetFields();
+      form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
   };
@@ -87,11 +240,32 @@ const EventPage = () => {
     try {
       const objValues = await form.validateFields();
       const objProduct = arrProducts.find((p) => p.nId === objValues.nProductId);
-      const objEventData = { ...objValues, strProductName: objProduct?.strName || '' };
+      const bMulti = strQueryMode === 'multi';
+
+      const objEventData: Record<string, unknown> = {
+        ...objValues,
+        strProductName: objProduct?.strName || '',
+        strQueryTemplate: bMulti ? '' : (objValues.strQueryTemplate ?? ''),
+        strDefaultItems: bMulti ? '' : (objValues.strDefaultItems ?? ''),
+        arrQueryTemplates: bMulti
+          ? (objValues.arrQueryTemplates ?? []).filter(
+              (s: IQueryTemplateItem) => s.nDbConnectionId && (s.strQueryTemplate ?? '').trim()
+            ).map((s: IQueryTemplateItem) => ({
+              nDbConnectionId: Number(s.nDbConnectionId),
+              strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
+              strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+            }))
+          : undefined,
+      };
+
+      if (bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
+        messageApi.warning('연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
+        return;
+      }
 
       const result = objEditEvent
-        ? await fnUpdateEvent(objEditEvent.nId, objEventData)
-        : await fnAddEvent(objEventData);
+        ? await fnUpdateEvent(objEditEvent.nId, objEventData as Parameters<typeof fnUpdateEvent>[1])
+        : await fnAddEvent(objEventData as Parameters<typeof fnAddEvent>[0]);
 
       if (result.bSuccess) {
         messageApi.success(result.strMessage);
@@ -110,6 +284,13 @@ const EventPage = () => {
   };
 
   // 입력 형식 라벨
+  // 다중 쿼리 탭에서 선택된 프로덕트에 해당하는 DB 접속만 표시
+  const nProductIdWatch = Form.useWatch('nProductId', form);
+  const arrConnectionsByProduct = useMemo(() => {
+    if (!nProductIdWatch) return [];
+    return arrDbConnections.filter((c) => c.nProductId === nProductIdWatch && c.bIsActive);
+  }, [arrDbConnections, nProductIdWatch]);
+
   const fnGetInputFormatLabel = (strFormat: TInputFormat) => {
     return ARR_INPUT_FORMATS.find((f) => f.value === strFormat)?.label || strFormat;
   };
@@ -154,17 +335,6 @@ const EventPage = () => {
       key: 'strInputFormat',
       width: 160,
       render: (str: TInputFormat) => fnGetInputFormatLabel(str),
-    },
-    {
-      title: '기본 아이템값',
-      dataIndex: 'strDefaultItems',
-      key: 'strDefaultItems',
-      ellipsis: true,
-      render: (str: string) => (
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {str || '-'}
-        </Text>
-      ),
     },
     // 수정/삭제 권한이 있을 때만 관리 컬럼 표시
     ...((bCanEdit || bCanDelete) ? [{
@@ -222,7 +392,7 @@ const EventPage = () => {
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          {/* 기본 정보 */}
+          {/* 기본 정보 (탭 공통) */}
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -296,39 +466,37 @@ const EventPage = () => {
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
           </Form.Item>
 
-          <Divider>쿼리 & 기본값</Divider>
-
-          <Form.Item
-            name="strDefaultItems"
-            label="기본 아이템값 (예시)"
-            extra={
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                사용자가 이벤트 생성 시 기본으로 채워질 값입니다. 비워두면 사용자가 직접 입력합니다.
-              </Text>
-            }
-          >
-            <TextArea
-              rows={3}
-              placeholder="예: 7902, 9471, 9138, 11582"
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="strQueryTemplate"
-            label="쿼리 템플릿"
-            extra={
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {'{{items}}'} = 입력된 아이템값, {'{{date}}'} = 실행 날짜, {'{{event_name}}'} = 이벤트 이름
-              </Text>
-            }
-          >
-            <TextArea
-              rows={6}
-              placeholder={`-- 쿼리 템플릿을 입력하세요\n-- {{items}}, {{date}}, {{event_name}} 치환 변수 사용 가능\nDELETE FROM event_items WHERE item_id IN ({{items}});`}
-              style={{ fontFamily: 'monospace', fontSize: 13 }}
-            />
-          </Form.Item>
+          {/* 단일 쿼리 탭 숨김 — 필요 시 items에 single 추가 */}
+          <Tabs
+            activeKey={strQueryMode}
+            onChange={(k) => setStrQueryMode(k as TQueryMode)}
+            items={[
+              {
+                key: 'multi',
+                label: '쿼리 템플릿',
+                children: (
+                  <>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                      세트별로 <strong>DB 구분</strong>(종류·접속 등)과 쿼리 템플릿을 지정합니다. QA/LIVE 반영은 이벤트 생성 시 선택하며, 보통 QA 후 LIVE 순으로 진행합니다. 입력값 1개가 모든 세트에 동일 적용됩니다.
+                    </Text>
+                    <Form.List name="arrQueryTemplates">
+                      {(fields, { add, remove }) => (
+                        <QueryTemplatesTabContent
+                          fields={fields}
+                          add={add}
+                          remove={remove}
+                          arrConnectionsByProduct={arrConnectionsByProduct}
+                          activeKey={strQueryTabsActiveKey}
+                          setActiveKey={setStrQueryTabsActiveKey}
+                          justAddedRef={bQueryTabsJustAddedRef}
+                        />
+                      )}
+                    </Form.List>
+                  </>
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
     </>

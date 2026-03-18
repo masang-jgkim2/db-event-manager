@@ -1,50 +1,59 @@
-# 이벤트 매니저 & DB 쿼리 매니저
+# DB Process Manager
 
 ## 개요
-반복적인 이벤트 운영과 단순 쿼리 제작을 자동화하는 웹 애플리케이션
+
+반복적인 이벤트·쿼리 프로세스를 **DEV → QA → LIVE** 단계로 관리하는 웹 애플리케이션입니다.  
+이벤트 템플릿 기반 쿼리 생성, 반영 범위(QA/LIVE) 설정, 권한별 워크플로(컨펌·실행·확인)와 실시간 상태 반영을 지원합니다.
 
 ## 대상 사용자
-- GM (게임 마스터)
-- 기획자
-- 권한이 있는 누구나
+
+- **GM(게임 마스터) / 기획자**: 이벤트 생성, 반영 요청, QA/LIVE 확인
+- **DBA**: 컨펌, QA/LIVE DB 쿼리 실행, 쿼리 직접 수정
+- **관리자**: 프로덕트·이벤트 템플릿·DB 접속·사용자·역할 권한 관리
 
 ## 핵심 기능
-1. **프로덕트 선택** - 운영 중인 프로덕트(게임/서비스) 선택
-2. **이벤트 선택** - 미리 정의된 이벤트 유형 중 선택
-3. **파라미터 입력** - 이벤트에 필요한 값 입력 (아이템, 날짜, 삭제 아이템 등)
-4. **쿼리 자동 생성** - 입력값 기반 DB 쿼리 자동 생성
+
+1. **프로덕트·이벤트 템플릿**
+   - 프로덕트(게임/서비스)별 이벤트 템플릿 관리
+   - 단일/다중 쿼리 세트 지원(세트별 DB 연결·쿼리 템플릿·기본 입력값)
+   - 치환자(`{{items}}`, `{{date}}`, `{{event_name}}` 등) 기반 쿼리 자동 생성
+
+2. **이벤트 생성**
+   - 프로덕트·국내/해외·이벤트 선택 후 입력값 입력
+   - **반영 범위** 선택(QA/LIVE, 단일 또는 다중)
+   - 다중 세트 시 세트별 입력·생성 쿼리 탭 표시
+
+3. **나의 대시보드**
+   - 이벤트 인스턴스 목록(진행 중/완료/숨김 탭, 테이블·카드 보기)
+   - **반영** 컬럼: DEV / QA / LIVE 단계 표시
+   - 상세·수정(컨펌 요청 전)·쿼리 수정(DBA)·컨펌·QA/LIVE 실행·확인·재요청 등 권한별 액션
+   - 상세/수정/쿼리 수정 시 다중 쿼리 세트 탭 표시, 반영 범위(QA/LIVE) 표시
+
+4. **쿼리 실행**
+   - 단일·다중 쿼리 세트 모두 지원(요청 env에 맞는 DB 접속으로 실행)
+   - 반영 날짜 검증(DEV/QA: 반영일 이전, LIVE: 반영일 이후만 실행)
+   - MSSQL/MySQL 트랜잭션 실행 및 결과 모달
+
+5. **권한·실시간**
+   - 메뉴/버튼은 **보기·상세·수정·실행** 등 세분화된 권한으로 제어
+   - Server-Sent Events(SSE)로 인스턴스 상태 변경 실시간 반영
 
 ## 기술 스택
 
-### Frontend
-- React + TypeScript
-- Vite (빌드 도구)
-- Ant Design (UI 라이브러리)
-- Zustand (상태 관리)
-- Axios (HTTP 클라이언트)
-
-### Backend
-- Node.js + TypeScript
-- Express.js
-- Prisma (ORM)
-- JWT + bcrypt (인증)
-- Zod (유효성 검증)
-
-### Database
-- MySQL
-
-### 인프라 / 기타
-- Docker + docker-compose
-- Swagger (API 문서)
-- ESLint + Prettier (코드 품질)
+| 영역 | 스택 |
+|------|------|
+| **프론트엔드** | React, Vite, TypeScript, Ant Design, Zustand, Axios, React Router DOM |
+| **백엔드** | Node.js, Express, TypeScript, JWT, bcryptjs, Zod |
+| **DB 실행** | mssql, mysql2/promise (프로덕트·환경별 접속) |
+| **데이터** | 인메모리(JSON 파일) → 추후 DB 마이그레이션 예정 |
+| **실시간** | Server-Sent Events (SSE) |
 
 ## 폴더 구조
+
 ```
-/workspace
+/
 ├── front/          # React + Vite + Ant Design
-├── backend/        # Express + Prisma
-├── db/             # SQL 스키마, 마이그레이션, 시드 데이터
-├── design/         # 와이어프레임, UI 스펙
-├── docker-compose.yml
+├── backend/        # Express + TypeScript, 인메모리 데이터
+├── docs/           # 스펙, 권한, 스키마 검토 등
 └── readme.md
 ```

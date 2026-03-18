@@ -8,11 +8,12 @@ export interface IUserRoleRow {
 
 const STR_FILE = 'userRoles.json';
 
-// 시드: admin=1→role1, gm01=2→role3, dba01=3→role2 (역할 코드는 roles.str_code로 매핑)
+// 시드: admin→admin, gm01→game_manager, dba01→dba, planner01→game_designer
 const ARR_SEED: IUserRoleRow[] = [
   { nUserId: 1, nRoleId: 1 }, // admin → admin
   { nUserId: 2, nRoleId: 3 }, // gm01 → game_manager
   { nUserId: 3, nRoleId: 2 }, // dba01 → dba
+  { nUserId: 4, nRoleId: 4 }, // planner01 → game_designer
 ];
 
 export const arrUserRoles: IUserRoleRow[] = fnLoadJson<IUserRoleRow>(STR_FILE, ARR_SEED);

@@ -20,6 +20,7 @@ const ARR_SEED: IUserRow[] = [
   { nId: 1, strUserId: 'admin', strPassword: '__PENDING__', strDisplayName: '관리자', dtCreatedAt: new Date().toISOString() },
   { nId: 2, strUserId: 'gm01', strPassword: '__PENDING__', strDisplayName: 'GM_홍길동', dtCreatedAt: new Date().toISOString() },
   { nId: 3, strUserId: 'dba01', strPassword: '__PENDING__', strDisplayName: 'DBA_김철수', dtCreatedAt: new Date().toISOString() },
+  { nId: 4, strUserId: 'planner01', strPassword: '__PENDING__', strDisplayName: '기획자_이영희', dtCreatedAt: new Date().toISOString() },
 ];
 
 export const arrUsers: IUserRow[] = fnLoadJson<IUserRow>(STR_FILE, ARR_SEED);
@@ -44,8 +45,20 @@ export const fnGetUsersWithRoles = (): IUser[] =>
   }));
 
 /** strUserId로 조립된 사용자 1명 반환 (로그인/검증용) */
+/** 파일에서 사용자 목록 다시 로드 (서버 재시작 없이 수동 추가 사용자 반영) */
+export const fnReloadUsersFromFile = (): void => {
+  const arrLoaded = fnLoadJson<IUserRow>(STR_FILE, ARR_SEED);
+  arrUsers.length = 0;
+  arrUsers.push(...arrLoaded);
+};
+
+/** strUserId로 조립된 사용자 1명 반환 (로그인/검증용) */
 export const fnFindUserByStrUserId = (strUserId: string): IUser | undefined => {
-  const row = arrUsers.find((u) => u.strUserId === strUserId);
+  let row = arrUsers.find((u) => u.strUserId === strUserId);
+  if (!row) {
+    fnReloadUsersFromFile();
+    row = arrUsers.find((u) => u.strUserId === strUserId);
+  }
   if (!row) return undefined;
   return {
     ...row,
@@ -71,6 +84,7 @@ export const fnInitUsers = async () => {
     admin: 'admin123',
     gm01:  'gm123',
     dba01: 'dba123',
+    planner01: 'planner123',
   };
 
   for (const objUser of arrUsers) {
@@ -82,4 +96,14 @@ export const fnInitUsers = async () => {
   }
 
   if (bChanged) fnSaveJson(STR_FILE, arrUsers);
+};
+
+/** 특정 사용자 비밀번호 초기화 (설정용 API에서 사용, 파일·메모리 모두 반영) */
+export const fnResetPasswordByUserId = async (strUserId: string, strNewPassword: string): Promise<boolean> => {
+  fnReloadUsersFromFile();
+  const row = arrUsers.find((u) => u.strUserId === strUserId);
+  if (!row) return false;
+  row.strPassword = await bcrypt.hash(strNewPassword, 10);
+  fnSaveUsers();
+  return true;
 };
