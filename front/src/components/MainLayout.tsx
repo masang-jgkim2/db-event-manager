@@ -236,7 +236,7 @@ const MainLayout = () => {
                 color: ds.objSider.strLogoText,
               }}
             >
-              이벤트 매니저
+              DB Process Manager
             </span>
           )}
         </div>
