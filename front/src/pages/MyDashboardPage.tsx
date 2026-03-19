@@ -24,6 +24,7 @@ import type {
   IQueryExecutionResult, TDeployScope,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
+import { fnRenderStatusIcon } from '../constants/statusIcons';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -315,15 +316,19 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
           })}
         </Space>
         <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
-        <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
-          {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
-        </Tag>
+        <Space size={4}>
+          {fnRenderStatusIcon(objInstance.strStatus, 12)}
+          <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
+            {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
+          </Tag>
+        </Space>
       </div>
       <Steps
         current={nStep}
         status={bFinished ? 'finish' : 'process'}
         size="small"
         items={arrSteps.map((s, nIdx) => ({
+          icon: fnRenderStatusIcon(s.strStatus, 16),
           title: s.strLabel,
           status: (() => {
             if (nIdx < nStep) return 'finish' as const;
@@ -1050,7 +1055,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       dataIndex: 'strStatus',
       key: 'strStatus',
       width: 110,
-      render: (s: TEventStatus) => <Tag color={OBJ_STATUS_CONFIG[s].strColor}>{OBJ_STATUS_CONFIG[s].strLabel}</Tag>,
+      render: (s: TEventStatus) => (
+        <Space size={4}>
+          {fnRenderStatusIcon(s, 12)}
+          <Tag color={OBJ_STATUS_CONFIG[s].strColor}>{OBJ_STATUS_CONFIG[s].strLabel}</Tag>
+        </Space>
+      ),
     },
     {
       title: '액션',
@@ -1217,7 +1227,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         {fnGetDisplayEnv(r.strStatus) && (
                           <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</Tag>
                         )}
-                        <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
+                        <Space size={4}>
+                          {fnRenderStatusIcon(r.strStatus, 12)}
+                          <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
+                        </Space>
                       </Space>
                     }
                     style={{
@@ -1298,7 +1311,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         })}
                       </Space>
                     </Descriptions.Item>
-                    <Descriptions.Item label="상태"><Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="상태">
+                      <Space size={4}>
+                        {fnRenderStatusIcon(objDetail.strStatus, 14)}
+                        <Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag>
+                      </Space>
+                    </Descriptions.Item>
                   </Descriptions>
                 ),
               },
@@ -1382,7 +1400,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
                       children: (
                         <div>
-                          <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                          <Space size={4}>
+                            {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
+                            <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                          </Space>
                           <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
                           <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
                           {log.strComment && (
@@ -1563,9 +1584,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             <CodeOutlined />
             <span>DBA 쿼리 수정</span>
             {objQueryEditInstance && (
-              <Tag color={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strColor}>
-                {OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strLabel}
-              </Tag>
+              <Space size={4}>
+                {fnRenderStatusIcon(objQueryEditInstance.strStatus, 12)}
+                <Tag color={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strColor}>
+                  {OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strLabel}
+                </Tag>
+              </Space>
             )}
           </Space>
         }

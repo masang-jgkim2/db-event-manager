@@ -113,3 +113,27 @@
 - **순서**:  
   - **이벤트 클릭 시 버튼 순서** = **쿼리 반영 프로세스 순서**와 일치.  
   - **역할 권한 화면의 나의 대시보드 권한 순서** = 프로세스 순이 아니라 메뉴/그룹 순이므로, “프로세스와 순서까지 1:1 매칭”은 아님. 필요 시 권한 목록을 프로세스 순으로 재정렬하는 것은 선택 사항.
+
+---
+
+## 6. 프로세스 단계별 아이콘
+
+UI에서 상태(단계)를 구분하기 위해 각 단계별 아이콘을 사용한다.
+
+- **정의 위치**: `front/src/constants/statusIcons.tsx`
+- **매핑**: `OBJ_STATUS_ICONS` (TEventStatus → Ant Design 아이콘 컴포넌트)
+- **렌더 헬퍼**: `fnRenderStatusIcon(strStatus, nSize?, strColor?)` — 스테퍼·태그·대시보드 등에서 재사용
+
+| 순서 | 상태 | 표시 라벨 (OBJ_STATUS_CONFIG) | 아이콘 |
+|------|------|-------------------------------|--------|
+| 1 | event_created | 생성 | EditOutlined |
+| 2 | confirm_requested | 컨펌 요청 | SendOutlined |
+| 3 | dba_confirmed | DBA 컨펌 완료 | SafetyCertificateOutlined |
+| 4 | qa_requested | QA 반영 요청 | RocketOutlined |
+| 5 | qa_deployed | QA 반영 실행 | ThunderboltOutlined |
+| 6 | qa_verified | QA 확인 | CheckCircleOutlined |
+| 7 | live_requested | LIVE 반영 요청 | CloudUploadOutlined |
+| 8 | live_deployed | LIVE 반영 실행 | ThunderboltOutlined |
+| 9 | live_verified | 완료 | TrophyOutlined |
+
+- **적용 위치**: 나의 대시보드(스테퍼, 테이블 상태 컬럼, 카드/상세/이력 타임라인, 쿼리 수정 모달), 대시보드(/) 상태별 건수 카드.
