@@ -19,6 +19,7 @@ import RequestWithLongPressButton from '../components/RequestWithLongPressButton
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
+import { fnApiExecuteQueryStream } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
@@ -33,6 +34,20 @@ const { TextArea } = Input;
 const MULTI_INPUT_DELIMITER = '\u0001';
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+
+/** 이벤트 템플릿·환경별 쿼리 반영 소요 시간(ms) 저장 — Progress 가중치용 */
+const fnExecElapsedKey = (nEventTemplateId: number, strEnv: string) =>
+  `exec_elapsed_${nEventTemplateId}_${strEnv}`;
+const fnLoadExecElapsedMs = (nEventTemplateId: number, strEnv: string): number => {
+  const str = typeof localStorage !== 'undefined' ? localStorage.getItem(fnExecElapsedKey(nEventTemplateId, strEnv)) : null;
+  if (!str) return 0;
+  const n = parseInt(str, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+const fnSaveExecElapsedMs = (nEventTemplateId: number, strEnv: string, nElapsedMs: number): void => {
+  if (typeof localStorage === 'undefined' || !Number.isFinite(nElapsedMs) || nElapsedMs <= 0) return;
+  localStorage.setItem(fnExecElapsedKey(nEventTemplateId, strEnv), String(nElapsedMs));
+};
 
 // 다시 보지 않기 체크박스가 있는 Popconfirm (요청/숨기기 버튼용)
 interface IPopconfirmWithSkipProps {
@@ -364,6 +379,22 @@ const MyDashboardPage = () => {
   const [bQuerySaving, setBQuerySaving] = useState(false);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
+  /** 완료 후 팝업 닫을 때 페이드 아웃 */
+  const [bExecutingFadingOut, setBExecutingFadingOut] = useState(false);
+  /** 실행 중 전체 쿼리 개수(진행율 분모, 쿼리별 결과 # 개수와 동일) */
+  const [nExecutingTotalQueries, setNExecutingTotalQueries] = useState(0);
+  /** 스트리밍 시 완료된 쿼리 개수(진행율 분자) */
+  const [nExecutingCompletedQueries, setNExecutingCompletedQueries] = useState(0);
+  const nProgressPercent = nExecutingTotalQueries > 0
+    ? Math.round((nExecutingCompletedQueries / nExecutingTotalQueries) * 100)
+    : 0;
+  /** 동일 템플릿 이전 실행 소요 시간(ms) — Progress 0→99% 가중치, 0이면 기본값 사용 */
+  const [nExpectedElapsedMs, setNExpectedElapsedMs] = useState(0);
+  /** 팝업 뜨자마자 0→99까지 천천히 올라가는 시뮬레이션 (완료 전에는 100% 안 보이게) */
+  const [nSimulatedPercent, setNSimulatedPercent] = useState(0);
+  /** Progress 바에 표시할 퍼센트 — 1%씩 올라가도록 애니메이션 */
+  const [nDisplayPercent, setNDisplayPercent] = useState(0);
+  const refTargetPercent = useRef(0);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
@@ -400,6 +431,60 @@ const MyDashboardPage = () => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
+  // 표시 타깃: 완료 전엔 최대 99%, 완료 시 100% (시뮬레이션과 실제 중 작은 값 사용)
+  const nDisplayTarget = nProgressPercent >= 100 ? 100 : Math.min(nSimulatedPercent, 99);
+  refTargetPercent.current = nDisplayTarget;
+
+  // 이전 실행 소요 시간을 가중치로 0→99% 시뮬레이션 (동일 템플릿 QA/LIVE 반영 시 자연스럽게 채워짐)
+  useEffect(() => {
+    if (bExecuting === null) return;
+    const nMsPerPercent = nExpectedElapsedMs > 0
+      ? Math.min(3000, Math.max(80, Math.round(nExpectedElapsedMs / 99)))
+      : 150;
+    const t = setInterval(() => {
+      setNSimulatedPercent((prev) => (prev >= 99 ? 99 : prev + 1));
+    }, nMsPerPercent);
+    return () => clearInterval(t);
+  }, [bExecuting, nExpectedElapsedMs]);
+
+  // 표시 퍼센트를 1%씩 타깃까지 따라가기 (간격을 넓혀 CSS 트랜지션으로 부드럽게 채워짐)
+  useEffect(() => {
+    if (bExecuting === null) return;
+    const t = setInterval(() => {
+      setNDisplayPercent((prev) => {
+        const target = refTargetPercent.current;
+        if (prev >= target) return prev;
+        return prev + 1;
+      });
+    }, 80);
+    return () => clearInterval(t);
+  }, [bExecuting]);
+
+  // Progress가 100% 채워진 뒤에만 700ms 보여주고 결과 모달 열기 + 페이드
+  useEffect(() => {
+    if (bExecuting === null || nProgressPercent < 100 || nDisplayPercent < 100) return;
+    const t = setTimeout(() => {
+      setBExecResultOpen(true);
+      setBExecutingFadingOut(true);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [bExecuting, nProgressPercent, nDisplayPercent]);
+
+  // 완료 후 페이드 아웃 끝나면 실행 중 팝업 제거
+  useEffect(() => {
+    if (!bExecutingFadingOut) return;
+    const t = setTimeout(() => {
+      setBExecuting(null);
+      setBExecutingFadingOut(false);
+      setNExecutingTotalQueries(0);
+      setNExecutingCompletedQueries(0);
+      setNDisplayPercent(0);
+      setNSimulatedPercent(0);
+      setNExpectedElapsedMs(0);
+    }, 320);
+    return () => clearTimeout(t);
+  }, [bExecutingFadingOut]);
+
   // SSE/스토어 업데이트 → 상세 모달·선택 행은 항상 최신 인스턴스로 동기화 (쿼리 수정 등 새로고침 없이 반영)
   useEffect(() => {
     const fnFindInstance = (nId: number) =>
@@ -430,19 +515,31 @@ const MyDashboardPage = () => {
   }
 };
 
-  // QA/LIVE DB 실행
+  // QA/LIVE DB 실행 (다중 세트면 스트리밍으로 진행율 반영)
   const fnHandleExecute = async (r: IEventInstance, strEnv: 'qa' | 'live') => {
+    const nTotal = r.arrExecutionTargets?.length ?? 1;
+    const nElapsedMs = fnLoadExecElapsedMs(r.nEventTemplateId, strEnv);
     setBExecuting(r.nId);
+    setNExecutingTotalQueries(nTotal);
+    setNExecutingCompletedQueries(0);
+    setNDisplayPercent(0);
+    setNSimulatedPercent(0);
+    setNExpectedElapsedMs(nElapsedMs);
     setStrExecEnv(strEnv);
+    let result: { bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance; objExecutionResult?: unknown };
     try {
-      const result = await fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || '');
+      result = await (nTotal >= 2
+        ? fnApiExecuteQueryStream(r.nId, strEnv, user?.strDisplayName || '', (nCompleted) => setNExecutingCompletedQueries(nCompleted))
+        : fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || ''));
 
       if (result.bSuccess) {
-        // 성공: 실행 결과 모달 표시
-        setObjExecResult(result.objExecutionResult as IQueryExecutionResult ?? null);
-        setBExecResultOpen(true);
+        const objExec = result.objExecutionResult as IQueryExecutionResult | undefined;
+        if (objExec?.nElapsedMs) fnSaveExecElapsedMs(r.nEventTemplateId, strEnv, objExec.nElapsedMs);
+        setObjExecResult(objExec ?? null);
         messageApi.success(`${strEnv.toUpperCase()} 쿼리 실행 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
+        setNExecutingCompletedQueries(nTotal);
+        // 결과 모달·페이드는 Progress 100% 도달 후 useEffect에서 처리
       } else {
         // 실패: objExecutionResult 있으면 모달로, 없으면(사전 검증 오류) 전용 에러 모달로
         const objExecRes = result.objExecutionResult as IQueryExecutionResult | undefined;
@@ -479,7 +576,14 @@ const MyDashboardPage = () => {
       });
       setBExecResultOpen(true);
     } finally {
-      setBExecuting(null);
+      if (!result?.bSuccess) {
+        setBExecuting(null);
+        setNExecutingTotalQueries(0);
+        setNExecutingCompletedQueries(0);
+        setNDisplayPercent(0);
+        setNSimulatedPercent(0);
+        setNExpectedElapsedMs(0);
+      }
     }
   };
 
@@ -1662,12 +1766,15 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         onClose={() => setBExecResultOpen(false)}
       />
 
-      {/* 실행 중 전체 오버레이 */}
+      {/* 쿼리 실행 중 진행율 팝업 — 완료 시 100% 잠깐 노출 후 페이드 아웃 */}
       {bExecuting !== null && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           zIndex: 9999,
+          opacity: bExecutingFadingOut ? 0 : 1,
+          transition: 'opacity 0.3s ease-out',
+          pointerEvents: bExecutingFadingOut ? 'none' : 'auto',
         }}>
           <Card style={{ textAlign: 'center', padding: 24, minWidth: 280 }}>
             <Spin size="large" />
@@ -1677,7 +1784,23 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             <div style={{ marginTop: 8 }}>
               <Text type="secondary">트랜잭션 처리 중입니다. 잠시 기다려 주세요.</Text>
             </div>
-            <Progress percent={99} status="active" style={{ marginTop: 16 }} showInfo={false} />
+            {nExecutingTotalQueries > 0 && (
+              <div style={{ marginTop: 16 }} className="executing-progress-wrap">
+                <style>{`
+                  .executing-progress-wrap .ant-progress-bg {
+                    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+                  }
+                `}</style>
+                <Progress
+                  percent={nDisplayPercent}
+                  status={nDisplayPercent >= 100 ? 'success' : 'active'}
+                  trailColor="#f0f0f0"
+                  strokeColor={nDisplayPercent >= 100 ? token.colorSuccess : token.colorPrimary}
+                  showInfo={false}
+                  style={{ marginTop: 0 }}
+                />
+              </div>
+            )}
           </Card>
         </div>
       )}

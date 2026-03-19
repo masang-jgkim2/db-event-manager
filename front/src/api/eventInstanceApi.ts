@@ -1,4 +1,4 @@
-import apiClient from './axiosInstance';
+import apiClient, { STR_API_BASE } from './axiosInstance';
 
 // 이벤트 인스턴스 목록 조회
 export const fnApiGetInstances = async (strFilter: string = 'all') => {
@@ -47,4 +47,65 @@ export const fnApiExecuteQuery = async (nId: number, strEnv: 'qa' | 'live', strA
       strMessage: error.message || '네트워크 오류가 발생했습니다.',
     };
   }
+};
+
+/** 다중 세트 실행 시 SSE 스트리밍으로 진행율 이벤트 수신. onProgress(completed) 호출 후 최종 결과 반환 */
+export const fnApiExecuteQueryStream = async (
+  nId: number,
+  strEnv: 'qa' | 'live',
+  strActorName: string,
+  onProgress: (nCompleted: number) => void
+): Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: unknown; objExecutionResult?: unknown }> => {
+  const strToken = typeof localStorage !== 'undefined' ? localStorage.getItem('strToken') : null;
+  const res = await fetch(`${STR_API_BASE}/event-instances/${nId}/execute?stream=1`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(strToken ? { Authorization: `Bearer ${strToken}` } : {}),
+    },
+    body: JSON.stringify({ strEnv, strActorName }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { bSuccess: false, strMessage: (data as { strMessage?: string }).strMessage || res.statusText };
+  }
+
+  const reader = res.body?.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let objFinal: { bSuccess: boolean; strMessage?: string; objInstance?: unknown; objExecutionResult?: unknown } = { bSuccess: false };
+
+  if (!reader) {
+    return { bSuccess: false, strMessage: '스트림을 읽을 수 없습니다.' };
+  }
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const obj = JSON.parse(line.slice(6).trim()) as { type: string; completed?: number; total?: number; strMessage?: string; objExecutionResult?: unknown; objInstance?: unknown };
+          if (obj.type === 'progress' && typeof obj.completed === 'number') {
+            onProgress(obj.completed);
+          } else if (obj.type === 'done') {
+            objFinal = { bSuccess: true, objExecutionResult: obj.objExecutionResult, objInstance: obj.objInstance };
+          } else if (obj.type === 'error') {
+            objFinal = {
+              bSuccess: false,
+              strMessage: (obj as { strMessage?: string }).strMessage || '실행 중 오류가 발생했습니다.',
+              objExecutionResult: (obj as { objExecutionResult?: unknown }).objExecutionResult,
+            };
+          }
+        } catch {
+          // ignore parse error
+        }
+      }
+    }
+  }
+  return objFinal;
 };
