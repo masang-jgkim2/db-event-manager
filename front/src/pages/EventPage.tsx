@@ -336,6 +336,17 @@ const EventPage = () => {
       width: 160,
       render: (str: TInputFormat) => fnGetInputFormatLabel(str),
     },
+    {
+      title: '쿼리',
+      key: 'queryMode',
+      width: 80,
+      render: (_: unknown, objRecord: IEventTemplate) => {
+        const arrSets = objRecord.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+        const nSetCount = arrSets.length;
+        const strMode = nSetCount >= 2 ? '다중' : '단일';
+        return <Tag color={nSetCount >= 2 ? 'blue' : 'default'}>{strMode}</Tag>;
+      },
+    },
     // 수정/삭제 권한이 있을 때만 관리 컬럼 표시
     ...((bCanEdit || bCanDelete) ? [{
       title: '관리',

@@ -118,12 +118,12 @@ const QueryPage = () => {
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
 
-  // 다중 쿼리 세트 (템플릿에 1개 이상 유효한 세트가 있을 때)
+  // 유효한 쿼리 세트 (세트 2개 이상 = 다중, 1개 = 단일)
   const arrSets = useMemo(() => {
     if (!objSelectedEvent) return [];
     return objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
   }, [objSelectedEvent]);
-  const bMultiQuery = arrSets.length > 0;
+  const bMultiQuery = arrSets.length >= 2;
 
   // 이벤트 생성 시 QA/LIVE 체크 가능 여부: 해당 프로덕트에 해당 env DB 접속이 있는지. 목록 미로드 시 둘 다 선택 가능
   const bHasQaConnection = useMemo(() => {
@@ -203,7 +203,7 @@ const QueryPage = () => {
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
       const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
-      if (arrNewSets.length > 0) {
+      if (arrNewSets.length >= 2) {
         setArrInputValues(arrNewSets.map((s) => (s.strDefaultItems ?? '').trim()));
         setStrInputValues('');
       } else {
@@ -276,8 +276,13 @@ const QueryPage = () => {
         arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
       }
       setArrExecutionTargets(arrTargets);
-      // 미리보기: 세트별 쿼리를 구분자로 합쳐서 표시
       strQuery = arrTargets.map((t, idx) => `-- === 세트 ${idx + 1} (연결 ID: ${t.nDbConnectionId}) ===\n${t.strQuery}`).join('\n\n');
+    } else if (arrSets.length === 1) {
+      const s = arrSets[0];
+      const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strInputValues.trim());
+      arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
+      setArrExecutionTargets(arrTargets);
+      strQuery = q;
     } else {
       const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
       strQuery = fnApplyTemplate(strTemplate);
@@ -301,12 +306,12 @@ const QueryPage = () => {
         strType: objSelectedEvent.strType,
         strEventName,
         strInputValues: strPayloadInputValues,
-        strGeneratedQuery: bMultiQuery ? (arrTargets[0]?.strQuery ?? '') : strQuery,
+        strGeneratedQuery: arrTargets[0]?.strQuery ?? strQuery,
         dtDeployDate: strDeployDate,
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
       };
-      if (bMultiQuery && arrTargets.length > 0) {
+      if (arrTargets.length > 0) {
         (objPayload as any).arrExecutionTargets = arrTargets;
       }
 
@@ -499,13 +504,24 @@ const QueryPage = () => {
                   </Select.Option>
                 ))}
               </Select>
-              {objSelectedEvent && (
-                <Space wrap style={{ marginTop: 8 }}>
-                  {(objSelectedEvent.arrQueryTemplates?.length ?? 0) > 0 && (
-                    <Tag color="blue">다중 쿼리 ({objSelectedEvent.arrQueryTemplates!.length}세트)</Tag>
-                  )}
-                </Space>
-              )}
+              {objSelectedEvent && (() => {
+                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+                if (arrValidSets.length >= 2) {
+                  return (
+                    <Space wrap style={{ marginTop: 8 }}>
+                      <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
+                    </Space>
+                  );
+                }
+                if (arrValidSets.length === 1) {
+                  return (
+                    <Space wrap style={{ marginTop: 8 }}>
+                      <Tag>단일 쿼리</Tag>
+                    </Space>
+                  );
+                }
+                return null;
+              })()}
               {objSelectedEvent?.strDescription && (
                 <Alert
                   message={objSelectedEvent.strDescription}
