@@ -436,6 +436,14 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       }
     } else if (nSetCount > 1) {
       // 다중 세트: 각 세트의 쿼리를 "같은 프로덕트·같은 종류(strKind)"의 요청 env 접속으로 실행 (저장된 연결이 QA여도 LIVE 접속으로 실행)
+      const bStream = req.query.stream === '1';
+      if (bStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+      }
+
       let nTotalAffectedRows = 0;
       let nTotalElapsedMs = 0;
       const arrAllQueryResults: IQueryExecutionResult['arrQueryResults'] = [];
@@ -445,10 +453,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         const t = objInstance.arrExecutionTargets![i];
         const objTemplateConn = fnFindConnectionById(t.nDbConnectionId);
         if (!objTemplateConn) {
-          res.status(400).json({
-            bSuccess: false,
-            strMessage: `쿼리 세트 ${i + 1}: DB 접속 ID ${t.nDbConnectionId}를 찾을 수 없습니다.`,
-          });
+          const strMsg = `쿼리 세트 ${i + 1}: DB 접속 ID ${t.nDbConnectionId}를 찾을 수 없습니다.`;
+          if (bStream) {
+            res.write(`data: ${JSON.stringify({ type: 'error', strMessage: strMsg })}\n\n`);
+            res.end();
+            return;
+          }
+          res.status(400).json({ bSuccess: false, strMessage: strMsg });
           return;
         }
         const strKind = objTemplateConn.strKind ?? 'GAME';
@@ -456,17 +467,26 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
           ? objTemplateConn
           : fnFindActiveConnectionByKind(nProductId, strEnv, strKind as 'GAME' | 'WEB' | 'LOG');
         if (!objConn) {
-          res.status(400).json({
-            bSuccess: false,
-            strMessage: `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} 환경의 ${strKind} DB 접속이 없거나 비활성화 상태입니다. DB 접속 정보를 확인하세요.`,
-          });
+          const strMsg = `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} 환경의 ${strKind} DB 접속이 없거나 비활성화 상태입니다. DB 접속 정보를 확인하세요.`;
+          if (bStream) {
+            res.write(`data: ${JSON.stringify({ type: 'error', strMessage: strMsg })}\n\n`);
+            res.end();
+            return;
+          }
+          res.status(400).json({ bSuccess: false, strMessage: strMsg });
           return;
         }
         const oneResult = await fnExecuteQueryWithText(objConn, t.strQuery, strEnv);
         if (!oneResult.bSuccess) {
+          const strMsg = `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`;
+          if (bStream) {
+            res.write(`data: ${JSON.stringify({ type: 'error', strMessage: strMsg, objExecutionResult: oneResult })}\n\n`);
+            res.end();
+            return;
+          }
           res.status(200).json({
             bSuccess: false,
-            strMessage: `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`,
+            strMessage: strMsg,
             objExecutionResult: oneResult,
           });
           return;
@@ -475,6 +495,11 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         nTotalElapsedMs += oneResult.nElapsedMs;
         arrAllQueryResults.push(...oneResult.arrQueryResults);
         strExecutedQuery += (strExecutedQuery ? '\n\n' : '') + `-- 세트 ${i + 1}\n` + oneResult.strExecutedQuery;
+
+        if (bStream) {
+          res.write(`data: ${JSON.stringify({ type: 'progress', completed: i + 1, total: nSetCount })}\n\n`);
+          res.flush?.();
+        }
       }
 
       objExecResult = {
@@ -486,6 +511,38 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         nElapsedMs: nTotalElapsedMs,
         dtExecutedAt: new Date().toISOString(),
       };
+
+      if (bStream) {
+        // 스트리밍 모드: 상태 전이 후 done 이벤트 전송
+        const objActor: IStageActor = {
+          strDisplayName: req.body.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
+          nUserId: req.user?.nId || 0,
+          strUserId: req.user?.strUserId || '',
+          dtProcessedAt: new Date().toISOString(),
+        };
+        const strNextStatus = objDeployedStatus[strEnv];
+        const strActorField = objDeployedActorField[strEnv];
+        objInstance[strActorField] = objActor;
+        objInstance.strStatus = strNextStatus;
+        objInstance.arrStatusLogs.push({
+          strStatus: strNextStatus,
+          strChangedBy: objActor.strDisplayName,
+          nChangedByUserId: objActor.nUserId,
+          strComment: `${strEnv.toUpperCase()} 쿼리 실행 완료 - ${objExecResult.nTotalAffectedRows}건 처리 (${objExecResult.nElapsedMs}ms)`,
+          dtChangedAt: new Date().toISOString(),
+          objExecutionResult: {
+            strEnv,
+            nTotalAffectedRows: objExecResult.nTotalAffectedRows,
+            nElapsedMs: objExecResult.nElapsedMs,
+            arrQueryResults: objExecResult.arrQueryResults,
+          },
+        });
+        fnSaveEventInstances();
+        fnBroadcastInstanceUpdate(objInstance);
+        res.write(`data: ${JSON.stringify({ type: 'done', objExecutionResult: objExecResult, objInstance })}\n\n`);
+        res.end();
+        return;
+      }
     } else {
       // 단일: 프로덕트+env 접속 1건으로 strGeneratedQuery 실행
       const objDbConn = fnFindActiveConnection(nProductId, strEnv);
