@@ -26,6 +26,10 @@ import type {
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
+import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
+import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
+import type { ICardLabelRow } from '../types/dashboardLayout';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -39,6 +43,21 @@ const N_SIM_BASELINE_MIN_MS = 80;
 const N_SIM_BASELINE_MAX_MS = 180_000;
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+
+// 기본 레이아웃의 instance_list 카드 행 — localStorage 오버레이 전까지 상수
+const objDefaultListOpts = fnFindFirstInstanceListOptions(OBJ_DEFAULT_DASHBOARD_LAYOUT);
+const ARR_DASHBOARD_CARD_ROWS: ICardLabelRow[] =
+  objDefaultListOpts?.arrCardRows?.length
+    ? objDefaultListOpts.arrCardRows
+    : [
+        { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
+        { strLabel: '서비스', strFieldPath: 'strServiceAbbr', strRender: 'text' },
+        { strLabel: '반영 일시', strFieldPath: 'dtDeployDate', strRender: 'datetime_short' },
+        { strLabel: '생성자', strFieldPath: 'strCreatedBy', strEmpty: '-' },
+      ];
+const STR_CARD_INNER_LAYOUT = objDefaultListOpts?.strCardInnerLayout ?? 'stack';
+const N_CARD_INNER_COLUMNS = objDefaultListOpts?.nInnerColumns ?? 1;
+const STR_CARD_INNER_GAP = objDefaultListOpts?.strInnerGap;
 
 // 다시 보지 않기 체크박스가 있는 Popconfirm (요청/숨기기 버튼용)
 interface IPopconfirmWithSkipProps {
@@ -1418,7 +1437,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-secondary)' }}>해당 조건의 이벤트가 없습니다.</div>
           ) : (
             <Row gutter={[12, 12]}>
-              {arrDisplayInstances.map((r: IEventInstance, nIdx: number) => (
+              {arrDisplayInstances.map((r: IEventInstance) => (
                 <Col xs={24} sm={24} md={12} lg={8} xl={6} key={r.nId}>
                   <Card
                     size="small"
@@ -1443,9 +1462,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     onClick={() => setObjSelectedRow((prev) => prev?.nId === r.nId ? null : r)}
                   >
                     <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                      <div><Text type="secondary">프로덕트</Text> <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag></div>
-                      <div><Text type="secondary">반영 일시</Text> {r.dtDeployDate ? new Date(r.dtDeployDate).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</div>
-                      <div><Text type="secondary">생성자</Text> {r.strCreatedBy ?? '-'}</div>
+                      <InstanceCardLabelRows
+                        objInstance={r}
+                        arrRows={ARR_DASHBOARD_CARD_ROWS}
+                        strCardInnerLayout={STR_CARD_INNER_LAYOUT}
+                        nInnerColumns={N_CARD_INNER_COLUMNS}
+                        strInnerGap={STR_CARD_INNER_GAP}
+                      />
                       <Divider style={{ margin: '8px 0' }} />
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}

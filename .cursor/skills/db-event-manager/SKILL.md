@@ -33,6 +33,9 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 
 ## 주요 파일 위치
 
+- **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
+- **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
+
 ```
 backend/src/
   controllers/eventInstanceController.ts  # 워크플로·재요청 전이 + 실행 로직

@@ -279,7 +279,7 @@ interface IInstanceListCardOptions {
 
 | 단계 | 방식 |
 |------|------|
-| 프로토타입 | `front/src/constants/dashboardLayoutDefault.json` 임포트 + 사용자별 **localStorage** 오버레이 |
+| 프로토타입 | `front/src/constants/dashboardLayoutDefault.ts`(`OBJ_DEFAULT_DASHBOARD_LAYOUT`) 임포트 + 사용자별 **localStorage** 오버레이 |
 | 확장 | `backend/data/dashboardLayouts.json` (사용자 ID별 키) 또는 RBAC 이후 **설정 전용 API** |
 
 ---
