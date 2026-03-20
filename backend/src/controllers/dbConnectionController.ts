@@ -17,6 +17,16 @@ export const fnGetDbConnections = async (_req: Request, res: Response): Promise<
 
 const ARR_DB_KIND: IDbConnection['strKind'][] = ['GAME', 'WEB', 'LOG'];
 
+// 프로덕트에 정의된 DB 종류(mssql/mysql)와 접속 정보 일치 검사 (없는 프로덕트면 스킵)
+const fnMismatchProductDbTypeMessage = (nProductId: number, strConnDbType: string): string | null => {
+  const objProduct = arrProducts.find((p) => p.nId === nProductId);
+  if (!objProduct) return null;
+  if (objProduct.strDbType !== strConnDbType) {
+    return `프로덕트「${objProduct.strName}」의 DB 종류는 ${objProduct.strDbType}입니다. 접속 DB 종류를 동일하게 맞춰주세요.`;
+  }
+  return null;
+};
+
 // DB 접속 정보 추가
 export const fnCreateDbConnection = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -37,13 +47,19 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
       (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.strKind === strKindVal
     );
     if (objExisting) {
-      const objProduct     = arrProducts.find((p) => p.nId === nProductId);
-      const strProductName = objProduct?.strName || `프로덕트 #${nProductId}`;
+      const objProductDup     = arrProducts.find((p) => p.nId === nProductId);
+      const strProductName = objProductDup?.strName || `프로덕트 #${nProductId}`;
       res.status(409).json({
         bSuccess: false,
         strErrorCode: 'DUPLICATE',
         strMessage: `[${strProductName}] 프로덕트의 [${strEnv.toUpperCase()}] 환경 [${strKindVal}] 접속 정보가 이미 등록되어 있습니다. 기존 항목을 수정해주세요.`,
       });
+      return;
+    }
+
+    const strMismatchCreate = fnMismatchProductDbTypeMessage(nProductId, strDbType as string);
+    if (strMismatchCreate) {
+      res.status(400).json({ bSuccess: false, strMessage: strMismatchCreate });
       return;
     }
 
@@ -93,6 +109,13 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
     }
 
     const { strHost, nPort, strDatabase, strUser, strPassword, strDbType, strKind, bIsActive } = req.body;
+
+    const strNextDbType = strDbType !== undefined ? strDbType : objConn.strDbType;
+    const strMismatchUpdate = fnMismatchProductDbTypeMessage(objConn.nProductId, strNextDbType as string);
+    if (strMismatchUpdate) {
+      res.status(400).json({ bSuccess: false, strMessage: strMismatchUpdate });
+      return;
+    }
 
     if (strHost     !== undefined) objConn.strHost     = strHost;
     if (nPort       !== undefined) objConn.nPort       = nPort;

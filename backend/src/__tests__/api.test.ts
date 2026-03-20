@@ -306,16 +306,21 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('DBA(dba01) 로그인 → 나의대시보드·DB접속 200, 프로덕트·이벤트·사용자·역할 403', async () => {
+    it('DBA(dba01) 로그인 → 나의대시보드·DB접속 200, 나머지는 부여된 보기 권한에 따라 200/403', async () => {
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const token = loginRes.body.strToken;
+      const arrPerms: string[] = loginRes.body.user?.arrPermissions ?? [];
       expect(loginRes.status).toBe(200);
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
-      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      const fnExpectView = async (strPath: string, strPerm: string) => {
+        const nWant = arrPerms.includes(strPerm) ? 200 : 403;
+        await expect(request(app).get(strPath).set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: nWant });
+      };
+      await fnExpectView('/api/products', 'product.view');
+      await fnExpectView('/api/events', 'event_template.view');
+      await fnExpectView('/api/users', 'user.view');
+      await fnExpectView('/api/roles', 'role.view');
     });
 
     it('GM(gm01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
@@ -656,9 +661,9 @@ describe('API 전체 테스트', () => {
             nProductId: nProductIdForEvent,
             strKind: 'GAME',
             strEnv: 'dev',
-            strDbType: 'mysql',
+            strDbType: 'mssql',
             strHost: 'localhost',
-            nPort: 3306,
+            nPort: 1433,
             strDatabase: 'test',
             strUser: 'u',
             strPassword: 'p',
@@ -816,14 +821,36 @@ describe('API 전체 테스트', () => {
   // ─── DB 접속 추가·수정·삭제 테스트 ─────────────────────────────────────
   describe('DB 접속 CRUD', () => {
     let nConnId: number;
-    const nProductId = 1;
+    /** 출조낚시왕 — mssql (접속 DB 종류 불일치 테스트용) */
+    const nProductIdMssql = 1;
+    /** 라그하임 — mysql (mysql 접속 CRUD용) */
+    const nProductIdMysql = 6;
+
+    it('POST /api/db-connections 프로덕트 strDbType 불일치 → 400', async () => {
+      const res = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId: nProductIdMssql,
+          strKind: 'WEB',
+          strEnv: 'dev',
+          strDbType: 'mysql',
+          strHost: '127.0.0.1',
+          nPort: 3306,
+          strDatabase: 'x',
+          strUser: 'u',
+          strPassword: 'p',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.strMessage).toMatch(/DB 종류/);
+    });
 
     it('POST /api/db-connections (strKind 포함) → 200', async () => {
       const res = await request(app)
         .post('/api/db-connections')
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
-          nProductId,
+          nProductId: nProductIdMysql,
           strKind: 'LOG',
           strEnv: 'dev',
           strDbType: 'mysql',

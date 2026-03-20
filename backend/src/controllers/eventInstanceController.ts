@@ -3,7 +3,7 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
+import { fnResolveExecuteConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -415,8 +415,12 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     const nSetCount = objInstance.arrExecutionTargets?.length ?? 0;
 
     if (nSetCount === 1) {
-      // 쿼리 세트 1개: 요청 env에 맞는 접속으로 동일 쿼리 실행
-      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      // 쿼리 세트 1개: 세트의 nDbConnectionId로 접속 해석(다중 세트와 동일), 없으면 GAME
+      const objDbConn = fnResolveExecuteConnection(
+        nProductId,
+        strEnv,
+        objInstance.arrExecutionTargets![0].nDbConnectionId
+      );
       if (!objDbConn) {
         res.status(400).json({
           bSuccess: false,
@@ -498,7 +502,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
         if (bStream) {
           res.write(`data: ${JSON.stringify({ type: 'progress', completed: i + 1, total: nSetCount })}\n\n`);
-          res.flush?.();
+          (res as { flush?: () => void }).flush?.();
         }
       }
 
@@ -544,8 +548,8 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         return;
       }
     } else {
-      // 단일: 프로덕트+env 접속 1건으로 strGeneratedQuery 실행
-      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      // 레거시: arrExecutionTargets 없음 — GAME 종류 활성 접속으로 strGeneratedQuery 실행
+      const objDbConn = fnResolveExecuteConnection(nProductId, strEnv);
       if (!objDbConn) {
         res.status(400).json({
           bSuccess: false,

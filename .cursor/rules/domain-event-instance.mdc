@@ -41,9 +41,9 @@ event_created → confirm_requested → dba_confirmed
 
 `event_created` 상태에서만 일반 수정 가능. `strInputValues` 또는 `dtDeployDate`가 **실제로 변경된 경우에만** `fnApplyQueryTemplate`으로 쿼리 재생성 (동일 값이면 GM이 수정한 쿼리 유지).
 
-## DB 커넥션 조회
+## DB 커넥션 조회 (실행)
 
-인스턴스 `nProductId`로 `fnFindActiveConnection(nProductId, strEnv)` 조회. `nProductId` 없으면 `strProductName`으로 프로덕트 조회 후 사용.
+`fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?)` — `arrExecutionTargets`가 있으면(길이 1 포함) 세트의 `nDbConnectionId`로 템플릿 연결 해석, 없으면 GAME 활성 접속. `nProductId` 없으면 `strProductName`으로 프로덕트 조회 후 동일.
 
 ## IEventInstance 핵심 필드
 

@@ -15,6 +15,14 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 | 실시간 | Server-Sent Events (SSE) |
 | 데이터 | 인메모리 (→ 추후 DB 마이그레이션, Repository 패턴 적용됨) |
 
+## MSSQL / MySQL 이중 실행
+
+- **실행 진입점**: `fnExecuteQueryWithText`만 사용 (`queryExecutor.ts`). `strDbType`으로 드라이버 분기, 풀은 접속 `nId`별 캐시.
+- **접속 선택**: `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?)` — 세트 1개여도 `nDbConnectionId`로 템플릿 연결과 동일 규칙 적용; ID 없으면 **GAME** 종류 활성 접속. `fnFindActiveConnection`(종류 무관·첫 건)은 비결정적이므로 실행 경로에서 사용하지 않음.
+- **접속 등록**: `products.strDbType`(mssql/mysql)과 접속의 `strDbType`이 **일치**해야 함 (`dbConnectionController`).
+- **시스템 DB**: `db/systemDb.ts`는 마이그레이션용 **MSSQL 전용**. 타깃 게임 DB 실행과 별개.
+- **DB 스키마 정합성**: `docs/SCHEMA-DATA-REVIEW.md` (인메모리/타입 vs `docs/schema.sql`).
+
 ## 핵심 도메인
 
 - **이벤트 인스턴스**: 9단계 워크플로 (event_created → … → live_verified). **재요청** 전이: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
@@ -74,4 +82,4 @@ front/src/
 ## 인메모리 데이터 위치
 
 `backend/src/data/` — 추후 `backend/src/repositories/` 패턴으로 DB 교체 예정.
-스키마는 `docs/schema.sql` 참조.
+스키마는 `docs/schema.sql` · 정규화는 `docs/schema_normalized.sql` · 코드/JSON과의 차이는 `docs/SCHEMA-DATA-REVIEW.md` 참조.
