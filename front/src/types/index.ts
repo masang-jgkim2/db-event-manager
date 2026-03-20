@@ -100,6 +100,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'my_dashboard.verify_live', label: 'LIVE 확인' },
     { value: 'my_dashboard.request_live_rereq', label: 'LIVE 재반영 요청' },
     { value: 'my_dashboard.hide', label: '숨기기/복원' },
+    { value: 'my_dashboard.delete_instance', label: '삭제' },
   ]},
   { groupLabel: '이벤트 생성', permissions: [
     { value: 'instance.view', label: '보기' },
@@ -146,6 +147,7 @@ const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
   'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.view', 'instance.create'],
+  'my_dashboard.delete': ['my_dashboard.delete_instance'],
 };
 export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
   const setOut = new Set<string>(arrRaw);
@@ -418,4 +420,7 @@ export interface IEventInstance {
   strCreatedBy: string;
   nCreatedByUserId: number;
   dtCreatedAt: string;
+  /** 서버 삭제(bPermanentlyRemoved) — 복원 불가, 완료·숨김 탭에만 표시 */
+  bPermanentlyRemoved?: boolean;
+  dtPermanentlyRemovedAt?: string;
 }

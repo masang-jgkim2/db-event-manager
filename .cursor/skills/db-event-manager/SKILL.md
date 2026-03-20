@@ -69,10 +69,10 @@ front/src/
 | DB 접속 | db_connection.view | db_connection.create / edit / delete / test |
 | 사용자 | user.view | user.create / edit / delete / reset_password |
 | 역할 | role.view | role.create / edit / delete / edit_permissions |
-| 나의 대시보드 | my_dashboard.view(보기) | my_dashboard.detail(상세), my_dashboard.edit(이벤트 수정), my_dashboard.request_confirm, query_edit, confirm, request_qa, execute_qa, verify_qa, … |
+| 나의 대시보드 | my_dashboard.view(보기) | detail, edit, request_confirm, query_edit, confirm, request/execute/verify QA·LIVE, hide, **delete_instance**(삭제·진행 중 포함·복원 불가) 등 |
 | 이벤트 생성 | instance.view | instance.create |
 
-- **나의 대시보드**: 상세 버튼 → `my_dashboard.detail`, 수정 버튼 → `my_dashboard.edit`, 컨펌 요청 → `my_dashboard.request_confirm`. `instance.create`는 이벤트 수정/컨펌을 자동 부여하지 않음.
+- **나의 대시보드**: 상세 → `my_dashboard.detail`, 수정 → `my_dashboard.edit`, 컨펌 요청 → `my_dashboard.request_confirm`, 숨김 → `my_dashboard.hide`, 삭제(라벨) → `my_dashboard.delete_instance`(또는 레거시 `my_dashboard.delete`·로그인 확장), 진행 중 이벤트도 가능, 서버 `bPermanentlyRemoved`·복원 없음. `instance.create`는 이벤트 수정/컨펌을 자동 부여하지 않음.
 - **이벤트 생성 페이지**: 진입은 `instance.view` 또는 `instance.create`; 제출 버튼은 `instance.create`만.
 
 ## 반영 날짜 검증 규칙

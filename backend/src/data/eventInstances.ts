@@ -80,6 +80,9 @@ export interface IEventInstance {
   strCreatedBy: string;
   nCreatedByUserId: number;
   dtCreatedAt: string;
+  /** 삭제(복원 불가) — 완료·숨김 탭에만 표시, 서버에서 수정·실행·상태변경 차단 */
+  bPermanentlyRemoved?: boolean;
+  dtPermanentlyRemovedAt?: string;
 }
 
 import { fnLoadJson, fnSaveJson } from './jsonStore';

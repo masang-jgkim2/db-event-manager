@@ -92,6 +92,8 @@ const OBJ_EXPAND: Record<string, string[]> = {
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
+  // 역할 JSON에 my_dashboard.delete만 있는 경우(구 코드) 삭제 API와 맞춤
+  'my_dashboard.delete': ['my_dashboard.delete_instance'],
 };
 
 export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): string[] => {

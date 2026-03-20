@@ -11,7 +11,7 @@ import {
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
-  EyeInvisibleOutlined, EyeTwoTone, CodeOutlined,
+  EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
   TableOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -447,11 +447,15 @@ const MyDashboardPage = () => {
   const fnStoreUpdateStatus = useEventInstanceStore((s) => s.fnUpdateStatus);
   const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
   const fnStoreUpdateInstance = useEventInstanceStore((s) => s.fnUpdateInstance);
+  const fnStoreDeleteInstance = useEventInstanceStore((s) => s.fnDeleteInstance);
 
   const bFunMode = useThemeStore((s) => s.bFunMode);
 
   // 권한 확인 헬퍼
   const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
+  // 삭제(복원 불가): delete_instance 또는 레거시 delete(서버·로그인 확장과 동일)
+  const fnCanPermanentDelete = () =>
+    fnHasPermission('my_dashboard.delete_instance') || fnHasPermission('my_dashboard.delete');
 
   // 페이지 진입 시 최초 1회 로드 (이후는 SSE가 자동 동기화)
   useEffect(() => {
@@ -724,6 +728,7 @@ const MyDashboardPage = () => {
   };
   const nTotal = arrAllInstances.length;
   const nMyAction = arrAllInstances.filter((e) =>
+    !e.bPermanentlyRemoved &&
     OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
   ).length;
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
@@ -732,6 +737,16 @@ const MyDashboardPage = () => {
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
+    // 삭제 처리됨: 상세만 (워크플로·실행·수정 불가)
+    if (r.bPermanentlyRemoved) {
+      if (fnHasPermission('my_dashboard.detail')) {
+        arrButtons.push(
+          <Button key="detail" size="small" icon={<EyeOutlined />}
+            onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
+        );
+      }
+      return <Space wrap>{arrButtons}</Space>;
+    }
     // 이 이벤트의 쿼리 실행 대상 (단일 서버 또는 다중 서버)
     const arrScope = r.arrDeployScope ?? ['qa', 'live'];
     const bHasQa   = arrScope.includes('qa');
@@ -1141,11 +1156,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     setStrViewTransition('out');
   }, [strViewTransition, strViewMode]);
 
-  // 진행 이벤트 탭: 사용자가 직접 숨기기 버튼을 누른 이벤트만 제외
-  // live_verified 완료 상태여도 숨기기 전까지는 진행탭에 남아 흐릿하게 표시됨
-  const arrActiveInstances = arrInstances.filter((r) => !setHiddenIds.has(r.nId));
-  // 완료·숨김 이벤트 탭: 사용자가 숨기기 버튼을 누른 이벤트만
-  const arrCompletedInstances = arrInstances.filter((r) => setHiddenIds.has(r.nId));
+  // 진행 탭: 숨김(local)·서버 삭제 제외 — 삭제 건은 완료·숨김 탭으로만 이동(복원 불가)
+  const arrActiveInstances = arrInstances.filter(
+    (r) => !setHiddenIds.has(r.nId) && !r.bPermanentlyRemoved
+  );
+  const arrCompletedInstances = arrInstances.filter(
+    (r) => setHiddenIds.has(r.nId) || Boolean(r.bPermanentlyRemoved)
+  );
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
@@ -1202,38 +1219,85 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     {
       title: '액션',
       key: 'actions',
-      width: 340,
-      render: (_: unknown, r: IEventInstance) => (
-        <Space wrap size="small" align="start">
-          {/* 상태별 처리 버튼 (요청/확인/반영/재요청 등) */}
-          {fnRenderActions(r)}
-          <Divider type="vertical" style={{ margin: '0 4px' }} />
-          {/* 숨기기/보이기 — 완료(live_verified)에서만 숨기기 활성화 */}
-          {!setHiddenIds.has(r.nId) ? (
-            <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-              <PopconfirmWithSkip
-                actionKey="hide_instance"
-                title="이 이벤트를 숨기시겠습니까?"
-                description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                okText="숨기기"
-                cancelText="취소"
-                onConfirm={() => fnHideInstance(r.nId)}
-                disabled={r.strStatus !== 'live_verified'}
-              >
-                <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
-                  숨기기
-                </Button>
-              </PopconfirmWithSkip>
-            </Tooltip>
-          ) : (
-            <Tooltip title="진행 이벤트 탭으로 복원">
-              <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
-                보이기
-              </Button>
-            </Tooltip>
-          )}
-        </Space>
-      ),
+      width: 420,
+      render: (_: unknown, r: IEventInstance) => {
+        const bCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+        return (
+          <Space wrap size="small" align="start">
+            {fnRenderActions(r)}
+            <Divider type="vertical" style={{ margin: '0 4px' }} />
+            {r.bPermanentlyRemoved ? (
+              <Tag color="red">삭제됨 · 복원 불가</Tag>
+            ) : !setHiddenIds.has(r.nId) ? (
+              <>
+                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+                  <PopconfirmWithSkip
+                    actionKey="hide_instance"
+                    title="이 이벤트를 숨기시겠습니까?"
+                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                    okText="숨기기"
+                    cancelText="취소"
+                    onConfirm={() => fnHideInstance(r.nId)}
+                    disabled={r.strStatus !== 'live_verified'}
+                  >
+                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
+                      숨기기
+                    </Button>
+                  </PopconfirmWithSkip>
+                </Tooltip>
+                {bCanDelete && (
+                  <Popconfirm
+                    title="이벤트를 삭제할까요?"
+                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+                    okText="삭제"
+                    okButtonProps={{ danger: true }}
+                    cancelText="취소"
+                    onConfirm={async () => {
+                      const objRes = await fnStoreDeleteInstance(r.nId);
+                      if (objRes.bSuccess) {
+                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                        setStrDashTab('completed');
+                      } else {
+                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                      }
+                    }}
+                  >
+                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                  </Popconfirm>
+                )}
+              </>
+            ) : (
+              <>
+                <Tooltip title="진행 이벤트 탭으로 복원">
+                  <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
+                    보이기
+                  </Button>
+                </Tooltip>
+                {bCanDelete && (
+                  <Popconfirm
+                    title="이벤트를 삭제할까요?"
+                    description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
+                    okText="삭제"
+                    okButtonProps={{ danger: true }}
+                    cancelText="취소"
+                    onConfirm={async () => {
+                      const objRes = await fnStoreDeleteInstance(r.nId);
+                      if (objRes.bSuccess) {
+                        messageApi.success('삭제되었습니다.');
+                        setStrDashTab('completed');
+                      } else {
+                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                      }
+                    }}
+                  >
+                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                  </Popconfirm>
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -1337,7 +1401,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
           rowClassName={(r: IEventInstance) => {
             if (r.nId === objSelectedRow?.nId) return 'ant-table-row-selected';
-            if (r.strStatus === 'live_verified' || setHiddenIds.has(r.nId)) return 'row-completed-dim';
+            if (r.strStatus === 'live_verified' || setHiddenIds.has(r.nId) || r.bPermanentlyRemoved) return 'row-completed-dim';
             return '';
           }}
           onRow={(r: IEventInstance) => ({
@@ -1368,6 +1432,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           {fnRenderStatusIcon(r.strStatus, 12)}
                           <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
                         </Space>
+                        {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
                       </Space>
                     }
                     style={{
@@ -1384,25 +1449,78 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Divider style={{ margin: '8px 0' }} />
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}
-                        {!setHiddenIds.has(r.nId) ? (
-                          <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                            <PopconfirmWithSkip
-                              actionKey="hide_instance"
-                              title="이 이벤트를 숨기시겠습니까?"
-                              description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                              okText="숨기기"
-                              cancelText="취소"
-                              onConfirm={() => fnHideInstance(r.nId)}
-                              disabled={r.strStatus !== 'live_verified'}
-                            >
-                              <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
-                            </PopconfirmWithSkip>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title="진행 이벤트 탭으로 복원">
-                            <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
-                          </Tooltip>
-                        )}
+                        {(() => {
+                          const bCardCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+                          if (r.bPermanentlyRemoved) {
+                            return <Tag color="red">삭제됨 · 복원 불가</Tag>;
+                          }
+                          if (!setHiddenIds.has(r.nId)) {
+                            return (
+                              <>
+                                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+                                  <PopconfirmWithSkip
+                                    actionKey="hide_instance"
+                                    title="이 이벤트를 숨기시겠습니까?"
+                                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                                    okText="숨기기"
+                                    cancelText="취소"
+                                    onConfirm={() => fnHideInstance(r.nId)}
+                                    disabled={r.strStatus !== 'live_verified'}
+                                  >
+                                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
+                                  </PopconfirmWithSkip>
+                                </Tooltip>
+                                {bCardCanDelete && (
+                                  <Popconfirm
+                                    title="이벤트를 삭제할까요?"
+                                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+                                    okText="삭제"
+                                    okButtonProps={{ danger: true }}
+                                    cancelText="취소"
+                                    onConfirm={async () => {
+                                      const objRes = await fnStoreDeleteInstance(r.nId);
+                                      if (objRes.bSuccess) {
+                                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                                        setStrDashTab('completed');
+                                      } else {
+                                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                      }
+                                    }}
+                                  >
+                                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                                  </Popconfirm>
+                                )}
+                              </>
+                            );
+                          }
+                          return (
+                            <>
+                              <Tooltip title="진행 이벤트 탭으로 복원">
+                                <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
+                              </Tooltip>
+                              {bCardCanDelete && (
+                                <Popconfirm
+                                  title="이벤트를 삭제할까요?"
+                                  description="숨김 상태와 무관하게 복원할 수 없습니다."
+                                  okText="삭제"
+                                  okButtonProps={{ danger: true }}
+                                  cancelText="취소"
+                                  onConfirm={async () => {
+                                    const objRes = await fnStoreDeleteInstance(r.nId);
+                                    if (objRes.bSuccess) {
+                                      messageApi.success('삭제되었습니다.');
+                                      setStrDashTab('completed');
+                                    } else {
+                                      messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                    }
+                                  }}
+                                >
+                                  <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                                </Popconfirm>
+                              )}
+                            </>
+                          );
+                        })()}
                       </Space>
                     </Space>
                     {objSelectedRow?.nId === r.nId && (
@@ -1449,9 +1567,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       </Space>
                     </Descriptions.Item>
                     <Descriptions.Item label="상태">
-                      <Space size={4}>
+                      <Space size={4} wrap align="center">
                         {fnRenderStatusIcon(objDetail.strStatus, 14)}
                         <Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag>
+                        {objDetail.bPermanentlyRemoved && <Tag color="red">삭제</Tag>}
                       </Space>
                     </Descriptions.Item>
                   </Descriptions>
@@ -1533,13 +1652,21 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 label: '진행 이력',
                 children: (
                   <Timeline
-                    items={objDetail.arrStatusLogs.map((log) => ({
-                      color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
-                      children: (
+                    items={objDetail.arrStatusLogs.map((log) => {
+                      // 서버 이력: 삭제(복원 불가) — 구 이력 '영구 삭제(복원 불가)' 호환
+                      const bPermanentDeleteLog = typeof log.strComment === 'string' &&
+                        (log.strComment === '삭제(복원 불가)' || log.strComment === '영구 삭제(복원 불가)');
+                      const strTimelineColor = bPermanentDeleteLog ? 'red' : (OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray');
+                      return {
+                        color: strTimelineColor,
+                        children: (
                         <div>
-                          <Space size={4}>
+                          <Space size={4} wrap>
                             {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
                             <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                            {bPermanentDeleteLog && (
+                              <Tag color="red">삭제</Tag>
+                            )}
                           </Space>
                           <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
                           <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
@@ -1548,7 +1675,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               <Text
                                 style={{
                                   fontSize: 12,
-                                  color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
+                                  color: log.strComment === 'DBA 쿼리 직접 수정'
+                                    ? token.colorError
+                                    : bPermanentDeleteLog
+                                      ? token.colorError
+                                      : token.colorTextSecondary,
                                 }}
                               >
                                 {log.strComment}
@@ -1568,8 +1699,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             </div>
                           )}
                         </div>
-                      ),
-                    }))}
+                        ),
+                      };
+                    })}
                   />
                 ),
               },

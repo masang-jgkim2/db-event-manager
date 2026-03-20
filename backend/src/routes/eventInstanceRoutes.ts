@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   fnCreateInstance, fnGetInstances,
   fnUpdateStatus, fnGetInstance, fnUpdateInstance,
-  fnExecuteAndDeploy, fnGetTemplateExecElapsed,
+  fnExecuteAndDeploy, fnGetTemplateExecElapsed, fnDeleteInstance,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
@@ -67,6 +67,13 @@ router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);
 
 // PUT /api/event-instances/:id - 이벤트 수정 (my_dashboard.edit) 또는 DBA 쿼리 수정(my_dashboard.query_edit)
 router.put('/:id', fnRequireAnyPermission('my_dashboard.edit', 'my_dashboard.query_edit'), fnUpdateInstance);
+
+// DELETE /api/event-instances/:id — 삭제(복원 불가). delete_instance 또는 레거시 delete 권한
+router.delete(
+  '/:id',
+  fnRequireAnyPermission('my_dashboard.delete_instance', 'my_dashboard.delete'),
+  fnDeleteInstance
+);
 
 // PATCH /api/event-instances/:id/status - 상태 변경
 router.patch('/:id/status', fnUpdateStatus);

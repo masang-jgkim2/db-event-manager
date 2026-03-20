@@ -39,6 +39,11 @@ const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus;
   ],
 };
 
+// 삭제(bPermanentlyRemoved)된 인스턴스는 어떤 변경도 불가 (숨김과 달리 복구 없음)
+const STR_MSG_PERMANENTLY_REMOVED = '삭제된 이벤트는 변경할 수 없습니다.';
+const fnIsPermanentlyRemoved = (e: { bPermanentlyRemoved?: boolean } | undefined): boolean =>
+  Boolean(e?.bPermanentlyRemoved);
+
 // 쿼리 실행 대상(단일/다중 서버)에 따른 동적 전이 조회
 // LIVE만 선택 시: dba_confirmed → live_requested (QA 단계 스킵)
 const fnGetTransitions = (
@@ -77,8 +82,9 @@ const OBJ_STATUS_ACTION_PERMISSIONS: Partial<Record<TEventStatus, string[]>> = {
 
 // 현재 사용자 정보를 IStageActor로 변환
 // strActorName(body) > JWT의 strDisplayName > strUserId 순서로 폴백
+// DELETE 등 body 없는 요청도 있음 → req.body 옵셔널
 const fnMakeActor = (req: Request): IStageActor => ({
-  strDisplayName: req.body.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
+  strDisplayName: req.body?.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
   nUserId: req.user?.nId || 0,
   strUserId: req.user?.strUserId || '',
   dtProcessedAt: new Date().toISOString(),
@@ -199,6 +205,7 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
     if (strFilter === 'my_action') {
       const arrUserPerms = req.user?.arrPermissions || [];
       arrFiltered = arrFiltered.filter((e) => {
+        if (fnIsPermanentlyRemoved(e)) return false;
         const arrPerms = OBJ_STATUS_ACTION_PERMISSIONS[e.strStatus as TEventStatus];
         return arrPerms?.some((p) => (arrUserPerms as string[]).includes(p)) ?? false;
       });
@@ -223,6 +230,10 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
       return;
     }
 
@@ -332,6 +343,10 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
       return;
     }
 
@@ -682,6 +697,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
       return;
     }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
+      return;
+    }
 
     const arrUserPerms = req.user?.arrPermissions || [];
     const bHasQueryEdit = (arrUserPerms as string[]).includes('my_dashboard.query_edit');
@@ -811,6 +830,49 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 수정 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// DELETE /api/event-instances/:id — 진행 중 포함 상태 무관 삭제(복원 불가), 완료·숨김 탭으로만 표시
+export const fnDeleteInstance = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: '이미 삭제 처리된 이벤트입니다.' });
+      return;
+    }
+
+    if (!Array.isArray(objInstance.arrStatusLogs)) {
+      objInstance.arrStatusLogs = [];
+    }
+
+    const objActor = fnMakeActor(req);
+    objInstance.bPermanentlyRemoved = true;
+    objInstance.dtPermanentlyRemovedAt = new Date().toISOString();
+    objInstance.arrStatusLogs.push({
+      strStatus: objInstance.strStatus,
+      strChangedBy: objActor.strDisplayName,
+      nChangedByUserId: objActor.nUserId,
+      strComment: '삭제(복원 불가)',
+      dtChangedAt: new Date().toISOString(),
+    });
+
+    fnSaveEventInstances();
+    try {
+      fnBroadcastInstanceUpdate(objInstance);
+    } catch (err: any) {
+      console.error(`[이벤트 인스턴스] SSE 브로드캐스트 실패 | nId: ${nId} | ${err?.message}`);
+    }
+    console.log(`[이벤트 인스턴스] 삭제(복원불가) | nId: ${nId} | ${objActor.strDisplayName}`);
+    res.json({ bSuccess: true, objInstance });
+  } catch (error) {
+    console.error('이벤트 인스턴스 삭제 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

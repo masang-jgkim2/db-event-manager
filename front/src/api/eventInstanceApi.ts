@@ -24,6 +24,20 @@ export const fnApiUpdateInstance = async (nId: number, objData: Record<string, u
   return response.data;
 };
 
+/** 이벤트 삭제(진행 중 포함, 복원 불가) */
+export const fnApiDeleteInstance = async (nId: number) => {
+  try {
+    const response = await apiClient.delete(`/event-instances/${nId}`);
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.data) return error.response.data;
+    return {
+      bSuccess: false,
+      strMessage: error.message || '네트워크 오류가 발생했습니다.',
+    };
+  }
+};
+
 // 이벤트 상태 변경
 export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strComment: string = '', strActorName: string = '') => {
   const response = await apiClient.patch(`/event-instances/${nId}/status`, { strNextStatus, strComment, strActorName });

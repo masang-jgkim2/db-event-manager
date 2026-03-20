@@ -12,6 +12,7 @@ export type TPermission =
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
   | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
   | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
+  | 'my_dashboard.delete' | 'my_dashboard.delete_instance' // delete: 레거시 별칭 → 로그인 시 delete_instance로 확장
   | 'my_dashboard.edit_any'   // 타인 작성 이벤트(event_created) 수정 (역할 대신 권한으로 제어)
   | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
   | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live'

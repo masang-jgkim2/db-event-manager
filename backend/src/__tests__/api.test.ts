@@ -1087,6 +1087,48 @@ describe('API 전체 테스트', () => {
       expect([200, 400, 404]).toContain(res.status);
     });
 
+    it('DELETE /api/event-instances/:id (my_dashboard.delete_instance 없으면) → 403', async () => {
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
+      const live = (list.body?.arrInstances ?? []).find((i: { strStatus: string }) => i.strStatus === 'live_verified');
+      const nId = live?.nId ?? 1;
+      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('DELETE /api/event-instances/:id (진행 중 인스턴스, admin 삭제 권한) → 200', async () => {
+      const products = await request(app).get('/api/products').set('Authorization', `Bearer ${strAdminToken}`);
+      const events = await request(app).get('/api/events').set('Authorization', `Bearer ${strAdminToken}`);
+      const p = products.body?.arrProducts?.[0];
+      const e = events.body?.arrEvents?.[0];
+      const createRes = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nEventTemplateId: e?.nId ?? 1,
+          nProductId: p?.nId ?? 1,
+          strEventLabel: 'DEL테스트',
+          strProductName: p?.strName ?? '테스트',
+          strServiceAbbr: 'T',
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] 삭제 테스트용 임시 이벤트',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa', 'live'],
+          strCreatedBy: 'admin테스트',
+        });
+      expect(createRes.status).toBe(200);
+      const nNewId = createRes.body?.objInstance?.nId;
+      expect(nNewId).toBeDefined();
+      const res = await request(app)
+        .delete(`/api/event-instances/${nNewId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body?.objInstance?.bPermanentlyRemoved).toBe(true);
+    });
+
     // 쿼리 수정 권한: my_dashboard.query_edit 없으면 confirm_requested/qa_requested/live_requested 단계에서 PUT(strGeneratedQuery) → 403
     it('query_edit 없이 쿼리 수정 PUT → 403', async () => {
       const N_ROLE_DBA = 2;
