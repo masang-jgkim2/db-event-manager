@@ -29,6 +29,7 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 - **쿼리 실행**: 이벤트 아이템/퀘스트 데이터를 DEV/QA/LIVE DB에 반영
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀)
 - **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영
+- **쿼리 실행 Progress**: `GET .../template-exec-elapsed`로 마지막 성공 `nElapsedMs` 조회 → 프론트에서 그 시간에 맞춰 0→99% 선형(rAF), 다중 세트는 SSE 진행률과 `max` (`templateExecElapsed.ts` 인메모리). DB화 시 영속화.
 
 ## 주요 파일 위치
 
@@ -42,7 +43,7 @@ backend/src/
   middleware/permissionMiddleware.ts     # 권한 검사
 
 front/src/
-  pages/MyDashboardPage.tsx              # 나의 대시보드 (탭/필터, 테이블·카드 보기, 재요청/Popconfirm)
+  pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress: 이전 소요 시간 비례 rAF 시뮬 + SSE max)
   pages/QueryPage.tsx                     # 이벤트 생성
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청

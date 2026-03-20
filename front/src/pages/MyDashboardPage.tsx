@@ -19,7 +19,7 @@ import RequestWithLongPressButton from '../components/RequestWithLongPressButton
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
-import { fnApiExecuteQueryStream } from '../api/eventInstanceApi';
+import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
@@ -33,21 +33,12 @@ const { TextArea } = Input;
 // 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
 const MULTI_INPUT_DELIMITER = '\u0001';
 
-const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+// Progress 시뮬레이션: 이전 성공 실행 소요(ms)에 비례해 0→99%까지 채움 (이력 없으면 기본값)
+const N_SIM_BASELINE_DEFAULT_MS = 2800;
+const N_SIM_BASELINE_MIN_MS = 80;
+const N_SIM_BASELINE_MAX_MS = 180_000;
 
-/** 이벤트 템플릿·환경별 쿼리 반영 소요 시간(ms) 저장 — Progress 가중치용 */
-const fnExecElapsedKey = (nEventTemplateId: number, strEnv: string) =>
-  `exec_elapsed_${nEventTemplateId}_${strEnv}`;
-const fnLoadExecElapsedMs = (nEventTemplateId: number, strEnv: string): number => {
-  const str = typeof localStorage !== 'undefined' ? localStorage.getItem(fnExecElapsedKey(nEventTemplateId, strEnv)) : null;
-  if (!str) return 0;
-  const n = parseInt(str, 10);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
-const fnSaveExecElapsedMs = (nEventTemplateId: number, strEnv: string, nElapsedMs: number): void => {
-  if (typeof localStorage === 'undefined' || !Number.isFinite(nElapsedMs) || nElapsedMs <= 0) return;
-  localStorage.setItem(fnExecElapsedKey(nEventTemplateId, strEnv), String(nElapsedMs));
-};
+const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
 // 다시 보지 않기 체크박스가 있는 Popconfirm (요청/숨기기 버튼용)
 interface IPopconfirmWithSkipProps {
@@ -388,13 +379,12 @@ const MyDashboardPage = () => {
   const nProgressPercent = nExecutingTotalQueries > 0
     ? Math.round((nExecutingCompletedQueries / nExecutingTotalQueries) * 100)
     : 0;
-  /** 동일 템플릿 이전 실행 소요 시간(ms) — Progress 0→99% 가중치, 0이면 기본값 사용 */
+  /** 동일 템플릿 이전 실행 소요 시간(ms) — 0→99% 채우는 데 동일 비율로 사용 */
   const [nExpectedElapsedMs, setNExpectedElapsedMs] = useState(0);
-  /** 팝업 뜨자마자 0→99까지 천천히 올라가는 시뮬레이션 (완료 전에는 100% 안 보이게) */
-  const [nSimulatedPercent, setNSimulatedPercent] = useState(0);
-  /** Progress 바에 표시할 퍼센트 — 1%씩 올라가도록 애니메이션 */
+  /** Progress 바 퍼센트 (시간 비례 시뮬레이션 vs SSE 실제 진행 중 max) */
   const [nDisplayPercent, setNDisplayPercent] = useState(0);
-  const refTargetPercent = useRef(0);
+  const refExecProgress = useRef({ completed: 0, total: 1 });
+  const refRafSim = useRef<number>(0);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
@@ -431,34 +421,43 @@ const MyDashboardPage = () => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
-  // 표시 타깃: 완료 전엔 최대 99%, 완료 시 100% (시뮬레이션과 실제 중 작은 값 사용)
-  const nDisplayTarget = nProgressPercent >= 100 ? 100 : Math.min(nSimulatedPercent, 99);
-  refTargetPercent.current = nDisplayTarget;
+  // SSE·완료 카운트와 rAF 루프 동기화
+  useEffect(() => {
+    refExecProgress.current = {
+      completed: nExecutingCompletedQueries,
+      total: Math.max(1, nExecutingTotalQueries),
+    };
+  }, [nExecutingCompletedQueries, nExecutingTotalQueries]);
 
-  // 이전 실행 소요 시간을 가중치로 0→99% 시뮬레이션 (동일 템플릿 QA/LIVE 반영 시 자연스럽게 채워짐)
+  /** 이전 실행이 느렸으면 같은 비율로 천천히, 빨랐으면 빠르게 0→99%. 다중 세트는 실제 진행과 max. */
   useEffect(() => {
     if (bExecuting === null) return;
-    const nMsPerPercent = nExpectedElapsedMs > 0
-      ? Math.min(3000, Math.max(80, Math.round(nExpectedElapsedMs / 99)))
-      : 150;
-    const t = setInterval(() => {
-      setNSimulatedPercent((prev) => (prev >= 99 ? 99 : prev + 1));
-    }, nMsPerPercent);
-    return () => clearInterval(t);
+
+    const nRawBaseline = nExpectedElapsedMs > 0 ? nExpectedElapsedMs : N_SIM_BASELINE_DEFAULT_MS;
+    const nBaseline = Math.min(N_SIM_BASELINE_MAX_MS, Math.max(N_SIM_BASELINE_MIN_MS, nRawBaseline));
+    const t0 = performance.now();
+
+    const fnTick = (now: number) => {
+      const { completed, total } = refExecProgress.current;
+      const nRealPct = total > 0 ? Math.min(100, (completed / total) * 100) : 0;
+      const nElapsed = now - t0;
+      const nLinePct = Math.min(99, (nElapsed / nBaseline) * 99);
+      const nTarget =
+        nRealPct >= 100 ? 100 : Math.min(99, Math.max(nLinePct, nRealPct));
+      const nRounded = Math.round(nTarget);
+
+      setNDisplayPercent((prev) => (prev === nRounded ? prev : nRounded));
+
+      if (nRealPct < 100) {
+        refRafSim.current = requestAnimationFrame(fnTick);
+      } else {
+        setNDisplayPercent(100);
+      }
+    };
+
+    refRafSim.current = requestAnimationFrame(fnTick);
+    return () => cancelAnimationFrame(refRafSim.current);
   }, [bExecuting, nExpectedElapsedMs]);
-
-  // 표시 퍼센트를 1%씩 타깃까지 따라가기 (간격을 넓혀 CSS 트랜지션으로 부드럽게 채워짐)
-  useEffect(() => {
-    if (bExecuting === null) return;
-    const t = setInterval(() => {
-      setNDisplayPercent((prev) => {
-        const target = refTargetPercent.current;
-        if (prev >= target) return prev;
-        return prev + 1;
-      });
-    }, 80);
-    return () => clearInterval(t);
-  }, [bExecuting]);
 
   // Progress가 100% 채워진 뒤에만 700ms 보여주고 결과 모달 열기 + 페이드
   useEffect(() => {
@@ -479,7 +478,6 @@ const MyDashboardPage = () => {
       setNExecutingTotalQueries(0);
       setNExecutingCompletedQueries(0);
       setNDisplayPercent(0);
-      setNSimulatedPercent(0);
       setNExpectedElapsedMs(0);
     }, 320);
     return () => clearTimeout(t);
@@ -518,13 +516,13 @@ const MyDashboardPage = () => {
   // QA/LIVE DB 실행 (다중 세트면 스트리밍으로 진행율 반영)
   const fnHandleExecute = async (r: IEventInstance, strEnv: 'qa' | 'live') => {
     const nTotal = r.arrExecutionTargets?.length ?? 1;
-    const nElapsedMs = fnLoadExecElapsedMs(r.nEventTemplateId, strEnv);
+    const nExpectedFromServer = await fnApiGetTemplateExecElapsed(r.nEventTemplateId, strEnv);
+    setNExpectedElapsedMs(nExpectedFromServer);
     setBExecuting(r.nId);
     setNExecutingTotalQueries(nTotal);
     setNExecutingCompletedQueries(0);
     setNDisplayPercent(0);
-    setNSimulatedPercent(0);
-    setNExpectedElapsedMs(nElapsedMs);
+    refExecProgress.current = { completed: 0, total: Math.max(1, nTotal) };
     setStrExecEnv(strEnv);
     let result: { bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance; objExecutionResult?: unknown };
     try {
@@ -534,7 +532,6 @@ const MyDashboardPage = () => {
 
       if (result.bSuccess) {
         const objExec = result.objExecutionResult as IQueryExecutionResult | undefined;
-        if (objExec?.nElapsedMs) fnSaveExecElapsedMs(r.nEventTemplateId, strEnv, objExec.nElapsedMs);
         setObjExecResult(objExec ?? null);
         messageApi.success(`${strEnv.toUpperCase()} 쿼리 실행 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
@@ -581,7 +578,6 @@ const MyDashboardPage = () => {
         setNExecutingTotalQueries(0);
         setNExecutingCompletedQueries(0);
         setNDisplayPercent(0);
-        setNSimulatedPercent(0);
         setNExpectedElapsedMs(0);
       }
     }

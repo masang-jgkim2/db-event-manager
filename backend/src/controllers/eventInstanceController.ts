@@ -8,6 +8,7 @@ import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
+import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/templateExecElapsed';
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계 + 재요청)
@@ -543,6 +544,9 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         });
         fnSaveEventInstances();
         fnBroadcastInstanceUpdate(objInstance);
+        if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
+          fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
+        }
         res.write(`data: ${JSON.stringify({ type: 'done', objExecutionResult: objExecResult, objInstance })}\n\n`);
         res.end();
         return;
@@ -603,6 +607,9 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     fnSaveEventInstances();
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
+    if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
+      fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
+    }
     res.json({
       bSuccess: true,
       strMessage: `${strEnv.toUpperCase()} 쿼리 실행이 완료되었습니다.`,
@@ -616,6 +623,28 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       bSuccess: false,
       strMessage: `서버 오류가 발생했습니다. (${error?.message || '알 수 없는 오류'})`,
     });
+  }
+};
+
+// GET /api/event-instances/template-exec-elapsed?nEventTemplateId=&strEnv=qa|live
+// 동일 템플릿·환경의 마지막 성공 실행 소요(ms) — 서버 인메모리 (DB화 시 영속 저장으로 교체)
+export const fnGetTemplateExecElapsed = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nEventTemplateId = Number(req.query.nEventTemplateId);
+    const strEnv = String(req.query.strEnv ?? '');
+    if (!Number.isFinite(nEventTemplateId) || nEventTemplateId <= 0) {
+      res.status(400).json({ bSuccess: false, strMessage: '유효한 nEventTemplateId가 필요합니다.' });
+      return;
+    }
+    if (strEnv !== 'qa' && strEnv !== 'live') {
+      res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 qa 또는 live여야 합니다.' });
+      return;
+    }
+    const nElapsedMs = fnGetTemplateExecElapsedMs(nEventTemplateId, strEnv);
+    res.json({ bSuccess: true, nElapsedMs });
+  } catch (error: any) {
+    console.error('[fnGetTemplateExecElapsed]', error?.message);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 

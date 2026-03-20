@@ -30,6 +30,22 @@ export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strC
   return response.data;
 };
 
+/** 서버 인메모리: 해당 템플릿·환경 마지막 성공 실행 소요(ms), 없으면 0 */
+export const fnApiGetTemplateExecElapsed = async (
+  nEventTemplateId: number,
+  strEnv: 'qa' | 'live'
+): Promise<number> => {
+  try {
+    const response = await apiClient.get('/event-instances/template-exec-elapsed', {
+      params: { nEventTemplateId, strEnv },
+    });
+    const n = Number(response.data?.nElapsedMs);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+};
+
 // QA/LIVE DB 쿼리 실행 (실제 DB 반영)
 // axios는 4xx/5xx를 throw하므로 catch로 서버 응답을 그대로 반환
 export const fnApiExecuteQuery = async (nId: number, strEnv: 'qa' | 'live', strActorName: string = '') => {

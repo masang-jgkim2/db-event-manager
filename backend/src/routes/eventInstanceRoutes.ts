@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   fnCreateInstance, fnGetInstances,
   fnUpdateStatus, fnGetInstance, fnUpdateInstance,
-  fnExecuteAndDeploy,
+  fnExecuteAndDeploy, fnGetTemplateExecElapsed,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
@@ -55,6 +55,9 @@ router.use(fnAuthMiddleware);
 
 // GET /api/event-instances - 목록 조회 (나의 대시보드 보기 권한)
 router.get('/', fnRequireAnyPermission('my_dashboard.view'), fnGetInstances);
+
+// GET /api/event-instances/template-exec-elapsed — :id 보다 먼저 등록 (프로그레스 바용)
+router.get('/template-exec-elapsed', fnRequireAnyPermission('my_dashboard.view'), fnGetTemplateExecElapsed);
 
 // GET /api/event-instances/:id - 단건 조회 (나의 대시보드 보기 권한)
 router.get('/:id', fnRequireAnyPermission('my_dashboard.view'), fnGetInstance);

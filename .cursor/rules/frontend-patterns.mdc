@@ -81,6 +81,7 @@ export const fnApiGetProducts = () =>
 
 ## 나의 대시보드 (MyDashboardPage)
 
+- **쿼리 실행 Progress**: 실행 직전 `fnApiGetTemplateExecElapsed`로 이전 성공 소요(ms) 조회 → `requestAnimationFrame`으로 **그 시간에 맞춰 0→99% 선형 시뮬레이션**, 다중 세트는 SSE 진행률과 `max`. 이력 없으면 기본 ~2.8s.
 - **탭**: 전체 / 관여 / 생성 / 처리할 이벤트, **완료·숨김** (숨긴 이벤트).
 - **필터**: Segmented 대신 **Select** 드롭다운.
 - **보기 전환**: 테이블(행) ↔ 카드 보기. 전환 시 페이드 아웃→전환→페이드 인, `nViewMinHeight`/`viewContentRef`로 높이 고정 후 해제해 번쩍임 완화. 카드 보기는 동일 데이터를 Row/Col/Card 그리드로 표시, 클릭 시 `InstanceStepper`.

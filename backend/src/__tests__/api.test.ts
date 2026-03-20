@@ -1022,6 +1022,24 @@ describe('API 전체 테스트', () => {
       nInstanceId = created?.nId ?? arr[0]?.nId ?? 0;
     });
 
+    it('GET /api/event-instances/template-exec-elapsed → 200, nElapsedMs', async () => {
+      const res = await request(app)
+        .get('/api/event-instances/template-exec-elapsed')
+        .query({ nEventTemplateId: 1, strEnv: 'qa' })
+        .set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(typeof res.body.nElapsedMs).toBe('number');
+    });
+
+    it('GET /api/event-instances/template-exec-elapsed 잘못된 strEnv → 400', async () => {
+      const res = await request(app)
+        .get('/api/event-instances/template-exec-elapsed')
+        .query({ nEventTemplateId: 1, strEnv: 'dev' })
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(400);
+    });
+
     it('GET /api/event-instances (my_dashboard.view) → 200', async () => {
       const res = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
       expect(res.status).toBe(200);
