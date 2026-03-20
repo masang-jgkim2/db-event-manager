@@ -91,7 +91,7 @@ export const fnApiGetProducts = () =>
 
 ## 이벤트 대시보드 (DashboardPage)
 
-- **맞춤 카드**: `맞춤 카드`로 **라벨 ← 숫자 지표** 여러 행 구성. 지표는 기존 숫자 카드와 동일(`NUMBER_CARD_IDS`). 생성 시 **맨 앞 / 맨 뒤 / 지정 카드 뒤** 배치 → 이후 DnD·리사이즈 동일. 저장: `localStorage` 키 `db-event-manager-dashboard-custom-cards` + 기존 order/enabled/sizes.
+- **맞춤 카드**: 숫자 지표 행 + **이벤트 그룹**(제목·상태 다중·진행 중만·`Collapse`로 접기, 헤더에 **N건**, 본문 테이블: 이벤트명·반영일·담당자·상태). 인스턴스는 `my_dashboard.view` 또는 그룹 보유 시 `fnApiGetInstances('all')`. 저장: `db-event-manager-dashboard-custom-cards` + order/enabled/sizes.
 
 ## AppTable (공통 테이블)
 

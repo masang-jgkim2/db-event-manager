@@ -1,5 +1,7 @@
+import type { TEventStatus } from './index';
+
 /**
- * 이벤트 대시보드 — 사용자 정의 카드 (숫자 지표만 ×N 행)
+ * 이벤트 대시보드 — 사용자 정의 카드
  * 카드 ID는 `custom_${uuid}` 형태 (DashboardPage와 규약)
  */
 export interface ICustomDashboardMetricRow {
@@ -8,10 +10,23 @@ export interface ICustomDashboardMetricRow {
   strMetricId: string;
 }
 
+/** 접기 가능한 그룹 — 상태·진행 여부로 인스턴스 필터 */
+export interface ICustomDashboardEventGroup {
+  strGroupKey: string;
+  strTitle: string;
+  /** 포함할 상태(비우면 상태 조건 없음 — 진행만 등 다른 조건만 적용) */
+  arrStatus?: TEventStatus[];
+  /** true: live_verified 제외(진행 중만). arrStatus 와 AND */
+  bInProgressOnly?: boolean;
+}
+
 export interface ICustomEventDashboardCard {
   strId: string;
   strTitle: string;
-  arrRows: ICustomDashboardMetricRow[];
+  /** 숫자 지표 행(선택) */
+  arrRows?: ICustomDashboardMetricRow[];
+  /** 이벤트 목록 그룹(선택) — 둘 중 하나 이상 필요 */
+  arrEventGroups?: ICustomDashboardEventGroup[];
 }
 
 /** 삽입 위치 — 생성 시 한 번 적용, 이후 DnD로 이동 가능 */

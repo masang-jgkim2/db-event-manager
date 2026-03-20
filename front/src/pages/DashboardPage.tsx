@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, Segmented } from 'antd';
+import {
+  Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, Segmented, Collapse, Table,
+  Divider, Spin,
+} from 'antd';
+import dayjs from 'dayjs';
 import { Resizable } from 're-resizable';
 import { MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import {
@@ -33,10 +37,10 @@ import { fnApiGetInstances } from '../api/eventInstanceApi';
 import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { fnApiGetUsers } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
-import type { IProduct, IService, TEventStatus } from '../types';
+import type { IProduct, IService, TEventStatus, IEventInstance } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
-import type { ICustomEventDashboardCard } from '../types/eventDashboardCustom';
+import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
 
 const { Title, Text } = Typography;
 
@@ -121,15 +125,19 @@ const fnLoadCustomCards = (): ICustomEventDashboardCard[] => {
     if (!str) return [];
     const arr = JSON.parse(str) as ICustomEventDashboardCard[];
     if (!Array.isArray(arr)) return [];
-    return arr.filter(
-      (c) =>
-        c &&
-        typeof c.strId === 'string' &&
-        fnIsCustomDashboardId(c.strId) &&
-        typeof c.strTitle === 'string' &&
-        Array.isArray(c.arrRows) &&
-        c.arrRows.length > 0
-    );
+    return arr.filter((c) => {
+      if (
+        !c ||
+        typeof c.strId !== 'string' ||
+        !fnIsCustomDashboardId(c.strId) ||
+        typeof c.strTitle !== 'string'
+      ) {
+        return false;
+      }
+      const bHasMetrics = Array.isArray(c.arrRows) && c.arrRows.length > 0;
+      const bHasGroups = Array.isArray(c.arrEventGroups) && c.arrEventGroups.length > 0;
+      return bHasMetrics || bHasGroups;
+    });
   } catch {
     return [];
   }
@@ -256,6 +264,24 @@ const fnSaveVisibleColumnKeys = (strTableId: string, arrKeys: string[]): void =>
 };
 
 const fnIsInProgress = (strStatus: string) => strStatus !== 'live_verified';
+
+/** 맞춤 카드 이벤트 그룹 필터 — 삭제 제외·진행·상태 AND */
+const fnFilterInstancesForCustomGroup = (
+  objGroup: ICustomDashboardEventGroup,
+  arrSrc: IEventInstance[],
+): IEventInstance[] =>
+  arrSrc.filter((i) => {
+    if (i.bPermanentlyRemoved) return false;
+    if (objGroup.bInProgressOnly && !fnIsInProgress(i.strStatus)) return false;
+    if (
+      objGroup.arrStatus &&
+      objGroup.arrStatus.length > 0 &&
+      !objGroup.arrStatus.includes(i.strStatus)
+    ) {
+      return false;
+    }
+    return true;
+  });
 
 // 리사이즈 가능 + 호버 시 제외(-) 버튼, 호버 시 카드 영역 드래그로 이동
 interface IDragHandleProps {
@@ -436,9 +462,10 @@ const DashboardPage = () => {
   const [strAddCardSelectedId, setStrAddCardSelectedId] = useState<TDashboardCardId | null>(null);
   const [arrAddCardSelectedColumnKeys, setArrAddCardSelectedColumnKeys] = useState<string[]>([]);
   const [strCustomTitle, setStrCustomTitle] = useState('');
-  const [arrCustomFormRows, setArrCustomFormRows] = useState<{ strLabel: string; strMetricId: string }[]>([
-    { strLabel: '', strMetricId: 'product' },
-  ]);
+  const [arrCustomFormRows, setArrCustomFormRows] = useState<{ strLabel: string; strMetricId: string }[]>([]);
+  const [arrCustomFormGroups, setArrCustomFormGroups] = useState<
+    { strTitle: string; arrStatus: TEventStatus[]; bInProgressOnly: boolean }[]
+  >([]);
   const [strCustomInsertMode, setStrCustomInsertMode] = useState<'first' | 'last' | 'after'>('last');
   const [strCustomInsertAfterId, setStrCustomInsertAfterId] = useState<string | null>(null);
 
@@ -448,7 +475,8 @@ const DashboardPage = () => {
     setStrAddCardSelectedId(null);
     setArrAddCardSelectedColumnKeys([]);
     setStrCustomTitle('');
-    setArrCustomFormRows([{ strLabel: '', strMetricId: 'product' }]);
+    setArrCustomFormRows([]);
+    setArrCustomFormGroups([]);
     setStrCustomInsertMode('last');
     setStrCustomInsertAfterId(null);
     setBAddCardOpen(true);
@@ -523,8 +551,13 @@ const DashboardPage = () => {
     if (saved) return saved;
     if (fnIsCustomDashboardId(strId)) {
       const obj = arrCustomCards.find((c) => c.strId === strId);
-      const nRows = obj?.arrRows.length ?? 1;
-      return { width: 300, height: 56 + Math.min(nRows, 14) * 34 };
+      const nMetric = obj?.arrRows?.length ?? 0;
+      const nGrp = obj?.arrEventGroups?.length ?? 0;
+      const h =
+        52 +
+        Math.min(nMetric, 14) * 34 +
+        (nGrp > 0 ? Math.min(120 + nGrp * 40, 320) : 0);
+      return { width: nGrp > 0 ? Math.max(360, 320) : 300, height: Math.min(Math.max(h, 120), 520) };
     }
     return DEFAULT_SIZES[strId as TDashboardCardId];
   }, [mapCardSizes, arrCustomCards]);
@@ -565,6 +598,8 @@ const DashboardPage = () => {
   const [nInstancesInProgress, setNInstancesInProgress] = useState<number | null>(null);
   const [nInstancesCompleted, setNInstancesCompleted] = useState<number | null>(null);
   const [arrInstanceStatusCounts, setArrInstanceStatusCounts] = useState<Array<{ strStatus: TEventStatus; nCount: number }> | null>(null);
+  /** 맞춤 카드 이벤트 그룹·통계용 인스턴스 목록 */
+  const [arrDashboardInstances, setArrDashboardInstances] = useState<IEventInstance[]>([]);
   const [nDbConnections, setNDbConnections] = useState<number | null>(null);
   const [nUsers, setNUsers] = useState<number | null>(null);
   const [nRoles, setNRoles] = useState<number | null>(null);
@@ -578,33 +613,48 @@ const DashboardPage = () => {
   useEffect(() => {
     let bMounted = true;
     setBLoadingStats(true);
+    const bLoadInstances =
+      fnHas('my_dashboard.view') ||
+      arrCustomCards.some((c) => (c.arrEventGroups?.length ?? 0) > 0);
     const fnLoad = async () => {
       const arrPromises: Promise<void>[] = [];
-      if (fnHas('my_dashboard.view')) {
+      if (bLoadInstances) {
         arrPromises.push(
           (async () => {
             try {
               const res = await fnApiGetInstances('all');
               if (!bMounted) return;
-              const arr = res?.arrInstances ?? [];
-              setNInstances(arr.length);
-              setNInstancesInProgress(arr.filter((i) => fnIsInProgress(i.strStatus)).length);
-              setNInstancesCompleted(arr.filter((i) => i.strStatus === 'live_verified').length);
-              const statusKeys: TEventStatus[] = [
-                'event_created', 'confirm_requested', 'dba_confirmed',
-                'qa_requested', 'qa_deployed', 'qa_verified',
-                'live_requested', 'live_deployed', 'live_verified',
-              ];
-              const counts = statusKeys.map((strStatus) => ({
-                strStatus,
-                nCount: arr.filter((i) => i.strStatus === strStatus).length,
-              }));
-              setArrInstanceStatusCounts(counts);
+              const arr: IEventInstance[] = res?.arrInstances ?? [];
+              setArrDashboardInstances(arr);
+              if (fnHas('my_dashboard.view')) {
+                setNInstances(arr.length);
+                setNInstancesInProgress(
+                  arr.filter((objI) => fnIsInProgress(objI.strStatus)).length
+                );
+                setNInstancesCompleted(
+                  arr.filter((objI) => objI.strStatus === 'live_verified').length
+                );
+                const statusKeys: TEventStatus[] = [
+                  'event_created', 'confirm_requested', 'dba_confirmed',
+                  'qa_requested', 'qa_deployed', 'qa_verified',
+                  'live_requested', 'live_deployed', 'live_verified',
+                ];
+                const counts = statusKeys.map((strStatus) => ({
+                  strStatus,
+                  nCount: arr.filter((objI) => objI.strStatus === strStatus).length,
+                }));
+                setArrInstanceStatusCounts(counts);
+              }
             } catch {
-              if (bMounted) setNInstances(0);
+              if (bMounted) {
+                setArrDashboardInstances([]);
+                setNInstances(0);
+              }
             }
           })()
         );
+      } else if (bMounted) {
+        setArrDashboardInstances([]);
       }
       if (fnHas('db_connection.view') || fnHas('db.manage')) {
         arrPromises.push(
@@ -648,7 +698,7 @@ const DashboardPage = () => {
     };
     fnLoad();
     return () => { bMounted = false; };
-  }, [arrPermissions]);
+  }, [arrPermissions, arrCustomCards]);
 
   const fnRenderCount = (n: number | null, bAllowed: boolean) => {
     if (!bAllowed) return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>;
@@ -829,7 +879,7 @@ const DashboardPage = () => {
         open={bAddCardOpen}
         onCancel={() => setBAddCardOpen(false)}
         footer={null}
-        width={480}
+        width={620}
         destroyOnClose
       >
         <Steps
@@ -872,7 +922,7 @@ const DashboardPage = () => {
         {nAddCardStep === 1 && bAddCardIsCustom && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">
-              카드 제목과 행마다 <b>라벨 ← 지표</b>를 지정합니다. 추가 후에도 드래그로 순서를 바꿀 수 있습니다.
+              <b>숫자 지표 행</b>과/또는 <b>이벤트 그룹</b>을 넣을 수 있습니다. 그룹은 접어서 열 수 있고, 건수·목록(이벤트명·반영일·담당자·상태)이 표시됩니다.
             </Text>
             <Input
               placeholder="카드 제목"
@@ -881,6 +931,7 @@ const DashboardPage = () => {
               maxLength={80}
               showCount
             />
+            <Text strong style={{ fontSize: 12 }}>숫자 지표(선택)</Text>
             {arrCustomFormRows.map((row, nIdx) => (
               <Space key={nIdx} style={{ width: '100%' }} align="start" wrap>
                 <Input
@@ -910,7 +961,7 @@ const DashboardPage = () => {
                 <Button
                   danger
                   type="text"
-                  disabled={arrCustomFormRows.length <= 1}
+                  disabled={arrCustomFormRows.length <= 1 && arrCustomFormGroups.length === 0}
                   onClick={() =>
                     setArrCustomFormRows((prev) => prev.filter((_, i) => i !== nIdx))
                   }
@@ -928,7 +979,84 @@ const DashboardPage = () => {
                 ])
               }
             >
-              행 추가
+              지표 행 추가
+            </Button>
+            <Divider style={{ margin: '8px 0' }} />
+            <Text strong style={{ fontSize: 12 }}>이벤트 그룹(선택)</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              상태를 고르지 않으면(빈 선택) 상태 조건 없이 필터합니다. 「진행 중만」은 완료(live_verified)를 제외합니다.
+            </Text>
+            {arrCustomFormGroups.map((objG, nIdx) => (
+              <div
+                key={nIdx}
+                style={{
+                  border: '1px solid var(--ant-color-border-secondary)',
+                  borderRadius: 8,
+                  padding: 10,
+                }}
+              >
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                  <Input
+                    placeholder="그룹 이름"
+                    value={objG.strTitle}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setArrCustomFormGroups((prev) =>
+                        prev.map((g, i) => (i === nIdx ? { ...g, strTitle: v } : g))
+                      );
+                    }}
+                  />
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    placeholder="포함할 상태(비우면 상태 무관)"
+                    style={{ width: '100%' }}
+                    value={objG.arrStatus}
+                    options={ARR_EVENT_STATUSES.map((strSt) => ({
+                      value: strSt,
+                      label: OBJ_STATUS_CONFIG[strSt].strLabel,
+                    }))}
+                    onChange={(v) => {
+                      setArrCustomFormGroups((prev) =>
+                        prev.map((g, i) => (i === nIdx ? { ...g, arrStatus: v as TEventStatus[] } : g))
+                      );
+                    }}
+                  />
+                  <Checkbox
+                    checked={objG.bInProgressOnly}
+                    onChange={(e) => {
+                      setArrCustomFormGroups((prev) =>
+                        prev.map((g, i) =>
+                          i === nIdx ? { ...g, bInProgressOnly: e.target.checked } : g
+                        )
+                      );
+                    }}
+                  >
+                    진행 중인 이벤트만
+                  </Checkbox>
+                  <Button
+                    danger
+                    type="text"
+                    size="small"
+                    onClick={() =>
+                      setArrCustomFormGroups((prev) => prev.filter((_, i) => i !== nIdx))
+                    }
+                  >
+                    그룹 삭제
+                  </Button>
+                </Space>
+              </div>
+            ))}
+            <Button
+              type="dashed"
+              onClick={() =>
+                setArrCustomFormGroups((prev) => [
+                  ...prev,
+                  { strTitle: '', arrStatus: [], bInProgressOnly: true },
+                ])
+              }
+            >
+              그룹 추가
             </Button>
             <div>
               <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
@@ -967,11 +1095,11 @@ const DashboardPage = () => {
               <Button
                 type="primary"
                 disabled={
-                  arrCustomFormRows.filter(
+                  !arrCustomFormRows.some(
                     (r) =>
                       r.strLabel.trim() &&
                       (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
-                  ).length === 0
+                  ) && !arrCustomFormGroups.some((g) => g.strTitle.trim())
                 }
                 onClick={() => setNAddCardStep(2)}
               >
@@ -1051,6 +1179,7 @@ const DashboardPage = () => {
             <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
               {strCustomTitle.trim() || '맞춤 카드'}
             </Tag>
+            <Text strong style={{ display: 'block', marginTop: 8 }}>지표</Text>
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               {arrCustomFormRows
                 .filter(
@@ -1065,6 +1194,28 @@ const DashboardPage = () => {
                     </Text>
                   </li>
                 ))}
+              {arrCustomFormRows.filter(
+                (r) =>
+                  r.strLabel.trim() &&
+                  (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
+              ).length === 0 && <li><Text type="secondary">없음</Text></li>}
+            </ul>
+            <Text strong style={{ display: 'block', marginTop: 8 }}>이벤트 그룹</Text>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {arrCustomFormGroups
+                .filter((g) => g.strTitle.trim())
+                .map((g, nGi) => (
+                  <li key={`g-${nGi}-${g.strTitle}`}>
+                    <Text>
+                      {g.strTitle.trim()}
+                      {g.bInProgressOnly ? ' · 진행 중만' : ''}
+                      {g.arrStatus?.length ? ` · 상태 ${g.arrStatus.length}개` : ' · 상태 전체'}
+                    </Text>
+                  </li>
+                ))}
+              {arrCustomFormGroups.filter((g) => g.strTitle.trim()).length === 0 && (
+                <li><Text type="secondary">없음</Text></li>
+              )}
             </ul>
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <Button onClick={() => setNAddCardStep(1)}>이전</Button>
@@ -1073,11 +1224,11 @@ const DashboardPage = () => {
                 <Button
                   type="primary"
                   disabled={
-                    arrCustomFormRows.filter(
+                    !arrCustomFormRows.some(
                       (r) =>
                         r.strLabel.trim() &&
                         (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
-                    ).length === 0
+                    ) && !arrCustomFormGroups.some((g) => g.strTitle.trim())
                   }
                   onClick={() => {
                     const arrRows = arrCustomFormRows
@@ -1087,13 +1238,22 @@ const DashboardPage = () => {
                           (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
                       )
                       .map((r) => ({ strLabel: r.strLabel.trim(), strMetricId: r.strMetricId }));
-                    if (arrRows.length === 0) return;
+                    const arrEvGroups: ICustomDashboardEventGroup[] = arrCustomFormGroups
+                      .filter((g) => g.strTitle.trim())
+                      .map((g) => ({
+                        strGroupKey: `grp_${crypto.randomUUID()}`,
+                        strTitle: g.strTitle.trim(),
+                        arrStatus: g.arrStatus?.length ? g.arrStatus : undefined,
+                        bInProgressOnly: g.bInProgressOnly,
+                      }));
+                    if (arrRows.length === 0 && arrEvGroups.length === 0) return;
                     const strNewId = fnNewCustomId();
                     const objCard: ICustomEventDashboardCard = {
                       strId: strNewId,
                       strTitle: strCustomTitle.trim() || '맞춤 카드',
-                      arrRows,
                     };
+                    if (arrRows.length > 0) objCard.arrRows = arrRows;
+                    if (arrEvGroups.length > 0) objCard.arrEventGroups = arrEvGroups;
                     setArrCustomCards((prev) => {
                       const next = [...prev, objCard];
                       fnSaveCustomCards(next);
@@ -1296,26 +1456,123 @@ const DashboardPage = () => {
                 {fnIsCustomDashboardId(strId) && (() => {
                   const objC = arrCustomCards.find((c) => c.strId === strId);
                   if (!objC) return null;
+                  const arrRowsSafe = objC.arrRows ?? [];
+                  const arrGr = objC.arrEventGroups ?? [];
+                  const bHasGroups = arrGr.length > 0;
                   return (
                     <DashboardCardContent
                       icon={fnDashboardCardIcon(DashboardOutlined, '#575ECF')}
                       title={objC.strTitle}
+                      bContentFill={bHasGroups}
                     >
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {objC.arrRows.map((row, nR) => (
-                          <div
-                            key={`${row.strLabel}-${nR}`}
-                            style={{
-                              display: 'grid',
-                              gridTemplateColumns: 'minmax(72px,36%) 1fr',
-                              gap: 8,
-                              alignItems: 'start',
-                            }}
-                          >
-                            <Text type="secondary">{row.strLabel}</Text>
-                            <div style={{ minWidth: 0 }}>{fnRenderMetricValue(row.strMetricId)}</div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                          minHeight: 0,
+                          flex: bHasGroups ? 1 : undefined,
+                        }}
+                      >
+                        {arrRowsSafe.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            {arrRowsSafe.map((row, nR) => (
+                              <div
+                                key={`${row.strLabel}-${nR}`}
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'minmax(72px,36%) 1fr',
+                                  gap: 8,
+                                  alignItems: 'start',
+                                }}
+                              >
+                                <Text type="secondary">{row.strLabel}</Text>
+                                <div style={{ minWidth: 0 }}>{fnRenderMetricValue(row.strMetricId)}</div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
+                        {bHasGroups && (
+                          <>
+                            {arrRowsSafe.length > 0 && <Divider style={{ margin: '4px 0' }} />}
+                            {!bInstancesAllowed &&
+                            !bLoadingStats &&
+                            arrDashboardInstances.length === 0 ? (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                이벤트 목록·건수는 「나의 대시보드」 보기 권한이 있을 때 조회됩니다.
+                              </Text>
+                            ) : bLoadingStats && arrDashboardInstances.length === 0 ? (
+                              <div style={{ padding: 16, textAlign: 'center' }}>
+                                <Spin size="small" />
+                              </div>
+                            ) : (
+                              <Collapse
+                                size="small"
+                                style={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+                                defaultActiveKey={arrGr.map((objGrp) => objGrp.strGroupKey)}
+                                items={arrGr.map((objGrp) => {
+                                  const arrF = fnFilterInstancesForCustomGroup(
+                                    objGrp,
+                                    arrDashboardInstances
+                                  );
+                                  return {
+                                    key: objGrp.strGroupKey,
+                                    label: (
+                                      <Space wrap size={8}>
+                                        <span style={{ fontWeight: 600 }}>{objGrp.strTitle}</span>
+                                        <Tag color="processing">{arrF.length}건</Tag>
+                                      </Space>
+                                    ),
+                                    children: (
+                                      <Table<IEventInstance>
+                                        size="small"
+                                        rowKey="nId"
+                                        dataSource={arrF}
+                                        pagination={arrF.length > 10 ? { pageSize: 10 } : false}
+                                        scroll={arrF.length > 5 ? { x: 'max-content', y: 200 } : undefined}
+                                        locale={{ emptyText: '해당 조건의 이벤트가 없습니다.' }}
+                                        columns={[
+                                          {
+                                            title: '이벤트명',
+                                            dataIndex: 'strEventName',
+                                            ellipsis: true,
+                                          },
+                                          {
+                                            title: '반영일',
+                                            dataIndex: 'dtDeployDate',
+                                            width: 140,
+                                            render: (v: string) =>
+                                              v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—',
+                                          },
+                                          {
+                                            title: '담당자',
+                                            key: 'assignee',
+                                            width: 100,
+                                            ellipsis: true,
+                                            render: (_: unknown, r: IEventInstance) =>
+                                              r.strCreatedBy ||
+                                              r.objCreator?.strDisplayName ||
+                                              '—',
+                                          },
+                                          {
+                                            title: '상태',
+                                            dataIndex: 'strStatus',
+                                            width: 110,
+                                            render: (strSt: TEventStatus) => (
+                                              <Tag color={OBJ_STATUS_CONFIG[strSt].strColor}>
+                                                {OBJ_STATUS_CONFIG[strSt].strLabel}
+                                              </Tag>
+                                            ),
+                                          },
+                                        ]}
+                                      />
+                                    ),
+                                  };
+                                })}
+                              />
+                            )}
+                          </>
+                        )}
                       </div>
                     </DashboardCardContent>
                   );
