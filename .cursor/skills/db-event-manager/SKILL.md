@@ -35,6 +35,7 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
+- **위젯 렌더**: `front/src/components/dashboard/DashboardLayoutRenderer.tsx`, 필터 `front/src/utils/dashboardFilterEngine.ts`
 
 ```
 backend/src/

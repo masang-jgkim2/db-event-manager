@@ -86,6 +86,7 @@ export const fnApiGetProducts = () =>
 - **필터**: Segmented 대신 **Select** 드롭다운.
 - **보기 전환**: 테이블(행) ↔ 카드 보기. 전환 시 페이드 아웃→전환→페이드 인, `nViewMinHeight`/`viewContentRef`로 높이 고정 후 해제해 번쩍임 완화. 카드 보기는 동일 데이터를 Row/Col/Card 그리드로 표시, 클릭 시 `InstanceStepper`.
 - **카드 본문(라벨←필드)**: `InstanceCardLabelRows` + `OBJ_DEFAULT_DASHBOARD_LAYOUT`의 `instance_list.objOptions.arrCardRows`(비우면 폴백 행). 상세는 `docs/DASHBOARD-LAYOUT-SPEC.md`, `front/src/types/dashboardLayout.ts`.
+- **위젯 보드**: 상단 `DashboardLayoutRenderer`가 `arrLayoutRows`·`arrWidgets` 렌더(`kpi_stat`, `status_summary`, `deploy_calendar`, `instance_list` 등). 메인 `Card`(탭·테이블)는 그대로.
 - **재요청 UX**: QA 확인 / LIVE 확인 시 Popconfirm(취소·확인·재요청 버튼). 굳굳 설정의 **재미 모드** 켜면 재요청은 **롱프레스**(`RequestWithLongPressButton`)로만 동작.
 - **테이블**: `AppTable` 사용. No. 컬럼 `fnMakeIndexColumn(55)` 최좌측, 확장 컬럼 `expandable.columnWidth: 24`.
 

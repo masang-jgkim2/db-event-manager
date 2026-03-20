@@ -17,6 +17,7 @@
 | `actor_summary` | 담당자(생성자/특정 단계 actor)별 건수 | `objCreator`, `obj*Deployer` 등 |
 | `text_note` | 안내문/링크 (데이터 바인딩 없음) | 설정 문자열만 |
 | `placeholder` | 추후 위젯 자리 표시 | — |
+| `kpi_stat` | 상단 4칸 통계(전체·내 처리 대기·진행·완료) — **구현 전용**, `objOptions.strKpi` | `arrAllInstances`(필터 무시) |
 
 필요 시 확장: `timeline_compact`, `sla_risk` 등.
 
