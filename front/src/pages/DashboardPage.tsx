@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox } from 'antd';
+import { Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, Segmented } from 'antd';
 import { Resizable } from 're-resizable';
 import { MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import {
@@ -36,6 +36,7 @@ import { fnApiGetRoles } from '../api/roleApi';
 import type { IProduct, IService, TEventStatus } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import type { ICustomEventDashboardCard } from '../types/eventDashboardCustom';
 
 const { Title, Text } = Typography;
 
@@ -110,6 +111,35 @@ const STORAGE_KEY = 'db-event-manager-dashboard-cards';
 const STORAGE_KEY_SIZES = 'db-event-manager-dashboard-card-sizes';
 const STORAGE_KEY_ORDER = 'db-event-manager-dashboard-card-order';
 const STORAGE_KEY_TABLE_SIZE = 'db-event-manager-dashboard-table-size';
+const STORAGE_KEY_CUSTOM = 'db-event-manager-dashboard-custom-cards';
+
+const fnIsCustomDashboardId = (strId: string) => strId.startsWith('custom_');
+
+const fnLoadCustomCards = (): ICustomEventDashboardCard[] => {
+  try {
+    const str = localStorage.getItem(STORAGE_KEY_CUSTOM);
+    if (!str) return [];
+    const arr = JSON.parse(str) as ICustomEventDashboardCard[];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (c) =>
+        c &&
+        typeof c.strId === 'string' &&
+        fnIsCustomDashboardId(c.strId) &&
+        typeof c.strTitle === 'string' &&
+        Array.isArray(c.arrRows) &&
+        c.arrRows.length > 0
+    );
+  } catch {
+    return [];
+  }
+};
+
+const fnSaveCustomCards = (arr: ICustomEventDashboardCard[]) => {
+  localStorage.setItem(STORAGE_KEY_CUSTOM, JSON.stringify(arr));
+};
+
+const fnNewCustomId = () => `custom_${crypto.randomUUID()}`;
 const fnVisibleColStorageKey = (strTableId: string) => `app_table_col_visible_${strTableId}`;
 
 type TTableSize = 'small' | 'middle' | 'large';
@@ -141,7 +171,8 @@ const DEFAULT_SIZES: Record<TDashboardCardId, { width: number; height: number }>
   productTable: { width: 900, height: 380 },
 };
 
-const fnLoadEnabledCards = (): TDashboardCardId[] => {
+const fnLoadEnabledCards = (arrCustom: ICustomEventDashboardCard[]): string[] => {
+  const setCustom = new Set(arrCustom.map((c) => c.strId));
   try {
     const str = localStorage.getItem(STORAGE_KEY);
     if (!str) return [...DASHBOARD_CARD_IDS];
@@ -150,33 +181,36 @@ const fnLoadEnabledCards = (): TDashboardCardId[] => {
       arr = arr.filter((id: string) => id !== 'instanceByStatus');
       arr = [...arr, ...STATUS_CARD_IDS];
     }
-    return arr.filter((id): id is TDashboardCardId =>
-      DASHBOARD_CARD_IDS.includes(id as TDashboardCardId)
-    );
+    return arr.filter((id) => {
+      if (DASHBOARD_CARD_IDS.includes(id as TDashboardCardId)) return true;
+      if (fnIsCustomDashboardId(id) && setCustom.has(id)) return true;
+      return false;
+    });
   } catch {
     return [...DASHBOARD_CARD_IDS];
   }
 };
 
-const fnSaveEnabledCards = (arr: TDashboardCardId[]) => {
+const fnSaveEnabledCards = (arr: string[]) => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
 };
 
-const fnLoadCardSizes = (): Partial<Record<TDashboardCardId, { width: number; height: number }>> => {
+const fnLoadCardSizes = (): Partial<Record<string, { width: number; height: number }>> => {
   try {
     const str = localStorage.getItem(STORAGE_KEY_SIZES);
     if (!str) return {};
-    return JSON.parse(str) as Partial<Record<TDashboardCardId, { width: number; height: number }>>;
+    return JSON.parse(str) as Partial<Record<string, { width: number; height: number }>>;
   } catch {
     return {};
   }
 };
 
-const fnSaveCardSizes = (map: Partial<Record<TDashboardCardId, { width: number; height: number }>>) => {
+const fnSaveCardSizes = (map: Partial<Record<string, { width: number; height: number }>>) => {
   localStorage.setItem(STORAGE_KEY_SIZES, JSON.stringify(map));
 };
 
-const fnLoadCardOrder = (): TDashboardCardId[] => {
+const fnLoadCardOrder = (arrCustom: ICustomEventDashboardCard[]): string[] => {
+  const setCustom = new Set(arrCustom.map((c) => c.strId));
   try {
     const str = localStorage.getItem(STORAGE_KEY_ORDER);
     if (!str) return [...DASHBOARD_CARD_IDS];
@@ -186,15 +220,17 @@ const fnLoadCardOrder = (): TDashboardCardId[] => {
       arr = arr.filter((id: string) => id !== 'instanceByStatus');
       arr = [...arr.slice(0, nIdx), ...STATUS_CARD_IDS, ...arr.slice(nIdx)];
     }
-    return arr.filter((id): id is TDashboardCardId =>
-      DASHBOARD_CARD_IDS.includes(id as TDashboardCardId)
-    );
+    return arr.filter((id) => {
+      if (DASHBOARD_CARD_IDS.includes(id as TDashboardCardId)) return true;
+      if (fnIsCustomDashboardId(id) && setCustom.has(id)) return true;
+      return false;
+    });
   } catch {
     return [...DASHBOARD_CARD_IDS];
   }
 };
 
-const fnSaveCardOrder = (arr: TDashboardCardId[]) => {
+const fnSaveCardOrder = (arr: string[]) => {
   localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(arr));
 };
 
@@ -229,7 +265,7 @@ interface IDragHandleProps {
 }
 
 interface IDashboardCardBoxProps {
-  strCardId: TDashboardCardId;
+  strCardId: string;
   size: { width: number; height: number };
   onResizeStop: (w: number, h: number) => void;
   onRemove: () => void;
@@ -267,6 +303,7 @@ const DashboardCardBox = ({
 
   return (
     <Resizable
+      data-dashboard-card-id={strCardId}
       size={size}
       minWidth={120}
       minHeight={60}
@@ -333,7 +370,7 @@ const DashboardCardBox = ({
 
 // 순서 변경용 래퍼 — 카드 호버 시 카드 영역 드래그로 이동
 interface ISortableCardWrapperProps {
-  strCardId: TDashboardCardId;
+  strCardId: string;
   size: { width: number; height: number };
   onResizeStop: (w: number, h: number) => void;
   onRemove: () => void;
@@ -387,33 +424,50 @@ const DashboardPage = () => {
 
   const fnHas = (strPerm: string) => arrPermissions.includes(strPerm);
 
-  const [arrEnabledCardIds, setArrEnabledCardIds] = useState<TDashboardCardId[]>(fnLoadEnabledCards);
-  const [arrCardOrder, setArrCardOrder] = useState<TDashboardCardId[]>(fnLoadCardOrder);
-  const [mapCardSizes, setMapCardSizes] = useState<Partial<Record<TDashboardCardId, { width: number; height: number }>>>(fnLoadCardSizes);
+  const [arrCustomCards, setArrCustomCards] = useState<ICustomEventDashboardCard[]>(fnLoadCustomCards);
+  const [arrEnabledCardIds, setArrEnabledCardIds] = useState<string[]>(() => fnLoadEnabledCards(fnLoadCustomCards()));
+  const [arrCardOrder, setArrCardOrder] = useState<string[]>(() => fnLoadCardOrder(fnLoadCustomCards()));
+  const [mapCardSizes, setMapCardSizes] = useState<Partial<Record<string, { width: number; height: number }>>>(fnLoadCardSizes);
   const strTableSize = fnLoadTableSize();
 
   const [bAddCardOpen, setBAddCardOpen] = useState(false);
   const [nAddCardStep, setNAddCardStep] = useState(0);
-  const [strAddCardType, setStrAddCardType] = useState<'number' | 'table' | null>(null);
+  const [strAddCardType, setStrAddCardType] = useState<'number' | 'table' | 'custom' | null>(null);
   const [strAddCardSelectedId, setStrAddCardSelectedId] = useState<TDashboardCardId | null>(null);
   const [arrAddCardSelectedColumnKeys, setArrAddCardSelectedColumnKeys] = useState<string[]>([]);
+  const [strCustomTitle, setStrCustomTitle] = useState('');
+  const [arrCustomFormRows, setArrCustomFormRows] = useState<{ strLabel: string; strMetricId: string }[]>([
+    { strLabel: '', strMetricId: 'product' },
+  ]);
+  const [strCustomInsertMode, setStrCustomInsertMode] = useState<'first' | 'last' | 'after'>('last');
+  const [strCustomInsertAfterId, setStrCustomInsertAfterId] = useState<string | null>(null);
 
   const fnOpenAddCard = useCallback(() => {
     setNAddCardStep(0);
     setStrAddCardType(null);
     setStrAddCardSelectedId(null);
     setArrAddCardSelectedColumnKeys([]);
+    setStrCustomTitle('');
+    setArrCustomFormRows([{ strLabel: '', strMetricId: 'product' }]);
+    setStrCustomInsertMode('last');
+    setStrCustomInsertAfterId(null);
     setBAddCardOpen(true);
   }, []);
 
   const bAddCardIsTable = strAddCardType === 'table';
-  const nAddCardLastStep = bAddCardIsTable ? 3 : 2;
+  const bAddCardIsCustom = strAddCardType === 'custom';
+  const nAddCardLastStep = bAddCardIsTable ? 3 : bAddCardIsCustom ? 2 : 2;
   const arrAddCardStepItems = useMemo(
-    () =>
-      bAddCardIsTable
-        ? [{ title: '형태 선택' }, { title: '정보 선택' }, { title: '컬럼 선택' }, { title: '생성' }]
-        : [{ title: '형태 선택' }, { title: '정보 선택' }, { title: '생성' }],
-    [bAddCardIsTable],
+    () => {
+      if (bAddCardIsTable) {
+        return [{ title: '형태 선택' }, { title: '정보 선택' }, { title: '컬럼 선택' }, { title: '생성' }];
+      }
+      if (bAddCardIsCustom) {
+        return [{ title: '형태 선택' }, { title: '맞춤 구성' }, { title: '생성' }];
+      }
+      return [{ title: '형태 선택' }, { title: '정보 선택' }, { title: '생성' }];
+    },
+    [bAddCardIsTable, bAddCardIsCustom],
   );
   const arrAddCardTableColumns =
     strAddCardSelectedId && (TABLE_CARD_IDS as readonly string[]).includes(strAddCardSelectedId)
@@ -429,10 +483,29 @@ const DashboardPage = () => {
     }
   }, [nAddCardStep, bAddCardIsTable, arrAddCardTableColumns, arrAddCardSelectedColumnKeys.length]);
 
-  const fnRemoveCard = useCallback((strId: TDashboardCardId) => {
+  const fnRemoveCard = useCallback((strId: string) => {
+    if (fnIsCustomDashboardId(strId)) {
+      setArrCustomCards((prev) => {
+        const next = prev.filter((c) => c.strId !== strId);
+        fnSaveCustomCards(next);
+        return next;
+      });
+    }
     setArrEnabledCardIds((prev) => {
       const next = prev.filter((id) => id !== strId);
       fnSaveEnabledCards(next);
+      return next;
+    });
+    setArrCardOrder((prev) => {
+      const next = prev.filter((id) => id !== strId);
+      fnSaveCardOrder(next);
+      return next;
+    });
+    setMapCardSizes((prev) => {
+      if (!(strId in prev)) return prev;
+      const next = { ...prev };
+      delete next[strId];
+      fnSaveCardSizes(next);
       return next;
     });
   }, []);
@@ -445,11 +518,18 @@ const DashboardPage = () => {
     });
   }, []);
 
-  const fnGetCardSize = useCallback((strId: TDashboardCardId) => {
-    return mapCardSizes[strId] ?? DEFAULT_SIZES[strId];
-  }, [mapCardSizes]);
+  const fnGetCardSize = useCallback((strId: string) => {
+    const saved = mapCardSizes[strId];
+    if (saved) return saved;
+    if (fnIsCustomDashboardId(strId)) {
+      const obj = arrCustomCards.find((c) => c.strId === strId);
+      const nRows = obj?.arrRows.length ?? 1;
+      return { width: 300, height: 56 + Math.min(nRows, 14) * 34 };
+    }
+    return DEFAULT_SIZES[strId as TDashboardCardId];
+  }, [mapCardSizes, arrCustomCards]);
 
-  const fnSaveCardSize = useCallback((strId: TDashboardCardId, nW: number, nH: number) => {
+  const fnSaveCardSize = useCallback((strId: string, nW: number, nH: number) => {
     setMapCardSizes((prev) => {
       const next = { ...prev, [strId]: { width: nW, height: nH } };
       fnSaveCardSizes(next);
@@ -457,20 +537,20 @@ const DashboardPage = () => {
     });
   }, []);
 
-  const fnIsCardEnabled = (strId: TDashboardCardId) => arrEnabledCardIds.includes(strId);
+  const fnIsCardEnabled = (strId: string) => arrEnabledCardIds.includes(strId);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  const refOrderedVisibleIds = useRef<TDashboardCardId[]>([]);
+  const refOrderedVisibleIds = useRef<string[]>([]);
 
   const fnHandleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const arrOrdered = refOrderedVisibleIds.current;
-    const nFrom = arrOrdered.indexOf(String(active.id) as TDashboardCardId);
-    const nTo = arrOrdered.indexOf(String(over.id) as TDashboardCardId);
+    const nFrom = arrOrdered.indexOf(String(active.id));
+    const nTo = arrOrdered.indexOf(String(over.id));
     if (nFrom === -1 || nTo === -1) return;
     const arrNewVisible = arrayMove(arrOrdered, nFrom, nTo);
     setArrCardOrder((prev) => {
@@ -581,8 +661,9 @@ const DashboardPage = () => {
   const bUsersAllowed = fnHas('user.view');
   const bRolesAllowed = fnHas('role.view');
 
-  const fnShowCard = (strId: TDashboardCardId) => {
+  const fnShowCard = (strId: string) => {
     if (!fnIsCardEnabled(strId)) return false;
+    if (fnIsCustomDashboardId(strId)) return arrCustomCards.some((c) => c.strId === strId);
     if (fnIsStatusCardId(strId)) return bInstancesAllowed;
     switch (strId) {
       case 'dbConnection': return bDbAllowed;
@@ -601,6 +682,64 @@ const DashboardPage = () => {
     const found = arrInstanceStatusCounts?.find((c) => c.strStatus === strStatus);
     return found?.nCount ?? 0;
   };
+
+  const fnRenderMetricValue = useCallback(
+    (strMetricId: string): React.ReactNode => {
+      if (!(NUMBER_CARD_IDS as readonly string[]).includes(strMetricId)) {
+        return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>;
+      }
+      const id = strMetricId as TDashboardCardId;
+      if (fnIsStatusCardId(id)) {
+        if (!bInstancesAllowed) return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>;
+        const strSt = id.replace('status_', '') as TEventStatus;
+        return <span style={OBJ_CARD_VALUE_STYLE}>{fnGetStatusCount(strSt)}건</span>;
+      }
+      switch (id) {
+        case 'product':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{arrProducts.length}개</span>;
+        case 'eventTemplate':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{arrEvents.length}개</span>;
+        case 'instance':
+          return (
+            <span style={OBJ_CARD_VALUE_STYLE}>
+              {fnRenderCount(nInstances, bInstancesAllowed)}
+              {bInstancesAllowed ? '건' : ''}
+            </span>
+          );
+        case 'service':
+          return (
+            <span style={OBJ_CARD_VALUE_STYLE}>
+              {arrProducts.reduce((n, p) => n + p.arrServices.length, 0)}개
+            </span>
+          );
+        case 'dbConnection':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nDbConnections, true)}개</span>;
+        case 'user':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nUsers, true)}명</span>;
+        case 'role':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nRoles, true)}개</span>;
+        case 'instanceInProgress':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesInProgress ?? 0}건</span>;
+        case 'instanceCompleted':
+          return <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesCompleted ?? 0}건</span>;
+        default:
+          return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>;
+      }
+    },
+    [
+      arrProducts,
+      arrEvents,
+      bInstancesAllowed,
+      arrInstanceStatusCounts,
+      nInstances,
+      nInstancesInProgress,
+      nInstancesCompleted,
+      nDbConnections,
+      nUsers,
+      nRoles,
+      bLoadingStats,
+    ]
+  );
 
   const arrProductColumns = [
     { title: '프로젝트명', dataIndex: 'strName', key: 'strName', width: 140 },
@@ -668,7 +807,7 @@ const DashboardPage = () => {
       const ib = arrCardOrder.indexOf(b);
       return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
     });
-  }, [arrEnabledCardIds, arrCardOrder, bInstancesAllowed, bDbAllowed, bUsersAllowed, bRolesAllowed]);
+  }, [arrEnabledCardIds, arrCardOrder, arrCustomCards, bInstancesAllowed, bDbAllowed, bUsersAllowed, bRolesAllowed]);
   refOrderedVisibleIds.current = arrOrderedVisibleIds;
 
   return (
@@ -702,7 +841,7 @@ const DashboardPage = () => {
         {nAddCardStep === 0 && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">추가할 카드 형태를 선택하세요.</Text>
-            <Space size={12}>
+            <Space size={12} wrap>
               <Button
                 type={strAddCardType === 'number' ? 'primary' : 'default'}
                 onClick={() => setStrAddCardType('number')}
@@ -715,6 +854,12 @@ const DashboardPage = () => {
               >
                 테이블 카드
               </Button>
+              <Button
+                type={strAddCardType === 'custom' ? 'primary' : 'default'}
+                onClick={() => setStrAddCardType('custom')}
+              >
+                맞춤 카드
+              </Button>
             </Space>
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <Button onClick={() => setBAddCardOpen(false)}>취소</Button>
@@ -724,7 +869,118 @@ const DashboardPage = () => {
             </div>
           </Space>
         )}
-        {nAddCardStep === 1 && (
+        {nAddCardStep === 1 && bAddCardIsCustom && (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Text type="secondary">
+              카드 제목과 행마다 <b>라벨 ← 지표</b>를 지정합니다. 추가 후에도 드래그로 순서를 바꿀 수 있습니다.
+            </Text>
+            <Input
+              placeholder="카드 제목"
+              value={strCustomTitle}
+              onChange={(e) => setStrCustomTitle(e.target.value)}
+              maxLength={80}
+              showCount
+            />
+            {arrCustomFormRows.map((row, nIdx) => (
+              <Space key={nIdx} style={{ width: '100%' }} align="start" wrap>
+                <Input
+                  placeholder="라벨"
+                  value={row.strLabel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setArrCustomFormRows((prev) =>
+                      prev.map((r, i) => (i === nIdx ? { ...r, strLabel: v } : r))
+                    );
+                  }}
+                  style={{ minWidth: 120, flex: 1 }}
+                />
+                <Select
+                  style={{ minWidth: 200, flex: 1 }}
+                  value={row.strMetricId}
+                  options={NUMBER_CARD_IDS.map((mid) => ({
+                    value: mid,
+                    label: OBJ_CARD_LABELS[mid as TDashboardCardId],
+                  }))}
+                  onChange={(v) => {
+                    setArrCustomFormRows((prev) =>
+                      prev.map((r, i) => (i === nIdx ? { ...r, strMetricId: v } : r))
+                    );
+                  }}
+                />
+                <Button
+                  danger
+                  type="text"
+                  disabled={arrCustomFormRows.length <= 1}
+                  onClick={() =>
+                    setArrCustomFormRows((prev) => prev.filter((_, i) => i !== nIdx))
+                  }
+                >
+                  행 삭제
+                </Button>
+              </Space>
+            ))}
+            <Button
+              type="dashed"
+              onClick={() =>
+                setArrCustomFormRows((prev) => [
+                  ...prev,
+                  { strLabel: '', strMetricId: NUMBER_CARD_IDS[0] },
+                ])
+              }
+            >
+              행 추가
+            </Button>
+            <div>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                생성 시 배치 (이후 카드에서 드래그로 이동 가능)
+              </Text>
+              <Segmented
+                value={strCustomInsertMode}
+                onChange={(v) => {
+                  setStrCustomInsertMode(v as 'first' | 'last' | 'after');
+                  if (v !== 'after') setStrCustomInsertAfterId(null);
+                }}
+                options={[
+                  { label: '맨 앞', value: 'first' },
+                  { label: '맨 뒤', value: 'last' },
+                  { label: '지정 카드 뒤', value: 'after' },
+                ]}
+              />
+              {strCustomInsertMode === 'after' && (
+                <Select
+                  style={{ width: '100%', marginTop: 8 }}
+                  allowClear
+                  placeholder="앞에 둘 카드 선택"
+                  value={strCustomInsertAfterId ?? undefined}
+                  onChange={(v) => setStrCustomInsertAfterId(v ?? null)}
+                  options={arrOrderedVisibleIds.map((idOpt) => ({
+                    value: idOpt,
+                    label: fnIsCustomDashboardId(idOpt)
+                      ? arrCustomCards.find((c) => c.strId === idOpt)?.strTitle ?? idOpt
+                      : OBJ_CARD_LABELS[idOpt as TDashboardCardId],
+                  }))}
+                />
+              )}
+            </div>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <Button onClick={() => setNAddCardStep(0)}>이전</Button>
+              <Button
+                type="primary"
+                disabled={
+                  arrCustomFormRows.filter(
+                    (r) =>
+                      r.strLabel.trim() &&
+                      (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
+                  ).length === 0
+                }
+                onClick={() => setNAddCardStep(2)}
+              >
+                다음
+              </Button>
+            </div>
+          </Space>
+        )}
+        {nAddCardStep === 1 && !bAddCardIsCustom && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">
               {strAddCardType === 'number' ? '숫자' : '테이블'} 형태로 표시할 정보를 선택하세요.
@@ -789,7 +1045,90 @@ const DashboardPage = () => {
             </div>
           </Space>
         )}
-        {nAddCardStep === 2 && !bAddCardIsTable && (
+        {nAddCardStep === 2 && bAddCardIsCustom && (
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Text type="secondary">다음 맞춤 카드를 추가합니다.</Text>
+            <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
+              {strCustomTitle.trim() || '맞춤 카드'}
+            </Tag>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              {arrCustomFormRows
+                .filter(
+                  (r) =>
+                    r.strLabel.trim() &&
+                    (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
+                )
+                .map((r) => (
+                  <li key={`${r.strLabel}-${r.strMetricId}`}>
+                    <Text>
+                      {r.strLabel.trim()} ← {OBJ_CARD_LABELS[r.strMetricId as TDashboardCardId]}
+                    </Text>
+                  </li>
+                ))}
+            </ul>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <Button onClick={() => setNAddCardStep(1)}>이전</Button>
+              <Space>
+                <Button onClick={() => setBAddCardOpen(false)}>취소</Button>
+                <Button
+                  type="primary"
+                  disabled={
+                    arrCustomFormRows.filter(
+                      (r) =>
+                        r.strLabel.trim() &&
+                        (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
+                    ).length === 0
+                  }
+                  onClick={() => {
+                    const arrRows = arrCustomFormRows
+                      .filter(
+                        (r) =>
+                          r.strLabel.trim() &&
+                          (NUMBER_CARD_IDS as readonly string[]).includes(r.strMetricId)
+                      )
+                      .map((r) => ({ strLabel: r.strLabel.trim(), strMetricId: r.strMetricId }));
+                    if (arrRows.length === 0) return;
+                    const strNewId = fnNewCustomId();
+                    const objCard: ICustomEventDashboardCard = {
+                      strId: strNewId,
+                      strTitle: strCustomTitle.trim() || '맞춤 카드',
+                      arrRows,
+                    };
+                    setArrCustomCards((prev) => {
+                      const next = [...prev, objCard];
+                      fnSaveCustomCards(next);
+                      return next;
+                    });
+                    setArrEnabledCardIds((prev) => {
+                      const next = prev.includes(strNewId) ? prev : [...prev, strNewId];
+                      fnSaveEnabledCards(next);
+                      return next;
+                    });
+                    setArrCardOrder((prev) => {
+                      let next = prev.filter((id) => id !== strNewId);
+                      if (strCustomInsertMode === 'first') next = [strNewId, ...next];
+                      else if (strCustomInsertMode === 'last') next = [...next, strNewId];
+                      else if (strCustomInsertMode === 'after' && strCustomInsertAfterId) {
+                        const nIdx = next.indexOf(strCustomInsertAfterId);
+                        if (nIdx === -1) next = [...next, strNewId];
+                        else {
+                          next = [...next.slice(0, nIdx + 1), strNewId, ...next.slice(nIdx + 1)];
+                        }
+                      } else next = [...next, strNewId];
+                      fnSaveCardOrder(next);
+                      return next;
+                    });
+                    setBAddCardOpen(false);
+                    setNAddCardStep(0);
+                  }}
+                >
+                  추가
+                </Button>
+              </Space>
+            </div>
+          </Space>
+        )}
+        {nAddCardStep === 2 && !bAddCardIsTable && !bAddCardIsCustom && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">다음 카드를 대시보드에 추가합니다.</Text>
             {strAddCardSelectedId && (
@@ -954,6 +1293,33 @@ const DashboardPage = () => {
                     />
                   </DashboardCardContent>
                 )}
+                {fnIsCustomDashboardId(strId) && (() => {
+                  const objC = arrCustomCards.find((c) => c.strId === strId);
+                  if (!objC) return null;
+                  return (
+                    <DashboardCardContent
+                      icon={fnDashboardCardIcon(DashboardOutlined, '#575ECF')}
+                      title={objC.strTitle}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {objC.arrRows.map((row, nR) => (
+                          <div
+                            key={`${row.strLabel}-${nR}`}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(72px,36%) 1fr',
+                              gap: 8,
+                              alignItems: 'start',
+                            }}
+                          >
+                            <Text type="secondary">{row.strLabel}</Text>
+                            <div style={{ minWidth: 0 }}>{fnRenderMetricValue(row.strMetricId)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </DashboardCardContent>
+                  );
+                })()}
               </SortableCardWrapper>
             ))}
           </div>

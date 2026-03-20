@@ -35,7 +35,6 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
-- **위젯 렌더**: `front/src/components/dashboard/DashboardLayoutRenderer.tsx`, 필터 `front/src/utils/dashboardFilterEngine.ts`
 
 ```
 backend/src/
@@ -47,6 +46,7 @@ backend/src/
   middleware/permissionMiddleware.ts     # 권한 검사
 
 front/src/
+  pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (숫자·테이블·맞춤 카드 multi-row, DnD·리사이즈·localStorage)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress: 이전 소요 시간 비례 rAF 시뮬 + SSE max)
   pages/QueryPage.tsx                     # 이벤트 생성
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)
