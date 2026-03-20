@@ -105,7 +105,7 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   );
 };
 
-// 쿼리 실행 결과 모달 컴포넌트
+// 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
   objResult,
@@ -119,6 +119,23 @@ const ExecutionResultModal = ({
 }) => {
   const { token } = antdTheme.useToken();
   if (!objResult) return null;
+
+  const fnCopySql = (str: string) => {
+    void navigator.clipboard.writeText(str).then(() => message.success('복사되었습니다')).catch(() => message.error('복사에 실패했습니다'));
+  };
+
+  const strQueryBlockStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    background: token.colorFillTertiary,
+    borderRadius: token.borderRadiusSM,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: token.colorText,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+    maxHeight: 220,
+    overflow: 'auto',
+  };
 
   return (
     <Modal
@@ -136,7 +153,7 @@ const ExecutionResultModal = ({
       footer={[
         <Button key="close" type="primary" onClick={onClose}>확인</Button>,
       ]}
-      width={640}
+      width={780}
     >
       {objResult.bSuccess ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -145,116 +162,136 @@ const ExecutionResultModal = ({
             showIcon
             message={`${strEnv.toUpperCase()} DB에 쿼리가 성공적으로 실행되었습니다.`}
           />
-          {/* 실행 요약 */}
-          <Card size="small" title="실행 요약">
-            <Row gutter={16}>
-              <Col span={8}>
-                <Statistic
-                  title="총 처리 건수"
-                  value={objResult.nTotalAffectedRows}
-                  suffix="건"
-                  valueStyle={{ color: '#1890ff', fontSize: 24 }}
-                />
-              </Col>
-              <Col span={8}>
-                <Statistic
-                  title="실행 시간"
-                  value={objResult.nElapsedMs}
-                  suffix="ms"
-                  valueStyle={{ color: '#52c41a', fontSize: 24 }}
-                />
-              </Col>
-              <Col span={8}>
-                <Statistic
-                  title="쿼리 수"
-                  value={objResult.arrQueryResults.length}
-                  suffix="개"
-                  valueStyle={{ fontSize: 24 }}
-                />
-              </Col>
-            </Row>
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                실행 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
-              </Text>
-            </div>
-          </Card>
-
-          {/* 개별 쿼리 결과 */}
-          {objResult.arrQueryResults.length > 1 && (
-            <Card size="small" title="쿼리별 결과">
-              {objResult.arrQueryResults.map((r) => (
-                <div key={r.nIndex} style={{ marginBottom: 8 }}>
-                  <Space>
-                    <Tag color="blue">#{r.nIndex + 1}</Tag>
-                    <Tag color="green">{r.nAffectedRows}건 처리</Tag>
-                  </Space>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      padding: '6px 10px',
-                      background: token.colorFillTertiary,
-                      borderRadius: token.borderRadiusSM,
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: token.colorText,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
-                      maxHeight: 80,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {r.strQuery}
+          <Collapse
+            defaultActiveKey={['summary']}
+            items={[
+              {
+                key: 'summary',
+                label: '실행 요약',
+                children: (
+                  <div>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic
+                          title="총 처리 건수"
+                          value={objResult.nTotalAffectedRows}
+                          suffix="건"
+                          valueStyle={{ color: '#1890ff', fontSize: 22 }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="실행 시간"
+                          value={objResult.nElapsedMs}
+                          suffix="ms"
+                          valueStyle={{ color: '#52c41a', fontSize: 22 }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="쿼리 수"
+                          value={objResult.arrQueryResults.length}
+                          suffix="개"
+                          valueStyle={{ fontSize: 22 }}
+                        />
+                      </Col>
+                    </Row>
+                    <div style={{ marginTop: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        실행 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
+                      </Text>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </Card>
-          )}
+                ),
+              },
+              ...(objResult.arrQueryResults.length > 0
+                ? [{
+                    key: 'queries',
+                    label: `쿼리별 결과 (${objResult.arrQueryResults.length})`,
+                    children: (
+                      <Collapse
+                        size="small"
+                        bordered={false}
+                        style={{ background: 'transparent' }}
+                        items={objResult.arrQueryResults.map((r) => ({
+                          key: String(r.nIndex),
+                          label: (
+                            <Space>
+                              <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
+                              <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+                            </Space>
+                          ),
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                              <div style={{ textAlign: 'right' }}>
+                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(r.strQuery)}>복사</Button>
+                              </div>
+                              <div style={strQueryBlockStyle}>{r.strQuery}</div>
+                            </Space>
+                          ),
+                        }))}
+                      />
+                    ),
+                  }]
+                : []),
+              ...(objResult.strExecutedQuery?.trim() && objResult.arrQueryResults.length === 0
+                ? [{
+                    key: 'full-query',
+                    label: '실행 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                        </div>
+                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                      </Space>
+                    ),
+                  }]
+                : []),
+            ]}
+          />
         </Space>
       ) : (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Alert
-            type="error"
-            showIcon
-            message="실행 실패"
-            description={
-              <Space direction="vertical" size={4}>
-                <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                  {objResult.strError}
-                </Text>
-                {objResult.strRollbackMsg && (
-                  <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
-                )}
-              </Space>
-            }
+          <Alert type="error" showIcon message="실행 실패" />
+          <Collapse
+            defaultActiveKey={[]}
+            items={[
+              {
+                key: 'error-detail',
+                label: '오류 내용',
+                children: (
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 13 }}>
+                      {objResult.strError}
+                    </Text>
+                    {objResult.strRollbackMsg && (
+                      <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
+                    )}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
+                      {objResult.nElapsedMs > 0 ? ` · ${objResult.nElapsedMs}ms` : ''}
+                    </Text>
+                  </Space>
+                ),
+              },
+              ...(objResult.strExecutedQuery
+                ? [{
+                    key: 'attempted-query',
+                    label: '실행 시도 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                        </div>
+                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                      </Space>
+                    ),
+                  }]
+                : []),
+            ]}
           />
-          <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
-              {objResult.nElapsedMs > 0 && ` · ${objResult.nElapsedMs}ms`}
-            </Text>
-          </div>
-          {/* 실행을 시도한 쿼리 표시 (디버깅용) */}
-          {objResult.strExecutedQuery && (
-            <Card size="small" title="실행 시도 쿼리" extra={
-              <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
-            }>
-              <div style={{
-                padding: '8px 12px',
-                background: token.colorFillTertiary,
-                borderRadius: token.borderRadiusSM,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: token.colorText,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                maxHeight: 160,
-                overflow: 'auto',
-              }}>
-                {objResult.strExecutedQuery}
-              </div>
-            </Card>
-          )}
         </Space>
       )}
     </Modal>
