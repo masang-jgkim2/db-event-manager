@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { IEventInstance, TEventStatus } from '../types';
 import {
   fnApiGetInstances, fnApiUpdateStatus,
-  fnApiUpdateInstance, fnApiExecuteQuery, fnApiCreateInstance,
+  fnApiUpdateInstance, fnApiExecuteQuery, fnApiCreateInstance, fnApiDeleteInstance,
 } from '../api/eventInstanceApi';
 
 // localStorage 기반 숨김 ID 목록 관리
@@ -53,6 +53,10 @@ interface IEventInstanceStore {
 
   fnCreateInstance: (
     objData: Record<string, unknown>
+  ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance }>;
+
+  fnDeleteInstance: (
+    nId: number
   ) => Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance }>;
 
   fnHandleSseEvent: (
@@ -176,6 +180,17 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
       set((state) => ({
         arrInstances: [objResult.objInstance!, ...state.arrInstances],
         arrAllInstances: [objResult.objInstance!, ...state.arrAllInstances],
+      }));
+    }
+    return objResult;
+  },
+
+  fnDeleteInstance: async (nId) => {
+    const objResult = await fnApiDeleteInstance(nId);
+    if (objResult.bSuccess && objResult.objInstance) {
+      set((state) => ({
+        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
+        arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
     }
     return objResult;

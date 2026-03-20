@@ -3,11 +3,12 @@ import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
-import { fnFindActiveConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
+import { fnResolveExecuteConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
+import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/templateExecElapsed';
 import { IQueryExecutionResult } from '../types';
 
 // 상태 전이 규칙 (9단계 + 재요청)
@@ -37,6 +38,11 @@ const OBJ_STATUS_TRANSITIONS_BASE: Record<string, { strNextStatus: TEventStatus;
     { strNextStatus: 'live_requested', arrAllowedRoles: ['game_manager', 'game_designer', 'admin'] },
   ],
 };
+
+// 삭제(bPermanentlyRemoved)된 인스턴스는 어떤 변경도 불가 (숨김과 달리 복구 없음)
+const STR_MSG_PERMANENTLY_REMOVED = '삭제된 이벤트는 변경할 수 없습니다.';
+const fnIsPermanentlyRemoved = (e: { bPermanentlyRemoved?: boolean } | undefined): boolean =>
+  Boolean(e?.bPermanentlyRemoved);
 
 // 쿼리 실행 대상(단일/다중 서버)에 따른 동적 전이 조회
 // LIVE만 선택 시: dba_confirmed → live_requested (QA 단계 스킵)
@@ -76,8 +82,9 @@ const OBJ_STATUS_ACTION_PERMISSIONS: Partial<Record<TEventStatus, string[]>> = {
 
 // 현재 사용자 정보를 IStageActor로 변환
 // strActorName(body) > JWT의 strDisplayName > strUserId 순서로 폴백
+// DELETE 등 body 없는 요청도 있음 → req.body 옵셔널
 const fnMakeActor = (req: Request): IStageActor => ({
-  strDisplayName: req.body.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
+  strDisplayName: req.body?.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
   nUserId: req.user?.nId || 0,
   strUserId: req.user?.strUserId || '',
   dtProcessedAt: new Date().toISOString(),
@@ -198,6 +205,7 @@ export const fnGetInstances = async (req: Request, res: Response): Promise<void>
     if (strFilter === 'my_action') {
       const arrUserPerms = req.user?.arrPermissions || [];
       arrFiltered = arrFiltered.filter((e) => {
+        if (fnIsPermanentlyRemoved(e)) return false;
         const arrPerms = OBJ_STATUS_ACTION_PERMISSIONS[e.strStatus as TEventStatus];
         return arrPerms?.some((p) => (arrUserPerms as string[]).includes(p)) ?? false;
       });
@@ -222,6 +230,10 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
     const objInstance = arrEventInstances.find((e) => e.nId === nId);
     if (!objInstance) {
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
       return;
     }
 
@@ -333,6 +345,10 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
       return;
     }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
+      return;
+    }
 
     // 현재 상태가 실행 가능한 단계인지 확인
     // dev는 qa_requested 단계에서 함께 처리 (dev 전용 워크플로 단계 없음)
@@ -415,8 +431,12 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     const nSetCount = objInstance.arrExecutionTargets?.length ?? 0;
 
     if (nSetCount === 1) {
-      // 쿼리 세트 1개: 요청 env에 맞는 접속으로 동일 쿼리 실행
-      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      // 쿼리 세트 1개: 세트의 nDbConnectionId로 접속 해석(다중 세트와 동일), 없으면 GAME
+      const objDbConn = fnResolveExecuteConnection(
+        nProductId,
+        strEnv,
+        objInstance.arrExecutionTargets![0].nDbConnectionId
+      );
       if (!objDbConn) {
         res.status(400).json({
           bSuccess: false,
@@ -498,7 +518,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
         if (bStream) {
           res.write(`data: ${JSON.stringify({ type: 'progress', completed: i + 1, total: nSetCount })}\n\n`);
-          res.flush?.();
+          (res as { flush?: () => void }).flush?.();
         }
       }
 
@@ -539,13 +559,16 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         });
         fnSaveEventInstances();
         fnBroadcastInstanceUpdate(objInstance);
+        if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
+          fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
+        }
         res.write(`data: ${JSON.stringify({ type: 'done', objExecutionResult: objExecResult, objInstance })}\n\n`);
         res.end();
         return;
       }
     } else {
-      // 단일: 프로덕트+env 접속 1건으로 strGeneratedQuery 실행
-      const objDbConn = fnFindActiveConnection(nProductId, strEnv);
+      // 레거시: arrExecutionTargets 없음 — GAME 종류 활성 접속으로 strGeneratedQuery 실행
+      const objDbConn = fnResolveExecuteConnection(nProductId, strEnv);
       if (!objDbConn) {
         res.status(400).json({
           bSuccess: false,
@@ -599,6 +622,9 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     fnSaveEventInstances();
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
+    if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
+      fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
+    }
     res.json({
       bSuccess: true,
       strMessage: `${strEnv.toUpperCase()} 쿼리 실행이 완료되었습니다.`,
@@ -612,6 +638,28 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       bSuccess: false,
       strMessage: `서버 오류가 발생했습니다. (${error?.message || '알 수 없는 오류'})`,
     });
+  }
+};
+
+// GET /api/event-instances/template-exec-elapsed?nEventTemplateId=&strEnv=qa|live
+// 동일 템플릿·환경의 마지막 성공 실행 소요(ms) — 서버 인메모리 (DB화 시 영속 저장으로 교체)
+export const fnGetTemplateExecElapsed = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nEventTemplateId = Number(req.query.nEventTemplateId);
+    const strEnv = String(req.query.strEnv ?? '');
+    if (!Number.isFinite(nEventTemplateId) || nEventTemplateId <= 0) {
+      res.status(400).json({ bSuccess: false, strMessage: '유효한 nEventTemplateId가 필요합니다.' });
+      return;
+    }
+    if (strEnv !== 'qa' && strEnv !== 'live') {
+      res.status(400).json({ bSuccess: false, strMessage: 'strEnv는 qa 또는 live여야 합니다.' });
+      return;
+    }
+    const nElapsedMs = fnGetTemplateExecElapsedMs(nEventTemplateId, strEnv);
+    res.json({ bSuccess: true, nElapsedMs });
+  } catch (error: any) {
+    console.error('[fnGetTemplateExecElapsed]', error?.message);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 
@@ -647,6 +695,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (!objInstance) {
       res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: STR_MSG_PERMANENTLY_REMOVED });
       return;
     }
 
@@ -778,6 +830,49 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
     console.error('이벤트 인스턴스 수정 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// DELETE /api/event-instances/:id — 진행 중 포함 상태 무관 삭제(복원 불가), 완료·숨김 탭으로만 표시
+export const fnDeleteInstance = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+    if (fnIsPermanentlyRemoved(objInstance)) {
+      res.status(400).json({ bSuccess: false, strMessage: '이미 삭제 처리된 이벤트입니다.' });
+      return;
+    }
+
+    if (!Array.isArray(objInstance.arrStatusLogs)) {
+      objInstance.arrStatusLogs = [];
+    }
+
+    const objActor = fnMakeActor(req);
+    objInstance.bPermanentlyRemoved = true;
+    objInstance.dtPermanentlyRemovedAt = new Date().toISOString();
+    objInstance.arrStatusLogs.push({
+      strStatus: objInstance.strStatus,
+      strChangedBy: objActor.strDisplayName,
+      nChangedByUserId: objActor.nUserId,
+      strComment: '삭제(복원 불가)',
+      dtChangedAt: new Date().toISOString(),
+    });
+
+    fnSaveEventInstances();
+    try {
+      fnBroadcastInstanceUpdate(objInstance);
+    } catch (err: any) {
+      console.error(`[이벤트 인스턴스] SSE 브로드캐스트 실패 | nId: ${nId} | ${err?.message}`);
+    }
+    console.log(`[이벤트 인스턴스] 삭제(복원불가) | nId: ${nId} | ${objActor.strDisplayName}`);
+    res.json({ bSuccess: true, objInstance });
+  } catch (error) {
+    console.error('이벤트 인스턴스 삭제 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

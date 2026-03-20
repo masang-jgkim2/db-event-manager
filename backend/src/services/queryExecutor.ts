@@ -3,6 +3,22 @@ import mysql from 'mysql2/promise';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
 
+/** 연결 끊김 등으로 커넥션 풀을 비울지 (DB 종류별 코드 상이) */
+const fnShouldInvalidatePoolOnQueryError = (objConn: IDbConnection, error: any): boolean => {
+  const strCode = error?.code;
+  if (strCode === 'ECONNRESET' || strCode === 'ENOTOPEN') return true;
+  if (error?.number === -2) return true;
+  if (objConn.strDbType === 'mysql') {
+    return (
+      strCode === 'PROTOCOL_CONNECTION_LOST'
+      || strCode === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR'
+      || strCode === 'ETIMEDOUT'
+      || strCode === 'ECONNREFUSED'
+    );
+  }
+  return false;
+};
+
 // =============================================
 // 멀티쿼리 파싱 (세미콜론 분리)
 // 문자열/주석 내부의 세미콜론은 무시
@@ -169,33 +185,6 @@ const fnExecuteMysql = async (
 };
 
 // =============================================
-// 쿼리 실행 메인 함수
-// =============================================
-export const fnExecuteQuery = async (
-  objConn: IDbConnection,
-  strEnv: 'qa' | 'live'
-): Promise<IQueryExecutionResult> => {
-  const dtStart = Date.now();
-  const dtExecutedAt = new Date().toISOString();
-
-  // 쿼리가 없는 경우
-  if (!objConn.strDatabase || !objConn.strHost) {
-    return {
-      bSuccess: false,
-      strEnv,
-      strExecutedQuery: '',
-      arrQueryResults: [],
-      nTotalAffectedRows: 0,
-      nElapsedMs: 0,
-      strError: 'DB 접속 정보가 유효하지 않습니다.',
-      dtExecutedAt,
-    };
-  }
-
-  return { bSuccess: false, strEnv, strExecutedQuery: '', arrQueryResults: [], nTotalAffectedRows: 0, nElapsedMs: 0, dtExecutedAt };
-};
-
-// =============================================
 // 실제 쿼리 문자열과 접속 정보로 실행
 // =============================================
 export const fnExecuteQueryWithText = async (
@@ -267,18 +256,14 @@ export const fnExecuteQueryWithText = async (
     if (error?.stack) console.error(`  스택:\n${error.stack}`);
     console.error(`──────────────────────────────────────────`);
 
-    // 연결 문제일 경우 풀 무효화 (재연결 유도)
-    if (error?.code === 'ECONNRESET' || error?.code === 'ENOTOPEN' || error?.number === -2) {
+    if (fnShouldInvalidatePoolOnQueryError(objConn, error)) {
       console.warn(`[쿼리 실행] 연결 오류 감지 — 커넥션 풀 무효화 (nId: ${objConn.nId})`);
       await fnInvalidatePool(objConn.nId);
     }
 
-    // ── 오류 행 번호 → 실제 쿼리 내 위치로 변환 ─────────────────
-    // MSSQL lineNumber는 실행된 배치 전체 기준이므로
-    // BEGIN TRAN 래퍼 오프셋(1줄)과 각 쿼리의 누적 줄 수를 계산해
-    // "몇 번째 쿼리 / 해당 쿼리 내 몇 번째 줄"로 변환한다.
+    // ── 오류 행 번호 → 실제 쿼리 내 위치 (MSSQL 배치 + BEGIN TRAN 전제, MySQL에는 lineNumber 거의 없음)
     let strLineInfo: string | null = null;
-    if (error?.lineNumber) {
+    if (objConn.strDbType === 'mssql' && error?.lineNumber) {
       const nBatchLine: number = error.lineNumber;
       const bHasTran = arrQueries.length > 1;
       // BEGIN TRAN 줄이 1줄이므로 트랜잭션 래퍼가 있으면 -1 오프셋
@@ -308,13 +293,16 @@ export const fnExecuteQueryWithText = async (
       }
     }
 
-    // 오류 메시지 사용자 친화적으로 가공
-    // MSSQL 오류는 number/lineNumber/serverName 등 포함 가능
-    const strUserError = [
-      strErrorMsg,
-      error?.number   ? `[SQL 오류 번호: ${error.number}]` : null,
-      strLineInfo,
-    ].filter(Boolean).join(' ');
+    const strSqlNumber =
+      error?.number != null ? `[SQL 오류 번호: ${error.number}]` : error?.errno != null ? `[errno: ${error.errno}]` : null;
+    const strUserError = [strErrorMsg, strSqlNumber, strLineInfo].filter(Boolean).join(' ');
+
+    // MSSQL 단일 문장은 BEGIN TRAN 없음 → 롤백 문구 부적절. MySQL은 항상 명시 트랜잭션 사용.
+    const bMssqlBatchTransaction = objConn.strDbType === 'mssql' && arrQueries.length > 1;
+    const strRollbackMsg =
+      objConn.strDbType === 'mysql' || bMssqlBatchTransaction
+        ? '트랜잭션이 롤백되어 DB 변경 사항이 없습니다.'
+        : '쿼리 실행에 실패했습니다. DB에 변경 사항이 반영되지 않았습니다.';
 
     return {
       bSuccess: false,
@@ -324,7 +312,7 @@ export const fnExecuteQueryWithText = async (
       nTotalAffectedRows: 0,
       nElapsedMs,
       strError: strUserError,
-      strRollbackMsg: '트랜잭션이 롤백되어 DB 변경 사항이 없습니다.',
+      strRollbackMsg,
       dtExecutedAt,
     };
   }

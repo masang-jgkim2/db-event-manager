@@ -16,7 +16,7 @@ export const fnSaveDbConnections = () => fnSaveJson(STR_FILE, arrDbConnections);
 export const fnGetNextDbConnectionId = (): number =>
   arrDbConnections.length > 0 ? Math.max(...arrDbConnections.map((c) => c.nId)) + 1 : 1;
 
-/** 프로덕트+환경 기준 활성 접속 1건 (종류 무관, 레거시용) */
+/** 프로덕트+환경 기준 활성 접속 1건 (종류 무관, 배열 순서 비결정적 — 신규 코드는 fnResolveExecuteConnection 사용) */
 export const fnFindActiveConnection = (
   nProductId: number,
   strEnv: 'dev' | 'qa' | 'live'
@@ -24,6 +24,27 @@ export const fnFindActiveConnection = (
   arrDbConnections.find(
     (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.bIsActive
   );
+
+/**
+ * 쿼리 실행용 접속 해석 (다중 세트와 동일 규칙).
+ * - nDbConnectionId 있음: 해당 템플릿 연결 조회 → 요청 env·활성이면 그대로, 아니면 동일 strKind의 요청 env 활성 접속.
+ * - 없음(레거시 단일 strGeneratedQuery): strKind GAME 활성 접속 1건.
+ */
+export const fnResolveExecuteConnection = (
+  nProductId: number,
+  strEnv: 'dev' | 'qa' | 'live',
+  nDbConnectionId?: number | null
+): IDbConnection | undefined => {
+  if (nDbConnectionId != null && nDbConnectionId > 0) {
+    const objTemplateConn = fnFindConnectionById(nDbConnectionId);
+    if (!objTemplateConn || objTemplateConn.nProductId !== nProductId) return undefined;
+    const strKind = objTemplateConn.strKind ?? 'GAME';
+    return objTemplateConn.strEnv === strEnv && objTemplateConn.bIsActive
+      ? objTemplateConn
+      : fnFindActiveConnectionByKind(nProductId, strEnv, strKind);
+  }
+  return fnFindActiveConnectionByKind(nProductId, strEnv, 'GAME');
+};
 
 /** 프로덕트+환경+종류 기준 활성 접속 1건 */
 export const fnFindActiveConnectionByKind = (

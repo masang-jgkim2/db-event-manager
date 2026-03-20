@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   fnCreateInstance, fnGetInstances,
   fnUpdateStatus, fnGetInstance, fnUpdateInstance,
-  fnExecuteAndDeploy,
+  fnExecuteAndDeploy, fnGetTemplateExecElapsed, fnDeleteInstance,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
@@ -56,6 +56,9 @@ router.use(fnAuthMiddleware);
 // GET /api/event-instances - 목록 조회 (나의 대시보드 보기 권한)
 router.get('/', fnRequireAnyPermission('my_dashboard.view'), fnGetInstances);
 
+// GET /api/event-instances/template-exec-elapsed — :id 보다 먼저 등록 (프로그레스 바용)
+router.get('/template-exec-elapsed', fnRequireAnyPermission('my_dashboard.view'), fnGetTemplateExecElapsed);
+
 // GET /api/event-instances/:id - 단건 조회 (나의 대시보드 보기 권한)
 router.get('/:id', fnRequireAnyPermission('my_dashboard.view'), fnGetInstance);
 
@@ -64,6 +67,13 @@ router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);
 
 // PUT /api/event-instances/:id - 이벤트 수정 (my_dashboard.edit) 또는 DBA 쿼리 수정(my_dashboard.query_edit)
 router.put('/:id', fnRequireAnyPermission('my_dashboard.edit', 'my_dashboard.query_edit'), fnUpdateInstance);
+
+// DELETE /api/event-instances/:id — 삭제(복원 불가). delete_instance 또는 레거시 delete 권한
+router.delete(
+  '/:id',
+  fnRequireAnyPermission('my_dashboard.delete_instance', 'my_dashboard.delete'),
+  fnDeleteInstance
+);
 
 // PATCH /api/event-instances/:id/status - 상태 변경
 router.patch('/:id/status', fnUpdateStatus);

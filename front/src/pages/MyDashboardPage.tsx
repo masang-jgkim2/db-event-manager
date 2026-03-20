@@ -11,7 +11,7 @@ import {
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
-  EyeInvisibleOutlined, EyeTwoTone, CodeOutlined,
+  EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
   TableOutlined, AppstoreOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -19,7 +19,7 @@ import RequestWithLongPressButton from '../components/RequestWithLongPressButton
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
-import { fnApiExecuteQueryStream } from '../api/eventInstanceApi';
+import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, TDeployScope,
@@ -33,21 +33,12 @@ const { TextArea } = Input;
 // 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
 const MULTI_INPUT_DELIMITER = '\u0001';
 
-const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+// Progress 시뮬레이션: 이전 성공 실행 소요(ms)에 비례해 0→99%까지 채움 (이력 없으면 기본값)
+const N_SIM_BASELINE_DEFAULT_MS = 2800;
+const N_SIM_BASELINE_MIN_MS = 80;
+const N_SIM_BASELINE_MAX_MS = 180_000;
 
-/** 이벤트 템플릿·환경별 쿼리 반영 소요 시간(ms) 저장 — Progress 가중치용 */
-const fnExecElapsedKey = (nEventTemplateId: number, strEnv: string) =>
-  `exec_elapsed_${nEventTemplateId}_${strEnv}`;
-const fnLoadExecElapsedMs = (nEventTemplateId: number, strEnv: string): number => {
-  const str = typeof localStorage !== 'undefined' ? localStorage.getItem(fnExecElapsedKey(nEventTemplateId, strEnv)) : null;
-  if (!str) return 0;
-  const n = parseInt(str, 10);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
-const fnSaveExecElapsedMs = (nEventTemplateId: number, strEnv: string, nElapsedMs: number): void => {
-  if (typeof localStorage === 'undefined' || !Number.isFinite(nElapsedMs) || nElapsedMs <= 0) return;
-  localStorage.setItem(fnExecElapsedKey(nEventTemplateId, strEnv), String(nElapsedMs));
-};
+const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
 // 다시 보지 않기 체크박스가 있는 Popconfirm (요청/숨기기 버튼용)
 interface IPopconfirmWithSkipProps {
@@ -114,7 +105,7 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   );
 };
 
-// 쿼리 실행 결과 모달 컴포넌트
+// 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
   objResult,
@@ -128,6 +119,23 @@ const ExecutionResultModal = ({
 }) => {
   const { token } = antdTheme.useToken();
   if (!objResult) return null;
+
+  const fnCopySql = (str: string) => {
+    void navigator.clipboard.writeText(str).then(() => message.success('복사되었습니다')).catch(() => message.error('복사에 실패했습니다'));
+  };
+
+  const strQueryBlockStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    background: token.colorFillTertiary,
+    borderRadius: token.borderRadiusSM,
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: token.colorText,
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+    maxHeight: 220,
+    overflow: 'auto',
+  };
 
   return (
     <Modal
@@ -145,7 +153,7 @@ const ExecutionResultModal = ({
       footer={[
         <Button key="close" type="primary" onClick={onClose}>확인</Button>,
       ]}
-      width={640}
+      width={780}
     >
       {objResult.bSuccess ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -154,116 +162,136 @@ const ExecutionResultModal = ({
             showIcon
             message={`${strEnv.toUpperCase()} DB에 쿼리가 성공적으로 실행되었습니다.`}
           />
-          {/* 실행 요약 */}
-          <Card size="small" title="실행 요약">
-            <Row gutter={16}>
-              <Col span={8}>
-                <Statistic
-                  title="총 처리 건수"
-                  value={objResult.nTotalAffectedRows}
-                  suffix="건"
-                  valueStyle={{ color: '#1890ff', fontSize: 24 }}
-                />
-              </Col>
-              <Col span={8}>
-                <Statistic
-                  title="실행 시간"
-                  value={objResult.nElapsedMs}
-                  suffix="ms"
-                  valueStyle={{ color: '#52c41a', fontSize: 24 }}
-                />
-              </Col>
-              <Col span={8}>
-                <Statistic
-                  title="쿼리 수"
-                  value={objResult.arrQueryResults.length}
-                  suffix="개"
-                  valueStyle={{ fontSize: 24 }}
-                />
-              </Col>
-            </Row>
-            <div style={{ marginTop: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                실행 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
-              </Text>
-            </div>
-          </Card>
-
-          {/* 개별 쿼리 결과 */}
-          {objResult.arrQueryResults.length > 1 && (
-            <Card size="small" title="쿼리별 결과">
-              {objResult.arrQueryResults.map((r) => (
-                <div key={r.nIndex} style={{ marginBottom: 8 }}>
-                  <Space>
-                    <Tag color="blue">#{r.nIndex + 1}</Tag>
-                    <Tag color="green">{r.nAffectedRows}건 처리</Tag>
-                  </Space>
-                  <div
-                    style={{
-                      marginTop: 4,
-                      padding: '6px 10px',
-                      background: token.colorFillTertiary,
-                      borderRadius: token.borderRadiusSM,
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: token.colorText,
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-all',
-                      maxHeight: 80,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {r.strQuery}
+          <Collapse
+            defaultActiveKey={['summary']}
+            items={[
+              {
+                key: 'summary',
+                label: '실행 요약',
+                children: (
+                  <div>
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic
+                          title="총 처리 건수"
+                          value={objResult.nTotalAffectedRows}
+                          suffix="건"
+                          valueStyle={{ color: '#1890ff', fontSize: 22 }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="실행 시간"
+                          value={objResult.nElapsedMs}
+                          suffix="ms"
+                          valueStyle={{ color: '#52c41a', fontSize: 22 }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title="쿼리 수"
+                          value={objResult.arrQueryResults.length}
+                          suffix="개"
+                          valueStyle={{ fontSize: 22 }}
+                        />
+                      </Col>
+                    </Row>
+                    <div style={{ marginTop: 12 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        실행 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
+                      </Text>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </Card>
-          )}
+                ),
+              },
+              ...(objResult.arrQueryResults.length > 0
+                ? [{
+                    key: 'queries',
+                    label: `쿼리별 결과 (${objResult.arrQueryResults.length})`,
+                    children: (
+                      <Collapse
+                        size="small"
+                        bordered={false}
+                        style={{ background: 'transparent' }}
+                        items={objResult.arrQueryResults.map((r) => ({
+                          key: String(r.nIndex),
+                          label: (
+                            <Space>
+                              <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
+                              <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+                            </Space>
+                          ),
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                              <div style={{ textAlign: 'right' }}>
+                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(r.strQuery)}>복사</Button>
+                              </div>
+                              <div style={strQueryBlockStyle}>{r.strQuery}</div>
+                            </Space>
+                          ),
+                        }))}
+                      />
+                    ),
+                  }]
+                : []),
+              ...(objResult.strExecutedQuery?.trim() && objResult.arrQueryResults.length === 0
+                ? [{
+                    key: 'full-query',
+                    label: '실행 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                        </div>
+                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                      </Space>
+                    ),
+                  }]
+                : []),
+            ]}
+          />
         </Space>
       ) : (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Alert
-            type="error"
-            showIcon
-            message="실행 실패"
-            description={
-              <Space direction="vertical" size={4}>
-                <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                  {objResult.strError}
-                </Text>
-                {objResult.strRollbackMsg && (
-                  <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
-                )}
-              </Space>
-            }
+          <Alert type="error" showIcon message="실행 실패" />
+          <Collapse
+            defaultActiveKey={[]}
+            items={[
+              {
+                key: 'error-detail',
+                label: '오류 내용',
+                children: (
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 13 }}>
+                      {objResult.strError}
+                    </Text>
+                    {objResult.strRollbackMsg && (
+                      <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
+                    )}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
+                      {objResult.nElapsedMs > 0 ? ` · ${objResult.nElapsedMs}ms` : ''}
+                    </Text>
+                  </Space>
+                ),
+              },
+              ...(objResult.strExecutedQuery
+                ? [{
+                    key: 'attempted-query',
+                    label: '실행 시도 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                        </div>
+                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                      </Space>
+                    ),
+                  }]
+                : []),
+            ]}
           />
-          <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
-              {objResult.nElapsedMs > 0 && ` · ${objResult.nElapsedMs}ms`}
-            </Text>
-          </div>
-          {/* 실행을 시도한 쿼리 표시 (디버깅용) */}
-          {objResult.strExecutedQuery && (
-            <Card size="small" title="실행 시도 쿼리" extra={
-              <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
-            }>
-              <div style={{
-                padding: '8px 12px',
-                background: token.colorFillTertiary,
-                borderRadius: token.borderRadiusSM,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: token.colorText,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-all',
-                maxHeight: 160,
-                overflow: 'auto',
-              }}>
-                {objResult.strExecutedQuery}
-              </div>
-            </Card>
-          )}
         </Space>
       )}
     </Modal>
@@ -388,13 +416,12 @@ const MyDashboardPage = () => {
   const nProgressPercent = nExecutingTotalQueries > 0
     ? Math.round((nExecutingCompletedQueries / nExecutingTotalQueries) * 100)
     : 0;
-  /** 동일 템플릿 이전 실행 소요 시간(ms) — Progress 0→99% 가중치, 0이면 기본값 사용 */
+  /** 동일 템플릿 이전 실행 소요 시간(ms) — 0→99% 채우는 데 동일 비율로 사용 */
   const [nExpectedElapsedMs, setNExpectedElapsedMs] = useState(0);
-  /** 팝업 뜨자마자 0→99까지 천천히 올라가는 시뮬레이션 (완료 전에는 100% 안 보이게) */
-  const [nSimulatedPercent, setNSimulatedPercent] = useState(0);
-  /** Progress 바에 표시할 퍼센트 — 1%씩 올라가도록 애니메이션 */
+  /** Progress 바 퍼센트 (시간 비례 시뮬레이션 vs SSE 실제 진행 중 max) */
   const [nDisplayPercent, setNDisplayPercent] = useState(0);
-  const refTargetPercent = useRef(0);
+  const refExecProgress = useRef({ completed: 0, total: 1 });
+  const refRafSim = useRef<number>(0);
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
@@ -420,45 +447,58 @@ const MyDashboardPage = () => {
   const fnStoreUpdateStatus = useEventInstanceStore((s) => s.fnUpdateStatus);
   const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
   const fnStoreUpdateInstance = useEventInstanceStore((s) => s.fnUpdateInstance);
+  const fnStoreDeleteInstance = useEventInstanceStore((s) => s.fnDeleteInstance);
 
   const bFunMode = useThemeStore((s) => s.bFunMode);
 
   // 권한 확인 헬퍼
   const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
+  // 삭제(복원 불가): delete_instance 또는 레거시 delete(서버·로그인 확장과 동일)
+  const fnCanPermanentDelete = () =>
+    fnHasPermission('my_dashboard.delete_instance') || fnHasPermission('my_dashboard.delete');
 
   // 페이지 진입 시 최초 1회 로드 (이후는 SSE가 자동 동기화)
   useEffect(() => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
-  // 표시 타깃: 완료 전엔 최대 99%, 완료 시 100% (시뮬레이션과 실제 중 작은 값 사용)
-  const nDisplayTarget = nProgressPercent >= 100 ? 100 : Math.min(nSimulatedPercent, 99);
-  refTargetPercent.current = nDisplayTarget;
+  // SSE·완료 카운트와 rAF 루프 동기화
+  useEffect(() => {
+    refExecProgress.current = {
+      completed: nExecutingCompletedQueries,
+      total: Math.max(1, nExecutingTotalQueries),
+    };
+  }, [nExecutingCompletedQueries, nExecutingTotalQueries]);
 
-  // 이전 실행 소요 시간을 가중치로 0→99% 시뮬레이션 (동일 템플릿 QA/LIVE 반영 시 자연스럽게 채워짐)
+  /** 이전 실행이 느렸으면 같은 비율로 천천히, 빨랐으면 빠르게 0→99%. 다중 세트는 실제 진행과 max. */
   useEffect(() => {
     if (bExecuting === null) return;
-    const nMsPerPercent = nExpectedElapsedMs > 0
-      ? Math.min(3000, Math.max(80, Math.round(nExpectedElapsedMs / 99)))
-      : 150;
-    const t = setInterval(() => {
-      setNSimulatedPercent((prev) => (prev >= 99 ? 99 : prev + 1));
-    }, nMsPerPercent);
-    return () => clearInterval(t);
+
+    const nRawBaseline = nExpectedElapsedMs > 0 ? nExpectedElapsedMs : N_SIM_BASELINE_DEFAULT_MS;
+    const nBaseline = Math.min(N_SIM_BASELINE_MAX_MS, Math.max(N_SIM_BASELINE_MIN_MS, nRawBaseline));
+    const t0 = performance.now();
+
+    const fnTick = (now: number) => {
+      const { completed, total } = refExecProgress.current;
+      const nRealPct = total > 0 ? Math.min(100, (completed / total) * 100) : 0;
+      const nElapsed = now - t0;
+      const nLinePct = Math.min(99, (nElapsed / nBaseline) * 99);
+      const nTarget =
+        nRealPct >= 100 ? 100 : Math.min(99, Math.max(nLinePct, nRealPct));
+      const nRounded = Math.round(nTarget);
+
+      setNDisplayPercent((prev) => (prev === nRounded ? prev : nRounded));
+
+      if (nRealPct < 100) {
+        refRafSim.current = requestAnimationFrame(fnTick);
+      } else {
+        setNDisplayPercent(100);
+      }
+    };
+
+    refRafSim.current = requestAnimationFrame(fnTick);
+    return () => cancelAnimationFrame(refRafSim.current);
   }, [bExecuting, nExpectedElapsedMs]);
-
-  // 표시 퍼센트를 1%씩 타깃까지 따라가기 (간격을 넓혀 CSS 트랜지션으로 부드럽게 채워짐)
-  useEffect(() => {
-    if (bExecuting === null) return;
-    const t = setInterval(() => {
-      setNDisplayPercent((prev) => {
-        const target = refTargetPercent.current;
-        if (prev >= target) return prev;
-        return prev + 1;
-      });
-    }, 80);
-    return () => clearInterval(t);
-  }, [bExecuting]);
 
   // Progress가 100% 채워진 뒤에만 700ms 보여주고 결과 모달 열기 + 페이드
   useEffect(() => {
@@ -479,7 +519,6 @@ const MyDashboardPage = () => {
       setNExecutingTotalQueries(0);
       setNExecutingCompletedQueries(0);
       setNDisplayPercent(0);
-      setNSimulatedPercent(0);
       setNExpectedElapsedMs(0);
     }, 320);
     return () => clearTimeout(t);
@@ -518,13 +557,13 @@ const MyDashboardPage = () => {
   // QA/LIVE DB 실행 (다중 세트면 스트리밍으로 진행율 반영)
   const fnHandleExecute = async (r: IEventInstance, strEnv: 'qa' | 'live') => {
     const nTotal = r.arrExecutionTargets?.length ?? 1;
-    const nElapsedMs = fnLoadExecElapsedMs(r.nEventTemplateId, strEnv);
+    const nExpectedFromServer = await fnApiGetTemplateExecElapsed(r.nEventTemplateId, strEnv);
+    setNExpectedElapsedMs(nExpectedFromServer);
     setBExecuting(r.nId);
     setNExecutingTotalQueries(nTotal);
     setNExecutingCompletedQueries(0);
     setNDisplayPercent(0);
-    setNSimulatedPercent(0);
-    setNExpectedElapsedMs(nElapsedMs);
+    refExecProgress.current = { completed: 0, total: Math.max(1, nTotal) };
     setStrExecEnv(strEnv);
     let result: { bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance; objExecutionResult?: unknown };
     try {
@@ -534,7 +573,6 @@ const MyDashboardPage = () => {
 
       if (result.bSuccess) {
         const objExec = result.objExecutionResult as IQueryExecutionResult | undefined;
-        if (objExec?.nElapsedMs) fnSaveExecElapsedMs(r.nEventTemplateId, strEnv, objExec.nElapsedMs);
         setObjExecResult(objExec ?? null);
         messageApi.success(`${strEnv.toUpperCase()} 쿼리 실행 완료`);
         if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance);
@@ -581,7 +619,6 @@ const MyDashboardPage = () => {
         setNExecutingTotalQueries(0);
         setNExecutingCompletedQueries(0);
         setNDisplayPercent(0);
-        setNSimulatedPercent(0);
         setNExpectedElapsedMs(0);
       }
     }
@@ -691,6 +728,7 @@ const MyDashboardPage = () => {
   };
   const nTotal = arrAllInstances.length;
   const nMyAction = arrAllInstances.filter((e) =>
+    !e.bPermanentlyRemoved &&
     OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
   ).length;
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
@@ -699,6 +737,16 @@ const MyDashboardPage = () => {
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
+    // 삭제 처리됨: 상세만 (워크플로·실행·수정 불가)
+    if (r.bPermanentlyRemoved) {
+      if (fnHasPermission('my_dashboard.detail')) {
+        arrButtons.push(
+          <Button key="detail" size="small" icon={<EyeOutlined />}
+            onClick={() => { setObjDetail(r); setBDetailOpen(true); }}>상세</Button>
+        );
+      }
+      return <Space wrap>{arrButtons}</Space>;
+    }
     // 이 이벤트의 쿼리 실행 대상 (단일 서버 또는 다중 서버)
     const arrScope = r.arrDeployScope ?? ['qa', 'live'];
     const bHasQa   = arrScope.includes('qa');
@@ -1108,11 +1156,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     setStrViewTransition('out');
   }, [strViewTransition, strViewMode]);
 
-  // 진행 이벤트 탭: 사용자가 직접 숨기기 버튼을 누른 이벤트만 제외
-  // live_verified 완료 상태여도 숨기기 전까지는 진행탭에 남아 흐릿하게 표시됨
-  const arrActiveInstances = arrInstances.filter((r) => !setHiddenIds.has(r.nId));
-  // 완료·숨김 이벤트 탭: 사용자가 숨기기 버튼을 누른 이벤트만
-  const arrCompletedInstances = arrInstances.filter((r) => setHiddenIds.has(r.nId));
+  // 진행 탭: 숨김(local)·서버 삭제 제외 — 삭제 건은 완료·숨김 탭으로만 이동(복원 불가)
+  const arrActiveInstances = arrInstances.filter(
+    (r) => !setHiddenIds.has(r.nId) && !r.bPermanentlyRemoved
+  );
+  const arrCompletedInstances = arrInstances.filter(
+    (r) => setHiddenIds.has(r.nId) || Boolean(r.bPermanentlyRemoved)
+  );
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
@@ -1169,38 +1219,85 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     {
       title: '액션',
       key: 'actions',
-      width: 340,
-      render: (_: unknown, r: IEventInstance) => (
-        <Space wrap size="small" align="start">
-          {/* 상태별 처리 버튼 (요청/확인/반영/재요청 등) */}
-          {fnRenderActions(r)}
-          <Divider type="vertical" style={{ margin: '0 4px' }} />
-          {/* 숨기기/보이기 — 완료(live_verified)에서만 숨기기 활성화 */}
-          {!setHiddenIds.has(r.nId) ? (
-            <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-              <PopconfirmWithSkip
-                actionKey="hide_instance"
-                title="이 이벤트를 숨기시겠습니까?"
-                description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                okText="숨기기"
-                cancelText="취소"
-                onConfirm={() => fnHideInstance(r.nId)}
-                disabled={r.strStatus !== 'live_verified'}
-              >
-                <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
-                  숨기기
-                </Button>
-              </PopconfirmWithSkip>
-            </Tooltip>
-          ) : (
-            <Tooltip title="진행 이벤트 탭으로 복원">
-              <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
-                보이기
-              </Button>
-            </Tooltip>
-          )}
-        </Space>
-      ),
+      width: 420,
+      render: (_: unknown, r: IEventInstance) => {
+        const bCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+        return (
+          <Space wrap size="small" align="start">
+            {fnRenderActions(r)}
+            <Divider type="vertical" style={{ margin: '0 4px' }} />
+            {r.bPermanentlyRemoved ? (
+              <Tag color="red">삭제됨 · 복원 불가</Tag>
+            ) : !setHiddenIds.has(r.nId) ? (
+              <>
+                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+                  <PopconfirmWithSkip
+                    actionKey="hide_instance"
+                    title="이 이벤트를 숨기시겠습니까?"
+                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                    okText="숨기기"
+                    cancelText="취소"
+                    onConfirm={() => fnHideInstance(r.nId)}
+                    disabled={r.strStatus !== 'live_verified'}
+                  >
+                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
+                      숨기기
+                    </Button>
+                  </PopconfirmWithSkip>
+                </Tooltip>
+                {bCanDelete && (
+                  <Popconfirm
+                    title="이벤트를 삭제할까요?"
+                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+                    okText="삭제"
+                    okButtonProps={{ danger: true }}
+                    cancelText="취소"
+                    onConfirm={async () => {
+                      const objRes = await fnStoreDeleteInstance(r.nId);
+                      if (objRes.bSuccess) {
+                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                        setStrDashTab('completed');
+                      } else {
+                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                      }
+                    }}
+                  >
+                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                  </Popconfirm>
+                )}
+              </>
+            ) : (
+              <>
+                <Tooltip title="진행 이벤트 탭으로 복원">
+                  <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
+                    보이기
+                  </Button>
+                </Tooltip>
+                {bCanDelete && (
+                  <Popconfirm
+                    title="이벤트를 삭제할까요?"
+                    description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
+                    okText="삭제"
+                    okButtonProps={{ danger: true }}
+                    cancelText="취소"
+                    onConfirm={async () => {
+                      const objRes = await fnStoreDeleteInstance(r.nId);
+                      if (objRes.bSuccess) {
+                        messageApi.success('삭제되었습니다.');
+                        setStrDashTab('completed');
+                      } else {
+                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                      }
+                    }}
+                  >
+                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                  </Popconfirm>
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -1304,7 +1401,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
           rowClassName={(r: IEventInstance) => {
             if (r.nId === objSelectedRow?.nId) return 'ant-table-row-selected';
-            if (r.strStatus === 'live_verified' || setHiddenIds.has(r.nId)) return 'row-completed-dim';
+            if (r.strStatus === 'live_verified' || setHiddenIds.has(r.nId) || r.bPermanentlyRemoved) return 'row-completed-dim';
             return '';
           }}
           onRow={(r: IEventInstance) => ({
@@ -1335,6 +1432,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           {fnRenderStatusIcon(r.strStatus, 12)}
                           <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
                         </Space>
+                        {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
                       </Space>
                     }
                     style={{
@@ -1351,25 +1449,78 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Divider style={{ margin: '8px 0' }} />
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}
-                        {!setHiddenIds.has(r.nId) ? (
-                          <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                            <PopconfirmWithSkip
-                              actionKey="hide_instance"
-                              title="이 이벤트를 숨기시겠습니까?"
-                              description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                              okText="숨기기"
-                              cancelText="취소"
-                              onConfirm={() => fnHideInstance(r.nId)}
-                              disabled={r.strStatus !== 'live_verified'}
-                            >
-                              <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
-                            </PopconfirmWithSkip>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip title="진행 이벤트 탭으로 복원">
-                            <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
-                          </Tooltip>
-                        )}
+                        {(() => {
+                          const bCardCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+                          if (r.bPermanentlyRemoved) {
+                            return <Tag color="red">삭제됨 · 복원 불가</Tag>;
+                          }
+                          if (!setHiddenIds.has(r.nId)) {
+                            return (
+                              <>
+                                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+                                  <PopconfirmWithSkip
+                                    actionKey="hide_instance"
+                                    title="이 이벤트를 숨기시겠습니까?"
+                                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+                                    okText="숨기기"
+                                    cancelText="취소"
+                                    onConfirm={() => fnHideInstance(r.nId)}
+                                    disabled={r.strStatus !== 'live_verified'}
+                                  >
+                                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
+                                  </PopconfirmWithSkip>
+                                </Tooltip>
+                                {bCardCanDelete && (
+                                  <Popconfirm
+                                    title="이벤트를 삭제할까요?"
+                                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+                                    okText="삭제"
+                                    okButtonProps={{ danger: true }}
+                                    cancelText="취소"
+                                    onConfirm={async () => {
+                                      const objRes = await fnStoreDeleteInstance(r.nId);
+                                      if (objRes.bSuccess) {
+                                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                                        setStrDashTab('completed');
+                                      } else {
+                                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                      }
+                                    }}
+                                  >
+                                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                                  </Popconfirm>
+                                )}
+                              </>
+                            );
+                          }
+                          return (
+                            <>
+                              <Tooltip title="진행 이벤트 탭으로 복원">
+                                <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
+                              </Tooltip>
+                              {bCardCanDelete && (
+                                <Popconfirm
+                                  title="이벤트를 삭제할까요?"
+                                  description="숨김 상태와 무관하게 복원할 수 없습니다."
+                                  okText="삭제"
+                                  okButtonProps={{ danger: true }}
+                                  cancelText="취소"
+                                  onConfirm={async () => {
+                                    const objRes = await fnStoreDeleteInstance(r.nId);
+                                    if (objRes.bSuccess) {
+                                      messageApi.success('삭제되었습니다.');
+                                      setStrDashTab('completed');
+                                    } else {
+                                      messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                    }
+                                  }}
+                                >
+                                  <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+                                </Popconfirm>
+                              )}
+                            </>
+                          );
+                        })()}
                       </Space>
                     </Space>
                     {objSelectedRow?.nId === r.nId && (
@@ -1416,9 +1567,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       </Space>
                     </Descriptions.Item>
                     <Descriptions.Item label="상태">
-                      <Space size={4}>
+                      <Space size={4} wrap align="center">
                         {fnRenderStatusIcon(objDetail.strStatus, 14)}
                         <Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag>
+                        {objDetail.bPermanentlyRemoved && <Tag color="red">삭제</Tag>}
                       </Space>
                     </Descriptions.Item>
                   </Descriptions>
@@ -1500,13 +1652,21 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 label: '진행 이력',
                 children: (
                   <Timeline
-                    items={objDetail.arrStatusLogs.map((log) => ({
-                      color: OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray',
-                      children: (
+                    items={objDetail.arrStatusLogs.map((log) => {
+                      // 서버 이력: 삭제(복원 불가) — 구 이력 '영구 삭제(복원 불가)' 호환
+                      const bPermanentDeleteLog = typeof log.strComment === 'string' &&
+                        (log.strComment === '삭제(복원 불가)' || log.strComment === '영구 삭제(복원 불가)');
+                      const strTimelineColor = bPermanentDeleteLog ? 'red' : (OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray');
+                      return {
+                        color: strTimelineColor,
+                        children: (
                         <div>
-                          <Space size={4}>
+                          <Space size={4} wrap>
                             {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
                             <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                            {bPermanentDeleteLog && (
+                              <Tag color="red">삭제</Tag>
+                            )}
                           </Space>
                           <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
                           <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>{new Date(log.dtChangedAt).toLocaleString('ko-KR')}</Text>
@@ -1515,7 +1675,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               <Text
                                 style={{
                                   fontSize: 12,
-                                  color: log.strComment === 'DBA 쿼리 직접 수정' ? token.colorError : token.colorTextSecondary,
+                                  color: log.strComment === 'DBA 쿼리 직접 수정'
+                                    ? token.colorError
+                                    : bPermanentDeleteLog
+                                      ? token.colorError
+                                      : token.colorTextSecondary,
                                 }}
                               >
                                 {log.strComment}
@@ -1535,8 +1699,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             </div>
                           )}
                         </div>
-                      ),
-                    }))}
+                        ),
+                      };
+                    })}
                   />
                 ),
               },

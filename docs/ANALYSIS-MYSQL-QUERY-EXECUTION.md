@@ -95,20 +95,15 @@
 
 ---
 
-## 5. 사용하지 않는 코드 (fnExecuteQuery)
+## 5. fnExecuteQuery 스텁
 
-- `queryExecutor.ts` 의 **fnExecuteQuery** (인자: `objConn`, `strEnv` 만 받는 버전)는:
-  - 접속 정보 유효성만 검사한 뒤, **항상** `bSuccess: false` 인 결과만 반환하고 끝남.
-  - 실제 DB 호출이나 `fnExecuteMssql` / `fnExecuteMysql` 호출이 없음.
-  - 코드베이스에서 **어디서도 사용하지 않음** (호출처는 `fnExecuteQueryWithText` 만 존재).
-- **정리**: 현재 동작에는 영향 없음. 제거해도 되고, 나중에 “쿼리 없이 연결만 검증” 용도로 쓰려면 구현을 보완해야 함.
+- **제거됨** (2026-03). 실행 진입점은 `fnExecuteQueryWithText` 만 유지.
 
 ---
 
 ## 6. DB 접속 정보의 유효 조건
 
-- **실행에 사용되는 접속 정보**는 **데이터 소스** `arrDbConnections` (또는 dbConnections.json) 에서:
-  - `fnFindActiveConnection(nProductId, strEnv)` 로 **nProductId + strEnv(dev/qa/live) 일치 + bIsActive === true** 인 한 건을 선택.
+- **실행에 사용되는 접속 정보**는 `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?)` 로 해석 (세트별 ID 또는 레거시 GAME).
 - **타입**: `IDbConnection` 에 `strDbType: 'mssql' | 'mysql'` 이 있으므로, **MySQL** 인 접속 정보면 위 흐름대로 `mysql2` 풀과 `fnExecuteMysql` 이 사용됨.
 
 ---
@@ -120,6 +115,6 @@
 | MySQL 쿼리 실행 경로 | ✅ 구현됨, 트랜잭션·롤백·에러 처리·연결 반환 모두 처리 |
 | 멀티 쿼리(세미콜론 분리) | ✅ fnParseQueries 로 문자열/주석 고려 분리 후 문장별 실행 |
 | 사용 진입점 | ✅ fnExecuteQueryWithText 만 사용 (이벤트 실행 시) |
-| fnExecuteQuery | ⚠️ 미사용 스텁, 실제 실행 없음 |
+| fnExecuteQuery | ✅ 제거됨 |
 
 **최종**: MySQL 쿼리 실행 로직은 **그대로 사용 가능**하다. 게임 서버 업다운·UI 커스텀은 보류하고, 현재 QA/LIVE 반영 플로우에서는 MySQL 접속 정보만 올바르게 등록되어 있으면 정상 동작한다.

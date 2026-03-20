@@ -306,16 +306,21 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('DBA(dba01) 로그인 → 나의대시보드·DB접속 200, 프로덕트·이벤트·사용자·역할 403', async () => {
+    it('DBA(dba01) 로그인 → 나의대시보드·DB접속 200, 나머지는 부여된 보기 권한에 따라 200/403', async () => {
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const token = loginRes.body.strToken;
+      const arrPerms: string[] = loginRes.body.user?.arrPermissions ?? [];
       expect(loginRes.status).toBe(200);
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
-      await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      const fnExpectView = async (strPath: string, strPerm: string) => {
+        const nWant = arrPerms.includes(strPerm) ? 200 : 403;
+        await expect(request(app).get(strPath).set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: nWant });
+      };
+      await fnExpectView('/api/products', 'product.view');
+      await fnExpectView('/api/events', 'event_template.view');
+      await fnExpectView('/api/users', 'user.view');
+      await fnExpectView('/api/roles', 'role.view');
     });
 
     it('GM(gm01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
@@ -656,9 +661,9 @@ describe('API 전체 테스트', () => {
             nProductId: nProductIdForEvent,
             strKind: 'GAME',
             strEnv: 'dev',
-            strDbType: 'mysql',
+            strDbType: 'mssql',
             strHost: 'localhost',
-            nPort: 3306,
+            nPort: 1433,
             strDatabase: 'test',
             strUser: 'u',
             strPassword: 'p',
@@ -816,14 +821,36 @@ describe('API 전체 테스트', () => {
   // ─── DB 접속 추가·수정·삭제 테스트 ─────────────────────────────────────
   describe('DB 접속 CRUD', () => {
     let nConnId: number;
-    const nProductId = 1;
+    /** 출조낚시왕 — mssql (접속 DB 종류 불일치 테스트용) */
+    const nProductIdMssql = 1;
+    /** 라그하임 — mysql (mysql 접속 CRUD용) */
+    const nProductIdMysql = 6;
+
+    it('POST /api/db-connections 프로덕트 strDbType 불일치 → 400', async () => {
+      const res = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId: nProductIdMssql,
+          strKind: 'WEB',
+          strEnv: 'dev',
+          strDbType: 'mysql',
+          strHost: '127.0.0.1',
+          nPort: 3306,
+          strDatabase: 'x',
+          strUser: 'u',
+          strPassword: 'p',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.strMessage).toMatch(/DB 종류/);
+    });
 
     it('POST /api/db-connections (strKind 포함) → 200', async () => {
       const res = await request(app)
         .post('/api/db-connections')
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
-          nProductId,
+          nProductId: nProductIdMysql,
           strKind: 'LOG',
           strEnv: 'dev',
           strDbType: 'mysql',
@@ -995,6 +1022,24 @@ describe('API 전체 테스트', () => {
       nInstanceId = created?.nId ?? arr[0]?.nId ?? 0;
     });
 
+    it('GET /api/event-instances/template-exec-elapsed → 200, nElapsedMs', async () => {
+      const res = await request(app)
+        .get('/api/event-instances/template-exec-elapsed')
+        .query({ nEventTemplateId: 1, strEnv: 'qa' })
+        .set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(typeof res.body.nElapsedMs).toBe('number');
+    });
+
+    it('GET /api/event-instances/template-exec-elapsed 잘못된 strEnv → 400', async () => {
+      const res = await request(app)
+        .get('/api/event-instances/template-exec-elapsed')
+        .query({ nEventTemplateId: 1, strEnv: 'dev' })
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(400);
+    });
+
     it('GET /api/event-instances (my_dashboard.view) → 200', async () => {
       const res = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
       expect(res.status).toBe(200);
@@ -1040,6 +1085,48 @@ describe('API 전체 테스트', () => {
         .send({ strEnv: 'qa' });
       expect(res.status).not.toBe(403);
       expect([200, 400, 404]).toContain(res.status);
+    });
+
+    it('DELETE /api/event-instances/:id (my_dashboard.delete_instance 없으면) → 403', async () => {
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
+      const live = (list.body?.arrInstances ?? []).find((i: { strStatus: string }) => i.strStatus === 'live_verified');
+      const nId = live?.nId ?? 1;
+      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strGmToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('DELETE /api/event-instances/:id (진행 중 인스턴스, admin 삭제 권한) → 200', async () => {
+      const products = await request(app).get('/api/products').set('Authorization', `Bearer ${strAdminToken}`);
+      const events = await request(app).get('/api/events').set('Authorization', `Bearer ${strAdminToken}`);
+      const p = products.body?.arrProducts?.[0];
+      const e = events.body?.arrEvents?.[0];
+      const createRes = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nEventTemplateId: e?.nId ?? 1,
+          nProductId: p?.nId ?? 1,
+          strEventLabel: 'DEL테스트',
+          strProductName: p?.strName ?? '테스트',
+          strServiceAbbr: 'T',
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] 삭제 테스트용 임시 이벤트',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa', 'live'],
+          strCreatedBy: 'admin테스트',
+        });
+      expect(createRes.status).toBe(200);
+      const nNewId = createRes.body?.objInstance?.nId;
+      expect(nNewId).toBeDefined();
+      const res = await request(app)
+        .delete(`/api/event-instances/${nNewId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body?.objInstance?.bPermanentlyRemoved).toBe(true);
     });
 
     // 쿼리 수정 권한: my_dashboard.query_edit 없으면 confirm_requested/qa_requested/live_requested 단계에서 PUT(strGeneratedQuery) → 403
