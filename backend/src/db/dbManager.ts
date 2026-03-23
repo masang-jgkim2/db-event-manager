@@ -10,10 +10,14 @@ const objMysqlPools = new Map<number, mysql.Pool>();
 // MSSQL 풀 관리
 // =============================================
 
+/** tedious/mssql 기본 encrypt:true — 비TLS 구 SQL Server는 MSSQL_ENCRYPT=false 필요 */
+const fnGetMssqlEncryptOption = (): boolean => process.env.MSSQL_ENCRYPT !== 'false';
+
 const fnGetMssqlPool = async (objConn: IDbConnection): Promise<mssql.ConnectionPool> => {
   const objCached = objMssqlPools.get(objConn.nId);
   if (objCached && objCached.connected) return objCached;
 
+  const bEncrypt = fnGetMssqlEncryptOption();
   const objConfig: mssql.config = {
     server: objConn.strHost,
     port: objConn.nPort,
@@ -21,6 +25,7 @@ const fnGetMssqlPool = async (objConn: IDbConnection): Promise<mssql.ConnectionP
     user: objConn.strUser,
     password: objConn.strPassword,
     options: {
+      encrypt: bEncrypt,
       trustServerCertificate: true,   // 내부망 환경 기본 허용
       enableArithAbort: true,
     },

@@ -44,39 +44,115 @@ const N_SIM_BASELINE_MAX_MS = 180_000;
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
-/** 클립보드 복사 — HTTPS/Clipboard API 실패 시 textarea 폴백(모달·HTTP 환경 대응) */
-const fnCopyTextToClipboard = (str: string | undefined, msgApi?: { success: (s: string) => void; error: (s: string) => void; warning: (s: string) => void }) => {
+/** Ant Design message.useMessage() 인스턴스와 호환 */
+type TMessageLike = {
+  success: (s: string) => void;
+  error: (s: string) => void;
+  warning: (s: string) => void;
+};
+
+/**
+ * 클립보드 복사 — ① copy 이벤트에서 setData(가장 신뢰) ② execCommand ③ writeText+readText 검증.
+ * execCommand/writeText만 성공으로 치면 토스트만 뜨고 붙여넣기 비는 환경이 있음.
+ */
+const fnCopyTextToClipboard = (str: string | undefined, msgApi?: TMessageLike) => {
   const api = msgApi ?? message;
   const s = String(str ?? '');
   if (!s) {
     api.warning('복사할 내용이 없습니다');
     return;
   }
-  const fnFallback = () => {
+
+  const strManualHint = '아래 SQL 블록을 드래그한 뒤 Ctrl+C 하세요.';
+
+  /** copy 이벤트에서 clipboardData 직접 기록 — 브라우저 기본 복사보다 실제 반영률 높음 */
+  const fnTryClipboardDataEvent = (): boolean => {
+    try {
+      let bFired = false;
+      const fnOnCopy = (e: ClipboardEvent) => {
+        e.clipboardData?.setData('text/plain', s);
+        e.preventDefault();
+        bFired = true;
+      };
+      document.addEventListener('copy', fnOnCopy, true);
+      try {
+        const el = document.createElement('textarea');
+        el.value = s;
+        el.setAttribute('readonly', 'readonly');
+        el.style.cssText =
+          'position:fixed;left:0;top:0;width:320px;height:120px;margin:0;padding:8px;border:1px solid #ccc;opacity:0.02;z-index:2147483647;font-size:12px;line-height:1.4;';
+        document.body.appendChild(el);
+        el.focus({ preventScroll: true });
+        el.select();
+        el.setSelectionRange(0, s.length);
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      } finally {
+        document.removeEventListener('copy', fnOnCopy, true);
+      }
+      return bFired;
+    } catch {
+      return false;
+    }
+  };
+
+  /** document.execCommand('copy') — 보조 */
+  const fnTryExecCommandSync = (): boolean => {
     try {
       const el = document.createElement('textarea');
       el.value = s;
-      el.setAttribute('readonly', '');
-      el.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      el.setAttribute('readonly', 'readonly');
+      el.style.cssText =
+        'position:fixed;left:0;top:0;width:320px;height:120px;margin:0;padding:8px;border:1px solid #ccc;opacity:0.02;z-index:2147483647;font-size:12px;line-height:1.4;';
       document.body.appendChild(el);
-      el.focus();
+      el.focus({ preventScroll: true });
       el.select();
+      el.setSelectionRange(0, s.length);
       const bOk = document.execCommand('copy');
       document.body.removeChild(el);
-      if (bOk) api.success('복사되었습니다');
-      else api.error('복사에 실패했습니다');
+      return bOk;
     } catch {
-      api.error('복사에 실패했습니다');
+      return false;
     }
   };
+
+  if (fnTryClipboardDataEvent()) {
+    api.success('복사되었습니다');
+    return;
+  }
+
+  if (fnTryExecCommandSync()) {
+    api.success('복사되었습니다');
+    return;
+  }
+
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     void navigator.clipboard.writeText(s).then(
-      () => api.success('복사되었습니다'),
-      fnFallback,
+      async () => {
+        try {
+          if (navigator.clipboard?.readText) {
+            const t = await navigator.clipboard.readText();
+            if (t !== s) {
+              console.warn('[클립보드] writeText 후 readText 불일치 | 길이:', s.length, t.length);
+              api.error(`클립보드에 반영되지 않았을 수 있습니다. ${strManualHint}`);
+              return;
+            }
+          }
+        } catch {
+          // 읽기 권한 없음 — 검증 불가, 보수적 안내
+          api.warning(`복사됐을 수 있습니다. 메모장에 붙여넣기로 확인해 주세요. (${strManualHint})`);
+          return;
+        }
+        api.success('복사되었습니다');
+      },
+      () => {
+        api.error(`복사에 실패했습니다. ${strManualHint}`);
+      },
     );
-  } else {
-    fnFallback();
+    return;
   }
+
+  api.error(`복사에 실패했습니다. ${strManualHint}`);
 };
 
 // 기본 레이아웃의 instance_list 카드 행 — localStorage 오버레이 전까지 상수
@@ -165,16 +241,19 @@ const ExecutionResultModal = ({
   objResult,
   strEnv,
   onClose,
+  messageApi,
 }: {
   bOpen: boolean;
   objResult: IQueryExecutionResult | null;
   strEnv: 'qa' | 'live';
   onClose: () => void;
+  /** useMessage() 인스턴스 — 모달 위에 토스트가 뜨도록 필수 */
+  messageApi: TMessageLike;
 }) => {
   const { token } = antdTheme.useToken();
   if (!objResult) return null;
 
-  const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, message);
+  const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, messageApi);
 
   const strQueryBlockStyle: React.CSSProperties = {
     padding: '8px 12px',
@@ -206,6 +285,7 @@ const ExecutionResultModal = ({
         <Button key="close" type="primary" onClick={onClose}>확인</Button>,
       ]}
       width={780}
+      destroyOnClose
     >
       {objResult.bSuccess ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -282,7 +362,6 @@ const ExecutionResultModal = ({
                                   size="small"
                                   icon={<CopyOutlined />}
                                   onClick={(e) => {
-                                    e.preventDefault();
                                     e.stopPropagation();
                                     fnCopySql(r.strQuery);
                                   }}
@@ -311,7 +390,6 @@ const ExecutionResultModal = ({
                             size="small"
                             icon={<CopyOutlined />}
                             onClick={(e) => {
-                              e.preventDefault();
                               e.stopPropagation();
                               fnCopySql(objResult.strExecutedQuery);
                             }}
@@ -365,7 +443,6 @@ const ExecutionResultModal = ({
                             size="small"
                             icon={<CopyOutlined />}
                             onClick={(e) => {
-                              e.preventDefault();
                               e.stopPropagation();
                               fnCopySql(objResult.strExecutedQuery);
                             }}
@@ -2020,6 +2097,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         objResult={objExecResult}
         strEnv={strExecEnv}
         onClose={() => setBExecResultOpen(false)}
+        messageApi={messageApi}
       />
 
       {/* 쿼리 실행 중 진행율 팝업 — 완료 시 100% 잠깐 노출 후 페이드 아웃 */}
