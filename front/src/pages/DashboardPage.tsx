@@ -1212,6 +1212,7 @@ const DashboardPage = () => {
             카드는 <b>고정 좌표</b>에 배치됩니다. 추가 시 먼저 영역(위치·크기)을 정한 뒤 속성을 채웁니다.
             일반 카드는 호버 후 아무 곳이나 드래그로 이동, <b>맞춤 카드는 제목 줄만</b> 드래그해 이동합니다.
             모서리로 크기 조절, (−)로 제외. 맞춤 카드는 테이블·접기 펼침에 맞춰 높이가 맞춰집니다.
+            카드 영역은 서로 <b>겹치지 않게</b> 자동으로 밀려 납니다(최소 여백 {N_CARD_MIN_GAP}px).
           </Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={fnOpenAddCard}>
