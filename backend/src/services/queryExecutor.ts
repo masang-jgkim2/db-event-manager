@@ -3,6 +3,12 @@ import mysql from 'mysql2/promise';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
 
+/** MySQL(mysql2) 서버 메시지 — message보다 sqlMessage가 MSSQL 메시지에 가깝다 */
+const fnGetMysqlServerMessage = (error: any): string => {
+  const str = (error?.sqlMessage ?? error?.message ?? String(error)).trim();
+  return str;
+};
+
 /** 연결 끊김 등으로 커넥션 풀을 비울지 (DB 종류별 코드 상이) */
 const fnShouldInvalidatePoolOnQueryError = (objConn: IDbConnection, error: any): boolean => {
   const strCode = error?.code;
@@ -23,13 +29,42 @@ const fnShouldInvalidatePoolOnQueryError = (objConn: IDbConnection, error: any):
 // 멀티쿼리 파싱 (세미콜론 분리)
 // 문자열/주석 내부의 세미콜론은 무시
 // =============================================
-export const fnParseQueries = (strRawQuery: string): string[] => {
-  const arrQueries: string[] = [];
+export interface IParsedQueryPart {
+  strQuery: string;
+  /** 원본 SQL 기준 1-based 줄 — 해당 구문에서 첫 비공백 문자가 있는 줄 */
+  nLineStart: number;
+}
+
+export const fnParseQueriesWithLineStarts = (strRawQuery: string): IParsedQueryPart[] => {
+  const arr: IParsedQueryPart[] = [];
   let strCurrent = '';
+  let nLine = 1;
+  let nStmtStartLine = 1;
   let bInSingleQuote = false;
   let bInDoubleQuote = false;
   let bInLineComment = false;
   let bInBlockComment = false;
+
+  const fnAppend = (str: string) => {
+    for (let k = 0; k < str.length; k++) {
+      const c = str[k];
+      if (strCurrent.length === 0) nStmtStartLine = nLine;
+      strCurrent += c;
+      if (c === '\n') nLine++;
+    }
+  };
+
+  const fnFlush = () => {
+    const strTrimmed = strCurrent.trim();
+    if (strTrimmed.length > 0) {
+      const nFirstNonWs = strCurrent.search(/\S/);
+      const strPrefix = nFirstNonWs < 0 ? '' : strCurrent.slice(0, nFirstNonWs);
+      const nLinesInPrefix = (strPrefix.match(/\n/g) || []).length;
+      const nLineStart = nStmtStartLine + nLinesInPrefix;
+      arr.push({ strQuery: strTrimmed, nLineStart: nLineStart });
+    }
+    strCurrent = '';
+  };
 
   for (let i = 0; i < strRawQuery.length; i++) {
     const ch = strRawQuery[i];
@@ -38,7 +73,7 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
     // 라인 주석 종료 (\n)
     if (bInLineComment) {
       if (ch === '\n') bInLineComment = false;
-      strCurrent += ch;
+      fnAppend(ch);
       continue;
     }
 
@@ -46,19 +81,19 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
     if (bInBlockComment) {
       if (ch === '*' && chNext === '/') {
         bInBlockComment = false;
-        strCurrent += '*/';
+        fnAppend('*/');
         i++;
       } else {
-        strCurrent += ch;
+        fnAppend(ch);
       }
       continue;
     }
 
     // 작은따옴표 안 - 이스케이프('')도 처리
     if (bInSingleQuote) {
-      strCurrent += ch;
+      fnAppend(ch);
       if (ch === "'" && chNext === "'") {
-        strCurrent += "'";
+        fnAppend("'");
         i++;
       } else if (ch === "'") {
         bInSingleQuote = false;
@@ -68,7 +103,7 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
 
     // 큰따옴표 안 (식별자용)
     if (bInDoubleQuote) {
-      strCurrent += ch;
+      fnAppend(ch);
       if (ch === '"') bInDoubleQuote = false;
       continue;
     }
@@ -76,7 +111,7 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
     // 라인 주석 시작 (--)
     if (ch === '-' && chNext === '-') {
       bInLineComment = true;
-      strCurrent += '--';
+      fnAppend('--');
       i++;
       continue;
     }
@@ -84,31 +119,38 @@ export const fnParseQueries = (strRawQuery: string): string[] => {
     // 블록 주석 시작 (/*)
     if (ch === '/' && chNext === '*') {
       bInBlockComment = true;
-      strCurrent += '/*';
+      fnAppend('/*');
       i++;
       continue;
     }
 
-    if (ch === "'") { bInSingleQuote = true; strCurrent += ch; continue; }
-    if (ch === '"') { bInDoubleQuote = true; strCurrent += ch; continue; }
-
-    // 세미콜론 → 쿼리 분리
-    if (ch === ';') {
-      const strTrimmed = strCurrent.trim();
-      if (strTrimmed.length > 0) arrQueries.push(strTrimmed);
-      strCurrent = '';
+    if (ch === "'") {
+      bInSingleQuote = true;
+      fnAppend(ch);
+      continue;
+    }
+    if (ch === '"') {
+      bInDoubleQuote = true;
+      fnAppend(ch);
       continue;
     }
 
-    strCurrent += ch;
+    // 세미콜론 → 쿼리 분리
+    if (ch === ';') {
+      fnFlush();
+      continue;
+    }
+
+    fnAppend(ch);
   }
 
-  // 마지막 쿼리 (세미콜론 없이 끝난 경우)
-  const strTrimmed = strCurrent.trim();
-  if (strTrimmed.length > 0) arrQueries.push(strTrimmed);
+  fnFlush();
 
-  return arrQueries.filter((q) => q.length > 0);
+  return arr.filter((p) => p.strQuery.length > 0);
 };
+
+export const fnParseQueries = (strRawQuery: string): string[] =>
+  fnParseQueriesWithLineStarts(strRawQuery).map((p) => p.strQuery);
 
 // =============================================
 // MSSQL 트랜잭션 실행
@@ -160,7 +202,8 @@ const fnExecuteMssql = async (
 // =============================================
 const fnExecuteMysql = async (
   objDbConn: mysql.PoolConnection,
-  arrQueries: string[]
+  arrQueries: string[],
+  arrNLineStart: number[],
 ): Promise<IQueryPartResult[]> => {
   const arrResults: IQueryPartResult[] = [];
 
@@ -168,13 +211,18 @@ const fnExecuteMysql = async (
   try {
     for (let i = 0; i < arrQueries.length; i++) {
       const strQuery = arrQueries[i];
-      const [objResult] = await objDbConn.execute<mysql.ResultSetHeader>(strQuery);
+      try {
+        const [objResult] = await objDbConn.execute<mysql.ResultSetHeader>(strQuery);
 
-      arrResults.push({
-        nIndex: i,
-        strQuery,
-        nAffectedRows: objResult.affectedRows ?? 0,
-      });
+        arrResults.push({
+          nIndex: i,
+          strQuery,
+          nAffectedRows: objResult.affectedRows ?? 0,
+        });
+      } catch (err: any) {
+        err.nErrorLineInSet = arrNLineStart[i] ?? 1;
+        throw err;
+      }
     }
     await objDbConn.commit();
     return arrResults;
@@ -184,17 +232,28 @@ const fnExecuteMysql = async (
   }
 };
 
+/** 이벤트 다중 쿼리 세트 실행 시 — 오류 메시지에 "쿼리 세트 2/4" 등 표시 */
+export interface IQueryExecutionBatchContext {
+  /** 1부터 시작하는 세트 순번 */
+  nSetIndex: number;
+  /** 전체 세트 개수 (2 이상일 때만 사용자 메시지에 노출) */
+  nSetTotal: number;
+}
+
 // =============================================
 // 실제 쿼리 문자열과 접속 정보로 실행
 // =============================================
 export const fnExecuteQueryWithText = async (
   objConn: IDbConnection,
   strGeneratedQuery: string,
-  strEnv: 'qa' | 'live'
+  strEnv: 'qa' | 'live',
+  objBatchContext?: IQueryExecutionBatchContext,
 ): Promise<IQueryExecutionResult> => {
   const dtStart = Date.now();
   const dtExecutedAt = new Date().toISOString();
-  const arrQueries = fnParseQueries(strGeneratedQuery);
+  const arrParsed = fnParseQueriesWithLineStarts(strGeneratedQuery);
+  const arrQueries = arrParsed.map((p) => p.strQuery);
+  const arrNLineStart = arrParsed.map((p) => p.nLineStart);
 
   if (arrQueries.length === 0) {
     return {
@@ -218,7 +277,7 @@ export const fnExecuteQueryWithText = async (
     } else if (objConn.strDbType === 'mysql') {
       const objDbConn = await fnGetMysqlConnection(objConn);
       try {
-        arrResults = await fnExecuteMysql(objDbConn, arrQueries);
+        arrResults = await fnExecuteMysql(objDbConn, arrQueries, arrNLineStart);
       } finally {
         objDbConn.release();
       }
@@ -242,15 +301,27 @@ export const fnExecuteQueryWithText = async (
     };
   } catch (error: any) {
     const nElapsedMs = Date.now() - dtStart;
-    const strErrorMsg = error?.message || String(error);
+    const strErrorMsg =
+      objConn.strDbType === 'mysql'
+        ? fnGetMysqlServerMessage(error)
+        : (error?.message || String(error));
 
     // 오류 상세 로그: DB 종류별 오류 코드 + 쿼리 첫 줄 포함
     const strQueryPreview = strGeneratedQuery.split('\n')[0].trim().slice(0, 80);
+    const strMysqlLogState = objConn.strDbType === 'mysql' ? (error?.sqlState ?? 'N/A') : (error?.state ?? 'N/A');
+    const strMysqlLogCode = objConn.strDbType === 'mysql' ? (error?.code ?? error?.errno ?? 'N/A') : (error?.code ?? error?.number ?? 'N/A');
     console.error(`[쿼리 실행 실패] ──────────────────────────────`);
     console.error(`  환경: ${strEnv.toUpperCase()} | 프로덕트: ${objConn.strProductName}`);
     console.error(`  DB: ${objConn.strDbType} | ${objConn.strHost}:${objConn.nPort}/${objConn.strDatabase}`);
-    console.error(`  오류 코드: ${error?.code ?? error?.number ?? 'N/A'} | 상태: ${error?.state ?? 'N/A'}`);
+    console.error(`  오류 코드: ${strMysqlLogCode} | 상태: ${strMysqlLogState}`);
     console.error(`  메시지: ${strErrorMsg}`);
+    if (
+      objBatchContext &&
+      objBatchContext.nSetTotal > 1 &&
+      objBatchContext.nSetIndex >= 1
+    ) {
+      console.error(`  쿼리 세트: ${objBatchContext.nSetIndex}/${objBatchContext.nSetTotal}`);
+    }
     console.error(`  쿼리(첫 줄): ${strQueryPreview}`);
     console.error(`  소요: ${nElapsedMs}ms`);
     if (error?.stack) console.error(`  스택:\n${error.stack}`);
@@ -261,9 +332,19 @@ export const fnExecuteQueryWithText = async (
       await fnInvalidatePool(objConn.nId);
     }
 
-    // ── 오류 행 번호 → 실제 쿼리 내 위치 (MSSQL 배치 + BEGIN TRAN 전제, MySQL에는 lineNumber 거의 없음)
+    const strExecutionScope =
+      objBatchContext &&
+      objBatchContext.nSetTotal > 1 &&
+      objBatchContext.nSetIndex >= 1
+        ? `[쿼리 세트 ${objBatchContext.nSetIndex}/${objBatchContext.nSetTotal}]`
+        : null;
+
+    // ── 오류 행 번호 → 실제 쿼리 내 위치 (MSSQL 배치 + BEGIN TRAN 전제)
+    // MySQL: 파서가 기록한 해당 구문의 첫 비공백 줄(nErrorLineInSet)
     let strLineInfo: string | null = null;
-    if (objConn.strDbType === 'mssql' && error?.lineNumber) {
+    if (objConn.strDbType === 'mysql' && typeof error?.nErrorLineInSet === 'number') {
+      strLineInfo = `[${error.nErrorLineInSet}번째 줄]`;
+    } else if (objConn.strDbType === 'mssql' && error?.lineNumber) {
       const nBatchLine: number = error.lineNumber;
       const bHasTran = arrQueries.length > 1;
       // BEGIN TRAN 줄이 1줄이므로 트랜잭션 래퍼가 있으면 -1 오프셋
@@ -294,8 +375,26 @@ export const fnExecuteQueryWithText = async (
     }
 
     const strSqlNumber =
-      error?.number != null ? `[SQL 오류 번호: ${error.number}]` : error?.errno != null ? `[errno: ${error.errno}]` : null;
-    const strUserError = [strErrorMsg, strSqlNumber, strLineInfo].filter(Boolean).join(' ');
+      error?.number != null
+        ? `[SQL 오류 번호: ${error.number}]`
+        : error?.errno != null
+          ? `[SQL 오류 번호: ${error.errno}]`
+          : null;
+    const strSqlStateUser =
+      objConn.strDbType === 'mysql' && error?.sqlState && String(error.sqlState) !== '0'
+        ? `[SQL 상태: ${error.sqlState}]`
+        : objConn.strDbType === 'mssql' && error?.state != null
+          ? `[SQL 상태: ${error.state}]`
+          : null;
+    const strUserError = [
+      strExecutionScope,
+      strErrorMsg,
+      strSqlNumber,
+      strSqlStateUser,
+      strLineInfo,
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     // MSSQL 단일 문장은 BEGIN TRAN 없음 → 롤백 문구 부적절. MySQL은 항상 명시 트랜잭션 사용.
     const bMssqlBatchTransaction = objConn.strDbType === 'mssql' && arrQueries.length > 1;

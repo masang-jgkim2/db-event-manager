@@ -496,7 +496,10 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
           res.status(400).json({ bSuccess: false, strMessage: strMsg });
           return;
         }
-        const oneResult = await fnExecuteQueryWithText(objConn, t.strQuery, strEnv);
+        const oneResult = await fnExecuteQueryWithText(objConn, t.strQuery, strEnv, {
+          nSetIndex: i + 1,
+          nSetTotal: nSetCount,
+        });
         if (!oneResult.bSuccess) {
           const strMsg = `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`;
           if (bStream) {

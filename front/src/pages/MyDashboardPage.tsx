@@ -44,6 +44,41 @@ const N_SIM_BASELINE_MAX_MS = 180_000;
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
 
+/** 클립보드 복사 — HTTPS/Clipboard API 실패 시 textarea 폴백(모달·HTTP 환경 대응) */
+const fnCopyTextToClipboard = (str: string | undefined, msgApi?: { success: (s: string) => void; error: (s: string) => void; warning: (s: string) => void }) => {
+  const api = msgApi ?? message;
+  const s = String(str ?? '');
+  if (!s) {
+    api.warning('복사할 내용이 없습니다');
+    return;
+  }
+  const fnFallback = () => {
+    try {
+      const el = document.createElement('textarea');
+      el.value = s;
+      el.setAttribute('readonly', '');
+      el.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      const bOk = document.execCommand('copy');
+      document.body.removeChild(el);
+      if (bOk) api.success('복사되었습니다');
+      else api.error('복사에 실패했습니다');
+    } catch {
+      api.error('복사에 실패했습니다');
+    }
+  };
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(s).then(
+      () => api.success('복사되었습니다'),
+      fnFallback,
+    );
+  } else {
+    fnFallback();
+  }
+};
+
 // 기본 레이아웃의 instance_list 카드 행 — localStorage 오버레이 전까지 상수
 const objDefaultListOpts = fnFindFirstInstanceListOptions(OBJ_DEFAULT_DASHBOARD_LAYOUT);
 const ARR_DASHBOARD_CARD_ROWS: ICardLabelRow[] =
@@ -139,9 +174,7 @@ const ExecutionResultModal = ({
   const { token } = antdTheme.useToken();
   if (!objResult) return null;
 
-  const fnCopySql = (str: string) => {
-    void navigator.clipboard.writeText(str).then(() => message.success('복사되었습니다')).catch(() => message.error('복사에 실패했습니다'));
-  };
+  const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, message);
 
   const strQueryBlockStyle: React.CSSProperties = {
     padding: '8px 12px',
@@ -243,7 +276,19 @@ const ExecutionResultModal = ({
                           children: (
                             <Space direction="vertical" style={{ width: '100%' }} size={8}>
                               <div style={{ textAlign: 'right' }}>
-                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(r.strQuery)}>복사</Button>
+                                <Button
+                                  type="default"
+                                  htmlType="button"
+                                  size="small"
+                                  icon={<CopyOutlined />}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    fnCopySql(r.strQuery);
+                                  }}
+                                >
+                                  복사
+                                </Button>
                               </div>
                               <div style={strQueryBlockStyle}>{r.strQuery}</div>
                             </Space>
@@ -260,7 +305,19 @@ const ExecutionResultModal = ({
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                          <Button
+                            type="default"
+                            htmlType="button"
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              fnCopySql(objResult.strExecutedQuery);
+                            }}
+                          >
+                            복사
+                          </Button>
                         </div>
                         <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
                       </Space>
@@ -302,7 +359,19 @@ const ExecutionResultModal = ({
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
                         <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                          <Button
+                            type="default"
+                            htmlType="button"
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              fnCopySql(objResult.strExecutedQuery);
+                            }}
+                          >
+                            복사
+                          </Button>
                         </div>
                         <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
                       </Space>
@@ -729,8 +798,7 @@ const MyDashboardPage = () => {
 
   // 클립보드 복사
   const fnCopy = (str: string) => {
-    navigator.clipboard.writeText(str);
-    messageApi.success('클립보드에 복사되었습니다.');
+    fnCopyTextToClipboard(str, messageApi);
   };
 
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
