@@ -5,6 +5,7 @@ import {
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
+import type { CollapseProps } from 'antd';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
@@ -22,7 +23,7 @@ import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
-  IQueryExecutionResult, TDeployScope,
+  IQueryExecutionResult, IQueryPartResult, TDeployScope,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
@@ -235,6 +236,84 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   );
 };
 
+/** 성공 시 쿼리별 결과 Collapse items — nSetIndex/nSetTotal 있으면 세트별(쿼리 세트 N 결과) → 쿼리 2단 */
+const fnBuildQueryResultCollapseItems = (
+  arr: IQueryPartResult[],
+  strQueryBlockStyle: React.CSSProperties,
+  fnCopySql: (s: string | undefined) => void,
+): NonNullable<CollapseProps['items']> => {
+  const bGroupBySet = arr.some((r) => r.nSetIndex != null && r.nSetTotal != null);
+
+  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => ({
+    key: `${strKeyPrefix}-q${r.nIndex}`,
+    label: (
+      <Space>
+        <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
+        <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+      </Space>
+    ),
+    children: (
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        <div style={{ textAlign: 'right' }}>
+          <Button
+            type="default"
+            htmlType="button"
+            size="small"
+            icon={<CopyOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              fnCopySql(r.strQuery);
+            }}
+          >
+            복사
+          </Button>
+        </div>
+        <div style={strQueryBlockStyle}>{r.strQuery}</div>
+      </Space>
+    ),
+  });
+
+  if (!bGroupBySet) {
+    return arr.map((r) => fnOneQueryPanel(r, 'flat'));
+  }
+
+  const mapSetToParts = new Map<number, IQueryPartResult[]>();
+  for (const r of arr) {
+    const nS = r.nSetIndex ?? 1;
+    if (!mapSetToParts.has(nS)) mapSetToParts.set(nS, []);
+    mapSetToParts.get(nS)!.push(r);
+  }
+  const arrSets = Array.from(mapSetToParts.entries()).sort((a, b) => a[0] - b[0]);
+  const nSetTotalGlobal = arr.find((x) => x.nSetTotal != null)?.nSetTotal ?? arrSets.length;
+
+  return arrSets.map(([nSet, arrPart]) => ({
+    key: `set-${nSet}`,
+    label: (
+      <Space wrap align="center">
+        <Space size={4}>
+          <Text strong style={{ fontSize: 14 }}>쿼리 세트 {nSet} 결과</Text>
+          {nSetTotalGlobal > 1 ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              ({nSet}/{nSetTotalGlobal})
+            </Text>
+          ) : null}
+        </Space>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {arrPart.length}개 쿼리 · 합계 {arrPart.reduce((acc, p) => acc + p.nAffectedRows, 0)}건
+        </Text>
+      </Space>
+    ),
+    children: (
+      <Collapse
+        size="small"
+        bordered={false}
+        style={{ background: 'transparent' }}
+        items={arrPart.map((r) => fnOneQueryPanel(r, `set${nSet}`))}
+      />
+    ),
+  }));
+};
+
 // 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
@@ -339,40 +418,19 @@ const ExecutionResultModal = ({
               ...(objResult.arrQueryResults.length > 0
                 ? [{
                     key: 'queries',
-                    label: `쿼리별 결과 (${objResult.arrQueryResults.length})`,
+                    label: objResult.arrQueryResults.some((r) => r.nSetIndex != null && r.nSetTotal != null)
+                      ? `쿼리 세트별 결과 (총 ${objResult.arrQueryResults.length}개 쿼리)`
+                      : `쿼리별 결과 (${objResult.arrQueryResults.length})`,
                     children: (
                       <Collapse
                         size="small"
                         bordered={false}
                         style={{ background: 'transparent' }}
-                        items={objResult.arrQueryResults.map((r) => ({
-                          key: String(r.nIndex),
-                          label: (
-                            <Space>
-                              <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-                              <Tag color="green">{r.nAffectedRows}건 처리</Tag>
-                            </Space>
-                          ),
-                          children: (
-                            <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                              <div style={{ textAlign: 'right' }}>
-                                <Button
-                                  type="default"
-                                  htmlType="button"
-                                  size="small"
-                                  icon={<CopyOutlined />}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    fnCopySql(r.strQuery);
-                                  }}
-                                >
-                                  복사
-                                </Button>
-                              </div>
-                              <div style={strQueryBlockStyle}>{r.strQuery}</div>
-                            </Space>
-                          ),
-                        }))}
+                        items={fnBuildQueryResultCollapseItems(
+                          objResult.arrQueryResults,
+                          strQueryBlockStyle,
+                          fnCopySql,
+                        )}
                       />
                     ),
                   }]

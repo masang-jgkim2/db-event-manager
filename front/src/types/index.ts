@@ -328,6 +328,9 @@ export interface IQueryPartResult {
   nIndex: number;
   strQuery: string;
   nAffectedRows: number;
+  /** 다중 실행 세트일 때만 */
+  nSetIndex?: number;
+  nSetTotal?: number;
 }
 
 // 쿼리 전체 실행 결과

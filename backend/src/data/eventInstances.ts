@@ -26,7 +26,13 @@ export interface IStatusLog {
     strEnv: 'qa' | 'live';
     nTotalAffectedRows: number;
     nElapsedMs: number;
-    arrQueryResults: Array<{ nIndex: number; strQuery: string; nAffectedRows: number }>;
+    arrQueryResults: Array<{
+      nIndex: number;
+      strQuery: string;
+      nAffectedRows: number;
+      nSetIndex?: number;
+      nSetTotal?: number;
+    }>;
   };
 }
 

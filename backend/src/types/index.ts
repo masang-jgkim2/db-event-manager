@@ -102,9 +102,12 @@ export interface IDbConnection {
 
 // 개별 쿼리 결과
 export interface IQueryPartResult {
-  nIndex: number;       // 몇 번째 쿼리 (0부터)
+  nIndex: number;       // 해당 세트 안에서 몇 번째 쿼리 (0부터)
   strQuery: string;     // 실행된 개별 쿼리
   nAffectedRows: number;
+  /** 다중 실행 세트(arrExecutionTargets 2개 이상)일 때만 — 세트 순번(1-based) */
+  nSetIndex?: number;
+  nSetTotal?: number;
 }
 
 // 반영 범위 (DEV는 백엔드 차단, 클라이언트에서도 선택 불가)

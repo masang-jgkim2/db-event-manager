@@ -212,12 +212,13 @@ const fnExecuteMysql = async (
     for (let i = 0; i < arrQueries.length; i++) {
       const strQuery = arrQueries[i];
       try {
-        const [objResult] = await objDbConn.execute<mysql.ResultSetHeader>(strQuery);
+        // execute()는 prepared statement 프로토콜 — USE/SET SESSION 등은 지원되지 않거나 HeidiSQL(텍스트)과 달리 실패할 수 있음
+        const [objPacket] = await objDbConn.query<mysql.ResultSetHeader>(strQuery);
 
         arrResults.push({
           nIndex: i,
           strQuery,
-          nAffectedRows: objResult.affectedRows ?? 0,
+          nAffectedRows: objPacket.affectedRows ?? 0,
         });
       } catch (err: any) {
         err.nErrorLineInSet = arrNLineStart[i] ?? 1;
@@ -285,7 +286,16 @@ export const fnExecuteQueryWithText = async (
       throw new Error('지원하지 않는 DB 타입입니다.');
     }
 
-    const nTotalAffectedRows = arrResults.reduce((acc, r) => acc + r.nAffectedRows, 0);
+    const arrTagged: IQueryPartResult[] =
+      objBatchContext
+        ? arrResults.map((r) => ({
+            ...r,
+            nSetIndex: objBatchContext.nSetIndex,
+            nSetTotal: objBatchContext.nSetTotal,
+          }))
+        : arrResults;
+
+    const nTotalAffectedRows = arrTagged.reduce((acc, r) => acc + r.nAffectedRows, 0);
     const nElapsedMs = Date.now() - dtStart;
 
     console.log(`[쿼리 실행] ${strEnv.toUpperCase()} | ${objConn.strProductName} | ${nTotalAffectedRows}건 | ${nElapsedMs}ms`);
@@ -294,7 +304,7 @@ export const fnExecuteQueryWithText = async (
       bSuccess: true,
       strEnv,
       strExecutedQuery: strGeneratedQuery,
-      arrQueryResults: arrResults,
+      arrQueryResults: arrTagged,
       nTotalAffectedRows,
       nElapsedMs,
       dtExecutedAt,
