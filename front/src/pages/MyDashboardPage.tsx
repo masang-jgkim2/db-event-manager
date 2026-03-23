@@ -7,7 +7,7 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import {
-  EyeOutlined, CheckOutlined,
+  EyeOutlined, CheckOutlined, ClockCircleOutlined,
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
@@ -29,7 +29,6 @@ import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
-import { DashboardLayoutRenderer } from '../components/dashboard/DashboardLayoutRenderer';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 
 const { Title, Text } = Typography;
@@ -734,7 +733,8 @@ const MyDashboardPage = () => {
     messageApi.success('클립보드에 복사되었습니다.');
   };
 
-  // 상태별 "다음 액션 가능" 권한 — 버튼 노출 (내 처리 대기 건수는 위젯·dashboardFilterEngine 과 동일 맵)
+  // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
+  // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
   const OBJ_ACTION_PERMISSIONS: Record<string, string[]> = {
     event_created: ['my_dashboard.request_confirm'],
     confirm_requested: ['my_dashboard.confirm'],
@@ -745,6 +745,13 @@ const MyDashboardPage = () => {
     live_deployed: ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
     live_verified: ['my_dashboard.request_live_rereq'],
   };
+  const nTotal = arrAllInstances.length;
+  const nMyAction = arrAllInstances.filter((e) =>
+    !e.bPermanentlyRemoved &&
+    OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
+  ).length;
+  const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
+  const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
@@ -1334,16 +1341,21 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         )}
       </div>
 
-      {/* 위젯 보드 (기본 레이아웃) */}
-      <div style={{ marginBottom: 24 }}>
-        <DashboardLayoutRenderer
-          objLayout={OBJ_DEFAULT_DASHBOARD_LAYOUT}
-          arrAllInstances={arrAllInstances}
-          nUserId={user?.nId ?? 0}
-          arrPermissions={arrPermissions as string[]}
-          bLoading={bLoading}
-        />
-      </div>
+      {/* 통계 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+        </Col>
+      </Row>
 
       {/* 탭 + 필터 + 목록 */}
       <Card>
