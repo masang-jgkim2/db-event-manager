@@ -10,7 +10,7 @@ export interface ICustomDashboardMetricRow {
   strMetricId: string;
 }
 
-/** 접기 가능한 그룹 — 상태·진행 여부로 인스턴스 필터 */
+/** 접기 가능한 그룹 — 상태·진행 여부·기간으로 인스턴스 필터 */
 export interface ICustomDashboardEventGroup {
   strGroupKey: string;
   strTitle: string;
@@ -18,6 +18,12 @@ export interface ICustomDashboardEventGroup {
   arrStatus?: TEventStatus[];
   /** true: live_verified 제외(진행 중만). arrStatus 와 AND */
   bInProgressOnly?: boolean;
+  /** 기간 필터 시 비교할 날짜(미지정이면 deploy) */
+  strDateBasis?: 'deploy' | 'created';
+  /** YYYY-MM-DD 시작(포함). 비우면 하한 없음 */
+  strPeriodStart?: string;
+  /** YYYY-MM-DD 종료(포함). 비우면 상한 없음 */
+  strPeriodEnd?: string;
 }
 
 export interface ICustomEventDashboardCard {
