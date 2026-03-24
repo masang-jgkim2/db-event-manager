@@ -36,6 +36,7 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 ## 주요 파일 위치
 
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
+- **Generative UI(스펙 JSON→AntD 화이트리스트)**: `docs/GENERATIVE-UI-PATTERNS.md`, `front/src/types/generativeUi.ts`, `components/GenerativeUiRenderer.tsx`, `constants/generativeUiSample.ts`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
 
 ```
@@ -48,9 +49,10 @@ backend/src/
   middleware/permissionMiddleware.ts     # 권한 검사
 
 front/src/
-  pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (통계 프로토타입 카드: instanceAggregateStats; 숫자·테이블·맞춤 카드, DnD·localStorage)
+  pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (숫자·테이블·맞춤 카드 multi-row, DnD·리사이즈·localStorage)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
   pages/QueryPage.tsx                     # 이벤트 생성
+  components/GenerativeUiRenderer.tsx     # Generative UI — IUiSpec → statistic/table/alert/text_plain
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청
   components/SettingsDrawer.tsx          # 굳굳 설정 (재미 모드 스위치)
@@ -59,6 +61,8 @@ front/src/
   hooks/useEventStream.ts                 # SSE 연결 훅
   components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
   types/index.ts                          # ARR_PERMISSION_GROUPS, 권한 라벨(역할 권한 화면)
+  types/generativeUi.ts                   # IUiSpec, TUiBlock (Generative UI 스펙)
+  constants/generativeUiSample.ts       # OBJ_SAMPLE_UI_SPEC (데모용)
 ```
 
 ## 권한·메뉴 (세분화)
