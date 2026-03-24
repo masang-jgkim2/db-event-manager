@@ -1895,14 +1895,14 @@ const DashboardPage = () => {
                     title="프로덕트 현황"
                     bContentFill
                   >
-                    <AppTable
-                      strTableId="dashboard_products"
-                      dataSource={arrProducts}
+        <AppTable
+          strTableId="dashboard_products"
+          dataSource={arrProducts}
                       columns={arrProductColumnsFiltered}
-                      pagination={false}
+          pagination={false}
                       size={strTableSize}
-                      strEmptyText="등록된 프로덕트가 없습니다."
-                    />
+          strEmptyText="등록된 프로덕트가 없습니다."
+        />
                   </DashboardCardContent>
                 )}
                 {fnIsCustomDashboardId(strId) && (() => {
