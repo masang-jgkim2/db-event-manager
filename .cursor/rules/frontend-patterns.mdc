@@ -88,6 +88,7 @@ export const fnApiGetProducts = () =>
 - **카드 본문(라벨←필드)**: `InstanceCardLabelRows` + `OBJ_DEFAULT_DASHBOARD_LAYOUT`의 `instance_list.objOptions.arrCardRows`(비우면 폴백 행). 상세는 `docs/DASHBOARD-LAYOUT-SPEC.md`, `front/src/types/dashboardLayout.ts`.
 - **재요청 UX**: QA 확인 / LIVE 확인 시 Popconfirm(취소·확인·재요청 버튼). 굳굳 설정의 **재미 모드** 켜면 재요청은 **롱프레스**(`RequestWithLongPressButton`)로만 동작.
 - **테이블**: `AppTable` 사용. No. 컬럼 `fnMakeIndexColumn(55)` 최좌측, 확장 컬럼 `expandable.columnWidth: 24`.
+- **SQL 클립보드**: `copy` 이벤트에서 `clipboardData.setData('text/plain')` → `execCommand('copy')` → `clipboard.writeText` 후 가능하면 `readText`로 검증(불일치 시 성공 토스트 금지). `onMouseDown` + `preventDefault` 금지.
 
 ## 이벤트 대시보드 (DashboardPage)
 

@@ -1,9 +1,8 @@
-import dotenv from 'dotenv';
+// 다른 모듈이 로드되기 전에 .env 반영 (DB 설정 등 process.env 의존)
+import 'dotenv/config';
 import { fnInitUsers } from './data/users';
 import { fnHasSeedTest, fnLoadSeedTest, fnApplySeedToMemory } from './data/seedTest';
 import app from './app';
-
-dotenv.config();
 
 const nPort = Number(process.env.PORT) || 4000;
 

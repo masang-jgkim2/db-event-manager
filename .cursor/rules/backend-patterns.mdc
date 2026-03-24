@@ -78,6 +78,7 @@ userRepository.findByUserId(strId);
 
 - POST/PUT `/api/db-connections`: 접속 `strDbType`은 해당 프로덕트 `products.strDbType`과 일치해야 함.
 - 실행: `fnExecuteQueryWithText` + `fnResolveExecuteConnection` (세트별 `nDbConnectionId` 또는 레거시 GAME).
+- **MSSQL `encrypt`**: `dbManager`에서 `process.env.MSSQL_ENCRYPT !== 'false'` 이면 `options.encrypt: true`. 구버전/비TLS 서버 연결 실패 시 `.env`에 `MSSQL_ENCRYPT=false`. 엔트리 `import 'dotenv/config'`로 환경변수 선로드.
 
 ## MSSQL 멀티쿼리
 

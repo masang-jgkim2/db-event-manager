@@ -52,11 +52,6 @@ export interface IProductSummaryOptions {
   strDisplay?: string;
 }
 
-/** 상단 KPI 칸 (스펙 외 보드 전용 — 4칸 통계 대체) */
-export interface IKpiStatOptions {
-  strKpi: 'total' | 'my_action' | 'in_progress' | 'completed';
-}
-
 export interface IDashboardWidget {
   strWidgetId: string;
   strWidgetType: string;

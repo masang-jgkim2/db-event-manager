@@ -22,6 +22,8 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 - **접속 등록**: `products.strDbType`(mssql/mysql)과 접속의 `strDbType`이 **일치**해야 함 (`dbConnectionController`).
 - **시스템 DB**: `db/systemDb.ts`는 마이그레이션용 **MSSQL 전용**. 타깃 게임 DB 실행과 별개.
 - **DB 스키마 정합성**: `docs/SCHEMA-DATA-REVIEW.md` (인메모리/타입 vs `docs/schema.sql`).
+- **MSSQL 암호화**: `dbManager`가 `options.encrypt` 설정. `.env`에 **`MSSQL_ENCRYPT=false`** 이면 비암호화 TDS(구 SQL Server 등). 미설정 시 암호화 사용. 백엔드 `index.ts`는 **`import 'dotenv/config'`** 로 `.env` 선로드.
+- **MySQL 실행**: `queryExecutor`의 MySQL 경로는 **`connection.query()`** (텍스트 프로토콜). `execute()`(prepared)는 `USE`/`SET SESSION` 등과 호환되지 않아 HeidiSQL과 결과가 달라질 수 있음.
 
 ## 핵심 도메인
 
@@ -47,7 +49,7 @@ backend/src/
 
 front/src/
   pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (숫자·테이블·맞춤 카드 multi-row, DnD·리사이즈·localStorage)
-  pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress: 이전 소요 시간 비례 rAF 시뮬 + SSE max)
+  pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
   pages/QueryPage.tsx                     # 이벤트 생성
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청

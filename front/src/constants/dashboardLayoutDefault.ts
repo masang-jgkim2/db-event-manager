@@ -17,26 +17,6 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
   ],
   arrWidgets: [
     {
-      strWidgetId: 'w-kpi-total',
-      strWidgetType: 'kpi_stat',
-      objOptions: { strKpi: 'total' },
-    },
-    {
-      strWidgetId: 'w-kpi-my',
-      strWidgetType: 'kpi_stat',
-      objOptions: { strKpi: 'my_action' },
-    },
-    {
-      strWidgetId: 'w-kpi-progress',
-      strWidgetType: 'kpi_stat',
-      objOptions: { strKpi: 'in_progress' },
-    },
-    {
-      strWidgetId: 'w-kpi-done',
-      strWidgetType: 'kpi_stat',
-      objOptions: { strKpi: 'completed' },
-    },
-    {
       strWidgetId: 'w-status',
       strWidgetType: 'status_summary',
       strTitle: '프로세스별 진행',
@@ -49,16 +29,15 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
     {
       strWidgetId: 'w-list',
       strWidgetType: 'instance_list',
-      strTitle: '내 관여 이벤트 (미리보기)',
+      strTitle: '내 관여 이벤트',
       objFilter: {
         strInstanceFilter: 'involved',
         bExcludeDeleted: true,
       },
       objOptions: {
-        strView: 'table',
+        strView: 'card',
         nPageSize: 8,
         strDensity: 'compact',
-        arrColumns: ['strEventName', 'strStatus', 'strProductName', 'dtDeployDate'],
         arrCardRows: [
           { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
           { strLabel: '서비스', strFieldPath: 'strServiceAbbr', strRender: 'text' },
@@ -76,7 +55,6 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
     {
       strWidgetId: 'w-cal',
       strWidgetType: 'deploy_calendar',
-      strTitle: '이번 달 배포 일정',
       objFilter: { bExcludeDeleted: true },
       objOptions: { strView: 'month', nWeeksAhead: 4 },
     },
@@ -86,21 +64,7 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
       nOrder: 0,
       strHeight: 'auto',
       arrColumnSpans: [
-        { strWidgetId: 'w-kpi-total', nColSpan: 6 },
-        { strWidgetId: 'w-kpi-my', nColSpan: 6 },
-        { strWidgetId: 'w-kpi-progress', nColSpan: 6 },
-        { strWidgetId: 'w-kpi-done', nColSpan: 6 },
-      ],
-    },
-    {
-      nOrder: 1,
-      strHeight: 'auto',
-      arrColumnSpans: [{ strWidgetId: 'w-status', nColSpan: 24 }],
-    },
-    {
-      nOrder: 2,
-      strHeight: 'auto',
-      arrColumnSpans: [
+        { strWidgetId: 'w-status', nColSpan: 24 },
         { strWidgetId: 'w-cal', nColSpan: 12 },
         { strWidgetId: 'w-list', nColSpan: 12 },
       ],

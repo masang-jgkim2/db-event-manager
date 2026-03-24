@@ -5,9 +5,10 @@ import {
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
+import type { CollapseProps } from 'antd';
 import dayjs from 'dayjs';
 import {
-  EyeOutlined, CheckOutlined,
+  EyeOutlined, CheckOutlined, ClockCircleOutlined,
   SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
@@ -22,14 +23,13 @@ import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
-  IQueryExecutionResult, TDeployScope,
+  IQueryExecutionResult, IQueryPartResult, TDeployScope,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
-import { DashboardLayoutRenderer } from '../components/dashboard/DashboardLayoutRenderer';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 
 const { Title, Text } = Typography;
@@ -44,6 +44,117 @@ const N_SIM_BASELINE_MIN_MS = 80;
 const N_SIM_BASELINE_MAX_MS = 180_000;
 
 const SKIP_CONFIRM_KEY = 'dashboard_skip_confirm_';
+
+/** Ant Design message.useMessage() 인스턴스와 호환 */
+type TMessageLike = {
+  success: (s: string) => void;
+  error: (s: string) => void;
+  warning: (s: string) => void;
+};
+
+/**
+ * 클립보드 복사 — ① copy 이벤트에서 setData(가장 신뢰) ② execCommand ③ writeText+readText 검증.
+ * execCommand/writeText만 성공으로 치면 토스트만 뜨고 붙여넣기 비는 환경이 있음.
+ */
+const fnCopyTextToClipboard = (str: string | undefined, msgApi?: TMessageLike) => {
+  const api = msgApi ?? message;
+  const s = String(str ?? '');
+  if (!s) {
+    api.warning('복사할 내용이 없습니다');
+    return;
+  }
+
+  const strManualHint = '아래 SQL 블록을 드래그한 뒤 Ctrl+C 하세요.';
+
+  /** copy 이벤트에서 clipboardData 직접 기록 — 브라우저 기본 복사보다 실제 반영률 높음 */
+  const fnTryClipboardDataEvent = (): boolean => {
+    try {
+      let bFired = false;
+      const fnOnCopy = (e: ClipboardEvent) => {
+        e.clipboardData?.setData('text/plain', s);
+        e.preventDefault();
+        bFired = true;
+      };
+      document.addEventListener('copy', fnOnCopy, true);
+      try {
+        const el = document.createElement('textarea');
+        el.value = s;
+        el.setAttribute('readonly', 'readonly');
+        el.style.cssText =
+          'position:fixed;left:0;top:0;width:320px;height:120px;margin:0;padding:8px;border:1px solid #ccc;opacity:0.02;z-index:2147483647;font-size:12px;line-height:1.4;';
+        document.body.appendChild(el);
+        el.focus({ preventScroll: true });
+        el.select();
+        el.setSelectionRange(0, s.length);
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      } finally {
+        document.removeEventListener('copy', fnOnCopy, true);
+      }
+      return bFired;
+    } catch {
+      return false;
+    }
+  };
+
+  /** document.execCommand('copy') — 보조 */
+  const fnTryExecCommandSync = (): boolean => {
+    try {
+      const el = document.createElement('textarea');
+      el.value = s;
+      el.setAttribute('readonly', 'readonly');
+      el.style.cssText =
+        'position:fixed;left:0;top:0;width:320px;height:120px;margin:0;padding:8px;border:1px solid #ccc;opacity:0.02;z-index:2147483647;font-size:12px;line-height:1.4;';
+      document.body.appendChild(el);
+      el.focus({ preventScroll: true });
+      el.select();
+      el.setSelectionRange(0, s.length);
+      const bOk = document.execCommand('copy');
+      document.body.removeChild(el);
+      return bOk;
+    } catch {
+      return false;
+    }
+  };
+
+  if (fnTryClipboardDataEvent()) {
+    api.success('복사되었습니다');
+    return;
+  }
+
+  if (fnTryExecCommandSync()) {
+    api.success('복사되었습니다');
+    return;
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    void navigator.clipboard.writeText(s).then(
+      async () => {
+        try {
+          if (navigator.clipboard?.readText) {
+            const t = await navigator.clipboard.readText();
+            if (t !== s) {
+              console.warn('[클립보드] writeText 후 readText 불일치 | 길이:', s.length, t.length);
+              api.error(`클립보드에 반영되지 않았을 수 있습니다. ${strManualHint}`);
+              return;
+            }
+          }
+        } catch {
+          // 읽기 권한 없음 — 검증 불가, 보수적 안내
+          api.warning(`복사됐을 수 있습니다. 메모장에 붙여넣기로 확인해 주세요. (${strManualHint})`);
+          return;
+        }
+        api.success('복사되었습니다');
+      },
+      () => {
+        api.error(`복사에 실패했습니다. ${strManualHint}`);
+      },
+    );
+    return;
+  }
+
+  api.error(`복사에 실패했습니다. ${strManualHint}`);
+};
 
 // 기본 레이아웃의 instance_list 카드 행 — localStorage 오버레이 전까지 상수
 const objDefaultListOpts = fnFindFirstInstanceListOptions(OBJ_DEFAULT_DASHBOARD_LAYOUT);
@@ -125,24 +236,103 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   );
 };
 
+/** 성공 시 쿼리별 결과 Collapse items — nSetIndex/nSetTotal 있으면 세트별(쿼리 세트 N 결과) → 쿼리 2단 */
+const fnBuildQueryResultCollapseItems = (
+  arr: IQueryPartResult[],
+  strQueryBlockStyle: React.CSSProperties,
+  fnCopySql: (s: string | undefined) => void,
+): NonNullable<CollapseProps['items']> => {
+  const bGroupBySet = arr.some((r) => r.nSetIndex != null && r.nSetTotal != null);
+
+  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => ({
+    key: `${strKeyPrefix}-q${r.nIndex}`,
+    label: (
+      <Space>
+        <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
+        <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+      </Space>
+    ),
+    children: (
+      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+        <div style={{ textAlign: 'right' }}>
+          <Button
+            type="default"
+            htmlType="button"
+            size="small"
+            icon={<CopyOutlined />}
+            onClick={(e) => {
+              e.stopPropagation();
+              fnCopySql(r.strQuery);
+            }}
+          >
+            복사
+          </Button>
+        </div>
+        <div style={strQueryBlockStyle}>{r.strQuery}</div>
+      </Space>
+    ),
+  });
+
+  if (!bGroupBySet) {
+    return arr.map((r) => fnOneQueryPanel(r, 'flat'));
+  }
+
+  const mapSetToParts = new Map<number, IQueryPartResult[]>();
+  for (const r of arr) {
+    const nS = r.nSetIndex ?? 1;
+    if (!mapSetToParts.has(nS)) mapSetToParts.set(nS, []);
+    mapSetToParts.get(nS)!.push(r);
+  }
+  const arrSets = Array.from(mapSetToParts.entries()).sort((a, b) => a[0] - b[0]);
+  const nSetTotalGlobal = arr.find((x) => x.nSetTotal != null)?.nSetTotal ?? arrSets.length;
+
+  return arrSets.map(([nSet, arrPart]) => ({
+    key: `set-${nSet}`,
+    label: (
+      <Space wrap align="center">
+        <Space size={4}>
+          <Text strong style={{ fontSize: 14 }}>쿼리 세트 {nSet} 결과</Text>
+          {nSetTotalGlobal > 1 ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              ({nSet}/{nSetTotalGlobal})
+            </Text>
+          ) : null}
+        </Space>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {arrPart.length}개 쿼리 · 합계 {arrPart.reduce((acc, p) => acc + p.nAffectedRows, 0)}건
+        </Text>
+      </Space>
+    ),
+    children: (
+      <Collapse
+        size="small"
+        bordered={false}
+        style={{ background: 'transparent' }}
+        items={arrPart.map((r) => fnOneQueryPanel(r, `set${nSet}`))}
+      />
+    ),
+  }));
+};
+
 // 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
   objResult,
   strEnv,
   onClose,
+  messageApi,
 }: {
   bOpen: boolean;
   objResult: IQueryExecutionResult | null;
   strEnv: 'qa' | 'live';
   onClose: () => void;
+  /** useMessage() 인스턴스 — 모달 위에 토스트가 뜨도록 필수 */
+  messageApi: TMessageLike;
 }) => {
   const { token } = antdTheme.useToken();
   if (!objResult) return null;
 
-  const fnCopySql = (str: string) => {
-    void navigator.clipboard.writeText(str).then(() => message.success('복사되었습니다')).catch(() => message.error('복사에 실패했습니다'));
-  };
+  const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, messageApi);
 
   const strQueryBlockStyle: React.CSSProperties = {
     padding: '8px 12px',
@@ -174,6 +364,7 @@ const ExecutionResultModal = ({
         <Button key="close" type="primary" onClick={onClose}>확인</Button>,
       ]}
       width={780}
+      destroyOnClose
     >
       {objResult.bSuccess ? (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -227,29 +418,19 @@ const ExecutionResultModal = ({
               ...(objResult.arrQueryResults.length > 0
                 ? [{
                     key: 'queries',
-                    label: `쿼리별 결과 (${objResult.arrQueryResults.length})`,
+                    label: objResult.arrQueryResults.some((r) => r.nSetIndex != null && r.nSetTotal != null)
+                      ? `쿼리 세트별 결과 (총 ${objResult.arrQueryResults.length}개 쿼리)`
+                      : `쿼리별 결과 (${objResult.arrQueryResults.length})`,
                     children: (
                       <Collapse
                         size="small"
                         bordered={false}
                         style={{ background: 'transparent' }}
-                        items={objResult.arrQueryResults.map((r) => ({
-                          key: String(r.nIndex),
-                          label: (
-                            <Space>
-                              <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-                              <Tag color="green">{r.nAffectedRows}건 처리</Tag>
-                            </Space>
-                          ),
-                          children: (
-                            <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                              <div style={{ textAlign: 'right' }}>
-                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(r.strQuery)}>복사</Button>
-                              </div>
-                              <div style={strQueryBlockStyle}>{r.strQuery}</div>
-                            </Space>
-                          ),
-                        }))}
+                        items={fnBuildQueryResultCollapseItems(
+                          objResult.arrQueryResults,
+                          strQueryBlockStyle,
+                          fnCopySql,
+                        )}
                       />
                     ),
                   }]
@@ -261,7 +442,18 @@ const ExecutionResultModal = ({
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                          <Button
+                            type="default"
+                            htmlType="button"
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fnCopySql(objResult.strExecutedQuery);
+                            }}
+                          >
+                            복사
+                          </Button>
                         </div>
                         <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
                       </Space>
@@ -303,7 +495,18 @@ const ExecutionResultModal = ({
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
                         <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopySql(objResult.strExecutedQuery)}>복사</Button>
+                          <Button
+                            type="default"
+                            htmlType="button"
+                            size="small"
+                            icon={<CopyOutlined />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fnCopySql(objResult.strExecutedQuery);
+                            }}
+                          >
+                            복사
+                          </Button>
                         </div>
                         <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
                       </Space>
@@ -730,11 +933,11 @@ const MyDashboardPage = () => {
 
   // 클립보드 복사
   const fnCopy = (str: string) => {
-    navigator.clipboard.writeText(str);
-    messageApi.success('클립보드에 복사되었습니다.');
+    fnCopyTextToClipboard(str, messageApi);
   };
 
-  // 상태별 "다음 액션 가능" 권한 — 버튼 노출 (내 처리 대기 건수는 위젯·dashboardFilterEngine 과 동일 맵)
+  // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
+  // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
   const OBJ_ACTION_PERMISSIONS: Record<string, string[]> = {
     event_created: ['my_dashboard.request_confirm'],
     confirm_requested: ['my_dashboard.confirm'],
@@ -745,6 +948,13 @@ const MyDashboardPage = () => {
     live_deployed: ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
     live_verified: ['my_dashboard.request_live_rereq'],
   };
+  const nTotal = arrAllInstances.length;
+  const nMyAction = arrAllInstances.filter((e) =>
+    !e.bPermanentlyRemoved &&
+    OBJ_ACTION_PERMISSIONS[e.strStatus]?.some((p) => arrPermissions.includes(p))
+  ).length;
+  const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
+  const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
@@ -1334,16 +1544,21 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         )}
       </div>
 
-      {/* 위젯 보드 (기본 레이아웃) */}
-      <div style={{ marginBottom: 24 }}>
-        <DashboardLayoutRenderer
-          objLayout={OBJ_DEFAULT_DASHBOARD_LAYOUT}
-          arrAllInstances={arrAllInstances}
-          nUserId={user?.nId ?? 0}
-          arrPermissions={arrPermissions as string[]}
-          bLoading={bLoading}
-        />
-      </div>
+      {/* 통계 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+        </Col>
+      </Row>
 
       {/* 탭 + 필터 + 목록 */}
       <Card>
@@ -1940,6 +2155,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         objResult={objExecResult}
         strEnv={strExecEnv}
         onClose={() => setBExecResultOpen(false)}
+        messageApi={messageApi}
       />
 
       {/* 쿼리 실행 중 진행율 팝업 — 완료 시 100% 잠깐 노출 후 페이드 아웃 */}
