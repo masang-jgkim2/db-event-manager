@@ -33,6 +33,8 @@ export interface ICustomEventDashboardCard {
   arrRows?: ICustomDashboardMetricRow[];
   /** 이벤트 목록 그룹(선택) — 둘 중 하나 이상 필요 */
   arrEventGroups?: ICustomDashboardEventGroup[];
+  /** 카드 상단 요약 — arrEventGroups 중 strGroupKey 와 일치하는 그룹 필터 기준 자동 표시 */
+  strSummaryGroupKey?: string;
 }
 
 /** 삽입 위치 — 생성 시 한 번 적용, 이후 DnD로 이동 가능 */

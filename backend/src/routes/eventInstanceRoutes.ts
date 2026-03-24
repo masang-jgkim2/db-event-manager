@@ -53,8 +53,8 @@ router.get('/stream', fnAuthMiddleware, fnRequireAnyPermission('my_dashboard.vie
 // 모든 나머지 라우트 인증 필수
 router.use(fnAuthMiddleware);
 
-// GET /api/event-instances - 목록 조회 (나의 대시보드 또는 이벤트 대시보드 통계용)
-router.get('/', fnRequireAnyPermission('my_dashboard.view', 'dashboard.view'), fnGetInstances);
+// GET /api/event-instances - 목록 조회 (나의 대시보드 보기 권한)
+router.get('/', fnRequireAnyPermission('my_dashboard.view'), fnGetInstances);
 
 // GET /api/event-instances/template-exec-elapsed — :id 보다 먼저 등록 (프로그레스 바용)
 router.get('/template-exec-elapsed', fnRequireAnyPermission('my_dashboard.view'), fnGetTemplateExecElapsed);
