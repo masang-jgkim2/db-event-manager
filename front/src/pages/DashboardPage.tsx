@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import {
   Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, InputNumber, Segmented, Collapse, Table,
-  Divider, Spin, DatePicker,
+  Divider, Spin, DatePicker, Tabs,
 } from 'antd';
 import dayjs from 'dayjs';
 import { Resizable } from 're-resizable';
@@ -45,6 +45,12 @@ import type { IProduct, IService, TEventStatus, IEventInstance } from '../types'
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
+import {
+  fnFilterInstancesForStats,
+  fnAggregateInstancesByCreator,
+  fnAggregateInstancesByProduct,
+  fnAggregateInstancesByEventTemplate,
+} from '../utils/instanceAggregateStats';
 
 const { Title, Text } = Typography;
 
@@ -898,6 +904,7 @@ const DashboardPage = () => {
     setBLoadingStats(true);
     const bLoadInstances =
       fnHas('my_dashboard.view') ||
+      fnHas('dashboard.view') ||
       arrCustomCards.some((c) => (c.arrEventGroups?.length ?? 0) > 0);
     const fnLoad = async () => {
       const arrPromises: Promise<void>[] = [];
@@ -982,6 +989,46 @@ const DashboardPage = () => {
     fnLoad();
     return () => { bMounted = false; };
   }, [arrPermissions, arrCustomCards]);
+
+  const arrStatsInstances = useMemo(
+    () => fnFilterInstancesForStats(arrDashboardInstances),
+    [arrDashboardInstances],
+  );
+  const arrAggByCreator = useMemo(
+    () => fnAggregateInstancesByCreator(arrStatsInstances),
+    [arrStatsInstances],
+  );
+  const arrAggByProduct = useMemo(
+    () => fnAggregateInstancesByProduct(arrStatsInstances),
+    [arrStatsInstances],
+  );
+  const arrAggByTemplate = useMemo(
+    () => fnAggregateInstancesByEventTemplate(arrStatsInstances),
+    [arrStatsInstances],
+  );
+
+  const arrStatsTableColumns = useMemo(
+    () => [
+      { title: '구분', dataIndex: 'strLabel' as const, key: 'strLabel', ellipsis: true },
+      {
+        title: '전체',
+        dataIndex: 'nCount' as const,
+        key: 'nCount',
+        width: 88,
+        align: 'right' as const,
+        render: (n: number) => <Tag color="blue">{n}건</Tag>,
+      },
+      {
+        title: '진행 중',
+        dataIndex: 'nInProgress' as const,
+        key: 'nInProgress',
+        width: 96,
+        align: 'right' as const,
+        render: (n: number) => (n > 0 ? <Tag color="orange">{n}건</Tag> : <Text type="secondary">0</Text>),
+      },
+    ],
+    [],
+  );
 
   const fnRenderCount = (n: number | null, bAllowed: boolean) => {
     if (!bAllowed) return <span style={{ color: 'var(--ant-color-text-tertiary)' }}>—</span>;
@@ -1219,6 +1266,68 @@ const DashboardPage = () => {
           카드 추가
         </Button>
       </div>
+
+      <Card
+        title="이벤트 인스턴스 통계 (프로토타입)"
+        style={{ marginBottom: 24 }}
+        size="small"
+        styles={{ body: { paddingTop: 12 } }}
+      >
+        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+          <code>GET /api/event-instances?filter=all</code> 결과를 클라이언트에서 집계합니다. 영구 삭제 건은 제외합니다.
+          상위 50행까지 표시합니다. API는 <code>dashboard.view</code> 또는 <code>my_dashboard.view</code> 권한으로 호출됩니다.
+        </Text>
+        {bLoadingStats && arrDashboardInstances.length === 0 ? (
+          <Spin />
+        ) : (
+          <Tabs
+            items={[
+              {
+                key: 'creator',
+                label: '생성자별',
+                children: (
+                  <Table
+                    size="small"
+                    rowKey="strKey"
+                    pagination={{ pageSize: 8, showSizeChanger: true, pageSizeOptions: [8, 16, 32] }}
+                    columns={arrStatsTableColumns}
+                    dataSource={arrAggByCreator}
+                    locale={{ emptyText: '데이터 없음' }}
+                  />
+                ),
+              },
+              {
+                key: 'product',
+                label: '프로덕트별',
+                children: (
+                  <Table
+                    size="small"
+                    rowKey="strKey"
+                    pagination={{ pageSize: 8, showSizeChanger: true, pageSizeOptions: [8, 16, 32] }}
+                    columns={arrStatsTableColumns}
+                    dataSource={arrAggByProduct}
+                    locale={{ emptyText: '데이터 없음' }}
+                  />
+                ),
+              },
+              {
+                key: 'template',
+                label: '이벤트(템플릿)별',
+                children: (
+                  <Table
+                    size="small"
+                    rowKey="strKey"
+                    pagination={{ pageSize: 8, showSizeChanger: true, pageSizeOptions: [8, 16, 32] }}
+                    columns={arrStatsTableColumns}
+                    dataSource={arrAggByTemplate}
+                    locale={{ emptyText: '데이터 없음' }}
+                  />
+                ),
+              },
+            ]}
+          />
+        )}
+      </Card>
 
       <Modal
         title="카드 추가"
