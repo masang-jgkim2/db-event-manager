@@ -48,7 +48,8 @@ backend/src/
   middleware/permissionMiddleware.ts     # 권한 검사
 
 front/src/
-  pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (숫자·테이블·맞춤 카드 multi-row, DnD·리사이즈·localStorage)
+  pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (숫자·테이블·맞춤 카드: Step2 순서 그룹→요약(선택)→숫자 지표, strSummaryGroupKey로 제목 아래 행수·날짜·남은 기간 자동, 그룹 strGroupKey 유지, DnD·리사이즈·localStorage)
+  types/eventDashboardCustom.ts           # 맞춤 카드 스키마(ICustomEventDashboardCard·strSummaryGroupKey·ICustomDashboardEventGroup)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
   pages/QueryPage.tsx                     # 이벤트 생성
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)

@@ -120,6 +120,28 @@ const STORAGE_KEY_SIZES = 'db-event-manager-dashboard-card-sizes';
 const STORAGE_KEY_ORDER = 'db-event-manager-dashboard-card-order';
 const STORAGE_KEY_TABLE_SIZE = 'db-event-manager-dashboard-table-size';
 const STORAGE_KEY_CUSTOM = 'db-event-manager-dashboard-custom-cards';
+/** 맞춤 카드 이벤트 그룹 Collapse 열림 키 — 카드ID → activeKey[] */
+const STORAGE_KEY_CUSTOM_COLLAPSE = 'db-event-manager-dashboard-custom-collapse';
+
+const fnLoadCustomCollapseKeys = (): Record<string, string[]> => {
+  try {
+    const str = localStorage.getItem(STORAGE_KEY_CUSTOM_COLLAPSE);
+    if (!str) return {};
+    const obj = JSON.parse(str) as Record<string, string[]>;
+    if (!obj || typeof obj !== 'object') return {};
+    return obj;
+  } catch {
+    return {};
+  }
+};
+
+const fnSaveCustomCollapseKeys = (map: Record<string, string[]>) => {
+  try {
+    localStorage.setItem(STORAGE_KEY_CUSTOM_COLLAPSE, JSON.stringify(map));
+  } catch {
+    /* 저장 실패 무시 */
+  }
+};
 
 const fnIsCustomDashboardId = (strId: string) => strId.startsWith('custom_');
 
@@ -129,19 +151,30 @@ const fnLoadCustomCards = (): ICustomEventDashboardCard[] => {
     if (!str) return [];
     const arr = JSON.parse(str) as ICustomEventDashboardCard[];
     if (!Array.isArray(arr)) return [];
-    return arr.filter((c) => {
-      if (
-        !c ||
-        typeof c.strId !== 'string' ||
-        !fnIsCustomDashboardId(c.strId) ||
-        typeof c.strTitle !== 'string'
-      ) {
-        return false;
-      }
-      const bHasMetrics = Array.isArray(c.arrRows) && c.arrRows.length > 0;
-      const bHasGroups = Array.isArray(c.arrEventGroups) && c.arrEventGroups.length > 0;
-      return bHasMetrics || bHasGroups;
-    });
+    return arr
+      .filter((c) => {
+        if (
+          !c ||
+          typeof c.strId !== 'string' ||
+          !fnIsCustomDashboardId(c.strId) ||
+          typeof c.strTitle !== 'string'
+        ) {
+          return false;
+        }
+        const bHasMetrics = Array.isArray(c.arrRows) && c.arrRows.length > 0;
+        const bHasGroups = Array.isArray(c.arrEventGroups) && c.arrEventGroups.length > 0;
+        return bHasMetrics || bHasGroups;
+      })
+      .map((c) => {
+        const arrEv = c.arrEventGroups?.map((g, nGi) => ({
+          ...g,
+          strGroupKey:
+            typeof (g as { strGroupKey?: string }).strGroupKey === 'string'
+              ? (g as { strGroupKey: string }).strGroupKey
+              : `grp_legacy_${c.strId}_${nGi}`,
+        }));
+        return (arrEv ? { ...c, arrEventGroups: arrEv } : c) as ICustomEventDashboardCard;
+      });
   } catch {
     return [];
   }
@@ -156,6 +189,8 @@ const fnVisibleColStorageKey = (strTableId: string) => `app_table_col_visible_${
 
 /** 맞춤 카드 모달 — 이벤트 그룹 행(저장 시 ICustomDashboardEventGroup 으로 변환) */
 interface ICustomDashboardEventGroupFormRow {
+  /** 저장 시 ICustomDashboardEventGroup.strGroupKey 와 동일 */
+  strGroupKey: string;
   strTitle: string;
   arrStatus: TEventStatus[];
   bInProgressOnly: boolean;
@@ -165,11 +200,30 @@ interface ICustomDashboardEventGroupFormRow {
 }
 
 const fnDefaultCustomGroupFormRow = (): ICustomDashboardEventGroupFormRow => ({
+  strGroupKey: `grp_${crypto.randomUUID()}`,
   strTitle: '',
   arrStatus: [],
   bInProgressOnly: true,
   strDateBasis: 'deploy',
 });
+
+/** 폼 행 → 저장용 그룹(맞춤 카드 저장·요약 미리보기 공통) */
+const fnFormRowToCustomGroup = (g: ICustomDashboardEventGroupFormRow): ICustomDashboardEventGroup => {
+  const objG: ICustomDashboardEventGroup = {
+    strGroupKey: g.strGroupKey,
+    strTitle: g.strTitle.trim() || '그룹',
+    arrStatus: g.arrStatus?.length ? g.arrStatus : undefined,
+    bInProgressOnly: g.bInProgressOnly,
+  };
+  const strS = g.strPeriodStart?.trim();
+  const strE = g.strPeriodEnd?.trim();
+  if (strS || strE) {
+    objG.strDateBasis = g.strDateBasis;
+    if (strS) objG.strPeriodStart = strS;
+    if (strE) objG.strPeriodEnd = strE;
+  }
+  return objG;
+};
 
 type TTableSize = 'small' | 'middle' | 'large';
 
@@ -297,6 +351,106 @@ const fnCardRectsOverlap = (a: ICardRect, b: ICardRect): boolean => {
     a.y + a.height + g <= b.y ||
     b.y + b.height + g <= a.y
   );
+};
+
+const fnHorizontallyOverlaps = (a: ICardRect, b: ICardRect): boolean => {
+  const g = N_CARD_MIN_GAP;
+  return !(a.x + a.width + g <= b.x || b.x + b.width + g <= a.x);
+};
+
+/** 가로로 띠가 겹치도록 패딩 — 옆줄 카드와 y 스냅되지 않게 */
+const N_SNAP_H_PAD = 36;
+/** 이 픽셀 안이면 인접 카드의 상·하·쌓임 선에 y 붙임 */
+const N_SNAP_Y_TOLERANCE = 22;
+
+const fnHorizontallyAdjacentForSnap = (a: ICardRect, b: ICardRect): boolean => {
+  const ax1 = a.x - N_SNAP_H_PAD;
+  const ax2 = a.x + a.width + N_SNAP_H_PAD;
+  const bx1 = b.x - N_SNAP_H_PAD;
+  const bx2 = b.x + b.width + N_SNAP_H_PAD;
+  return !(ax2 < bx1 || bx2 < ax1);
+};
+
+/** 드래그 후 예상 위치 기준, 가로로 가까운 카드들의 y·하단·쌓임에 스냅 */
+const fnSnapDraggedCardYToNeighbors = (
+  map: Partial<Record<string, ICardRect>>,
+  strMoved: string,
+  draft: ICardRect,
+  arrVisibleIds: string[],
+): number => {
+  let nY = draft.y;
+  const arrCand: number[] = [];
+  for (const strO of arrVisibleIds) {
+    if (strO === strMoved) continue;
+    const ob = map[strO];
+    if (!ob) continue;
+    if (!fnHorizontallyAdjacentForSnap(draft, ob)) continue;
+    arrCand.push(ob.y);
+    arrCand.push(ob.y + ob.height + N_CARD_MIN_GAP);
+    arrCand.push(ob.y + ob.height - draft.height);
+    arrCand.push(ob.y - draft.height - N_CARD_MIN_GAP);
+  }
+  let nBestY = nY;
+  let nMinAbs = N_SNAP_Y_TOLERANCE + 1;
+  for (const cy of arrCand) {
+    const d = Math.abs(cy - nY);
+    if (d <= N_SNAP_Y_TOLERANCE && d < nMinAbs) {
+      nMinAbs = d;
+      nBestY = cy;
+    }
+  }
+  return Math.max(0, nBestY);
+};
+
+/**
+ * 맞춤 카드 높이 변경 후 — 앵커와 가로로 겹치고, 앵커 하단 부근부터 이어지는 카드들의 y만 위에서부터 다시 쌓음.
+ * 열기→밀림 후 접기 시에도 같은 규칙으로 y가 줄어들어 아래 카드가 원래 쌓임(최소 간격)으로 복귀.
+ * (앵커와 같은 줄·옆에 두른 카드는 ob.y < 앵커하단 근처면 제외)
+ */
+const N_ANCHOR_BELOW_BAND = 10;
+
+const fnReflowCardsBelowAnchor = (
+  map: Partial<Record<string, ICardRect>>,
+  strAnchor: string,
+  arrVisibleIds: string[],
+): Partial<Record<string, ICardRect>> => {
+  let next = { ...map };
+  const anchor = next[strAnchor];
+  if (!anchor) return map;
+
+  const nBandTop = anchor.y + anchor.height - N_ANCHOR_BELOW_BAND;
+  const arrBandIds = arrVisibleIds.filter((strO) => {
+    if (strO === strAnchor) return false;
+    const ob = next[strO];
+    if (!ob) return false;
+    if (!fnHorizontallyOverlaps(anchor, ob)) return false;
+    // 앵커 상단과 같은 높이에만 있는 옆 카드는 건드리지 않음
+    if (ob.y < nBandTop) return false;
+    return true;
+  });
+
+  arrBandIds.sort((a, b) => next[a]!.y - next[b]!.y || next[a]!.x - next[b]!.x);
+  const arrPlaced: ICardRect[] = [];
+
+  for (const strO of arrBandIds) {
+    const ob = { ...next[strO]! };
+    let nYMin = anchor.y + anchor.height + N_CARD_MIN_GAP;
+    for (const rp of arrPlaced) {
+      if (fnHorizontallyOverlaps(ob, rp)) {
+        nYMin = Math.max(nYMin, rp.y + rp.height + N_CARD_MIN_GAP);
+      }
+    }
+    ob.y = nYMin;
+    next[strO] = ob;
+    arrPlaced.push(ob);
+  }
+
+  for (let p = 0; p < arrVisibleIds.length + 3; p++) {
+    for (const strId of arrVisibleIds) {
+      next = fnApplyOverlapResolveForMovedCard(next, strId, arrVisibleIds);
+    }
+  }
+  return next;
 };
 
 /** 이동 카드를 고정 카드와 겹치지 않게 최소 평행 이동 */
@@ -451,6 +605,63 @@ const fnFormatPeriodDaySpan = (strStart?: string, strEnd?: string): string | nul
   return `${nDiff}일`;
 };
 
+/** 맞춤 카드 요약 — 선택 그룹 필터 결과로 행수·날짜·남은 기간(자동) */
+const fnComputeGroupSummaryAuto = (
+  objGroup: ICustomDashboardEventGroup,
+  arrSrc: IEventInstance[],
+): { nCount: number; strDateLine: string; strRemainLine: string } => {
+  const arrF = fnFilterInstancesForCustomGroup(objGroup, arrSrc);
+  const nCount = arrF.length;
+  const strBasis = objGroup.strDateBasis ?? 'deploy';
+
+  if (objGroup.strPeriodStart?.trim() || objGroup.strPeriodEnd?.trim()) {
+    const strDateLine = `${objGroup.strPeriodStart?.trim() || '—'} ~ ${objGroup.strPeriodEnd?.trim() || '—'} (필터 기간)`;
+    let strRemainLine = '—';
+    const strE = objGroup.strPeriodEnd?.trim();
+    if (strE) {
+      const dtE = dayjs(strE).endOf('day');
+      const now = dayjs();
+      if (dtE.isValid() && dtE.isAfter(now)) {
+        const nDays = dtE.startOf('day').diff(now.startOf('day'), 'day');
+        strRemainLine = `기간 종료까지 ${nDays}일`;
+      } else {
+        strRemainLine = '기간 종료일 지남';
+      }
+    }
+    return { nCount, strDateLine, strRemainLine };
+  }
+
+  const arrDates = arrF
+    .map((i) => fnGetInstanceDateForGroupBasis(i, strBasis))
+    .filter((d): d is dayjs.Dayjs => d != null);
+  let strDateLine = '—';
+  if (arrDates.length > 0) {
+    const sorted = [...arrDates].sort((a, b) => a.valueOf() - b.valueOf());
+    const minD = sorted[0]!.format('YYYY-MM-DD');
+    const maxD = sorted[sorted.length - 1]!.format('YYYY-MM-DD');
+    strDateLine = minD === maxD ? minD : `${minD} ~ ${maxD}`;
+  }
+
+  const now = dayjs().startOf('day');
+  const arrFuture = arrF
+    .map((i) => fnGetInstanceDateForGroupBasis(i, strBasis))
+    .filter((d): d is dayjs.Dayjs => d != null && d.startOf('day').isAfter(now))
+    .sort((a, b) => a.valueOf() - b.valueOf());
+  let strRemainLine = '—';
+  if (arrFuture.length > 0) {
+    const next = arrFuture[0]!;
+    const nDays = next.startOf('day').diff(now, 'day');
+    strRemainLine = `다음 일정까지 ${nDays}일 (${next.format('YYYY-MM-DD')})`;
+  } else if (arrF.length > 0) {
+    const bAllPast = arrF.every((i) => {
+      const d = fnGetInstanceDateForGroupBasis(i, strBasis);
+      return d && !d.startOf('day').isAfter(now);
+    });
+    if (bAllPast) strRemainLine = '이후 미래 일정 없음';
+  }
+  return { nCount, strDateLine, strRemainLine };
+};
+
 // 리사이즈 가능 + 호버 시 제외(-) 버튼, 호버 시 카드 영역 드래그로 이동
 interface IDragHandleProps {
   listeners: Record<string, unknown>;
@@ -487,8 +698,9 @@ const DashboardCardBox = ({
   const { token } = theme.useToken();
   const refMeasure = useRef<HTMLDivElement>(null);
 
-  const cardStyle: React.CSSProperties =
-    bDragFromTitleOnly || fnReportNaturalHeight
+  const cardStyle: React.CSSProperties = fnReportNaturalHeight
+    ? { height: 'auto' }
+    : bDragFromTitleOnly
       ? { height: 'auto', minHeight: '100%' }
       : { height: '100%' };
 
@@ -576,8 +788,12 @@ const DashboardCardBox = ({
         onMouseLeave={() => setBHover(false)}
         style={{
           height: fnReportNaturalHeight || bDragFromTitleOnly ? 'auto' : '100%',
-          minHeight:
-            fnReportNaturalHeight || bDragFromTitleOnly ? size.height : undefined,
+          // 자연 높이 카드: 저장 height를 min에 쓰면 Collapse 접어도 박스가 안 줄어듦 → 최소만 유지
+          minHeight: fnReportNaturalHeight
+            ? 56
+            : bDragFromTitleOnly
+              ? size.height
+              : undefined,
           position: 'relative',
         }}
       >
@@ -645,13 +861,16 @@ const AbsoluteDraggableCardWrapper = ({
   const size = { width: objLayout.width, height: objLayout.height };
   const bFlowHeight = Boolean(bDragFromTitleOnly || fnReportNaturalHeight);
 
+  /** 콘텐츠 높이 자동 반영 시 minHeight를 저장 높이로 두면 접어도 영역이 안 줄어듦 */
+  const bNaturalHeight = Boolean(fnReportNaturalHeight);
+
   const objStyle: React.CSSProperties = {
     position: 'absolute',
     left: objLayout.x,
     top: objLayout.y,
     width: objLayout.width,
     height: bFlowHeight ? 'auto' : objLayout.height,
-    minHeight: bFlowHeight ? objLayout.height : undefined,
+    minHeight: bFlowHeight ? (bNaturalHeight ? 56 : objLayout.height) : undefined,
     zIndex: isDragging ? 1000 : nZIndex,
     transform: transform ? CSS.Translate.toString(transform) : undefined,
     opacity: isDragging ? 0.92 : 1,
@@ -703,16 +922,20 @@ const DashboardPage = () => {
   const [strAddCardSelectedId, setStrAddCardSelectedId] = useState<TDashboardCardId | null>(null);
   const [arrAddCardSelectedColumnKeys, setArrAddCardSelectedColumnKeys] = useState<string[]>([]);
   const [strCustomTitle, setStrCustomTitle] = useState('');
+  const [strCustomSummaryGroupKey, setStrCustomSummaryGroupKey] = useState<string | undefined>(undefined);
   const [arrCustomFormRows, setArrCustomFormRows] = useState<{ strLabel: string; strMetricId: string }[]>([]);
   const [arrCustomFormGroups, setArrCustomFormGroups] = useState<ICustomDashboardEventGroupFormRow[]>([]);
-  /** 맞춤 카드 Collapse 열린 패널(제어 컴포넌트 — 카드 호버로 리마운트되지 않음) */
-  const [mapCustomCollapseKeys, setMapCustomCollapseKeys] = useState<Record<string, string[]>>({});
+  /** 맞춤 카드 Collapse 열린 패널 — localStorage 복원 */
+  const [mapCustomCollapseKeys, setMapCustomCollapseKeys] = useState<Record<string, string[]>>(
+    fnLoadCustomCollapseKeys,
+  );
   const fnOpenAddCard = useCallback(() => {
     setNAddCardStep(0);
     setStrAddCardType(null);
     setStrAddCardSelectedId(null);
     setArrAddCardSelectedColumnKeys([]);
     setStrCustomTitle('');
+    setStrCustomSummaryGroupKey(undefined);
     setArrCustomFormRows([]);
     setArrCustomFormGroups([]);
     let maxBottom = 24;
@@ -842,7 +1065,7 @@ const DashboardPage = () => {
       const nR = Math.max(96, Math.ceil(nPixel));
       if (Math.abs(cur.height - nR) < 3) return prev;
       let next = { ...prev, [strId]: { ...cur, height: nR } };
-      next = fnApplyOverlapResolveForMovedCard(next, strId, refOrderedVisibleIds.current);
+      next = fnReflowCardsBelowAnchor(next, strId, refOrderedVisibleIds.current);
       fnSaveCardLayoutMap(next);
       return next;
     });
@@ -861,9 +1084,15 @@ const DashboardPage = () => {
     setMapCardLayout((prev) => {
       const cur = prev[strId];
       if (!cur) return prev;
+      const draft: ICardRect = {
+        ...cur,
+        x: cur.x + delta.x,
+        y: cur.y + delta.y,
+      };
+      const nSnapY = fnSnapDraggedCardYToNeighbors(prev, strId, draft, refOrderedVisibleIds.current);
       let next = {
         ...prev,
-        [strId]: { ...cur, x: cur.x + delta.x, y: cur.y + delta.y },
+        [strId]: { ...draft, y: nSnapY },
       };
       next = fnApplyOverlapResolveForMovedCard(next, strId, refOrderedVisibleIds.current);
       fnSaveCardLayoutMap(next);
@@ -888,6 +1117,14 @@ const DashboardPage = () => {
   const [nRoles, setNRoles] = useState<number | null>(null);
   const [bLoadingStats, setBLoadingStats] = useState(false);
 
+  /** 맞춤 카드 Step2 — 선택 그룹 요약 미리보기 */
+  const objCustomSummaryPreview = useMemo(() => {
+    if (!strCustomSummaryGroupKey) return null;
+    const g = arrCustomFormGroups.find((x) => x.strGroupKey === strCustomSummaryGroupKey);
+    if (!g) return null;
+    return fnComputeGroupSummaryAuto(fnFormRowToCustomGroup(g), arrDashboardInstances);
+  }, [strCustomSummaryGroupKey, arrCustomFormGroups, arrDashboardInstances]);
+
   useEffect(() => {
     fnFetchProducts();
     fnFetchEvents();
@@ -898,7 +1135,10 @@ const DashboardPage = () => {
     setBLoadingStats(true);
     const bLoadInstances =
       fnHas('my_dashboard.view') ||
-      arrCustomCards.some((c) => (c.arrEventGroups?.length ?? 0) > 0);
+      arrCustomCards.some(
+        (c) =>
+          (c.arrEventGroups?.length ?? 0) > 0 || Boolean(c.strSummaryGroupKey?.trim()),
+      );
     const fnLoad = async () => {
       const arrPromises: Promise<void>[] = [];
       if (bLoadInstances) {
@@ -1211,7 +1451,8 @@ const DashboardPage = () => {
           <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
             카드는 <b>고정 좌표</b>에 배치됩니다. 추가 시 먼저 영역(위치·크기)을 정한 뒤 속성을 채웁니다.
             일반 카드는 호버 후 아무 곳이나 드래그로 이동, <b>맞춤 카드는 제목 줄만</b> 드래그해 이동합니다.
-            모서리로 크기 조절, (−)로 제외. 맞춤 카드는 테이블·접기 펼침에 맞춰 높이가 맞춰집니다.
+            가로로 가까운 카드가 있으면 놓을 때 <b>위·아래 줄이 스냅</b>되어 맞춰 붙습니다(약 {N_SNAP_Y_TOLERANCE}px).
+            모서리로 크기 조절, (−)로 제외. 맞춤 카드는 테이블·접기 펼침에 맞춰 높이가 맞춰지며, <b>가로로 겹치고 앵커 하단 아래에 이어지는 카드</b>는 펼치면 밀리고 접으면 다시 위로 쌓입니다.
             카드 영역은 서로 <b>겹치지 않게</b> 자동으로 밀려 납니다(최소 여백 {N_CARD_MIN_GAP}px).
           </Text>
         </div>
@@ -1304,7 +1545,8 @@ const DashboardPage = () => {
         {nAddCardStep === 2 && bAddCardIsCustom && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">
-              <b>숫자 지표 행</b>과/또는 <b>이벤트 그룹</b>을 넣을 수 있습니다. 그룹은 접어서 열 수 있고, 건수·목록(이벤트명·반영일·담당자·상태)이 표시됩니다.
+              <b>이벤트 그룹</b>을 먼저 정한 뒤, 카드 상단에 표시할 <b>그룹 요약</b>을 고를 수 있습니다.{' '}
+              <b>숫자 지표 행</b>과 그룹 목록을 함께 넣을 수 있고, 그룹은 접어서 열 수 있습니다.
             </Text>
             <Input
               placeholder="카드 제목"
@@ -1313,57 +1555,6 @@ const DashboardPage = () => {
               maxLength={80}
               showCount
             />
-            <Text strong style={{ fontSize: 12 }}>숫자 지표(선택)</Text>
-            {arrCustomFormRows.map((row, nIdx) => (
-              <Space key={nIdx} style={{ width: '100%' }} align="start" wrap>
-                <Input
-                  placeholder="라벨"
-                  value={row.strLabel}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setArrCustomFormRows((prev) =>
-                      prev.map((r, i) => (i === nIdx ? { ...r, strLabel: v } : r))
-                    );
-                  }}
-                  style={{ minWidth: 120, flex: 1 }}
-                />
-                <Select
-                  style={{ minWidth: 200, flex: 1 }}
-                  value={row.strMetricId}
-                  options={NUMBER_CARD_IDS.map((mid) => ({
-                    value: mid,
-                    label: OBJ_CARD_LABELS[mid as TDashboardCardId],
-                  }))}
-                  onChange={(v) => {
-                    setArrCustomFormRows((prev) =>
-                      prev.map((r, i) => (i === nIdx ? { ...r, strMetricId: v } : r))
-                    );
-                  }}
-                />
-                <Button
-                  danger
-                  type="text"
-                  disabled={arrCustomFormRows.length <= 1 && arrCustomFormGroups.length === 0}
-                  onClick={() =>
-                    setArrCustomFormRows((prev) => prev.filter((_, i) => i !== nIdx))
-                  }
-                >
-                  행 삭제
-                </Button>
-              </Space>
-            ))}
-            <Button
-              type="dashed"
-              onClick={() =>
-                setArrCustomFormRows((prev) => [
-                  ...prev,
-                  { strLabel: '', strMetricId: NUMBER_CARD_IDS[0] },
-                ])
-              }
-            >
-              지표 행 추가
-            </Button>
-            <Divider style={{ margin: '8px 0' }} />
             <Text strong style={{ fontSize: 12 }}>이벤트 그룹(선택)</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
               상태를 고르지 않으면(빈 선택) 상태 조건 없이 필터합니다. 「진행 중만」은 완료(live_verified)를 제외합니다.
@@ -1371,7 +1562,7 @@ const DashboardPage = () => {
             </Text>
             {arrCustomFormGroups.map((objG, nIdx) => (
               <div
-                key={nIdx}
+                key={objG.strGroupKey}
                 style={{
                   border: '1px solid var(--ant-color-border-secondary)',
                   borderRadius: 8,
@@ -1468,9 +1659,15 @@ const DashboardPage = () => {
                     danger
                     type="text"
                     size="small"
-                    onClick={() =>
-                      setArrCustomFormGroups((prev) => prev.filter((_, i) => i !== nIdx))
-                    }
+                    onClick={() => {
+                      setArrCustomFormGroups((prev) => {
+                        const g = prev[nIdx];
+                        if (g && strCustomSummaryGroupKey === g.strGroupKey) {
+                          setStrCustomSummaryGroupKey(undefined);
+                        }
+                        return prev.filter((_, i) => i !== nIdx);
+                      });
+                    }}
                   >
                     그룹 삭제
                   </Button>
@@ -1484,6 +1681,85 @@ const DashboardPage = () => {
               }
             >
               그룹 추가
+            </Button>
+            <Divider style={{ margin: '8px 0' }} />
+            <Text strong style={{ fontSize: 12 }}>그룹 요약(선택)</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              카드 제목 아래·숫자 지표 위에 표시합니다. 행수(전체), 날짜(자동), 남은 기간(자동)은 선택한 그룹 필터 결과를 기준으로 합니다.
+            </Text>
+            <Space wrap align="center">
+              <Text type="secondary">요약 그룹</Text>
+              <Select
+                allowClear
+                placeholder="선택 안 함"
+                style={{ minWidth: 240, flex: 1 }}
+                value={strCustomSummaryGroupKey}
+                options={arrCustomFormGroups.map((g) => ({
+                  value: g.strGroupKey,
+                  label: g.strTitle.trim() || '(이름 없음)',
+                }))}
+                onChange={(v) => setStrCustomSummaryGroupKey(v ?? undefined)}
+              />
+            </Space>
+            {objCustomSummaryPreview && (
+              <div style={{ fontSize: 12 }}>
+                <Text type="secondary">미리보기 · </Text>
+                <Text>
+                  행 {objCustomSummaryPreview.nCount}건 · {objCustomSummaryPreview.strDateLine} ·{' '}
+                  {objCustomSummaryPreview.strRemainLine}
+                </Text>
+              </div>
+            )}
+            <Divider style={{ margin: '8px 0' }} />
+            <Text strong style={{ fontSize: 12 }}>숫자 지표(선택)</Text>
+            {arrCustomFormRows.map((row, nIdx) => (
+              <Space key={nIdx} style={{ width: '100%' }} align="start" wrap>
+                <Input
+                  placeholder="라벨"
+                  value={row.strLabel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setArrCustomFormRows((prev) =>
+                      prev.map((r, i) => (i === nIdx ? { ...r, strLabel: v } : r))
+                    );
+                  }}
+                  style={{ minWidth: 120, flex: 1 }}
+                />
+                <Select
+                  style={{ minWidth: 200, flex: 1 }}
+                  value={row.strMetricId}
+                  options={NUMBER_CARD_IDS.map((mid) => ({
+                    value: mid,
+                    label: OBJ_CARD_LABELS[mid as TDashboardCardId],
+                  }))}
+                  onChange={(v) => {
+                    setArrCustomFormRows((prev) =>
+                      prev.map((r, i) => (i === nIdx ? { ...r, strMetricId: v } : r))
+                    );
+                  }}
+                />
+                <Button
+                  danger
+                  type="text"
+                  disabled={arrCustomFormRows.length <= 1 && arrCustomFormGroups.length === 0}
+                  onClick={() =>
+                    setArrCustomFormRows((prev) => prev.filter((_, i) => i !== nIdx))
+                  }
+                >
+                  행 삭제
+                </Button>
+              </Space>
+            ))}
+            <Button
+              type="dashed"
+              onClick={() =>
+                setArrCustomFormRows((prev) => [
+                  ...prev,
+                  { strLabel: '', strMetricId: NUMBER_CARD_IDS[0] },
+                ])
+              }
+            >
+              지표 행 추가
             </Button>
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <Button
@@ -1589,6 +1865,24 @@ const DashboardPage = () => {
             <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
               {strCustomTitle.trim() || '맞춤 카드'}
             </Tag>
+            {strCustomSummaryGroupKey &&
+              (() => {
+                const g = arrCustomFormGroups.find((x) => x.strGroupKey === strCustomSummaryGroupKey);
+                if (!g) return null;
+                const sum = fnComputeGroupSummaryAuto(
+                  fnFormRowToCustomGroup(g),
+                  arrDashboardInstances,
+                );
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <Text strong style={{ display: 'block' }}>그룹 요약(선택)</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {g.strTitle.trim() || '(이름 없음)'} · 행 {sum.nCount}건 · {sum.strDateLine} ·{' '}
+                      {sum.strRemainLine}
+                    </Text>
+                  </div>
+                );
+              })()}
             <Text strong style={{ display: 'block', marginTop: 8 }}>지표</Text>
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               {arrCustomFormRows
@@ -1657,22 +1951,7 @@ const DashboardPage = () => {
                       .map((r) => ({ strLabel: r.strLabel.trim(), strMetricId: r.strMetricId }));
                     const arrEvGroups: ICustomDashboardEventGroup[] = arrCustomFormGroups
                       .filter((g) => g.strTitle.trim())
-                      .map((g) => {
-                        const objG: ICustomDashboardEventGroup = {
-                          strGroupKey: `grp_${crypto.randomUUID()}`,
-                          strTitle: g.strTitle.trim(),
-                          arrStatus: g.arrStatus?.length ? g.arrStatus : undefined,
-                          bInProgressOnly: g.bInProgressOnly,
-                        };
-                        const strS = g.strPeriodStart?.trim();
-                        const strE = g.strPeriodEnd?.trim();
-                        if (strS || strE) {
-                          objG.strDateBasis = g.strDateBasis;
-                          if (strS) objG.strPeriodStart = strS;
-                          if (strE) objG.strPeriodEnd = strE;
-                        }
-                        return objG;
-                      });
+                      .map((g) => fnFormRowToCustomGroup(g));
                     if (arrRows.length === 0 && arrEvGroups.length === 0) return;
                     const strNewId = fnNewCustomId();
                     const objCard: ICustomEventDashboardCard = {
@@ -1681,6 +1960,12 @@ const DashboardPage = () => {
                     };
                     if (arrRows.length > 0) objCard.arrRows = arrRows;
                     if (arrEvGroups.length > 0) objCard.arrEventGroups = arrEvGroups;
+                    if (
+                      strCustomSummaryGroupKey &&
+                      arrEvGroups.some((ev) => ev.strGroupKey === strCustomSummaryGroupKey)
+                    ) {
+                      objCard.strSummaryGroupKey = strCustomSummaryGroupKey;
+                    }
                     setArrCustomCards((prev) => {
                       const next = [...prev, objCard];
                       fnSaveCustomCards(next);
@@ -1911,9 +2196,19 @@ const DashboardPage = () => {
                   const arrRowsSafe = objC.arrRows ?? [];
                   const arrGr = objC.arrEventGroups ?? [];
                   const bHasGroups = arrGr.length > 0;
+                  const objSummaryGroup =
+                    objC.strSummaryGroupKey &&
+                    arrGr.find((g) => g.strGroupKey === objC.strSummaryGroupKey);
+                  const objSummaryAuto =
+                    objSummaryGroup &&
+                    fnComputeGroupSummaryAuto(objSummaryGroup, arrDashboardInstances);
                   const arrDefaultOpen = arrGr.map((g) => g.strGroupKey);
+                  const arrValidKeys = arrGr.map((g) => g.strGroupKey);
+                  const arrSaved = mapCustomCollapseKeys[strId];
                   const arrActiveCollapse =
-                    mapCustomCollapseKeys[strId] ?? arrDefaultOpen;
+                    arrSaved !== undefined
+                      ? arrSaved.filter((k) => arrValidKeys.includes(k))
+                      : arrDefaultOpen;
                   return (
                     <DashboardCardContent
                       icon={fnDashboardCardIcon(DashboardOutlined, '#575ECF')}
@@ -1928,6 +2223,17 @@ const DashboardPage = () => {
                           width: '100%',
                         }}
                       >
+                        {objSummaryAuto && (
+                          <div style={{ fontSize: 12 }}>
+                            <Text type="secondary" style={{ display: 'block', marginBottom: 2 }}>
+                              {objSummaryGroup?.strTitle ?? '요약'}
+                            </Text>
+                            <Text>
+                              행 {objSummaryAuto.nCount}건 · {objSummaryAuto.strDateLine} ·{' '}
+                              {objSummaryAuto.strRemainLine}
+                            </Text>
+                          </div>
+                        )}
                         {arrRowsSafe.length > 0 && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {arrRowsSafe.map((row, nR) => (
@@ -1963,6 +2269,7 @@ const DashboardPage = () => {
                               <Collapse
                                 size="small"
                                 style={{ width: '100%' }}
+                                destroyInactivePanel
                                 activeKey={arrActiveCollapse}
                                 onChange={(keys) => {
                                   const arr =
@@ -1971,10 +2278,12 @@ const DashboardPage = () => {
                                       : Array.isArray(keys)
                                         ? keys
                                         : [keys];
-                                  setMapCustomCollapseKeys((prev) => ({
-                                    ...prev,
-                                    [strId]: arr.map(String),
-                                  }));
+                                  const arrStr = arr.map(String);
+                                  setMapCustomCollapseKeys((prev) => {
+                                    const next = { ...prev, [strId]: arrStr };
+                                    fnSaveCustomCollapseKeys(next);
+                                    return next;
+                                  });
                                 }}
                                 items={arrGr.map((objGrp) => {
                                   const arrF = fnFilterInstancesForCustomGroup(
