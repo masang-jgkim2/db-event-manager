@@ -25,14 +25,23 @@ const N_AUTO_FIT_PADDING = 20;  // 내용물 맞춤 시 여백
 
 export type { TableColumnType as TAppColumn };
 
-// 순번(No.) 컬럼 생성 헬퍼
-export function fnMakeIndexColumn(nWidth = 55): TableColumnType<unknown> {
+/** 좌측 번호 컬럼 — 기본은 서버 PK(`nId`). 없으면 행 순번 폴백 */
+export function fnMakeIndexColumn<T extends object = Record<string, unknown>>(
+  nWidth: number = 55,
+  strPkKey: keyof T = 'nId' as keyof T,
+): TableColumnType<T> {
   return {
-    title: 'No.',
+    title: '번호',
     key: '__index',
     width: nWidth,
     align: 'center' as const,
-    render: (_: unknown, __: unknown, nIndex: number) => nIndex + 1,
+    dataIndex: strPkKey as TableColumnType<T>['dataIndex'],
+    render: (value: unknown, _record: T, nIndex: number) => {
+      if (value !== undefined && value !== null && value !== '') {
+        return value as React.ReactNode;
+      }
+      return nIndex + 1;
+    },
   };
 }
 
@@ -51,7 +60,7 @@ export function fnFormatDate(strDate?: string | null): string {
 // localStorage 키 생성
 const fnStorageKey = (strTableId: string) => `app_table_col_order_${strTableId}`;
 
-// No. 컬럼(__index)이 있으면 항상 맨 앞에 두기
+// 번호 컬럼(__index)이 있으면 항상 맨 앞에 두기
 const fnEnsureIndexFirst = (arrOrder: string[]): string[] => {
   if (!arrOrder.includes('__index')) return arrOrder;
   return ['__index', ...arrOrder.filter((k) => k !== '__index')];
@@ -425,7 +434,7 @@ function AppTable<T extends object>({
     }
   }
 
-  // 드래그 종료 → 순서 업데이트 + 저장 (No.는 항상 맨 앞 유지)
+  // 드래그 종료 → 순서 업데이트 + 저장 (번호 컬럼은 항상 맨 앞 유지)
   const fnOnDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;

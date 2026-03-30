@@ -1388,7 +1388,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼 — No. + 헤더·액션 정리 (PK 컬럼은 숨김)
+  // 테이블 컬럼 — 번호(nId) + 헤더·액션 정리
   const arrColumns = [
     fnMakeIndexColumn(55),
     {

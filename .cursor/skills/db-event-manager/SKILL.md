@@ -52,7 +52,7 @@ front/src/
   types/eventDashboardCustom.ts           # 맞춤 카드 스키마(ICustomEventDashboardCard·strSummaryGroupKey·ICustomDashboardEventGroup)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
   pages/QueryPage.tsx                     # 이벤트 생성
-  components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, No.컬럼)
+  components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, 번호 컬럼 fnMakeIndexColumn — 기본 PK nId)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청
   components/SettingsDrawer.tsx          # 굳굳 설정 (재미 모드 스위치)
   stores/useEventInstanceStore.ts         # 인스턴스 상태 관리
