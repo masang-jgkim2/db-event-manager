@@ -37,6 +37,8 @@ const OBJ_DEFAULT = {
   bCompact: false,
   strPrimaryColor: '#667eea',
   bFunMode: false, // 재미 모드: 재요청 버튼을 롱프레스로 전환
+  /** 로그인 화면 기본 계정(admin) 안내 블록 표시 — UI 설정에서 끄면 영역 전체 미표시 */
+  bShowLoginDefaultAccountHint: true,
 };
 
 interface IThemeStore {
@@ -46,6 +48,7 @@ interface IThemeStore {
   bCompact: boolean;
   strPrimaryColor: string;
   bFunMode: boolean;
+  bShowLoginDefaultAccountHint: boolean;
 
   // 시스템 다크모드 여부 (system 모드일 때 OS 설정 반영)
   fnGetIsDark: () => boolean;
@@ -57,6 +60,7 @@ interface IThemeStore {
   fnSetCompact: (bCompact: boolean) => void;
   fnSetPrimaryColor: (strColor: string) => void;
   fnSetFunMode: (bFunMode: boolean) => void;
+  fnSetShowLoginDefaultAccountHint: (bShow: boolean) => void;
   fnReset: () => void;
 }
 
@@ -80,6 +84,7 @@ export const useThemeStore = create<IThemeStore>()(
       fnSetCompact: (bCompact) => set({ bCompact }),
       fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
       fnSetFunMode: (bFunMode) => set({ bFunMode }),
+      fnSetShowLoginDefaultAccountHint: (bShow) => set({ bShowLoginDefaultAccountHint: bShow }),
       fnReset: () => set({ ...OBJ_DEFAULT }),
     }),
     {

@@ -112,7 +112,7 @@ export interface IDesignSystem {
     strBackground: string;       // 사이드바 배경
     strLogoBackground: string;   // 로고 영역 배경
     strLogoBorder: string;       // 로고 아래 구분선
-    strLogoText: string;         // "이벤트 매니저" 텍스트 색
+    strLogoText: string;         // 사이드바 로고 텍스트 색
     nLogoFontSize: number;       // 로고 폰트 크기 (px)
     nLogoFontWeight: number;     // 로고 폰트 굵기
     strResizeHandle: string;     // 드래그 핸들 hover 색
@@ -185,7 +185,10 @@ export function fnBuildDesignSystem(
   const strHeaderText   = bDark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)';
 
   // ── 메뉴 그룹 제목 ────────────────────────────────────────
-  const strMenuGroupColor  = arrP[IDX_LIGHT];  // primary 연한 계열로 그룹명 강조
+  // 라이트: primary 연한 계열. 다크: 사이드바(#0a 계열) 위에서도 읽히도록 primary와 밝은색 혼합(포인트 톤 유지)
+  const strMenuGroupColor = bDark
+    ? `color-mix(in srgb, ${arrP[IDX_PRIMARY]} 48%, rgba(255,255,255,0.9) 52%)`
+    : arrP[IDX_LIGHT];
   const nMenuGroupFontSize = Math.max(objTypo.nXs, 10);  // 최소 10px
 
   // ── Ant Design 컴포넌트 토큰 ─────────────────────────────

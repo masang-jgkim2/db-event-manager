@@ -35,9 +35,39 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
   dba: { strText: 'DBA', strColor: '#722ed1' },
 };
 
+/** 사이드바 메뉴 그룹 라벨 (커스텀 ReactNode일 때도 디자인 토큰 색·타이포 적용) */
+const fnRenderMenuGroupLabel = (
+  nodeIcon: React.ReactNode,
+  strLabel: string,
+  objMg: {
+    strColor: string;
+    nFontSize: number;
+    nFontWeight: number;
+    strLetterSpacing: string;
+    strTextTransform: string;
+  },
+) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      color: objMg.strColor,
+      fontSize: objMg.nFontSize,
+      fontWeight: objMg.nFontWeight,
+      letterSpacing: objMg.strLetterSpacing,
+      textTransform: objMg.strTextTransform as React.CSSProperties['textTransform'],
+    }}
+  >
+    {nodeIcon} {strLabel}
+  </span>
+);
+
 const MainLayout = () => {
   const [bCollapsed, setBCollapsed] = useState(false);
   const [bSettingsOpen, setBSettingsOpen] = useState(false);
+  /** 사이드바 폭 드래그 중 — ref만 쓰면 margin/width transition 이 먹지 않아 state로 동기화 */
+  const [bIsResizingSider, setBIsResizingSider] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
@@ -60,7 +90,9 @@ const MainLayout = () => {
   const nDragStartWidth = useRef(nSiderWidth);
 
   const fnOnDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
     bDragging.current = true;
+    setBIsResizingSider(true);
     nDragStartX.current = e.clientX;
     nDragStartWidth.current = nSiderWidth;
     document.body.style.cursor = 'col-resize';
@@ -76,6 +108,7 @@ const MainLayout = () => {
     const fnOnMouseUp = () => {
       if (!bDragging.current) return;
       bDragging.current = false;
+      setBIsResizingSider(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -92,6 +125,8 @@ const MainLayout = () => {
 
   // 권한 보유 여부 헬퍼 (역할 대신 권한만 사용)
   const fnHasPerm = (strPerm: string) => arrPermissions.includes(strPerm);
+
+  const objMg = ds.objMenuGroup;
 
   // 권한 기반 사이드바 메뉴 동적 생성
   const arrMenuItems = useMemo(() => {
@@ -120,11 +155,7 @@ const MainLayout = () => {
     if (arrEventChildren.length > 0) {
       arrResult.push({
         key: 'event-group',
-        label: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <CalendarOutlined /> 이벤트
-          </span>
-        ),
+        label: fnRenderMenuGroupLabel(<CalendarOutlined />, '이벤트', objMg),
         type: 'group' as const,
         children: arrEventChildren,
       });
@@ -141,11 +172,7 @@ const MainLayout = () => {
     if (arrUserGroupChildren.length > 0) {
       arrResult.push({
         key: 'user-group',
-        label: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <TeamOutlined /> 사용자
-          </span>
-        ),
+        label: fnRenderMenuGroupLabel(<TeamOutlined />, '사용자', objMg),
         type: 'group' as const,
         children: arrUserGroupChildren,
       });
@@ -162,18 +189,14 @@ const MainLayout = () => {
 
     arrResult.push({
       key: 'operation-group',
-      label: (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <RocketOutlined /> 운영
-        </span>
-      ),
+      label: fnRenderMenuGroupLabel(<RocketOutlined />, '운영', objMg),
       type: 'group' as const,
       children: arrOpChildren,
     });
 
     return arrResult;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrPermissions]);
+  }, [arrPermissions, objMg.strColor, objMg.nFontSize, objMg.nFontWeight, objMg.strLetterSpacing, objMg.strTextTransform]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -195,6 +218,15 @@ const MainLayout = () => {
   const strFirstRole = arrRoles[0] || '';
   const objRole = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
 
+  // 사이드 폭에 맞춰 로고 글자 크기 조절(좁게 당기면 자동으로 줄어듦)
+  const nLogoFontPx = bCollapsed
+    ? ds.objSider.nLogoFontSize
+    : Math.min(ds.objSider.nLogoFontSize, Math.max(11, Math.round(nSiderWidth * 0.082)));
+
+  const strSiderTransition = bIsResizingSider
+    ? 'none'
+    : 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       {/* 사이드바 */}
@@ -212,6 +244,7 @@ const MainLayout = () => {
           bottom: 0,
           zIndex: 10,
           background: ds.objSider.strBackground,
+          transition: strSiderTransition,
         }}
       >
         {/* 로고 영역 */}
@@ -229,11 +262,14 @@ const MainLayout = () => {
           {!bCollapsed && (
             <span
               style={{
-                fontSize: ds.objSider.nLogoFontSize,
+                fontSize: nLogoFontPx,
                 fontWeight: ds.objSider.nLogoFontWeight,
                 marginLeft: ds.objSpacing.nSm,
                 whiteSpace: 'nowrap',
                 color: ds.objSider.strLogoText,
+                maxWidth: Math.max(0, nSiderWidth - 56),
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
               DB Process Manager
@@ -277,7 +313,9 @@ const MainLayout = () => {
       <Layout
         style={{
           marginLeft: bCollapsed ? 80 : nSiderWidth,
-          transition: bDragging.current ? 'none' : 'margin-left 0.2s',
+          transition: bIsResizingSider
+            ? 'none'
+            : 'margin-left 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {/* 상단 헤더 */}

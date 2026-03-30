@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
+import { Form, Input, Button, Card, Typography, message, Space, theme } from 'antd';
 import { UserOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore } from '../stores/useThemeStore';
 
 const { Title, Text } = Typography;
 
@@ -15,6 +16,15 @@ const LoginPage = () => {
   const [bIsSubmitting, setBIsSubmitting] = useState(false);
   const fnLogin = useAuthStore((state) => state.fnLogin);
   const [messageApi, contextHolder] = message.useMessage();
+  const { token } = theme.useToken();
+
+  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
+  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const bShowLoginDefaultAccountHint = useThemeStore((s) => s.bShowLoginDefaultAccountHint);
+
+  const bIsDark = fnGetIsDark();
+  // 테마별 페이지 배경 — 본문·카드는 token으로 대비 확보
+  const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
 
   // 로그인 폼 제출 처리
   const fnHandleSubmit = async (objValues: ILoginFormValues) => {
@@ -42,14 +52,16 @@ const LoginPage = () => {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: strPageBackground,
         }}
       >
         <Card
           style={{
             width: 420,
-            borderRadius: 12,
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+            borderRadius: token.borderRadiusLG,
+            boxShadow: bIsDark ? token.boxShadowSecondary : '0 20px 48px rgba(0, 0, 0, 0.12)',
+            background: token.colorBgContainer,
+            borderColor: token.colorBorderSecondary,
           }}
           styles={{
             body: { padding: '40px 36px' },
@@ -61,13 +73,13 @@ const LoginPage = () => {
             align="center"
             style={{ width: '100%', marginBottom: 32 }}
           >
-            <DatabaseOutlined
-              style={{ fontSize: 48, color: '#667eea' }}
-            />
-            <Title level={3} style={{ margin: 0, color: '#1a1a2e' }}>
-              이벤트 매니저
+            <DatabaseOutlined style={{ fontSize: 48, color: strPrimaryColor }} />
+            <Title level={3} style={{ margin: 0, color: token.colorTextHeading, textAlign: 'center' }}>
+              DB 쿼리 매니저 시스템
             </Title>
-            <Text type="secondary">DB 쿼리 매니저 시스템</Text>
+            <Text style={{ color: token.colorTextSecondary, textAlign: 'center' }}>
+              계정으로 로그인하세요
+            </Text>
           </Space>
 
           {/* 로그인 폼 */}
@@ -83,7 +95,7 @@ const LoginPage = () => {
               rules={[{ required: true, message: '아이디를 입력해주세요.' }]}
             >
               <Input
-                prefix={<UserOutlined style={{ color: '#bfbfbf' }} />}
+                prefix={<UserOutlined style={{ color: token.colorTextTertiary }} />}
                 placeholder="아이디"
               />
             </Form.Item>
@@ -93,7 +105,7 @@ const LoginPage = () => {
               rules={[{ required: true, message: '비밀번호를 입력해주세요.' }]}
             >
               <Input.Password
-                prefix={<LockOutlined style={{ color: '#bfbfbf' }} />}
+                prefix={<LockOutlined style={{ color: token.colorTextTertiary }} />}
                 placeholder="비밀번호"
               />
             </Form.Item>
@@ -106,11 +118,9 @@ const LoginPage = () => {
                 block
                 style={{
                   height: 48,
-                  borderRadius: 8,
+                  borderRadius: token.borderRadiusLG,
                   fontWeight: 600,
                   fontSize: 16,
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  border: 'none',
                 }}
               >
                 로그인
@@ -118,20 +128,24 @@ const LoginPage = () => {
             </Form.Item>
           </Form>
 
-          {/* 기본 계정 안내 */}
-          <div
-            style={{
-              marginTop: 24,
-              padding: '12px 16px',
-              background: '#f6f8fa',
-              borderRadius: 8,
-              textAlign: 'center',
-            }}
-          >
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              기본 계정: <Text code>admin</Text> / <Text code>admin123</Text>
-            </Text>
-          </div>
+          {/* 기본 계정 안내 — UI 설정에서 끄면 영역 전체 미표시 */}
+          {bShowLoginDefaultAccountHint && (
+            <div
+              style={{
+                marginTop: 24,
+                padding: '12px 16px',
+                background: token.colorFillAlter,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: token.borderRadiusLG,
+                textAlign: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                기본 계정: <Text code style={{ color: token.colorText }}>admin</Text> /{' '}
+                <Text code style={{ color: token.colorText }}>admin123</Text>
+              </Text>
+            </div>
+          )}
         </Card>
       </div>
     </>
