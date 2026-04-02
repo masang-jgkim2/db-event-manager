@@ -22,7 +22,7 @@
 ```
 [관리자]
   1. 프로덕트 등록 (게임명, 약자, 서비스 범위)
-  2. 이벤트 템플릿 등록 (쿼리 템플릿 + 종류/유형 + 입력 형식 + 기본값)
+  2. 쿼리 템플릿 등록 (쿼리 본문·종류/유형·입력 형식·기본값)
   3. 사용자 계정 생성 (GM, 기획자)
 
 [사용자 (GM/기획자)]
@@ -43,11 +43,11 @@
 [데이터]
   - 사용자: 서버 메모리
   - 프로덕트: 서버 메모리 (시드 7개 게임 포함)
-  - 이벤트 템플릿: 서버 메모리
+  - 쿼리 템플릿: 서버 메모리
   - 이벤트 생성 이력: 브라우저 localStorage (개인별)
 ```
 
-> **중요**: 현재 서버 메모리 저장이라 백엔드 재시작 시 관리자가 추가한 이벤트 템플릿은 초기화됨. 프로덕트 시드 데이터(7개 게임)는 서버 시작 시 자동 복원됨. MySQL 연동 후 영구 저장 전환 예정.
+> **중요**: 현재 서버 메모리 저장이라 백엔드 재시작 시 관리자가 추가한 쿼리 템플릿은 초기화됨. 프로덕트 시드 데이터(7개 게임)는 서버 시작 시 자동 복원됨. MySQL 연동 후 영구 저장 전환 예정.
 
 ---
 
@@ -81,7 +81,7 @@
 |--------|----------|------|
 | 사용자 | 서버 메모리 | 시드 2계정 (admin, gm01) + API로 CRUD |
 | 프로덕트 | 서버 메모리 | 시드 7개 게임 + API로 CRUD |
-| 이벤트 템플릿 | 서버 메모리 | API로 CRUD. 서버 재시작 시 초기화 |
+| 쿼리 템플릿 | 서버 메모리 | API로 CRUD. 서버 재시작 시 초기화 |
 | 이벤트 생성 이력 | 브라우저 localStorage | Zustand persist. 개인별 저장 |
 
 ### 2.4 저장소 (계획 - Phase 2)
@@ -138,7 +138,7 @@ db-event-manager/
 │   │   │   ├── authApi.ts          #   인증 API (fnApiLogin, fnApiVerifyToken)
 │   │   │   ├── userApi.ts          #   사용자 관리 API (CRUD + 비밀번호 초기화)
 │   │   │   ├── productApi.ts       #   프로덕트 API (CRUD)
-│   │   │   ├── eventApi.ts         #   이벤트 템플릿 API (CRUD)
+│   │   │   ├── eventApi.ts         #   쿼리 템플릿 API (CRUD)
 │   │   │   ├── eventInstanceApi.ts #   이벤트 인스턴스 API (CRUD + fnApiExecuteQuery)
 │   │   │   └── dbConnectionApi.ts  #   DB 접속 정보 API (CRUD + 연결 테스트) [신규]
 │   │   ├── components/             # 공통 컴포넌트
@@ -147,7 +147,7 @@ db-event-manager/
 │   │   │   ├── LoginPage.tsx       #   로그인 (보라색 그라디언트 카드 UI)
 │   │   │   ├── DashboardPage.tsx   #   대시보드 - 통계 카드 + 프로덕트 현황 (관리자)
 │   │   │   ├── ProductPage.tsx     #   프로덕트 관리 - CRUD + 서비스 범위 (관리자)
-│   │   │   ├── EventPage.tsx       #   이벤트 템플릿 관리 - CRUD + 쿼리 템플릿 (관리자)
+│   │   │   ├── EventPage.tsx       #   쿼리 템플릿 관리 — CRUD, 단일·다중 쿼리 세트 (관리자)
 │   │   │   ├── UserPage.tsx        #   사용자 관리 - 계정 CRUD + 비밀번호 초기화 (관리자)
 │   │   │   ├── DbConnectionPage.tsx #  DB 접속 정보 관리 - CRUD + 연결 테스트 (관리자) [신규]
 │   │   │   ├── MyDashboardPage.tsx #   나의 대시보드 - 이벤트 처리 + QA/LIVE DB 실행
@@ -155,7 +155,7 @@ db-event-manager/
 │   │   ├── stores/                 # Zustand 상태 관리
 │   │   │   ├── useAuthStore.ts     #   인증 (fnLogin/fnLogout/fnVerifyToken)
 │   │   │   ├── useProductStore.ts  #   프로덕트 (서버 API 연동, fnFetchProducts)
-│   │   │   ├── useEventStore.ts    #   이벤트 템플릿 (서버 API 연동, fnFetchEvents)
+│   │   │   ├── useEventStore.ts    #   쿼리 템플릿 (서버 API 연동, fnFetchEvents)
 │   │   │   └── useQueryLogStore.ts #   이벤트 생성 이력 (localStorage persist)
 │   │   ├── types/
 │   │   │   └── index.ts            #   전체 타입/인터페이스/상수 정의
@@ -172,7 +172,7 @@ db-event-manager/
 │   │   │   ├── authController.ts   #   로그인(fnLogin) / 토큰검증(fnVerifyToken)
 │   │   │   ├── userController.ts   #   사용자 CRUD / 비밀번호 초기화 / 권한 수정
 │   │   │   ├── productController.ts #  프로덕트 CRUD
-│   │   │   ├── eventController.ts  #   이벤트 템플릿 CRUD
+│   │   │   ├── eventController.ts  #   쿼리 템플릿 CRUD
 │   │   │   ├── eventInstanceController.ts # 이벤트 인스턴스 + DB 실행(fnExecuteAndDeploy)
 │   │   │   └── dbConnectionController.ts  # DB 접속 정보 CRUD + 연결 테스트
 │   │   ├── middleware/             # 미들웨어
@@ -193,7 +193,7 @@ db-event-manager/
 │   │   ├── data/                   # 데이터 저장소 (서버 메모리, 추후 DB 교체)
 │   │   │   ├── users.ts            #   사용자 배열 + 시드 (admin, gm01, dba01)
 │   │   │   ├── products.ts         #   프로덕트 배열 + 시드 (7개 게임)
-│   │   │   ├── events.ts           #   이벤트 템플릿 배열
+│   │   │   ├── events.ts           #   쿼리 템플릿 배열
 │   │   │   ├── eventInstances.ts   #   이벤트 인스턴스 배열
 │   │   │   ├── dbConnections.ts    #   DB 접속 정보 배열 (신규)
 │   │   │   └── permissions.ts      #   역할별 기본 권한 정의 (신규)
@@ -316,14 +316,14 @@ db-event-manager/
 }
 ```
 
-### 5.5 이벤트 템플릿 API
+### 5.5 쿼리 템플릿 API
 
 | 메서드 | 경로 | 권한 | 설명 |
 |--------|------|------|------|
-| `GET` | `/api/events` | 인증 | 이벤트 목록 조회 |
-| `POST` | `/api/events` | 관리자 | 이벤트 추가 |
-| `PUT` | `/api/events/:id` | 관리자 | 이벤트 수정 |
-| `DELETE` | `/api/events/:id` | 관리자 | 이벤트 삭제 |
+| `GET` | `/api/events` | 인증 | 쿼리 템플릿 목록 조회 |
+| `POST` | `/api/events` | 관리자 | 쿼리 템플릿 추가 |
+| `PUT` | `/api/events/:id` | 관리자 | 쿼리 템플릿 수정 |
+| `DELETE` | `/api/events/:id` | 관리자 | 쿼리 템플릿 삭제 |
 
 #### POST /api/events
 ```json
@@ -418,7 +418,7 @@ db-event-manager/
 ```typescript
 type TPermission =
   | 'product.manage'          // 프로덕트 CRUD
-  | 'event_template.manage'   // 이벤트 템플릿 CRUD
+  | 'event_template.manage'   // 쿼리 템플릿 CRUD
   | 'user.manage'             // 사용자 관리
   | 'db.manage'               // DB 접속 정보 관리
   | 'instance.create'         // 이벤트 인스턴스 생성
@@ -460,7 +460,7 @@ interface IService {
 }
 ```
 
-### 6.3 이벤트 템플릿 (IEventTemplate)
+### 6.3 쿼리 템플릿 (IEventTemplate)
 ```typescript
 // 이벤트 종류
 type TEventCategory = '아이템' | '퀘스트';
@@ -571,7 +571,7 @@ interface IQueryLog {
 ### 7.2 관리자 전용 화면
 
 #### 대시보드 (`/`)
-- 통계 카드 4개: 프로덕트 수, 이벤트 템플릿 수, 생성된 이벤트 수, 서비스 총 수
+- 통계 카드 4개: 프로덕트 수, 쿼리 템플릿 수, 생성된 이벤트 수, 서비스 총 수
 - 프로덕트 현황 테이블 (프로젝트명, 서비스 태그, 이벤트 수)
 
 #### 프로덕트 관리 (`/products`)
@@ -585,8 +585,8 @@ interface IQueryLog {
     - 서비스 범위 선택 (국내 / 스팀 / 글로벌 / 유럽 / 일본)
 - 삭제: Popconfirm 확인 후 삭제
 
-#### 이벤트 템플릿 (`/events`)
-- 이벤트 목록 테이블 (프로덕트, 이벤트명, 종류 태그, 유형 태그, 입력 형식, 기본값)
+#### 쿼리 템플릿 (`/events`)
+- 쿼리 템플릿 목록 테이블 (프로덕트, 이벤트명, 종류 태그, 유형 태그, 입력 형식, 기본값)
 - 추가/수정 모달:
   - 프로덕트 선택 (드롭다운, 필수)
   - 이벤트명 (필수, 예: `어워드 이벤트 종료(아이템)`)
@@ -634,7 +634,7 @@ interface IQueryLog {
 ### 7.4 공통 레이아웃 (MainLayout)
 - **사이드바** (왼쪽 고정, 접기/펼치기 가능):
   - 로고 + 타이틀 "이벤트 매니저"
-  - 관리자: 대시보드, 프로덕트 관리, 이벤트 템플릿, 사용자 관리, 이벤트 생성
+  - 관리자: 대시보드, 프로덕트 관리, 쿼리 템플릿, 사용자 관리, 이벤트 생성
   - GM/기획자: 이벤트 생성만
 - **헤더** (상단 고정):
   - 사이드바 토글 버튼
@@ -661,8 +661,8 @@ interface IQueryLog {
 | 대시보드 | (프론트 전용) | O | X | X |
 | 프로덕트 목록 | `GET /api/products` | O | O | O |
 | 프로덕트 CUD | `POST/PUT/DELETE /api/products` | O | X | X |
-| 이벤트 목록 | `GET /api/events` | O | O | O |
-| 이벤트 CUD | `POST/PUT/DELETE /api/events` | O | X | X |
+| 쿼리 템플릿 목록 | `GET /api/events` | O | O | O |
+| 쿼리 템플릿 CUD | `POST/PUT/DELETE /api/events` | O | X | X |
 | 사용자 관리 | `/api/users/*` | O | X | X |
 | 이벤트 생성 | (프론트 전용) | O | O | O |
 
@@ -768,7 +768,7 @@ JWT_EXPIRES_IN=24h
 |--------|-----------|------|
 | `useAuthStore` | localStorage (`strToken`) + API | 로그인/로그아웃/토큰 검증 |
 | `useProductStore` | 서버 API (`/api/products`) | 프로덕트 목록 + CRUD |
-| `useEventStore` | 서버 API (`/api/events`) | 이벤트 템플릿 목록 + CRUD |
+| `useEventStore` | 서버 API (`/api/events`) | 쿼리 템플릿 목록 + CRUD |
 | `useQueryLogStore` | localStorage (`em-query-logs`) | 이벤트 생성 이력 (개인별) |
 
 **데이터 로드 시점:**

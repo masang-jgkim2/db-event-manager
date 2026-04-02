@@ -11,7 +11,7 @@
 - **내용**:
   - 헬스, 인증(admin/gm01/dba01), 토큰 검증
   - 역할·권한별 메뉴/페이지 대응 API 매트릭스: admin 전부 200, GM 프로덕트·이벤트·이벤트인스턴스 200·나머지 403, DBA(실행만) 이벤트인스턴스만 200
-  - 권한별 API: 프로덕트/이벤트 템플릿/DB 접속(보기만 시 POST·PUT·DELETE·test 403)/사용자·역할(user.view, role.view)/이벤트 인스턴스 실행
+  - 권한별 API: 프로덕트/쿼리 템플릿/DB 접속(보기만 시 POST·PUT·DELETE·test 403)/사용자·역할(user.view, role.view)/이벤트 인스턴스 실행
   - 권한 추가·삭제 시나리오(재로그인 후 403·200 검증)
 
 ---
@@ -55,9 +55,9 @@
 | 프로덕트 | POST | `/api/products` | 추가 (product.create 또는 manage) |
 | 프로덕트 | PUT | `/api/products/:id` | 수정 (product.edit 또는 manage) |
 | 프로덕트 | DELETE | `/api/products/:id` | 삭제 (product.delete 또는 manage) |
-| 이벤트 템플릿 | GET | `/api/events` | 목록 (event_template.view 등) |
-| 이벤트 템플릿 | POST | `/api/events` | 추가 (event_template.create 또는 manage) |
-| 이벤트 템플릿 | PUT/DELETE | `/api/events/:id` | 수정/삭제 (event_template.edit/delete 또는 manage) |
+| 쿼리 템플릿 | GET | `/api/events` | 목록 (event_template.view 등) |
+| 쿼리 템플릿 | POST | `/api/events` | 추가 (event_template.create 또는 manage) |
+| 쿼리 템플릿 | PUT/DELETE | `/api/events/:id` | 수정/삭제 (event_template.edit/delete 또는 manage) |
 | 이벤트 인스턴스 | GET | `/api/event-instances/stream` | SSE 스트림 |
 | 이벤트 인스턴스 | GET | `/api/event-instances` | 목록 |
 | 이벤트 인스턴스 | GET | `/api/event-instances/:id` | 단건 조회 |
@@ -104,7 +104,7 @@
 
 - **인증**: 로그인, 토큰 검증, 로그아웃
 - **관리자**: 대시보드(전체), 사용자 CRUD·비밀번호 초기화, 역할 CRUD, DB 접속 CRUD·연결 테스트
-- **프로덕트/이벤트 템플릿**: 목록·추가·수정·삭제 (권한별)
+- **프로덕트/쿼리 템플릿**: 목록·추가·수정·삭제 (권한별)
 - **이벤트 인스턴스**: 목록·단건·생성·수정·상태 변경·QA/LIVE 실행, SSE 실시간 알림
 - **공통**: 나의 대시보드, 이벤트 생성(쿼리) 페이지, 설정(테마/사이드바 등)
 

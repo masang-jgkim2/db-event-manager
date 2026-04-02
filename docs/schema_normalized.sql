@@ -66,7 +66,7 @@ CREATE TABLE product_services (
 );
 
 -- -----------------------------------------
--- 이벤트 템플릿
+-- 쿼리 템플릿
 -- -----------------------------------------
 CREATE TABLE event_templates (
   n_id              INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,

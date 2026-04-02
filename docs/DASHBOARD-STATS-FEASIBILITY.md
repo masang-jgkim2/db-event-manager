@@ -1,7 +1,7 @@
 # 대시보드 통계·차원별 현황 — 구현 가능성 검토
 
 > 브랜치: `feature/dashboard-stats-feasibility`  
-> 목표: 사용자별 / 프로덕트별 / 이벤트(템플릿)별 작업 현황 등 통계를 카드·테이블로 보고, 라벨–데이터 연동을 확장할 수 있는지 검토.
+> 목표: 사용자별 / 프로덕트별 / 쿼리 템플릿별 작업 현황 등 통계를 카드·테이블로 보고, 라벨–데이터 연동을 확장할 수 있는지 검토.
 
 ---
 
@@ -24,7 +24,7 @@
 - **필드 예시** (통계에 쓰기 좋음):
   - 사용자/담당: `strCreatedBy`, 단계별 `objQaDeployer` / `objLiveDeployer` 등
   - 프로덕트: `nProductId`, `strProductName`
-  - 이벤트(템플릿): `nEventTemplateId`, `strEventName`
+  - 쿼리 템플릿(인스턴스가 참조): `nEventTemplateId`, `strEventName`
   - 진행: `strStatus`, `dtDeployDate`, `dtCreatedAt` 등
 - **맞춤 카드** (`ICustomEventDashboardCard`): 제목 + **라벨–지표 행** + (선택) **이벤트 그룹**(상태·기간 필터) 테이블.
 - **지표 ID** (`strMetricId`): 현재는 `NUMBER_CARD_IDS`에 등록된 **고정 목록**만 (프로덕트 수, 인스턴스 수, 상태별 건수 등). 임의 차원(사용자별 건수)은 **아직 ID로 노출되지 않음**.
@@ -43,7 +43,7 @@
 |------|------------|------|
 | 사용자별 작업 현황 | **데이터는 가능**, **UI는 확장 필요** | 인스턴스 배열을 `strCreatedBy`(또는 actor 필드)로 `reduce`/`Map` 집계 후 테이블·바 차트로 표시하면 됨. |
 | 프로덕트별 작업 현황 | 동일 | `nProductId` / `strProductName` 기준 집계. |
-| 이벤트(템플릿)별 작업 현황 | 동일 | `nEventTemplateId` / `strEventName` 기준 집계. |
+| 쿼리 템플릿별 작업 현황 | 동일 | `nEventTemplateId` / `strEventName` 기준 집계. |
 | 카드에 라벨–숫자 연동 | **부분 가능** | 맞춤 카드의 “라벨–지표”는 **등록된 metricId**에 한정. 새 집계를 **metricId + 집계 함수**로 추가하면 확장 가능. |
 | 테이블에 임의 컬럼·집계 연동 | **제한적** | `productTable` 패턴을 **일반화**(예: `dimension` + `columns` 설정)하거나, 새 카드 타입 `aggregateTable` 추가가 필요. |
 

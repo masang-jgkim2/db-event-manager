@@ -25,10 +25,10 @@ test.describe('메뉴 클릭으로 페이지 이동', () => {
     await expect(page.getByRole('heading', { name: '프로덕트 관리' })).toBeVisible({ timeout: 5000 });
   });
 
-  test('이벤트 템플릿 메뉴 클릭 시 이벤트 템플릿 페이지가 보인다', async ({ page }) => {
-    await page.getByRole('menuitem', { name: '이벤트 템플릿' }).click();
+  test('쿼리 템플릿 메뉴 클릭 시 쿼리 템플릿 페이지가 보인다', async ({ page }) => {
+    await page.getByRole('menuitem', { name: '쿼리 템플릿' }).click();
     await expect(page).toHaveURL('/events');
-    await expect(page.getByText(/이벤트|템플릿/i).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: '쿼리 템플릿' })).toBeVisible({ timeout: 5000 });
   });
 
   test('나의 대시보드 메뉴 클릭 시 나의 대시보드 페이지가 보인다', async ({ page }) => {

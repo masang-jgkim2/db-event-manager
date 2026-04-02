@@ -11,7 +11,7 @@
 
 | 계층 | 현재 구조 | 실행 시 동작 |
 |------|-----------|----------------|
-| **이벤트 템플릿** | `strQueryTemplate` 1개 + `strDefaultItems` 1개 | QA/LIVE 구분 없음. 프로덕트당 “한 연결” 전제 |
+| **쿼리 템플릿** | `strQueryTemplate` 1개 + `strDefaultItems` 1개 | QA/LIVE 구분 없음. 프로덕트당 “한 연결” 전제 |
 | **DB 접속** | (nProductId, strEnv) 당 **활성 1건** 사용 (`fnFindActiveConnection`) | 동일 프로덕트·동일 env면 서버 1대만 |
 | **이벤트 인스턴스** | `nProductId` 1개, `strGeneratedQuery` 1개 | 실행 시 “해당 프로덕트 + 요청 env” 접속 1개로 위 쿼리만 실행 |
 | **실행 API** | `POST .../execute` body: `{ strEnv: 'qa' \| 'live' }` | 접속 1개 조회 → `strGeneratedQuery` 한 번 실행 |
@@ -122,7 +122,7 @@
 
 ## 4. 현재 구조 vs 개선 구조 비교
 
-### 4.1 이벤트 템플릿
+### 4.1 쿼리 템플릿
 
 | 항목 | 현재 (단일) | 개선 (다중 서버/DB) |
 |------|-------------|----------------------|
@@ -206,7 +206,7 @@
 
 ### 5.5 UI 관점
 
-- **이벤트 템플릿 편집**:  
+- **쿼리 템플릿 편집**:  
   - 단일(현재) / 세트 모드 선택.  
   - 세트 모드일 때 “DB 연결 선택 + 쿼리 템플릿 + (선택) 기본값”을 리스트로 추가·수정·삭제.
 - **이벤트(인스턴스) 생성**:  
@@ -283,16 +283,16 @@ LIVE
 
 ## 9. 단일 쿼리 / 다중 쿼리 도입 시 변경 사항 목록
 
-탭으로 “단일 쿼리”와 “다중 쿼리”를 구분해 이벤트 템플릿·이벤트 생성·실행까지 반영할 때 필요한 변경 사항이다.
+탭으로 “단일 쿼리”와 “다중 쿼리”를 구분해 쿼리 템플릿·이벤트 생성·실행까지 반영할 때 필요한 변경 사항이다.
 
 | 구분 | 변경 대상 | 변경 내용 |
 |------|-----------|-----------|
-| **이벤트 템플릿** | EventPage (프론트) | **탭**: “단일 쿼리” \| “다중 쿼리”. 단일: 기존 폼(strQueryTemplate, strDefaultItems). 다중: 세트 목록(세트당 연결 DB 선택, 쿼리 템플릿, 기본값). 저장 시 단일이면 arrQueryTemplates 비움, 다중이면 arrQueryTemplates 전송·strQueryTemplate 비움(또는 첫 세트만 레거시용). |
-| **이벤트 템플릿** | Event API / eventController (백엔드) | GET/POST/PUT에서 arrQueryTemplates 수신·반환 유지 (이미 가능한 경우 많음). 단일 모드일 때 수정 시 strQueryTemplate 있으면 arrQueryTemplates 비우는 로직 유지. |
+| **쿼리 템플릿** | EventPage (프론트) | **탭**: “단일 쿼리” \| “다중 쿼리”. 단일: 기존 폼(strQueryTemplate, strDefaultItems). 다중: 세트 목록(세트당 연결 DB 선택, 쿼리 템플릿, 기본값). 저장 시 단일이면 arrQueryTemplates 비움, 다중이면 arrQueryTemplates 전송·strQueryTemplate 비움(또는 첫 세트만 레거시용). |
+| **쿼리 템플릿** | Event API / eventController (백엔드) | GET/POST/PUT에서 arrQueryTemplates 수신·반환 유지 (이미 가능한 경우 많음). 단일 모드일 때 수정 시 strQueryTemplate 있으면 arrQueryTemplates 비우는 로직 유지. |
 | **이벤트 생성** | QueryPage (프론트) | 템플릿이 **다중**이면: 입력값 1개로 각 세트 쿼리 템플릿 치환 → 세트별 생성 쿼리 미리보기(선택), 제출 시 **arrExecutionTargets** 생성하여 전송. **단일**이면: 기존처럼 strGeneratedQuery 1개만 전송. |
 | **이벤트 인스턴스 생성** | eventInstanceController (백엔드) | POST create 시 arrExecutionTargets 수신·저장 (이미 구현된 경우 유지). 단일이면 strGeneratedQuery만 사용. |
 | **쿼리 실행** | eventInstanceController Execute (백엔드) | **arrExecutionTargets** 있으면: 요청 strEnv와 같은 env인 연결만 필터 후 순차 실행, 전부 성공 시에만 상태 전이. 없으면: 기존 단일 접속 + strGeneratedQuery 실행. (현재 단일만 동작하도록 롤백된 상태면 이 분기 복원 필요.) |
 | **나의 대시보드** | MyDashboardPage (프론트) | 인스턴스에 arrExecutionTargets가 있으면 “다중 쿼리 N세트” 등 표시(선택). 상세/스테퍼에서 실행 대상 수 표시(선택). |
 | **타입** | front/src/types, backend | IQueryTemplateItem, arrExecutionTargets 이미 정의됨. 추가 변경 없어도 됨. |
 
-요약: **이벤트 템플릿**은 단일/다중 탭으로 구분하고, **이벤트 생성**은 선택한 템플릿이 다중이면 arrExecutionTargets를 만들어 제출하며, **실행**은 백엔드에서 arrExecutionTargets 유무에 따라 단일/다중 분기하면 된다.
+요약: **쿼리 템플릿**은 단일/다중 탭으로 구분하고, **이벤트 생성**은 선택한 템플릿이 다중이면 arrExecutionTargets를 만들어 제출하며, **실행**은 백엔드에서 arrExecutionTargets 유무에 따라 단일/다중 분기하면 된다.

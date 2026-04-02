@@ -36,12 +36,12 @@ CREATE TABLE products (
   dt_created_at   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 이벤트 템플릿 테이블
+-- 쿼리 템플릿 테이블
 CREATE TABLE event_templates (
   n_id              INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_product_id      INT           NOT NULL,
   str_product_name  VARCHAR(100)  NOT NULL,
-  str_event_label   VARCHAR(200)  NOT NULL COMMENT '이벤트 템플릿 이름',
+  str_event_label   VARCHAR(200)  NOT NULL COMMENT '쿼리 템플릿 이름',
   str_category      VARCHAR(50)   NOT NULL COMMENT '아이템 | 퀘스트',
   str_type          VARCHAR(50)   NOT NULL COMMENT '삭제 | 지급 | 초기화',
   str_input_format  VARCHAR(50)   NOT NULL COMMENT '입력 형식',

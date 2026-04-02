@@ -88,7 +88,7 @@ const fnCatchApiError = (error: any, strFallback: string) => {
 |------|------|------|
 | **API 테스트** | `backend/src/__tests__/api.test.ts` | health, 로그인(역할별), RBAC(메뉴/API 403), event-instance 생성/수정/실행 등 |
 | **E2E** | `front/e2e/auth.spec.ts` | 로그인 성공/실패, 로그아웃 |
-| **E2E** | `front/e2e/navigation.spec.ts` | 로그인 후 메뉴 클릭 → 대시보드, 프로덕트, 이벤트 템플릿, 나의 대시보드 등 URL·화면 |
+| **E2E** | `front/e2e/navigation.spec.ts` | 로그인 후 메뉴 클릭 → 대시보드, 프로덕트, 쿼리 템플릿, 나의 대시보드 등 URL·화면 |
 | **E2E** | `front/e2e/products.spec.ts` | 프로덕트 페이지, “새로운 프로덕트” 모달 열기/닫기 |
 
 ### 4.2 실행 방법
@@ -111,7 +111,7 @@ cd front && npx playwright test
 | **백엔드** | API 통합 테스트 1개 파일 | 컨트롤러/서비스/레포 단위 테스트 없음. API 테스트로 주요 흐름 커버 |
 | **프론트** | E2E 3개 스펙 | 단위/컴포넌트 테스트 없음. 로그인·메뉴·프로덕트 모달만 커버 |
 | **나의 대시보드** | API 테스트에서 event-instance 일부 | E2E에서는 navigation만; 대시보드 내 버튼·상태 전이 E2E 없음 |
-| **역할/사용자/이벤트 템플릿/DB접속** | API 테스트에서 403·목록 확인 | E2E는 메뉴 이동만; 각 페이지 CRUD E2E 없음 |
+| **역할/사용자/쿼리 템플릿/DB접속** | API 테스트에서 403·목록 확인 | E2E는 메뉴 이동만; 각 페이지 CRUD E2E 없음 |
 
 - **개발 후 확인**: 로컬에서 `backend` npm test + `front` playwright test 실행하면 “개발 → 테스트” 흐름은 동작함.
 - **보강 시**: 나의 대시보드(상태 전이, 실행 버튼), 역할/사용자 CRUD 등 중요 시나리오를 E2E에 추가하면 안정성 확보에 유리함.

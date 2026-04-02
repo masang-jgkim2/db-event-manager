@@ -28,7 +28,7 @@ export const useEventStore = create<IEventStore>((set) => ({
         set({ arrEvents: result.arrEvents });
       }
     } catch {
-      console.error('이벤트 목록 조회 실패');
+      console.error('쿼리 템플릿 목록 조회 실패');
     } finally {
       set({ bLoading: false });
     }
@@ -39,7 +39,7 @@ export const useEventStore = create<IEventStore>((set) => ({
       const result = await fnApiCreateEvent(objEvent as any);
       if (result.bSuccess) {
         set((state) => ({ arrEvents: [...state.arrEvents, result.objEvent] }));
-        return { bSuccess: true, strMessage: '이벤트 템플릿이 등록되었습니다.' };
+        return { bSuccess: true, strMessage: '쿼리 템플릿이 등록되었습니다.' };
       }
       return { bSuccess: false, strMessage: result.strMessage || '등록에 실패했습니다.' };
     } catch (error: any) {
@@ -54,7 +54,7 @@ export const useEventStore = create<IEventStore>((set) => ({
         set((state) => ({
           arrEvents: state.arrEvents.map((e) => (e.nId === nId ? result.objEvent : e)),
         }));
-        return { bSuccess: true, strMessage: '이벤트 템플릿이 수정되었습니다.' };
+        return { bSuccess: true, strMessage: '쿼리 템플릿이 수정되었습니다.' };
       }
       return { bSuccess: false, strMessage: result.strMessage || '수정에 실패했습니다.' };
     } catch (error: any) {
@@ -67,7 +67,7 @@ export const useEventStore = create<IEventStore>((set) => ({
       const result = await fnApiDeleteEvent(nId);
       if (result.bSuccess) {
         set((state) => ({ arrEvents: state.arrEvents.filter((e) => e.nId !== nId) }));
-        return { bSuccess: true, strMessage: '이벤트 템플릿이 삭제되었습니다.' };
+        return { bSuccess: true, strMessage: '쿼리 템플릿이 삭제되었습니다.' };
       }
       return { bSuccess: false, strMessage: result.strMessage || '삭제에 실패했습니다.' };
     } catch (error: any) {

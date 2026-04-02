@@ -2,12 +2,12 @@ import { Request, Response } from 'express';
 import { arrEvents, fnGetNextEventId, fnSaveEvents } from '../data/events';
 import { arrProducts } from '../data/products';
 
-// 이벤트 목록 조회 (모든 인증 사용자)
+// 쿼리 템플릿 목록 조회 (모든 인증 사용자)
 export const fnGetEvents = async (_req: Request, res: Response): Promise<void> => {
   res.json({ bSuccess: true, arrEvents });
 };
 
-// 이벤트 추가 (관리자)
+// 쿼리 템플릿 추가 (관리자)
 export const fnCreateEvent = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -43,19 +43,19 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     fnSaveEvents();
     res.json({ bSuccess: true, objEvent: objNew });
   } catch (error) {
-    console.error('이벤트 생성 오류:', error);
+    console.error('쿼리 템플릿 추가 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 
-// 이벤트 수정 (관리자)
+// 쿼리 템플릿 수정 (관리자)
 export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> => {
   try {
     const nId = Number(req.params.id);
     const nIndex = arrEvents.findIndex((e) => e.nId === nId);
 
     if (nIndex === -1) {
-      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      res.status(404).json({ bSuccess: false, strMessage: '쿼리 템플릿을 찾을 수 없습니다.' });
       return;
     }
 
@@ -87,27 +87,27 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     fnSaveEvents();
     res.json({ bSuccess: true, objEvent: arrEvents[nIndex] });
   } catch (error) {
-    console.error('이벤트 수정 오류:', error);
+    console.error('쿼리 템플릿 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
 
-// 이벤트 삭제 (관리자)
+// 쿼리 템플릿 삭제 (관리자)
 export const fnDeleteEvent = async (req: Request, res: Response): Promise<void> => {
   try {
     const nId = Number(req.params.id);
     const nIndex = arrEvents.findIndex((e) => e.nId === nId);
 
     if (nIndex === -1) {
-      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      res.status(404).json({ bSuccess: false, strMessage: '쿼리 템플릿을 찾을 수 없습니다.' });
       return;
     }
 
     arrEvents.splice(nIndex, 1);
     fnSaveEvents();
-    res.json({ bSuccess: true, strMessage: '이벤트가 삭제되었습니다.' });
+    res.json({ bSuccess: true, strMessage: '쿼리 템플릿이 삭제되었습니다.' });
   } catch (error) {
-    console.error('이벤트 삭제 오류:', error);
+    console.error('쿼리 템플릿 삭제 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

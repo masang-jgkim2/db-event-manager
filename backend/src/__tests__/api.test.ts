@@ -197,7 +197,7 @@ describe('API 전체 테스트', () => {
     });
   });
 
-  describe('프로덕트 / 이벤트 (admin)', () => {
+  describe('프로덕트 / 쿼리 템플릿 (admin)', () => {
     it('GET /api/products → 200, 배열', async () => {
       const res = await request(app)
         .get('/api/products')
@@ -323,7 +323,7 @@ describe('API 전체 테스트', () => {
       await fnExpectView('/api/roles', 'role.view');
     });
 
-    it('GM(gm01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
+    it('GM(gm01) 로그인 → 프로덕트·쿼리 템플릿·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
       const token = strGmToken;
       await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
@@ -333,7 +333,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
 
-    it('기획자(planner01) 로그인 → 프로덕트·이벤트·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
+    it('기획자(planner01) 로그인 → 프로덕트·쿼리 템플릿·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
       expect(loginRes.status).toBe(200);
       const token = loginRes.body.strToken;
@@ -400,7 +400,7 @@ describe('API 전체 테스트', () => {
     });
   });
 
-  describe('권한별 API — 이벤트 템플릿', () => {
+  describe('권한별 API — 쿼리 템플릿', () => {
     it('event_template.view 등 있으면 GET /api/events → 200', async () => {
       const resGm = await request(app).get('/api/events').set('Authorization', `Bearer ${strGmToken}`);
       expect(resGm.status).toBe(200);
@@ -445,7 +445,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('GM: 프로덕트·이벤트·이벤트인스턴스 보기 200, 사용자/역할 403, DB접속은 my_dashboard.view로 200', async () => {
+    it('GM: 프로덕트·쿼리 템플릿·이벤트 인스턴스 보기 200, 사용자/역할 403, DB접속은 my_dashboard.view로 200', async () => {
       const token = strGmToken;
       await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
@@ -455,7 +455,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
-    it('DBA(실행 권한만 부여 시): 이벤트인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {
+    it('DBA(실행 권한만 부여 시): 이벤트 인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => r.strPermission);
       fnSetPermissionsForRole(N_ROLE_DBA, ['my_dashboard.view', 'instance.execute_qa', 'instance.execute_live'] as TPermission[]);
@@ -643,8 +643,8 @@ describe('API 전체 테스트', () => {
     });
   });
 
-  // ─── 이벤트(쿼리 템플릿 세트) 추가·수정·삭제 테스트 ─────────────────────
-  describe('이벤트 CRUD (쿼리 템플릿 세트)', () => {
+  // ─── 쿼리 템플릿(세트) 추가·수정·삭제 테스트 ─────────────────────────────
+  describe('쿼리 템플릿 CRUD (다중 세트)', () => {
     let nEventId: number;
     const nProductIdForEvent = 1;
     let nDbConnectionId: number;
@@ -733,7 +733,7 @@ describe('API 전체 테스트', () => {
       nConn2 = conns[1]?.nId ?? arrDbConnections.filter((c) => c.nProductId === nProductId)[1]?.nId ?? nConn1;
     });
 
-    it('다중 세트 이벤트 템플릿 생성 (2세트, 임의 쿼리)', async () => {
+    it('다중 세트 쿼리 템플릿 생성 (2세트, 임의 쿼리)', async () => {
       const res = await request(app)
         .post('/api/events')
         .set('Authorization', `Bearer ${strAdminToken}`)

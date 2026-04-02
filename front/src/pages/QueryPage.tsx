@@ -77,7 +77,7 @@ const QueryPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const user = useAuthStore((s) => s.user);
 
-  // 페이지 진입 시 최신 프로덕트/이벤트 목록 및 DB 접속 목록 로드
+  // 페이지 진입 시 최신 프로덕트/쿼리 템플릿 목록 및 DB 접속 목록 로드
   useEffect(() => { fnFetchProducts(); fnFetchEvents(); }, [fnFetchProducts, fnFetchEvents]);
   useEffect(() => {
     let bMounted = true;
@@ -112,7 +112,7 @@ const QueryPage = () => {
     return arrEvents.filter((e) => e.nProductId === nSelectedProductId);
   }, [nSelectedProductId, arrEvents]);
 
-  // 선택된 이벤트 템플릿
+  // 선택된 쿼리 템플릿
   const objSelectedEvent: IEventTemplate | null = useMemo(() => {
     if (!nSelectedEventId) return null;
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
@@ -394,7 +394,7 @@ const QueryPage = () => {
             title="등록된 이벤트가 없습니다"
             subTitle={
               arrUserRoles.includes('admin')
-                ? '먼저 프로덕트와 이벤트 템플릿을 등록해주세요.'
+                ? '먼저 프로덕트와 쿼리 템플릿을 등록해주세요.'
                 : '관리자에게 이벤트 등록을 요청해주세요.'
             }
           />
@@ -422,7 +422,7 @@ const QueryPage = () => {
           items={[
             { title: '프로덕트' },
             { title: '국내/해외' },
-            { title: '이벤트 선택' },
+            { title: '쿼리 템플릿' },
             { title: '값 입력' },
             { title: '생성 완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
           ]}
@@ -484,12 +484,12 @@ const QueryPage = () => {
             </Card>
           )}
 
-          {/* STEP 3: 이벤트 선택 */}
+          {/* STEP 3: 쿼리 템플릿 선택 */}
           {strSelectedAbbr && (
-            <Card title="3. 이벤트 선택" size="small" style={{ marginTop: 12 }}>
+            <Card title="3. 쿼리 템플릿 선택" size="small" style={{ marginTop: 12 }}>
               <Select
                 style={{ width: '100%' }}
-                placeholder="이벤트를 선택하세요"
+                placeholder="쿼리 템플릿을 선택하세요"
                 onChange={fnHandleEventChange}
                 value={nSelectedEventId}
                 size="large"

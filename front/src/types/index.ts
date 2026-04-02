@@ -4,10 +4,10 @@
 export type TPermission =
   // 조회 권한
   | 'product.view'              // 프로덕트 목록/상세 조회
-  | 'event_template.view'       // 이벤트 템플릿 목록/상세 조회
+  | 'event_template.view'       // 쿼리 템플릿 목록/상세 조회
   // 관리 권한 (CRUD)
   | 'product.manage'            // 프로덕트 CRUD (view 포함)
-  | 'event_template.manage'     // 이벤트 템플릿 CRUD (view 포함)
+  | 'event_template.manage'     // 쿼리 템플릿 CRUD (view 포함)
   | 'user.manage'               // 사용자 관리
   | 'db.manage'                 // DB 접속 정보 관리
   // 이벤트 인스턴스 권한
@@ -23,9 +23,9 @@ export type TPermission =
 // 권한 표시 라벨
 export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'product.view':            '프로덕트 조회',
-  'event_template.view':     '이벤트 템플릿 조회',
+  'event_template.view':     '쿼리 템플릿 조회',
   'product.manage':          '프로덕트 관리 (CRUD)',
-  'event_template.manage':   '이벤트 템플릿 관리 (CRUD)',
+  'event_template.manage':   '쿼리 템플릿 관리 (CRUD)',
   'user.manage':             '사용자 관리',
   'db.manage':               'DB 접속 정보 관리',
   'instance.view':          '이벤트 생성 보기',
@@ -56,7 +56,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'product.edit', label: '수정' },
     { value: 'product.delete', label: '삭제' },
   ]},
-  { groupLabel: '이벤트 템플릿', permissions: [
+  { groupLabel: '쿼리 템플릿', permissions: [
     { value: 'event_template.view', label: '보기' },
     { value: 'event_template.create', label: '생성' },
     { value: 'event_template.edit', label: '수정' },
@@ -229,7 +229,7 @@ export interface IProduct {
 export const ARR_REGION_OPTIONS = ['국내', '스팀', '글로벌', '유럽', '일본'] as const;
 
 // =============================================
-// 이벤트 템플릿 관련
+// 쿼리 템플릿 관련
 // =============================================
 
 // 이벤트 종류
@@ -256,7 +256,7 @@ export interface IQueryTemplateItem {
   strQueryTemplate: string;
 }
 
-// 이벤트 템플릿
+// 쿼리 템플릿
 export interface IEventTemplate {
   nId: number;
   nProductId: number;

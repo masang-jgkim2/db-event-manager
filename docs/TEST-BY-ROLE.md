@@ -21,7 +21,7 @@
 |-------------|------|------------------------|
 | 대시보드 | `/` | **관리자** (dashboard.view) |
 | 프로덕트 | `/products` | product.view → 관리자, **GM**, **기획자** |
-| 이벤트 템플릿 | `/events` | event_template.view → 관리자, **GM**, **기획자** |
+| 쿼리 템플릿 | `/events` | event_template.view → 관리자, **GM**, **기획자** |
 | DB 접속 정보 | `/db-connections` | db_connection.view 또는 db.manage → **관리자** 등 |
 | 사용자 | `/users` | user.view → **관리자** 등 |
 | 역할 권한 | `/roles` | role.view → **관리자** 등 |
@@ -42,7 +42,7 @@
 - **목록/상세 조회**: product.view → 관리자, GM, 기획자
 - **추가/수정/삭제**: product.create / edit / delete (또는 product.manage) → 버튼은 해당 권한 있을 때만 노출
 
-### 3.3 이벤트 템플릿 (`/events`)
+### 3.3 쿼리 템플릿 (`/events`)
 - **목록/상세 조회**: event_template.view → 관리자, GM, 기획자
 - **추가/수정/삭제**: event_template.create / edit / delete → 버튼은 해당 권한 있을 때만 노출
 
@@ -154,7 +154,7 @@ npm run test:permission
 - **역할별 권한 수·로그인 권한·API 접근 검증**: DBA 권한 수 ≥5 및 필수 5개 포함, DBA 로그인 시 arrPermissions에 보기·상세·컨펌·QA반영실행·LIVE반영실행 포함, admin/DBA/GM/기획자(planner01) 각각 로그인 후 기대 API 200/403
 - **인증 — 로그인**: admin / GM / DBA 로그인, 토큰·arrRoles·arrPermissions
 - **권한별 API (GM/DBA 토큰)**: products/events/event-instances 200 또는 403
-- **권한별 API — 프로덕트/이벤트 템플릿/DB 접속/사용자·역할**: view 있으면 200, 없으면 403
+- **권한별 API — 프로덕트/쿼리 템플릿/DB 접속/사용자·역할**: view 있으면 200, 없으면 403
 - **역할·권한별 메뉴/페이지/기능 접근 (API 매트릭스)**: admin 전부 200, GM/DBA는 허용된 API만 200·나머지 403
 - **권한 추가/삭제 시나리오**: 권한 제거 후 403, 복원 후 재로그인 시 200
 

@@ -374,10 +374,10 @@ const EventPage = () => {
     <>
       {contextHolder}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>이벤트 템플릿</Title>
+        <Title level={4} style={{ margin: 0 }}>쿼리 템플릿</Title>
         {bCanCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 이벤트
+            새로운 쿼리 템플릿
           </Button>
         )}
       </div>
@@ -387,13 +387,13 @@ const EventPage = () => {
           strTableId="event_templates"
           dataSource={arrEvents}
           columns={arrColumns}
-          strEmptyText="등록된 이벤트 템플릿이 없습니다."
+          strEmptyText="등록된 쿼리 템플릿이 없습니다."
         />
       </Card>
 
       {/* 이벤트 추가/수정 모달 */}
       <Modal
-        title={objEditEvent ? '이벤트 템플릿 수정' : '이벤트 템플릿 추가'}
+        title={objEditEvent ? '쿼리 템플릿 수정' : '쿼리 템플릿 추가'}
         open={bModalOpen}
         onOk={fnHandleSave}
         onCancel={fnCloseModal}

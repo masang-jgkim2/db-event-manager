@@ -162,9 +162,9 @@ const MainLayout = () => {
     if (fnHasPerm('product.view')) {
       arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' });
     }
-    // 이벤트 템플릿: 보기 권한 있어야 메뉴 노출
+    // 쿼리 템플릿: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('event_template.view')) {
-      arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' });
+      arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' });
     }
     // DB 접속 정보: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
