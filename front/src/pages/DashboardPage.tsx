@@ -82,7 +82,7 @@ const fnGetStatusCardLabel = (strStatus: TEventStatus) => OBJ_STATUS_CONFIG[strS
 
 const OBJ_CARD_LABELS: Record<TDashboardCardId, string> = {
   product: '프로덕트',
-  eventTemplate: '이벤트 템플릿',
+  eventTemplate: '쿼리 템플릿',
   instance: '이벤트 인스턴스',
   service: '서비스(국내/해외)',
   dbConnection: 'DB 접속',
@@ -111,7 +111,7 @@ const OBJ_TABLE_CARD_COLUMNS: Record<(typeof TABLE_CARD_IDS)[number], { key: str
   productTable: [
     { key: 'strName', title: '프로젝트명' },
     { key: 'arrServices', title: '서비스' },
-    { key: 'eventCount', title: '이벤트 템플릿 수' },
+    { key: 'eventCount', title: '쿼리 템플릿 수' },
   ],
 };
 
@@ -1329,7 +1329,7 @@ const DashboardPage = () => {
       ),
     },
     {
-      title: '이벤트 템플릿 수',
+      title: '쿼리 템플릿 수',
       key: 'eventCount',
       width: 120,
       render: (_: unknown, objRecord: IProduct) => {
@@ -2098,7 +2098,7 @@ const DashboardPage = () => {
                 {strId === 'eventTemplate' && (
                   <DashboardCardContent
                     icon={fnDashboardCardIcon(CalendarOutlined, '#52c41a')}
-                    title="이벤트 템플릿"
+                    title="쿼리 템플릿"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{arrEvents.length}개</span>
                   </DashboardCardContent>
@@ -2259,7 +2259,7 @@ const DashboardPage = () => {
                             !bLoadingStats &&
                             arrDashboardInstances.length === 0 ? (
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                이벤트 목록·건수는 「나의 대시보드」 보기 권한이 있을 때 조회됩니다.
+                                인스턴스 목록·건수는 「나의 대시보드」 보기 권한이 있을 때 조회됩니다.
                               </Text>
                             ) : bLoadingStats && arrDashboardInstances.length === 0 ? (
                               <div style={{ padding: 16, textAlign: 'center' }}>

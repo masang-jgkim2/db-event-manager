@@ -40,10 +40,15 @@ export const fnApiDeleteDbConnection = async (nId: number) => {
   }
 };
 
-// 연결 테스트 — 4xx 에러도 data 그대로 반환
-export const fnApiTestDbConnection = async (nId: number) => {
+// 연결 테스트 — 4xx 에러도 data 그대로 반환. nTimeoutMs: 주기 모니터링용 짧은 타임아웃(무응답→fail)
+export const fnApiTestDbConnection = async (
+  nId: number,
+  objOpts?: { nTimeoutMs?: number },
+) => {
   try {
-    const response = await apiClient.post(`/db-connections/${nId}/test`);
+    const response = await apiClient.post(`/db-connections/${nId}/test`, {}, {
+      timeout: objOpts?.nTimeoutMs ?? 120000,
+    });
     return response.data;
   } catch (error: any) {
     if (error.response?.data) return error.response.data;

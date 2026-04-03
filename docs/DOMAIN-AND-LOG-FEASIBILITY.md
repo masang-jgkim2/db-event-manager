@@ -48,16 +48,16 @@
 
 ---
 
-### 2.2 이벤트 템플릿 (Event / EventTemplate)
+### 2.2 쿼리 템플릿 (Event / EventTemplate)
 
 | 원하는 것 | 현재 구조로 가능? | 비고 |
 |-----------|-------------------|------|
 | 생성 로그 | ❌ 불가 | 생성/수정/삭제 감사 없음. dtCreatedAt만 있음. |
 | 삭제 로그 | ❌ 불가 | |
 | 수정 로그 | ❌ 불가 | |
-| 선택된 이벤트(템플릿)에서 진행 중인 이벤트 | ✅ 가능 | EventInstance에서 nEventTemplateId + strStatus ≠ live_verified 필터. |
-| 선택된 이벤트에서 완료된 이벤트 | ✅ 가능 | nEventTemplateId + strStatus === 'live_verified'. |
-| 이벤트(템플릿)를 가장 많이 한 사용자 수 등 | ✅ 가능 | EventInstance에서 nEventTemplateId로 필터 후 nCreatedByUserId/objCreator 기준 집계. |
+| 선택된 쿼리 템플릿 기준 진행 중 인스턴스 | ✅ 가능 | EventInstance에서 nEventTemplateId + strStatus ≠ live_verified 필터. |
+| 선택된 쿼리 템플릿 기준 완료 인스턴스 | ✅ 가능 | nEventTemplateId + strStatus === 'live_verified'. |
+| 쿼리 템플릿별 인스턴스를 가장 많이 생성한 사용자 수 등 | ✅ 가능 | EventInstance에서 nEventTemplateId로 필터 후 nCreatedByUserId/objCreator 기준 집계. |
 
 **요약**: 템플릿 CRUD 로그는 없음. “진행 중/완료 인스턴스”, “가장 많이 한 사용자”는 인스턴스 데이터로 가능.
 
@@ -113,7 +113,7 @@
 - **프로덕트 기준**
   - 진행 중 인스턴스: `nProductId` + `strStatus !== 'live_verified'`.
   - 해당 프로덕트에서 이벤트 생성한 사용자: 인스턴스의 `objCreator`/`nCreatedByUserId` 집계.
-- **이벤트 템플릿 기준**
+- **쿼리 템플릿 기준**
   - 진행 중/완료 인스턴스: `nEventTemplateId` + `strStatus` 필터.
   - 템플릿별 “가장 많이 한 사용자” 등: `nCreatedByUserId` 집계.
 - **사용자 기준**
@@ -128,7 +128,7 @@
 | 대상 | 추가 시 필요한 것 |
 |------|-------------------|
 | 프로덕트 | 생성/수정/삭제 시 “누가, 언제, 무엇을(이전값→새값)” 기록하는 테이블/배열 + API. |
-| 이벤트 템플릿 | 위와 동일한 형태의 CRUD 감사 로그. |
+| 쿼리 템플릿 | 위와 동일한 형태의 CRUD 감사 로그. |
 | DB 접속 정보 | CRUD 감사 로그 + “연결 테스트” 시도/성공/실패·시각·연결 ID (선택: 사용자) 저장. |
 | 쿼리 실행 (전역) | 실행 시마다 1건 저장: 프로덕트/인스턴스/사용자/환경/성공·실패/쿼리/에러메시지/시각. (기존 arrStatusLogs는 “성공 시 인스턴스 안”에만 있음.) |
 | 사용자 | 로그인 성공·실패, 로그아웃 시각 저장. 사용자 CRUD(생성/수정/삭제/비밀번호 초기화/권한 변경) 시 “누가, 대상 누구, 무엇을” 기록. |
@@ -144,7 +144,7 @@
   - DB: **성공한 쿼리**는 인스턴스의 `arrStatusLogs` 안에서만 조회 가능 (전역 “DB 로그” 화면은 불가).
   - 사용자: **이벤트 인스턴스 상의 행위**(생성/상태 변경/실행)만 인스턴스·arrStatusLogs로 추적 가능.
 - **현재 구조로 불가능한 것**
-  - 프로덕트/이벤트(템플릿)/DB(접속 정보)/사용자/역할에 대한 **CRUD 감사 로그** 전부.
+  - 프로덕트/쿼리 템플릿/DB(접속 정보)/사용자/역할에 대한 **CRUD 감사 로그** 전부.
   - **로그인/로그아웃**, **연결 테스트 로그**, **실패한 쿼리 저장**, **전역 쿼리 실행 로그**.
 
 원하시는 “로그로 다 보여 주기”를 하려면,  

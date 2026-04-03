@@ -1,4 +1,4 @@
-# 이벤트 템플릿: 쿼리 & 기본값 vs 쿼리 템플릿 세트
+# 쿼리 템플릿: 단일 쿼리·기본값 vs 다중 쿼리 세트
 
 ## 1. 데이터 구조 요약
 
@@ -52,7 +52,7 @@
 
 ## 3. DB/스키마 관점
 
-- **DB 테이블 추가 없음**. 이벤트·템플릿·인스턴스 모두 기존 JSON 파일(events.json, eventInstances.json) 기반.
+- **DB 테이블 추가 없음**. 쿼리 템플릿·이벤트 인스턴스 모두 기존 JSON 파일(events.json, eventInstances.json) 기반.
 - **호환**:
   - `arrQueryTemplates` 없거나 비어 있으면 → 기존과 동일하게 `strQueryTemplate` + `strDefaultItems`만 사용.
   - 세트에 `strDefaultItems` 없어도 동작 (선택 필드).

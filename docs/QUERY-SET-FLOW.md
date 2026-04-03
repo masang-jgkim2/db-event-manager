@@ -7,7 +7,7 @@
 ## 1. 흐름 요약
 
 ```
-[이벤트 템플릿] arrQueryTemplates N개 저장
+[쿼리 템플릿] arrQueryTemplates N개 저장
        ↓
 [이벤트 생성]   템플릿 기준으로 arrExecutionTargets N개 생성·전송, strGeneratedQuery(미리보기/첫세트) 전송
        ↓
@@ -22,8 +22,8 @@
 
 | 구분 | 파일/위치 | 세트 여러 개 시 동작 | 비고 |
 |------|-----------|------------------------|------|
-| **이벤트 템플릿** | EventPage | ✅ 세트 N개 저장 (arrQueryTemplates) | 탭 숨김 후 "쿼리 템플릿"만 표시 |
-| **이벤트 템플릿 API** | eventController (POST/PUT) | ✅ arrQueryTemplates 수신·저장 | 단일 모드일 때만 세트 비움 |
+| **쿼리 템플릿** | EventPage | ✅ 세트 N개 저장 (arrQueryTemplates) | 탭 숨김 후 "쿼리 템플릿"만 표시 |
+| **쿼리 템플릿 API** | eventController (POST/PUT) | ✅ arrQueryTemplates 수신·저장 | 단일 모드일 때만 세트 비움 |
 | **이벤트 생성** | QueryPage | ✅ arrQueryTemplates 기준으로 arrTargets N개 생성 → arrExecutionTargets로 전송 | strGeneratedQuery는 미리보기/첫세트만 |
 | **인스턴스 생성 API** | eventInstanceController (POST) | ✅ arrExecutionTargets 수신·저장 | strGeneratedQuery도 저장(첫세트 등) |
 | **인스턴스 수정(일반)** | eventInstanceController (PUT) | event_created일 때 arrExecutionTargets 수정 가능(코드상) | 쿼리 재생성 시 arrExecutionTargets 세팅 |
@@ -38,7 +38,7 @@
 
 | 데이터 | 위치 | 설명 |
 |--------|------|------|
-| arrQueryTemplates | 이벤트 템플릿 (events.json) | 세트당 nDbConnectionId, strQueryTemplate, strDefaultItems |
+| arrQueryTemplates | 쿼리 템플릿 (events.json) | 세트당 nDbConnectionId, strQueryTemplate, strDefaultItems |
 | arrExecutionTargets | 이벤트 인스턴스 (eventInstances.json) | 세트당 nDbConnectionId, strQuery (생성된 쿼리) |
 | strGeneratedQuery | 이벤트 인스턴스 | 단일용 또는 다중일 때 **첫 세트 쿼리**(미리보기/실행용으로 1개만 사용) |
 

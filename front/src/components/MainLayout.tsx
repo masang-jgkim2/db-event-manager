@@ -15,11 +15,12 @@ import {
   WifiOutlined,
   SettingOutlined,
   RocketOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEventStream } from '../hooks/useEventStream';
-import { useThemeStore } from '../stores/useThemeStore';
+import { useThemeStore, N_SIDER_MIN } from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
 import type { MenuProps } from 'antd';
@@ -88,6 +89,8 @@ const MainLayout = () => {
   const bDragging = useRef(false);
   const nDragStartX = useRef(0);
   const nDragStartWidth = useRef(nSiderWidth);
+  const bCollapsedRef = useRef(bCollapsed);
+  bCollapsedRef.current = bCollapsed;
 
   const fnOnDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -100,18 +103,35 @@ const MainLayout = () => {
   }, [nSiderWidth]);
 
   useEffect(() => {
-    const fnOnMouseMove = (e: MouseEvent) => {
-      if (!bDragging.current) return;
-      const nDelta = e.clientX - nDragStartX.current;
-      fnSetSiderWidth(nDragStartWidth.current + nDelta);
-    };
-    const fnOnMouseUp = () => {
-      if (!bDragging.current) return;
+    const fnEndDragChrome = () => {
       bDragging.current = false;
       setBIsResizingSider(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
+
+    const fnOnMouseMove = (e: MouseEvent) => {
+      if (!bDragging.current) return;
+      if (bCollapsedRef.current) return;
+
+      const nDelta = e.clientX - nDragStartX.current;
+      const nRaw = nDragStartWidth.current + nDelta;
+
+      // 최소 폭보다 더 줄이려 하면 접기 버튼과 동일하게 아이콘만 표시
+      if (nRaw < N_SIDER_MIN) {
+        setBCollapsed(true);
+        fnEndDragChrome();
+        return;
+      }
+
+      fnSetSiderWidth(nRaw);
+    };
+
+    const fnOnMouseUp = () => {
+      if (!bDragging.current) return;
+      fnEndDragChrome();
+    };
+
     window.addEventListener('mousemove', fnOnMouseMove);
     window.addEventListener('mouseup', fnOnMouseUp);
     return () => {
@@ -143,9 +163,9 @@ const MainLayout = () => {
     if (fnHasPerm('product.view')) {
       arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' });
     }
-    // 이벤트 템플릿: 보기 권한 있어야 메뉴 노출
+    // 쿼리 템플릿: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('event_template.view')) {
-      arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '이벤트 템플릿' });
+      arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' });
     }
     // DB 접속 정보: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
@@ -168,6 +188,9 @@ const MainLayout = () => {
     }
     if (fnHasPerm('role.view')) {
       arrUserGroupChildren.push({ key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한' });
+    }
+    if (fnHasPerm('activity.view')) {
+      arrUserGroupChildren.push({ key: '/activity', icon: <HistoryOutlined />, label: '활동' });
     }
     if (arrUserGroupChildren.length > 0) {
       arrResult.push({
@@ -210,7 +233,9 @@ const MainLayout = () => {
       icon: <LogoutOutlined />,
       label: '로그아웃',
       danger: true,
-      onClick: fnLogout,
+      onClick: () => {
+        void fnLogout();
+      },
     },
   ];
 

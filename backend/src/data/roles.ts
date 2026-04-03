@@ -103,7 +103,7 @@ export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): s
     if (arrExp) arrExp.forEach((e) => setOut.add(e));
   });
   if (arrRoleCodes.includes('admin')) {
-    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed'].forEach((p) => setOut.add(p));
+    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view'].forEach((p) => setOut.add(p));
   }
   return Array.from(setOut);
 };

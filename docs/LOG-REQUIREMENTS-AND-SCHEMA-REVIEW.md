@@ -14,7 +14,7 @@
 | **사용자** | 로그인, 로그아웃 | 인증 이벤트 |
 | **프로덕트** | 생성, 수정, 삭제 | 프로덕트 CRUD |
 | **DB 접속** | 생성, 수정, 삭제 | db_connections CRUD |
-| **이벤트 템플릿** | 생성, 수정, 삭제 | event_templates CRUD |
+| **쿼리 템플릿** | 생성, 수정, 삭제 | event_templates CRUD |
 | **이벤트 인스턴스** | 생성 | 이벤트(인스턴스) 생성 |
 | **이벤트 인스턴스** | 수정 | event_created 단계에서의 수정 |
 | **이벤트 인스턴스** | 반영 | QA/LIVE 쿼리 실행 (qa_deployed, live_deployed) |
@@ -29,7 +29,7 @@
 | **프로덕트** | 선택된 프로덕트의 이벤트(인스턴스) 진행 중 개수 | str_status != 'live_verified', n_product_id = ? |
 | **프로덕트** | 선택된 프로덕트의 이벤트 완료 개수 | str_status = 'live_verified', n_product_id = ? |
 | **프로덕트** | 프로덕트별 진행 이벤트 수 / 완료 이벤트 수 | n_product_id별 COUNT, GROUP BY |
-| **이벤트 템플릿** | 선택된 이벤트(템플릿)의 진행 중/완료 인스턴스 수 | n_event_template_id + str_status 기준 |
+| **쿼리 템플릿** | 특정 쿼리 템플릿 기준 진행 중·완료 인스턴스 수 | n_event_template_id + str_status 기준 |
 | **이벤트 인스턴스** | 전체 이벤트 로그 (기간/사용자/상태 필터) | 상태 변경 이력 조회 |
 
 ---
@@ -54,7 +54,7 @@
 | **선택된 프로덕트의 진행 중 이벤트 수** | event_instances WHERE n_product_id = ? AND str_status <> 'live_verified' → COUNT | 가능 |
 | **선택된 프로덕트의 완료 이벤트 수** | event_instances WHERE n_product_id = ? AND str_status = 'live_verified' → COUNT | 가능 |
 | **프로덕트별 진행/완료 수** | event_instances GROUP BY n_product_id, str_status (또는 CASE WHEN str_status='live_verified') → COUNT | 가능 |
-| **선택된 이벤트(템플릿)의 진행 중/완료 인스턴스 수** | event_instances WHERE n_event_template_id = ? + str_status 조건 → COUNT | 가능 |
+| **특정 쿼리 템플릿 기준 진행 중·완료 인스턴스 수** | event_instances WHERE n_event_template_id = ? + str_status 조건 → COUNT | 가능 |
 | **전체 이벤트 로그** (기간/사용자/상태) | instance_status_logs + event_instances 조인, WHERE dt_changed_at, n_changed_by_user_id, str_status | 가능 |
 
 ---
@@ -69,12 +69,12 @@
 | **로그인/로그아웃** | 인증 시 로그 기록 없음. |
 | **프로덕트 생성/수정/삭제** | products는 현재 상태만. 변경 이력 없음. |
 | **DB 접속 생성/수정/삭제** | db_connections 동일. |
-| **이벤트 템플릿 생성/수정/삭제** | event_templates 동일. |
+| **쿼리 템플릿 생성/수정/삭제** | event_templates 동일. |
 | **권한 수정** (역할별 권한, 사용자별 역할) | role_permissions, user_roles는 현재 상태만. "누가 언제 추가/삭제했는지" 없음. |
 
 정리하면, **한 사용자의 모든 로그** 중  
 - **이벤트 인스턴스(생성, 상태 변경, 반영, 완료, 쿼리 수정)** → **가능**  
-- **사용자/프로덕트/DB접속/이벤트템플릿 CRUD, 로그인·로그아웃, 권한 수정** → **불가** (감사 로그 테이블 추가 필요)
+- **사용자/프로덕트/DB접속/쿼리 템플릿 CRUD, 로그인·로그아웃, 권한 수정** → **불가** (감사 로그 테이블 추가 필요)
 
 ---
 
@@ -125,11 +125,11 @@ CREATE TABLE audit_logs (
 | 로그/집계 | 현재 정규화만 | 감사 로그 추가 후 |
 |-----------|----------------|-------------------|
 | 한 사용자: 이벤트 인스턴스 생성/수정/반영/완료/쿼리 수정 | 가능 | 가능 |
-| 한 사용자: 사용자/프로덕트/DB접속/이벤트템플릿 CRUD | 불가 | 가능 |
+| 한 사용자: 사용자/프로덕트/DB접속/쿼리 템플릿 CRUD | 불가 | 가능 |
 | 한 사용자: 로그인/로그아웃 | 불가 | 가능 |
 | 한 사용자: 권한(역할) 수정 | 불가 | 가능 |
 | 프로덕트별 진행 중/완료 이벤트 수 | 가능 | 가능 |
-| 선택된 이벤트(템플릿)의 진행/완료 인스턴스 수 | 가능 | 가능 |
+| 특정 쿼리 템플릿 기준 진행·완료 인스턴스 수 | 가능 | 가능 |
 | 전체 이벤트 로그 (기간/사용자/상태) | 가능 | 가능 |
 
 ---
@@ -137,12 +137,12 @@ CREATE TABLE audit_logs (
 ## 6. 결론 및 권장
 
 - **현재 정규화 테이블만으로**:  
-  - **이벤트 인스턴스** 관련 로그(생성, 상태 변경, 반영, 완료, 쿼리 수정)와 **프로덕트/이벤트 템플릿 기준 진행·완료 집계**는 **가능**.  
-  - **한 사용자의 모든 로그** 중 사용자 CRUD, 로그인/로그아웃, 프로덕트/DB접속/이벤트템플릿 CRUD, 권한 수정은 **불가**.
+  - **이벤트 인스턴스** 관련 로그(생성, 상태 변경, 반영, 완료, 쿼리 수정)와 **프로덕트/쿼리 템플릿 기준 진행·완료 집계**는 **가능**.  
+  - **한 사용자의 모든 로그** 중 사용자 CRUD, 로그인/로그아웃, 프로덕트/DB접속/쿼리 템플릿 CRUD, 권한 수정은 **불가**.
 
 - **반영**:  
   - **audit_logs** 테이블을 **schema_normalized.sql**에 추가해 두었음.  
-  - 사용자/프로덕트/DB접속/이벤트템플릿/역할 CRUD 및 로그인·로그아웃 시마다 1건 INSERT하면 "한 사용자의 모든 로그"를 audit_logs + instance_status_logs 통합 조회로 제공 가능.
+  - 사용자/프로덕트/DB접속/쿼리 템플릿/역할 CRUD 및 로그인·로그아웃 시마다 1건 INSERT하면 "한 사용자의 모든 로그"를 audit_logs + instance_status_logs 통합 조회로 제공 가능.
 
 ### 한 사용자 전체 로그 조회 방식 (audit_logs 반영 후)
 

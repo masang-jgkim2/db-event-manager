@@ -17,6 +17,7 @@ import UserPage from './pages/UserPage';
 import MyDashboardPage from './pages/MyDashboardPage';
 import DbConnectionPage from './pages/DbConnectionPage';
 import RolePage from './pages/RolePage';
+import ActivityPage from './pages/ActivityPage';
 import MainLayout from './components/MainLayout';
 
 // 인증된 사용자만 접근 가능한 라우트
@@ -220,6 +221,14 @@ const App = () => {
               element={
                 <PermissionRoute arrRequiredPerms={['role.view']}>
                   <RolePage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <PermissionRoute arrRequiredPerms={['activity.view']}>
+                  <ActivityPage />
                 </PermissionRoute>
               }
             />

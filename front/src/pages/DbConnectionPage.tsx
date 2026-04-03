@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
   Typography, Card, Tag, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
-  message, Descriptions, Alert, Spin,
+  message, Descriptions, Alert, Spin, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined,
-  ApiOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  CheckCircleOutlined, CloseCircleOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -43,6 +43,12 @@ const OBJ_DB_COLOR: Record<string, string> = {
   mysql: 'cyan',
 };
 
+/** 연결 열 자동 점검: 간격·요청 타임아웃(무응답 시 빨간 점) */
+const N_MONITOR_INTERVAL_MS = 10_000;
+const N_MONITOR_TIMEOUT_MS = 12_000;
+
+type TMonitorStatus = 'unknown' | 'pending' | 'ok' | 'fail';
+
 // 연결 테스트 결과 타입
 interface ITestResult {
   bSuccess: boolean;
@@ -65,8 +71,13 @@ const DbConnectionPage = () => {
   const [objSelectedRow, setObjSelectedRow] = useState<IDbConnection | null>(null);  // 확장된 행(선택된 행)
   const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
   const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
+  const [mapMonitorStatus, setMapMonitorStatus] = useState<Record<number, TMonitorStatus>>({});
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  const objSelectedRowRef = useRef<IDbConnection | null>(null);
+  objSelectedRowRef.current = objSelectedRow;
+  const arrConnectionsRef = useRef<IDbConnection[]>([]);
+  arrConnectionsRef.current = arrConnections;
 
   const arrProducts = useProductStore((s) => s.arrProducts);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
@@ -154,25 +165,72 @@ const DbConnectionPage = () => {
     }
   };
 
-  // 연결 테스트 — 선택 행을 해당 행으로 확장한 뒤 테스트 실행
-  const fnHandleTest = async (objConn: IDbConnection) => {
+  // 연결 테스트 — 행 선택 시·수동 호출(긴 타임아웃). 토스트 + 하단 패널
+  const fnHandleTest = useCallback(async (objConn: IDbConnection) => {
     setObjSelectedRow(objConn);
     setBTesting(objConn.nId);
     setObjTestResult(null);
     try {
       const result: ITestResult = await fnApiTestDbConnection(objConn.nId);
       setObjTestResult({ nId: objConn.nId, result });
+      setMapMonitorStatus((prev) => ({ ...prev, [objConn.nId]: result.bSuccess ? 'ok' : 'fail' }));
       if (result.bSuccess) {
         messageApi.success('연결 성공!');
       } else {
         messageApi.error(result.strMessage || '연결 실패');
       }
     } catch (error: any) {
+      setMapMonitorStatus((prev) => ({ ...prev, [objConn.nId]: 'fail' }));
       messageApi.error(error?.message || '테스트 요청에 실패했습니다.');
     } finally {
       setBTesting(null);
     }
-  };
+  }, [messageApi]);
+
+  const fnHandleTestRef = useRef(fnHandleTest);
+  fnHandleTestRef.current = fnHandleTest;
+
+  // 행 선택 시 자동 테스트(db_connection.test 권한) — fnHandleTest 참조 변경으로 중복 실행 방지
+  useEffect(() => {
+    if (!objSelectedRow || !bCanTest) return;
+    void fnHandleTestRef.current(objSelectedRow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 선택 id·권한만 반응
+  }, [objSelectedRow?.nId, bCanTest]);
+
+  // 탭이 보일 때 주기 점검 — 파란점(정상) / 빨간점(실패·무응답). pending 일괄 갱신 없음(깜빡임 방지)
+  useEffect(() => {
+    if (!bCanTest) return undefined;
+
+    const fnPoll = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const arr = arrConnectionsRef.current;
+      if (arr.length === 0) return;
+
+      await Promise.all(
+        arr.map(async (c) => {
+          const result = (await fnApiTestDbConnection(c.nId, {
+            nTimeoutMs: N_MONITOR_TIMEOUT_MS,
+          })) as ITestResult;
+          const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
+          setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
+          if (objSelectedRowRef.current?.nId === c.nId) {
+            setObjTestResult({ nId: c.nId, result });
+          }
+        }),
+      );
+    };
+
+    void fnPoll();
+    const nTimerId = window.setInterval(fnPoll, N_MONITOR_INTERVAL_MS);
+    const fnVis = () => {
+      if (!document.hidden) void fnPoll();
+    };
+    document.addEventListener('visibilitychange', fnVis);
+    return () => {
+      window.clearInterval(nTimerId);
+      document.removeEventListener('visibilitychange', fnVis);
+    };
+  }, [bCanTest]);
 
   // 선택된 행 아래에 표시할 연결 테스트 상태/결과 패널
   const fnRenderTestPanel = (r: IDbConnection) => {
@@ -224,13 +282,17 @@ const DbConnectionPage = () => {
     }
     return (
       <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
-        <Text type="secondary">관리 열의 「테스트」 버튼을 클릭하면 연결 테스트 결과가 여기에 표시됩니다.</Text>
+        <Text type="secondary">
+          {bCanTest
+            ? '행을 선택하면 연결 테스트가 실행되고, 결과가 여기에 표시됩니다. 연결 열은 약 10초마다 자동 점검합니다.'
+            : '연결 테스트·연결 표시는 db_connection.test(또는 db.manage) 권한이 있을 때 사용할 수 있습니다.'}
+        </Text>
       </div>
     );
   };
 
   const arrColumns = [
-    fnMakeIndexColumn(),
+    fnMakeIndexColumn<IDbConnection>(),
     {
       title: '프로덕트',
       key: 'product',
@@ -283,6 +345,59 @@ const DbConnectionPage = () => {
         ? <Tag color="green">활성</Tag>
         : <Tag color="default">비활성</Tag>,
     },
+    ...(bCanTest
+      ? [
+          {
+            title: '연결',
+            key: 'monitoring',
+            width: 100,
+            align: 'center' as const,
+            render: (_: unknown, r: IDbConnection) => {
+              const strSt = mapMonitorStatus[r.nId] ?? 'unknown';
+              const strTip =
+                strSt === 'ok'
+                  ? '연결 정상 (자동 점검, 약 10초마다)'
+                  : strSt === 'fail'
+                    ? '연결 실패·무응답 또는 타임아웃(12초)'
+                    : strSt === 'pending'
+                      ? '점검 중…'
+                      : '점검 전';
+              const strColor =
+                strSt === 'ok'
+                  ? '#1677ff'
+                  : strSt === 'fail'
+                    ? '#ff4d4f'
+                    : strSt === 'pending'
+                      ? '#faad14'
+                      : '#bfbfbf';
+              const strShadow =
+                strSt === 'ok'
+                  ? '0 0 8px rgba(22, 119, 255, 0.42)'
+                  : strSt === 'fail'
+                    ? '0 0 6px rgba(255, 77, 79, 0.35)'
+                    : 'none';
+              const bBreathe = strSt === 'ok' || strSt === 'fail';
+              return (
+                <Tooltip title={strTip}>
+                  <span
+                    className={bBreathe ? 'db-conn-page-dot--breathe' : undefined}
+                    style={{
+                      display: 'inline-block',
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: strColor,
+                      boxShadow: strShadow,
+                      verticalAlign: 'middle',
+                      transition: 'background-color 0.55s ease, box-shadow 0.55s ease',
+                    }}
+                  />
+                </Tooltip>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: '수정일',
       dataIndex: 'dtUpdatedAt',
@@ -290,51 +405,49 @@ const DbConnectionPage = () => {
       width: 140,
       render: (v: string) => <Text style={{ fontSize: 11 }}>{new Date(v).toLocaleString('ko-KR')}</Text>,
     },
-    ...(bCanTest || bCanEdit || bCanDelete
-      ? [{
-          title: '관리',
-          key: 'actions',
-          width: 220,
-          render: (_: unknown, r: IDbConnection) => (
-            <Space onClick={(e) => e.stopPropagation()}>
-              {bCanTest && (
-                <Button
-                  size="small"
-                  icon={bTesting === r.nId ? <Spin size="small" /> : <ApiOutlined />}
-                  onClick={() => fnHandleTest(r)}
-                  disabled={bTesting !== null}
-                  title="연결 테스트"
-                >
-                  테스트
-                </Button>
-              )}
-              {bCanEdit && (
-                <Button
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => fnOpenModal(r)}
-                >
-                  수정
-                </Button>
-              )}
-              {bCanDelete && (
-                <Popconfirm
-                  title="정말 삭제하시겠습니까?"
-                  onConfirm={() => fnHandleDelete(r.nId)}
-                  okText="삭제"
-                  cancelText="취소"
-                >
-                  <Button size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              )}
-            </Space>
-          ),
-        }]
+    ...(bCanEdit || bCanDelete
+      ? [
+          {
+            title: '관리',
+            key: 'actions',
+            width: 140,
+            render: (_: unknown, r: IDbConnection) => (
+              <Space onClick={(e) => e.stopPropagation()}>
+                {bCanEdit && (
+                  <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
+                    수정
+                  </Button>
+                )}
+                {bCanDelete && (
+                  <Popconfirm
+                    title="정말 삭제하시겠습니까?"
+                    onConfirm={() => fnHandleDelete(r.nId)}
+                    okText="삭제"
+                    cancelText="취소"
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                )}
+              </Space>
+            ),
+          },
+        ]
       : []),
   ];
 
   return (
     <>
+      <style>
+        {`
+          @keyframes dbConnPageDotBreathe {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+          }
+          .db-conn-page-dot--breathe {
+            animation: dbConnPageDotBreathe 2.6s ease-in-out infinite;
+          }
+        `}
+      </style>
       {contextHolder}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>

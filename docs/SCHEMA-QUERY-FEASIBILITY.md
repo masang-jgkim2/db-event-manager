@@ -23,12 +23,12 @@
 
 ---
 
-## 3. 이벤트 템플릿
+## 3. 쿼리 템플릿
 
 | 질의 | 가능 여부 | 조회 방법 |
 |------|-----------|-----------|
-| **이벤트 템플릿 누가 만들었는가 / 수정 / 삭제** | audit_logs 사용 시 가능 | `event_templates`에는 생성자·수정자 컬럼 없음. **audit_logs**에서 str_entity = 'event_template', str_action = 'create' \| 'update' \| 'delete', n_entity_id = 템플릿 ID, n_actor_user_id로 누가 했는지 조회. |
-| **선택된 프로덕트의 모든 이벤트 템플릿 보기** | 가능 | `event_templates` WHERE `n_product_id` = ? |
+| **쿼리 템플릿 누가 만들었는가 / 수정 / 삭제** | audit_logs 사용 시 가능 | `event_templates`에는 생성자·수정자 컬럼 없음. **audit_logs**에서 str_entity = 'event_template', str_action = 'create' \| 'update' \| 'delete', n_entity_id = 템플릿 ID, n_actor_user_id로 누가 했는지 조회. |
+| **선택된 프로덕트의 모든 쿼리 템플릿 보기** | 가능 | `event_templates` WHERE `n_product_id` = ? |
 
 ---
 
@@ -78,8 +78,8 @@
 | 프로덕트 | 선택 프로젝트 실행된 쿼리 모두 보기 | 예 | event_instances + instance_status_logs + instance_execution_results |
 | 프로덕트 | 쿼리 성공/실패 확인 | 부분 | 성공 = execution_results 존재; 실패 = 스키마 보완 필요 |
 | 배포 범위 | 국내·해외 등별 이벤트 보기 | 예 | str_service_region, instance_deploy_scopes.str_env |
-| 이벤트 템플릿 | 누가 만들었는가/수정/삭제 | audit_logs | audit_logs에 event_template CRUD 기록 |
-| 이벤트 템플릿 | 선택 프로덕트의 모든 템플릿 | 예 | event_templates WHERE n_product_id |
+| 쿼리 템플릿 | 누가 만들었는가/수정/삭제 | audit_logs | audit_logs에 event_template CRUD 기록 |
+| 쿼리 템플릿 | 선택 프로덕트의 모든 템플릿 | 예 | event_templates WHERE n_product_id |
 | DB 접속 | 누가 만들었는가/수정/삭제 | audit_logs | audit_logs에 db_connection CRUD 기록 |
 | 사용자 | 추가/수정/삭제 확인 | audit_logs | audit_logs에 user CRUD 기록 |
 | 역할 | 권한 추가/수정/삭제 확인 | audit_logs | audit_logs에 role/user_role 변경 기록 |

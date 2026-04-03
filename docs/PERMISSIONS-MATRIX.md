@@ -9,7 +9,7 @@
 | POST /api/products | product.manage, product.create |
 | PUT /api/products/:id | product.manage, product.edit |
 | DELETE /api/products/:id | product.manage, product.delete |
-| **이벤트 템플릿** | |
+| **쿼리 템플릿** | |
 | GET /api/events | event_template.view, event_template.manage, create, edit, delete, dashboard.view |
 | POST /api/events | event_template.manage, event_template.create |
 | PUT /api/events/:id | event_template.manage, event_template.edit |
@@ -47,7 +47,7 @@
 |------|-----------|
 | 대시보드 | dashboard.view 또는 admin |
 | 프로덕트 | product.view |
-| 이벤트 템플릿 | event_template.view |
+| 쿼리 템플릿 | event_template.view |
 | DB 접속 정보 | db_connection.view 또는 db.manage |
 | 사용자 | user.view |
 | 역할 권한 | role.view |

@@ -5,7 +5,7 @@ const fnCatchApiError = (error: any, strFallback: string) => {
   return { bSuccess: false, strMessage: error.message || strFallback };
 };
 
-// 이벤트 목록 조회
+// 쿼리 템플릿 목록 조회
 export const fnApiGetEvents = async () => {
   const response = await apiClient.get('/events');
   return response.data;
