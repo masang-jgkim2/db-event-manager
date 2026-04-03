@@ -11,7 +11,7 @@ const STR_FILE = 'rolePermissions.json';
 
 // 시드: 파일 없거나 비어 있을 때 역할별 권한 초기 데이터
 const ARR_SEED: IRolePermissionRow[] = [
-  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live','system.save_test_seed'].map((strPermission) => ({ nRoleId: 1, strPermission })),
+  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live','system.save_test_seed','activity.view'].map((strPermission) => ({ nRoleId: 1, strPermission })),
   ...['my_dashboard.view','my_dashboard.detail','my_dashboard.confirm','my_dashboard.execute_qa','my_dashboard.execute_live'].map((strPermission) => ({ nRoleId: 2, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
@@ -26,6 +26,16 @@ const arrDbaCurrent = arrLoaded.filter((r) => r.nRoleId === N_DBA_ROLE_ID).map((
 const arrMissing = ARR_DBA_REQUIRED.filter((p) => !arrDbaCurrent.includes(p));
 if (arrMissing.length > 0) {
   arrMissing.forEach((strPermission) => arrLoaded.push({ nRoleId: N_DBA_ROLE_ID, strPermission }));
+  fnSaveJson(STR_FILE, arrLoaded);
+}
+
+// 관리자: 활동 로그 조회 권한 보강 (기존 rolePermissions.json에 없을 때)
+const N_ADMIN_ROLE_ID = 1;
+const bAdminHasActivity = arrLoaded.some(
+  (r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.view',
+);
+if (!bAdminHasActivity) {
+  arrLoaded.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.view' });
   fnSaveJson(STR_FILE, arrLoaded);
 }
 

@@ -16,7 +16,8 @@ export type TPermission =
   | 'my_dashboard.edit_any'   // 타인 작성 이벤트(event_created) 수정 (역할 대신 권한으로 제어)
   | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
   | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live'
-  | 'system.save_test_seed';  // 테스트 시드 저장 (관리 기능)
+  | 'system.save_test_seed'  // 테스트 시드 저장 (관리 기능)
+  | 'activity.view';           // HTTP 활동 로그 조회
 
 // =============================================
 // 역할 모델 (동적 관리)

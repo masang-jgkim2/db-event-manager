@@ -10,6 +10,8 @@ import eventInstanceRoutes from './routes/eventInstanceRoutes';
 import dbConnectionRoutes from './routes/dbConnectionRoutes';
 import roleRoutes from './routes/roleRoutes';
 import adminRoutes from './routes/adminRoutes';
+import activityRoutes from './routes/activityRoutes';
+import { fnActivityLogMiddleware } from './middleware/activityLogMiddleware';
 
 const app = express();
 
@@ -25,6 +27,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.use(fnActivityLogMiddleware);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -34,6 +37,7 @@ app.use('/api/event-instances', eventInstanceRoutes);
 app.use('/api/db-connections', dbConnectionRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/activity', activityRoutes);
 
 app.get('/api/health', (_req, res) => {
   const strCwd = process.cwd();

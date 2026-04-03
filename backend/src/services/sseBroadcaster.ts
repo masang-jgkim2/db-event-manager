@@ -113,3 +113,32 @@ export const fnGetClientCount = (): number => {
   }
   return nCount;
 };
+
+// ── 활동 로그 SSE (activity.view 전용, 인스턴스 스트림과 분리) ──
+const mapActivityStreamClients = new Map<number, Set<Response>>();
+
+export const fnRegisterActivityStreamClient = (nUserId: number, res: Response): void => {
+  if (!mapActivityStreamClients.has(nUserId)) {
+    mapActivityStreamClients.set(nUserId, new Set());
+  }
+  mapActivityStreamClients.get(nUserId)!.add(res);
+};
+
+export const fnUnregisterActivityStreamClient = (nUserId: number, res: Response): void => {
+  const setClients = mapActivityStreamClients.get(nUserId);
+  if (setClients) {
+    setClients.delete(res);
+    if (setClients.size === 0) {
+      mapActivityStreamClients.delete(nUserId);
+    }
+  }
+};
+
+/** 신규 활동 로그 1건이 쌓일 때 연결된 클라이언트 전원에게 푸시 */
+export const fnBroadcastActivityLog = (objData: unknown): void => {
+  for (const setClients of mapActivityStreamClients.values()) {
+    for (const res of setClients) {
+      fnSendEvent(res, 'activity_log_appended', objData);
+    }
+  }
+};

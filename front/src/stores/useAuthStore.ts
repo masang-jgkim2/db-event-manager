@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { IAuthStore } from '../types';
-import { fnApiLogin, fnApiVerifyToken } from '../api/authApi';
+import { fnApiLogin, fnApiLogout, fnApiVerifyToken } from '../api/authApi';
 
 // 인증 상태 관리 스토어
 export const useAuthStore = create<IAuthStore>((set) => ({
@@ -34,8 +34,13 @@ export const useAuthStore = create<IAuthStore>((set) => ({
     }
   },
 
-  // 로그아웃
-  fnLogout: () => {
+  // 로그아웃 (서버 기록 후 로컬 토큰 제거)
+  fnLogout: async () => {
+    try {
+      await fnApiLogout();
+    } catch (err) {
+      console.error('[로그아웃] API 호출 실패 | 로컬 세션은 해제합니다.', err);
+    }
     localStorage.removeItem('strToken');
     set({
       user: null,

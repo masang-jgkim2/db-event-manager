@@ -12,3 +12,8 @@ export const fnApiVerifyToken = async (): Promise<ILoginResponse> => {
   const response = await apiClient.get<ILoginResponse>('/auth/verify');
   return response.data;
 };
+
+// 서버에 로그아웃 기록 후 클라이언트에서 토큰 제거
+export const fnApiLogout = async (): Promise<void> => {
+  await apiClient.post('/auth/logout');
+};

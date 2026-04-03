@@ -83,6 +83,9 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'role.delete', label: '삭제' },
     { value: 'role.edit_permissions', label: '권한 수정' },
   ]},
+  { groupLabel: '활동', permissions: [
+    { value: 'activity.view', label: '활동 로그 조회' },
+  ]},
   { groupLabel: '나의 대시보드', permissions: [
     { value: 'my_dashboard.view', label: '보기' },
     { value: 'my_dashboard.detail', label: '상세' },
@@ -201,7 +204,7 @@ export interface IAuthStore {
   bIsAuthenticated: boolean;
   bIsLoading: boolean;
   fnLogin: (strUserId: string, strPassword: string) => Promise<boolean>;
-  fnLogout: () => void;
+  fnLogout: () => Promise<void>;
   fnVerifyToken: () => Promise<boolean>;
 }
 

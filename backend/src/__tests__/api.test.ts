@@ -138,6 +138,14 @@ describe('API 전체 테스트', () => {
       expect(res.body.user.arrRoles).toContain('dba');
       expect(Array.isArray(res.body.user.arrPermissions)).toBe(true);
     });
+
+    it('POST /api/auth/logout (Bearer admin) → 200', async () => {
+      const res = await request(app)
+        .post('/api/auth/logout')
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+    });
   });
 
   describe('관리자 전용 API (admin 토큰)', () => {
@@ -443,6 +451,8 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/activity/actors').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
     it('GM: 프로덕트·쿼리 템플릿·이벤트 인스턴스 보기 200, 사용자/역할 403, DB접속은 my_dashboard.view로 200', async () => {
@@ -453,6 +463,8 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).get('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/activity/actors').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
 
     it('DBA(실행 권한만 부여 시): 이벤트 인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {

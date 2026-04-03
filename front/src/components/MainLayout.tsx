@@ -15,6 +15,7 @@ import {
   WifiOutlined,
   SettingOutlined,
   RocketOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -188,6 +189,9 @@ const MainLayout = () => {
     if (fnHasPerm('role.view')) {
       arrUserGroupChildren.push({ key: '/roles', icon: <SafetyCertificateOutlined />, label: '역할 권한' });
     }
+    if (fnHasPerm('activity.view')) {
+      arrUserGroupChildren.push({ key: '/activity', icon: <HistoryOutlined />, label: '활동' });
+    }
     if (arrUserGroupChildren.length > 0) {
       arrResult.push({
         key: 'user-group',
@@ -229,7 +233,9 @@ const MainLayout = () => {
       icon: <LogoutOutlined />,
       label: '로그아웃',
       danger: true,
-      onClick: fnLogout,
+      onClick: () => {
+        void fnLogout();
+      },
     },
   ];
 

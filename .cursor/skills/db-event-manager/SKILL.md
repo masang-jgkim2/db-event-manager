@@ -67,7 +67,7 @@ front/src/
 ## 권한·메뉴 (세분화)
 
 - **원칙**: 모든 메뉴/페이지는 해당 **보기 권한** 필수. 없으면 메뉴 비노출·직접 URL 403.
-- **메뉴명**: 대시보드, **프로덕트**, **쿼리 템플릿**, DB 접속 정보, **사용자**, **역할 권한**, 나의 대시보드, 이벤트 생성.
+- **메뉴명**: 대시보드, **프로덕트**, **쿼리 템플릿**, DB 접속 정보, **사용자**, **역할 권한**, **활동**(`activity.view`), 나의 대시보드, 이벤트 생성.
 
 **권한 종류 (요약)**
 
@@ -78,6 +78,7 @@ front/src/
 | DB 접속 | db_connection.view | db_connection.create / edit / delete / test |
 | 사용자 | user.view | user.create / edit / delete / reset_password |
 | 역할 | role.view | role.create / edit / delete / edit_permissions |
+| 활동 | activity.view | (조회 전용) HTTP 활동 로그 `GET /api/activity/logs` |
 | 나의 대시보드 | my_dashboard.view(보기) | detail, edit, request_confirm, query_edit, confirm, request/execute/verify QA·LIVE, hide, **delete_instance**(삭제·진행 중 포함·복원 불가) 등 |
 | 이벤트 생성 | instance.view | instance.create |
 
