@@ -13,6 +13,7 @@ const fnShouldSkipActivityLog = (req: Request): boolean => {
   if (req.method === 'GET' && strPath === '/api/activity/logs') return true;
   if (req.method === 'GET' && strPath === '/api/activity/stream') return true;
   if (req.method === 'GET' && strPath === '/api/activity/actors') return true;
+  if (req.method === 'GET' && strPath === '/api/users/presence-stream') return true;
   return false;
 };
 

@@ -5,6 +5,7 @@ import { ILoginRequest, IJwtPayload } from '../types';
 import { fnFindUserByStrUserId } from '../data/users';
 import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
 import { fnPushActivityLog } from '../data/activityLogs';
+import { fnTouchUserPresence } from '../services/userPresence';
 
 const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
@@ -77,6 +78,8 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       strActorUserId: objUser.strUserId,
       arrActorRoles: objUser.arrRoles?.length ? [...objUser.arrRoles] : null,
     });
+
+    fnTouchUserPresence(objUser.nId);
 
     res.json({
       bSuccess: true,

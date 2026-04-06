@@ -53,8 +53,6 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const fnSetPrimaryColor = useThemeStore((s) => s.fnSetPrimaryColor);
   const bFunMode = useThemeStore((s) => s.bFunMode);
   const fnSetFunMode = useThemeStore((s) => s.fnSetFunMode);
-  const bShowLoginDefaultAccountHint = useThemeStore((s) => s.bShowLoginDefaultAccountHint);
-  const fnSetShowLoginDefaultAccountHint = useThemeStore((s) => s.fnSetShowLoginDefaultAccountHint);
   const fnReset = useThemeStore((s) => s.fnReset);
 
   const bIsDark = fnGetIsDark();
@@ -188,23 +186,7 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
 
       <Divider />
 
-      {/* ⑤ 로그인 화면 */}
-      <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>로그인 화면</Text>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Text style={{ fontSize: 13 }}>기본 계정 안내 표시</Text>
-          <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              끄면 로그인 페이지의 admin / admin123 안내 블록을 숨깁니다.
-            </Text>
-          </div>
-        </div>
-        <Switch checked={bShowLoginDefaultAccountHint} onChange={fnSetShowLoginDefaultAccountHint} />
-      </div>
-
-      <Divider />
-
-      {/* ⑥ 굳굳 설정 — 재미 모드 */}
+      {/* ⑤ 굳굳 설정 — 재미 모드 */}
       <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>굳굳 설정</Text>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>

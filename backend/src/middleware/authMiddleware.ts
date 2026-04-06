@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { IJwtPayload } from '../types';
+import { fnTouchUserPresence } from '../services/userPresence';
 
 // Request 확장 - 인증된 사용자 정보 포함
 declare global {
@@ -34,6 +35,7 @@ export const fnAuthMiddleware = (req: Request, res: Response, next: NextFunction
   try {
     const decoded = jwt.verify(strToken, strJwtSecret) as IJwtPayload;
     req.user = decoded;
+    fnTouchUserPresence(decoded.nId);
     next();
   } catch {
     res.status(401).json({ bSuccess: false, strMessage: '유효하지 않은 토큰입니다.' });

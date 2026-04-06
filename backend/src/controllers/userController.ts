@@ -10,6 +10,7 @@ import {
 } from '../data/users';
 import { fnGetMergedPermissions, fnGetRoleIdsByRoleCodes } from '../data/roles';
 import { fnRemoveUserRolesAndSave } from '../data/userRoles';
+import { fnGetUserLastSeenIso, fnIsUserOnlineByPresence } from '../services/userPresence';
 
 // 사용자 목록 조회 (정규화: user_roles에서 역할 조립)
 export const fnGetUsers = async (_req: Request, res: Response): Promise<void> => {
@@ -22,6 +23,8 @@ export const fnGetUsers = async (_req: Request, res: Response): Promise<void> =>
       arrRoles:       u.arrRoles,
       arrPermissions: fnGetMergedPermissions(u.arrRoles),
       dtCreatedAt:    u.dtCreatedAt,
+      bOnline:        fnIsUserOnlineByPresence(u.nId),
+      strLastSeenAt:  fnGetUserLastSeenIso(u.nId),
     }));
     res.json({ bSuccess: true, arrUsers: arrSafeUsers });
   } catch (error) {

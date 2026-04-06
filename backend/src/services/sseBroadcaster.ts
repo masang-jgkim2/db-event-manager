@@ -142,3 +142,36 @@ export const fnBroadcastActivityLog = (objData: unknown): void => {
     }
   }
 };
+
+// ── 사용자 접속 상태 SSE (user.view) ──
+const mapUserPresenceStreamClients = new Map<number, Set<Response>>();
+
+export const fnRegisterUserPresenceStreamClient = (nUserId: number, res: Response): void => {
+  if (!mapUserPresenceStreamClients.has(nUserId)) {
+    mapUserPresenceStreamClients.set(nUserId, new Set());
+  }
+  mapUserPresenceStreamClients.get(nUserId)!.add(res);
+};
+
+export const fnUnregisterUserPresenceStreamClient = (nUserId: number, res: Response): void => {
+  const setClients = mapUserPresenceStreamClients.get(nUserId);
+  if (setClients) {
+    setClients.delete(res);
+    if (setClients.size === 0) {
+      mapUserPresenceStreamClients.delete(nUserId);
+    }
+  }
+};
+
+/** 단일 사용자 접속 상태 변경 시 구독자 전원에게 푸시 */
+export const fnBroadcastUserPresence = (objPayload: {
+  nUserId: number;
+  bOnline: boolean;
+  strLastSeenAt: string | null;
+}): void => {
+  for (const setClients of mapUserPresenceStreamClients.values()) {
+    for (const res of setClients) {
+      fnSendEvent(res, 'user_presence', objPayload);
+    }
+  }
+};
