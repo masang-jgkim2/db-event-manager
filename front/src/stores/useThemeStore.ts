@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { generate } from '@ant-design/colors';
+import { useAuthStore } from './useAuthStore';
 
 // 테마 모드 타입
 export type TThemeMode = 'light' | 'dark' | 'system';
@@ -60,6 +61,30 @@ interface IThemeStore {
   fnReset: () => void;
 }
 
+const themePersistStorage = {
+  getItem: (strName: string): string | null => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    return localStorage.getItem(strKey);
+  },
+  setItem: (strName: string, strValue: string): void => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    localStorage.setItem(strKey, strValue);
+    if (nId > 0) {
+      void import('../services/userUiPreferencesSync').then((m) => m.fnSchedulePushUserUiPreferences());
+    }
+  },
+  removeItem: (strName: string): void => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    localStorage.removeItem(strKey);
+    if (nId > 0) {
+      void import('../services/userUiPreferencesSync').then((m) => m.fnSchedulePushUserUiPreferences());
+    }
+  },
+};
+
 export const useThemeStore = create<IThemeStore>()(
   persist(
     (set, get) => ({
@@ -84,6 +109,8 @@ export const useThemeStore = create<IThemeStore>()(
     }),
     {
       name: 'db-event-manager-theme',
+      storage: createJSONStorage(() => themePersistStorage),
+      skipHydration: true,
       partialize: (state) => ({
         strMode: state.strMode,
         nSiderWidth: state.nSiderWidth,

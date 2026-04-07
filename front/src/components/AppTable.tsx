@@ -16,8 +16,9 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 
-// 컬럼 너비 저장 키
+// 컬럼 너비 저장 키(논리 키 — 계정 스코프는 유틸에서 붙음)
 const fnWidthStorageKey = (strTableId: string) => `app_table_col_width_${strTableId}`;
 const N_MIN_COL_WIDTH = 40;
 const N_MAX_COL_WIDTH = 500;  // 더블클릭 자동 맞춤 시 상한
@@ -69,7 +70,7 @@ const fnEnsureIndexFirst = (arrOrder: string[]): string[] => {
 // 저장된 컬럼 순서 로드
 const fnLoadOrder = (strTableId: string, arrKeys: string[]): string[] => {
   try {
-    const strSaved = localStorage.getItem(fnStorageKey(strTableId));
+    const strSaved = fnScopedStorageGetItem(fnStorageKey(strTableId));
     if (!strSaved) return fnEnsureIndexFirst(arrKeys);
     const arrSaved: string[] = JSON.parse(strSaved);
     // 저장된 순서에 없는 새 컬럼은 뒤에 추가, 삭제된 컬럼은 제거
@@ -86,7 +87,7 @@ const fnLoadOrder = (strTableId: string, arrKeys: string[]): string[] => {
 // 컬럼 순서 저장
 const fnSaveOrder = (strTableId: string, arrOrder: string[]): void => {
   try {
-    localStorage.setItem(fnStorageKey(strTableId), JSON.stringify(arrOrder));
+    fnScopedStorageSetItem(fnStorageKey(strTableId), JSON.stringify(arrOrder));
   } catch {
     // localStorage 사용 불가 시 무시
   }
@@ -95,7 +96,7 @@ const fnSaveOrder = (strTableId: string, arrOrder: string[]): void => {
 // 저장된 컬럼 너비 로드
 const fnLoadWidths = (strTableId: string): Record<string, number> => {
   try {
-    const strSaved = localStorage.getItem(fnWidthStorageKey(strTableId));
+    const strSaved = fnScopedStorageGetItem(fnWidthStorageKey(strTableId));
     if (!strSaved) return {};
     const obj = JSON.parse(strSaved) as Record<string, number>;
     return typeof obj === 'object' && obj !== null ? obj : {};
@@ -107,7 +108,7 @@ const fnLoadWidths = (strTableId: string): Record<string, number> => {
 // 컬럼 너비 저장
 const fnSaveWidths = (strTableId: string, objWidths: Record<string, number>): void => {
   try {
-    localStorage.setItem(fnWidthStorageKey(strTableId), JSON.stringify(objWidths));
+    fnScopedStorageSetItem(fnWidthStorageKey(strTableId), JSON.stringify(objWidths));
   } catch {
     // ignore
   }

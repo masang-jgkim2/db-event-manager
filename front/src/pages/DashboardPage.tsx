@@ -37,6 +37,7 @@ import {
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { fnApiGetInstances } from '../api/eventInstanceApi';
 import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { fnApiGetUsers } from '../api/userApi';
@@ -125,7 +126,7 @@ const STORAGE_KEY_CUSTOM_COLLAPSE = 'db-event-manager-dashboard-custom-collapse'
 
 const fnLoadCustomCollapseKeys = (): Record<string, string[]> => {
   try {
-    const str = localStorage.getItem(STORAGE_KEY_CUSTOM_COLLAPSE);
+    const str = fnScopedStorageGetItem(STORAGE_KEY_CUSTOM_COLLAPSE);
     if (!str) return {};
     const obj = JSON.parse(str) as Record<string, string[]>;
     if (!obj || typeof obj !== 'object') return {};
@@ -137,7 +138,7 @@ const fnLoadCustomCollapseKeys = (): Record<string, string[]> => {
 
 const fnSaveCustomCollapseKeys = (map: Record<string, string[]>) => {
   try {
-    localStorage.setItem(STORAGE_KEY_CUSTOM_COLLAPSE, JSON.stringify(map));
+    fnScopedStorageSetItem(STORAGE_KEY_CUSTOM_COLLAPSE, JSON.stringify(map));
   } catch {
     /* 저장 실패 무시 */
   }
@@ -147,7 +148,7 @@ const fnIsCustomDashboardId = (strId: string) => strId.startsWith('custom_');
 
 const fnLoadCustomCards = (): ICustomEventDashboardCard[] => {
   try {
-    const str = localStorage.getItem(STORAGE_KEY_CUSTOM);
+    const str = fnScopedStorageGetItem(STORAGE_KEY_CUSTOM);
     if (!str) return [];
     const arr = JSON.parse(str) as ICustomEventDashboardCard[];
     if (!Array.isArray(arr)) return [];
@@ -181,7 +182,7 @@ const fnLoadCustomCards = (): ICustomEventDashboardCard[] => {
 };
 
 const fnSaveCustomCards = (arr: ICustomEventDashboardCard[]) => {
-  localStorage.setItem(STORAGE_KEY_CUSTOM, JSON.stringify(arr));
+  fnScopedStorageSetItem(STORAGE_KEY_CUSTOM, JSON.stringify(arr));
 };
 
 const fnNewCustomId = () => `custom_${crypto.randomUUID()}`;
@@ -257,7 +258,7 @@ const DEFAULT_SIZES: Record<TDashboardCardId, { width: number; height: number }>
 const fnLoadEnabledCards = (arrCustom: ICustomEventDashboardCard[]): string[] => {
   const setCustom = new Set(arrCustom.map((c) => c.strId));
   try {
-    const str = localStorage.getItem(STORAGE_KEY);
+    const str = fnScopedStorageGetItem(STORAGE_KEY);
     if (!str) return [...DASHBOARD_CARD_IDS];
     let arr = JSON.parse(str) as string[];
     if (arr.includes('instanceByStatus')) {
@@ -275,7 +276,7 @@ const fnLoadEnabledCards = (arrCustom: ICustomEventDashboardCard[]): string[] =>
 };
 
 const fnSaveEnabledCards = (arr: string[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+  fnScopedStorageSetItem(STORAGE_KEY, JSON.stringify(arr));
 };
 
 /** 카드 영역(고정 위치·크기) — localStorage 키는 기존 SIZES 유지, 값에 x,y 포함 */
@@ -288,7 +289,7 @@ export interface ICardRect {
 
 const fnLoadCardLayoutRaw = (): Partial<Record<string, Partial<ICardRect>>> => {
   try {
-    const str = localStorage.getItem(STORAGE_KEY_SIZES);
+    const str = fnScopedStorageGetItem(STORAGE_KEY_SIZES);
     if (!str) return {};
     return JSON.parse(str) as Partial<Record<string, Partial<ICardRect>>>;
   } catch {
@@ -332,12 +333,12 @@ const fnBuildInitialCardLayout = (): Partial<Record<string, ICardRect>> => {
     }
     nVis++;
   }
-  if (bDirty) localStorage.setItem(STORAGE_KEY_SIZES, JSON.stringify(map));
+  if (bDirty) fnScopedStorageSetItem(STORAGE_KEY_SIZES, JSON.stringify(map));
   return map;
 };
 
 const fnSaveCardLayoutMap = (map: Partial<Record<string, ICardRect>>) => {
-  localStorage.setItem(STORAGE_KEY_SIZES, JSON.stringify(map));
+  fnScopedStorageSetItem(STORAGE_KEY_SIZES, JSON.stringify(map));
 };
 
 /** 카드 사이 최소 여백(px) — 겹침 판정 시 포함 */
@@ -506,7 +507,7 @@ const fnApplyOverlapResolveForMovedCard = (
 const fnLoadCardOrder = (arrCustom: ICustomEventDashboardCard[]): string[] => {
   const setCustom = new Set(arrCustom.map((c) => c.strId));
   try {
-    const str = localStorage.getItem(STORAGE_KEY_ORDER);
+    const str = fnScopedStorageGetItem(STORAGE_KEY_ORDER);
     if (!str) return [...DASHBOARD_CARD_IDS];
     let arr = JSON.parse(str) as string[];
     if (arr.includes('instanceByStatus')) {
@@ -525,11 +526,11 @@ const fnLoadCardOrder = (arrCustom: ICustomEventDashboardCard[]): string[] => {
 };
 
 const fnSaveCardOrder = (arr: string[]) => {
-  localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(arr));
+  fnScopedStorageSetItem(STORAGE_KEY_ORDER, JSON.stringify(arr));
 };
 
 const fnLoadTableSize = (): TTableSize => {
-  const s = localStorage.getItem(STORAGE_KEY_TABLE_SIZE);
+  const s = fnScopedStorageGetItem(STORAGE_KEY_TABLE_SIZE);
   if (s === 'small' || s === 'middle' || s === 'large') return s;
   return 'middle';
 };
@@ -537,7 +538,7 @@ const fnLoadTableSize = (): TTableSize => {
 /** 테이블별 표시 컬럼 키 로드 (없으면 null = 전체 표시) */
 const fnLoadVisibleColumnKeys = (strTableId: string): string[] | null => {
   try {
-    const str = localStorage.getItem(fnVisibleColStorageKey(strTableId));
+    const str = fnScopedStorageGetItem(fnVisibleColStorageKey(strTableId));
     if (!str) return null;
     const arr = JSON.parse(str) as string[];
     return Array.isArray(arr) ? arr : null;
@@ -546,7 +547,7 @@ const fnLoadVisibleColumnKeys = (strTableId: string): string[] | null => {
   }
 };
 const fnSaveVisibleColumnKeys = (strTableId: string, arrKeys: string[]): void => {
-  localStorage.setItem(fnVisibleColStorageKey(strTableId), JSON.stringify(arrKeys));
+  fnScopedStorageSetItem(fnVisibleColStorageKey(strTableId), JSON.stringify(arrKeys));
 };
 
 const fnIsInProgress = (strStatus: string) => strStatus !== 'live_verified';

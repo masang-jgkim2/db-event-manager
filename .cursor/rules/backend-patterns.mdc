@@ -44,6 +44,11 @@ router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
 - **로그인 시 확장**: `roles.ts`의 `OBJ_EXPAND`로 레거시 → 세분화. `instance.create`는 `instance.view`만 확장(이벤트 수정/컨펌은 역할에 명시된 권한만).
 - **활동 로그**: `middleware/activityLogMiddleware` + `data/activityLogs.ts` → `activity_logs.json`. 상한 `ACTIVITY_LOG_MAX_ROWS`(기본 10000, 1000~500000).
 
+## Auth·UI·사용자 접속
+
+- `GET`/`PUT /api/auth/ui-preferences` — `fnAuthMiddleware`만, PUT 본문 `{ objEntries: Record<string,string> }`, 저장 `data/userUiPreferences.json` (`userUiPreferences.ts`). 활동 로그에서 해당 경로 제외.
+- `GET /api/users/presence-stream` — `fnRequireAnyPermission('user.view','user.manage')`, SSE `connected` → `presence_snapshot` → `user_presence` (`sseBroadcaster` + `userPresence` 스윕).
+
 ## 컨트롤러 응답 형식
 
 ```typescript

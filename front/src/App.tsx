@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
@@ -19,11 +19,29 @@ import DbConnectionPage from './pages/DbConnectionPage';
 import RolePage from './pages/RolePage';
 import ActivityPage from './pages/ActivityPage';
 import MainLayout from './components/MainLayout';
+import { fnRunUiPreferencesPullForUser } from './services/userUiPreferencesSync';
 
 // 인증된 사용자만 접근 가능한 라우트
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
   const bIsLoading = useAuthStore((state) => state.bIsLoading);
+  const user = useAuthStore((state) => state.user);
+  const [bUiPrefsReady, setBUiPrefsReady] = useState(false);
+
+  useEffect(() => {
+    if (!bIsAuthenticated || !user?.nId) {
+      setBUiPrefsReady(true);
+      return undefined;
+    }
+    setBUiPrefsReady(false);
+    let bCancelled = false;
+    void fnRunUiPreferencesPullForUser(user.nId).then(() => {
+      if (!bCancelled) setBUiPrefsReady(true);
+    });
+    return () => {
+      bCancelled = true;
+    };
+  }, [bIsAuthenticated, user?.nId]);
 
   if (bIsLoading) {
     return (
@@ -35,6 +53,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!bIsAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!bUiPrefsReady) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Spin size="large" tip="화면 설정 동기화 중…" />
+      </div>
+    );
   }
 
   return <>{children}</>;
@@ -125,6 +151,17 @@ const App = () => {
   useEffect(() => {
     fnVerifyToken();
   }, [fnVerifyToken]);
+
+  // 로그인 전·로그아웃 후 테마는 guest 버킷(dbem:guest:…)에서 복원
+  useEffect(() => {
+    void useThemeStore.persist.rehydrate();
+  }, []);
+
+  useEffect(() => {
+    if (!bIsAuthenticated) {
+      void useThemeStore.persist.rehydrate();
+    }
+  }, [bIsAuthenticated]);
 
   // 인증 완료 후 프로덕트/이벤트 데이터 서버에서 로드
   useEffect(() => {
