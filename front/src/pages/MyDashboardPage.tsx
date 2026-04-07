@@ -29,6 +29,7 @@ import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPL
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
+import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 
@@ -188,10 +189,10 @@ const PopconfirmWithSkip = ({
   onConfirm, children, disabled, okButtonProps,
 }: IPopconfirmWithSkipProps) => {
   const [bDontShowAgain, setBDontShowAgain] = useState(false);
-  const bSkip = typeof window !== 'undefined' && localStorage.getItem(SKIP_CONFIRM_KEY + actionKey) === '1';
+  const bSkip = typeof window !== 'undefined' && fnScopedStorageGetItem(SKIP_CONFIRM_KEY + actionKey) === '1';
 
   const fnHandleConfirm = () => {
-    if (bDontShowAgain) localStorage.setItem(SKIP_CONFIRM_KEY + actionKey, '1');
+    if (bDontShowAgain) fnScopedStorageSetItem(SKIP_CONFIRM_KEY + actionKey, '1');
     onConfirm();
   };
 

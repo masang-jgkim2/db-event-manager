@@ -3,6 +3,7 @@ import { Form, Input, Button, Card, Typography, message, Space, theme } from 'an
 import { UserOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
+import { bShowLoginDefaultAccountHint } from '../config/loginUi';
 
 const { Title, Text } = Typography;
 
@@ -20,8 +21,6 @@ const LoginPage = () => {
 
   const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const bShowLoginDefaultAccountHint = useThemeStore((s) => s.bShowLoginDefaultAccountHint);
-
   const bIsDark = fnGetIsDark();
   // 테마별 페이지 배경 — 본문·카드는 token으로 대비 확보
   const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
@@ -128,7 +127,7 @@ const LoginPage = () => {
             </Form.Item>
           </Form>
 
-          {/* 기본 계정 안내 — UI 설정에서 끄면 영역 전체 미표시 */}
+          {/* 기본 계정 안내 — VITE_SHOW_LOGIN_DEFAULT_ACCOUNT_HINT=true 일 때만 표시 */}
           {bShowLoginDefaultAccountHint && (
             <div
               style={{

@@ -26,7 +26,8 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+// 대시보드 UI 동기화(objEntries) 등 큰 JSON 본문 허용
+app.use(express.json({ limit: '5mb' }));
 app.use(fnActivityLogMiddleware);
 
 app.use('/api/auth', authRoutes);

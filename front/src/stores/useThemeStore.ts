@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { generate } from '@ant-design/colors';
+import { useAuthStore } from './useAuthStore';
 
 // 테마 모드 타입
 export type TThemeMode = 'light' | 'dark' | 'system';
@@ -37,8 +38,6 @@ const OBJ_DEFAULT = {
   bCompact: false,
   strPrimaryColor: '#667eea',
   bFunMode: false, // 재미 모드: 재요청 버튼을 롱프레스로 전환
-  /** 로그인 화면 기본 계정(admin) 안내 블록 표시 — UI 설정에서 끄면 영역 전체 미표시 */
-  bShowLoginDefaultAccountHint: true,
 };
 
 interface IThemeStore {
@@ -48,7 +47,6 @@ interface IThemeStore {
   bCompact: boolean;
   strPrimaryColor: string;
   bFunMode: boolean;
-  bShowLoginDefaultAccountHint: boolean;
 
   // 시스템 다크모드 여부 (system 모드일 때 OS 설정 반영)
   fnGetIsDark: () => boolean;
@@ -60,9 +58,32 @@ interface IThemeStore {
   fnSetCompact: (bCompact: boolean) => void;
   fnSetPrimaryColor: (strColor: string) => void;
   fnSetFunMode: (bFunMode: boolean) => void;
-  fnSetShowLoginDefaultAccountHint: (bShow: boolean) => void;
   fnReset: () => void;
 }
+
+const themePersistStorage = {
+  getItem: (strName: string): string | null => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    return localStorage.getItem(strKey);
+  },
+  setItem: (strName: string, strValue: string): void => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    localStorage.setItem(strKey, strValue);
+    if (nId > 0) {
+      void import('../services/userUiPreferencesSync').then((m) => m.fnSchedulePushUserUiPreferences());
+    }
+  },
+  removeItem: (strName: string): void => {
+    const nId = useAuthStore.getState().user?.nId ?? 0;
+    const strKey = nId > 0 ? `dbem:u${nId}:${strName}` : `dbem:guest:${strName}`;
+    localStorage.removeItem(strKey);
+    if (nId > 0) {
+      void import('../services/userUiPreferencesSync').then((m) => m.fnSchedulePushUserUiPreferences());
+    }
+  },
+};
 
 export const useThemeStore = create<IThemeStore>()(
   persist(
@@ -84,11 +105,20 @@ export const useThemeStore = create<IThemeStore>()(
       fnSetCompact: (bCompact) => set({ bCompact }),
       fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
       fnSetFunMode: (bFunMode) => set({ bFunMode }),
-      fnSetShowLoginDefaultAccountHint: (bShow) => set({ bShowLoginDefaultAccountHint: bShow }),
       fnReset: () => set({ ...OBJ_DEFAULT }),
     }),
     {
       name: 'db-event-manager-theme',
+      storage: createJSONStorage(() => themePersistStorage),
+      skipHydration: true,
+      partialize: (state) => ({
+        strMode: state.strMode,
+        nSiderWidth: state.nSiderWidth,
+        nFontSize: state.nFontSize,
+        bCompact: state.bCompact,
+        strPrimaryColor: state.strPrimaryColor,
+        bFunMode: state.bFunMode,
+      }),
     },
   ),
 );

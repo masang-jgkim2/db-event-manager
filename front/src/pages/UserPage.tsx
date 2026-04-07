@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Button, Modal, Form, Input, Select, Space, Tag,
-  Popconfirm, message, Card, Divider,
+  Popconfirm, message, Card, Divider, Tooltip,
 } from 'antd';
 import { PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -11,6 +11,7 @@ import {
 } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useUserPresenceStream } from '../hooks/useUserPresenceStream';
 import type { IRole } from '../types';
 
 const { Title, Text } = Typography;
@@ -22,10 +23,14 @@ interface IUserRow {
   arrRoles: string[];
   arrPermissions: string[];
   dtCreatedAt: string;
+  bOnline?: boolean;
+  strLastSeenAt?: string | null;
 }
 
 const UserPage = () => {
   const [arrUsers, setArrUsers] = useState<IUserRow[]>([]);
+  /** 목록이 비어 있을 때 스냅샷만 오면 병합이 무시되므로, 1차 로드 후에만 SSE 연결 */
+  const [bUsersListReady, setBUsersListReady] = useState(false);
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
@@ -49,17 +54,48 @@ const UserPage = () => {
   const bCanEdit = fnHas('user.edit') || fnHas('user.manage');
   const bCanDelete = fnHas('user.delete') || fnHas('user.manage');
   const bCanResetPassword = fnHas('user.reset_password') || fnHas('user.manage');
+  const bCanViewUsers = fnHas('user.view') || fnHas('user.manage');
+
+  const fnOnPresenceSnapshot = useCallback((arrRows: { nUserId: number; bOnline: boolean; strLastSeenAt: string | null }[]) => {
+    setArrUsers((prev) => {
+      const mapRows = new Map(arrRows.map((r) => [r.nUserId, r]));
+      return prev.map((u) => {
+        const p = mapRows.get(u.nId);
+        if (!p) return u;
+        return { ...u, bOnline: p.bOnline, strLastSeenAt: p.strLastSeenAt ?? undefined };
+      });
+    });
+  }, []);
+
+  const fnOnPresenceDelta = useCallback((row: { nUserId: number; bOnline: boolean; strLastSeenAt: string | null }) => {
+    setArrUsers((prev) =>
+      prev.map((u) =>
+        u.nId === row.nUserId
+          ? { ...u, bOnline: row.bOnline, strLastSeenAt: row.strLastSeenAt ?? undefined }
+          : u,
+      ),
+    );
+  }, []);
+
+  useUserPresenceStream({
+    bEnabled: bCanViewUsers && bUsersListReady,
+    fnOnSnapshot: fnOnPresenceSnapshot,
+    fnOnPresence: fnOnPresenceDelta,
+  });
 
   // 사용자 목록 조회
-  const fnLoadUsers = useCallback(async () => {
-    setBLoading(true);
+  const fnLoadUsers = useCallback(async (bShowLoading = true) => {
+    if (bShowLoading) setBLoading(true);
     try {
       const objResult = await fnApiGetUsers();
-      if (objResult.bSuccess) setArrUsers(objResult.arrUsers);
+      if (objResult.bSuccess) {
+        setArrUsers(objResult.arrUsers);
+        setBUsersListReady(true);
+      }
     } catch {
       messageApi.error('사용자 목록을 불러올 수 없습니다.');
     } finally {
-      setBLoading(false);
+      if (bShowLoading) setBLoading(false);
     }
   }, [messageApi]);
 
@@ -74,9 +110,15 @@ const UserPage = () => {
   }, [messageApi]);
 
   useEffect(() => {
-    fnLoadUsers();
-    fnLoadRoles();
+    void fnLoadUsers(true);
+    void fnLoadRoles();
   }, [fnLoadUsers, fnLoadRoles]);
+
+  // 오프라인 전환 등 SSE로 안 잡힐 때 보정(백업)
+  useEffect(() => {
+    const nTimer = window.setInterval(() => void fnLoadUsers(false), 120_000);
+    return () => window.clearInterval(nTimer);
+  }, [fnLoadUsers]);
 
   // 사용자 추가
   const fnHandleCreate = async () => {
@@ -178,6 +220,40 @@ const UserPage = () => {
       key: 'strDisplayName',
     },
     {
+      title: '연결',
+      key: 'presence',
+      width: 72,
+      align: 'center' as const,
+      render: (_: unknown, r: IUserRow) => {
+        const bOn = Boolean(r.bOnline);
+        const strWhen = r.strLastSeenAt
+          ? new Date(r.strLastSeenAt).toLocaleString('ko-KR')
+          : '기록 없음';
+        const strTip = bOn
+          ? `온라인 (최근 API 활동 기준)\n마지막: ${strWhen}`
+          : `오프라인\n마지막: ${strWhen}`;
+        const strColor = bOn ? '#52c41a' : '#bfbfbf';
+        const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
+        return (
+          <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{strTip}</span>}>
+            <span
+              className={bOn ? 'user-page-presence-dot--breathe' : undefined}
+              style={{
+                display: 'inline-block',
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: strColor,
+                boxShadow: strShadow,
+                verticalAlign: 'middle',
+                transition: 'background-color 0.55s ease, box-shadow 0.55s ease',
+              }}
+            />
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: '역할',
       dataIndex: 'arrRoles',
       key: 'arrRoles',
@@ -251,9 +327,25 @@ const UserPage = () => {
 
   return (
     <>
+      <style>
+        {`
+          @keyframes userPagePresenceDotBreathe {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+          }
+          .user-page-presence-dot--breathe {
+            animation: userPagePresenceDotBreathe 2.6s ease-in-out infinite;
+          }
+        `}
+      </style>
       {contextHolder}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>사용자</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>사용자</Title>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            연결 점은 최근 인증된 API 요청 기준(기본 약 3분)이며, 온라인은 SSE로 즉시·오프라인은 서버 주기 점검(수 초~수십 초)으로 반영됩니다. 백업으로 약 2분마다 목록을 다시 불러옵니다. 서버 재시작 시 기록이 비어 오프라인으로 보일 수 있습니다.
+          </Text>
+        </div>
         {bCanCreate && (
           <Button
             type="primary"

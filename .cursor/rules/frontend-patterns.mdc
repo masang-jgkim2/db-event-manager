@@ -14,7 +14,9 @@ front/src/
   components/ # AppTable, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore)
   api/        # API 클라이언트 (axios 래퍼)
-  hooks/      # useEventStream 등
+  hooks/      # useEventStream, useUserPresenceStream 등
+  utils/      # userScopedStorage (dbem:u{nId}:…)
+  services/   # userUiPreferencesSync (pull / 디바운스 push)
   types/      # 공유 인터페이스 (백엔드와 동기화)
 ```
 
@@ -52,12 +54,16 @@ const { bConnected } = useEventStream();
 ## API 클라이언트
 
 ```typescript
-// api/*.ts — axios 인스턴스 재사용
-import { objApiClient } from './apiClient';
-
-export const fnApiGetProducts = () =>
-  objApiClient.get<IProduct[]>('/api/products');
+// api/*.ts — axiosInstance(apiClient) baseURL = …/api
+import apiClient from './axiosInstance';
+export const fnApiGetProducts = () => apiClient.get('/products');
 ```
+
+## 계정 스코프 UI·서버 동기화
+
+- 논리 키만 쓰고 실제 키는 `fnScopedStorageGetItem`/`SetItem` → `dbem:u{nUserId}:논리키`. 로그인 전 테마는 `dbem:guest:…` (`useThemeStore` persist `skipHydration` + 수동 `rehydrate`).
+- `ProtectedRoute`: `fnRunUiPreferencesPullForUser` 완료 전 스핀 → 서버 `objEntries`를 local에 씬 뒤 테마·숨김 ID 반영.
+- 설정 변경 시 `userUiPreferencesSync`가 디바운스 `PUT /auth/ui-preferences`.
 
 ## 날짜/시간 입력
 
@@ -92,7 +98,7 @@ export const fnApiGetProducts = () =>
 
 ## 이벤트 대시보드 (DashboardPage)
 
-- **맞춤 카드**: 숫자 지표 행 + **이벤트 그룹**(제목·상태 다중·진행 중만·`Collapse`로 접기, 헤더에 **N건**, 본문 테이블: 이벤트명·반영일·담당자·상태). 인스턴스는 `my_dashboard.view` 또는 그룹 보유 시 `fnApiGetInstances('all')`. 저장: `db-event-manager-dashboard-custom-cards` + order/enabled/sizes.
+- **맞춤 카드**: … 저장 논리 키 `db-event-manager-dashboard-custom-cards` 등(실제 키는 계정 스코프 접두 포함).
 
 ## AppTable (공통 테이블)
 

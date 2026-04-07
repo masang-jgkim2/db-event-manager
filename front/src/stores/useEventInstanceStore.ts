@@ -4,17 +4,12 @@ import {
   fnApiGetInstances, fnApiUpdateStatus,
   fnApiUpdateInstance, fnApiExecuteQuery, fnApiCreateInstance, fnApiDeleteInstance,
 } from '../api/eventInstanceApi';
+import { fnScopedStorageSetItem } from '../utils/userScopedStorage';
 
-// localStorage 기반 숨김 ID 목록 관리
-const HIDDEN_KEY = 'db-event-manager-hidden-ids';
-const fnLoadHiddenIds = (): Set<number> => {
-  try {
-    const strRaw = localStorage.getItem(HIDDEN_KEY);
-    return strRaw ? new Set<number>(JSON.parse(strRaw)) : new Set();
-  } catch { return new Set(); }
-};
+const STR_HIDDEN_LOGICAL_KEY = 'db-event-manager-hidden-ids';
+
 const fnSaveHiddenIds = (setIds: Set<number>) => {
-  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...setIds]));
+  fnScopedStorageSetItem(STR_HIDDEN_LOGICAL_KEY, JSON.stringify([...setIds]));
 };
 
 interface IEventInstanceStore {
@@ -88,7 +83,7 @@ const fnPatchStatus = (
 export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => ({
   arrInstances: [],
   arrAllInstances: [],
-  setHiddenIds: fnLoadHiddenIds(),
+  setHiddenIds: new Set<number>(),
   bLoading: false,
   strFilter: 'all',  // 기본값: 전체
 
