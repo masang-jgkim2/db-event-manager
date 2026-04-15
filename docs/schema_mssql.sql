@@ -1,5 +1,5 @@
 -- =============================================================
--- DB Event Manager - MSSQL 스키마 (db_manager)
+-- Database Query Process Manager (DQPM) - MSSQL 스키마 (db_manager)
 -- 핵심 3개 테이블: roles, users, db_connections
 -- 실행 전 db_manager 데이터베이스를 먼저 생성해주세요.
 -- =============================================================

@@ -74,7 +74,7 @@ const LoginPage = () => {
           >
             <DatabaseOutlined style={{ fontSize: 48, color: strPrimaryColor }} />
             <Title level={3} style={{ margin: 0, color: token.colorTextHeading, textAlign: 'center' }}>
-              DB 쿼리 매니저 시스템
+              Database Query Process Manager
             </Title>
             <Text style={{ color: token.colorTextSecondary, textAlign: 'center' }}>
               계정으로 로그인하세요

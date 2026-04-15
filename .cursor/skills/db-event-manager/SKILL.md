@@ -1,9 +1,9 @@
 ---
 name: db-event-manager
-description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트에서 신규 기능 구현, 버그 수정, 코드 리뷰 요청 시 사용. 백엔드(Node/Express/TS), 프론트(React/Vite/TS/AntD), 인메모리 DB, MSSQL/MySQL 쿼리 실행, RBAC, SSE 실시간 업데이트를 다룬다.
+description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스트. 이 프로젝트에서 신규 기능 구현, 버그 수정, 코드 리뷰 요청 시 사용. 백엔드(Node/Express/TS), 프론트(React/Vite/TS/AntD), 인메모리 DB, MSSQL/MySQL 쿼리 실행, RBAC, SSE 실시간 업데이트를 다룬다.
 ---
 
-# DB Event Manager — 프로젝트 컨텍스트
+# Database Query Process Manager (DQPM) — 프로젝트 컨텍스트
 
 ## 기술 스택
 
@@ -38,6 +38,7 @@ description: DB Event Manager 프로젝트 전체 컨텍스트. 이 프로젝트
 
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
+- **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
 
 ```

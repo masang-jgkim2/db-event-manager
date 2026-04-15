@@ -297,7 +297,7 @@ const MainLayout = () => {
                 textOverflow: 'ellipsis',
               }}
             >
-              DB Process Manager
+              Database Query Process Manager
             </span>
           )}
         </div>

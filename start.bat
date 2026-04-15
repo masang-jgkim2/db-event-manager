@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ============================================
-echo   이벤트 매니저 서버 시작
+echo   Database Query Process Manager 서버 시작
 echo ============================================
 echo.
 
@@ -24,7 +24,7 @@ start http://localhost:5173
 
 echo.
 echo ============================================
-echo   서버가 시작되었습니다!
+echo   Database Query Process Manager 서버가 시작되었습니다!
 echo   프론트: http://localhost:5173
 echo   백엔드: http://localhost:4000
 echo   기본 계정: admin / admin123
