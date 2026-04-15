@@ -6,6 +6,7 @@ import {
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
 import type { CollapseProps } from 'antd';
+import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
@@ -13,7 +14,7 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
-  TableOutlined, AppstoreOutlined,
+  TableOutlined, AppstoreOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
@@ -609,6 +610,8 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
 };
 
 const MyDashboardPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
   // 테이블에서 선택된 이벤트 (상단 스테퍼 표시용)
@@ -685,6 +688,32 @@ const MyDashboardPage = () => {
   useEffect(() => {
     fnFetchInstances();
   }, [fnFetchInstances]);
+
+  // URL ?nId=N 처리 — 인스턴스 로드 후 해당 항목 상세 자동 열기 (퍼머링크·딥링크)
+  useEffect(() => {
+    if (bLoading) return;
+    const strNId = searchParams.get('nId');
+    if (!strNId) return;
+    const nTargetId = parseInt(strNId, 10);
+    if (isNaN(nTargetId)) return;
+
+    const objTarget = arrAllInstances.find((e) => e.nId === nTargetId);
+    if (objTarget) {
+      // 완료·숨김 탭에 있는 항목이면 탭 자동 전환 (삭제 또는 숨김 처리된 경우)
+      const bIsInCompleted = Boolean(objTarget.bPermanentlyRemoved) || setHiddenIds.has(objTarget.nId);
+      if (bIsInCompleted) setStrDashTab('completed');
+
+      setObjSelectedRow(objTarget);
+      setObjDetail(objTarget);
+      setBDetailOpen(true);
+      // URL에서 nId 파라미터 제거 (뒤로가기 시 다시 열리는 것 방지)
+      setSearchParams((prev) => {
+        prev.delete('nId');
+        return prev;
+      }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bLoading, arrAllInstances]);
 
   // SSE·완료 카운트와 rAF 루프 동기화
   useEffect(() => {
@@ -957,9 +986,24 @@ const MyDashboardPage = () => {
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
+  // 퍼머링크 URL 생성 및 클립보드 복사
+  const fnCopyInstanceLink = useCallback((nId: number) => {
+    const strUrl = `${window.location.origin}/my-dashboard?nId=${nId}`;
+    fnCopyTextToClipboard(strUrl, messageApi);
+  }, [messageApi]);
+
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
+
+    // 링크 복사 — 권한 무관, 항상 표시
+    arrButtons.push(
+      <Tooltip key="link" title="이벤트 링크 복사">
+        <Button size="small" icon={<LinkOutlined />}
+          onClick={() => fnCopyInstanceLink(r.nId)} />
+      </Tooltip>
+    );
+
     // 삭제 처리됨: 상세만 (워크플로·실행·수정 불가)
     if (r.bPermanentlyRemoved) {
       if (fnHasPermission('my_dashboard.detail')) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
@@ -27,6 +27,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const bIsLoading = useAuthStore((state) => state.bIsLoading);
   const user = useAuthStore((state) => state.user);
   const [bUiPrefsReady, setBUiPrefsReady] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     if (!bIsAuthenticated || !user?.nId) {
@@ -52,7 +53,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   if (!bIsAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // 현재 경로를 redirect 파라미터로 보존 — 로그인 후 원래 페이지로 복귀
+    const strRedirectTo = location.pathname + location.search;
+    const strLoginPath = strRedirectTo === '/' ? '/login' : `/login?redirect=${encodeURIComponent(strRedirectTo)}`;
+    return <Navigate to={strLoginPath} replace />;
   }
 
   if (!bUiPrefsReady) {
@@ -97,9 +101,14 @@ const PermissionRoute = ({
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
   const user = useAuthStore((state) => state.user);
-  const arrRoles = user?.arrRoles || [];
+  const [searchParams] = useSearchParams();
 
   if (bIsAuthenticated) {
+    // 로그인 후 redirect 파라미터가 있으면 해당 경로 우선
+    const strRedirectParam = searchParams.get('redirect');
+    if (strRedirectParam) {
+      return <Navigate to={strRedirectParam} replace />;
+    }
     const arrPermissions = user?.arrPermissions || [];
     const bHasDashboard = arrPermissions.includes('dashboard.view');
     const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');

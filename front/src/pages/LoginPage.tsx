@@ -18,7 +18,6 @@ const LoginPage = () => {
   const fnLogin = useAuthStore((state) => state.fnLogin);
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = theme.useToken();
-
   const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
   const bIsDark = fnGetIsDark();
@@ -32,6 +31,7 @@ const LoginPage = () => {
       const bResult = await fnLogin(objValues.strUserId, objValues.strPassword);
       if (bResult) {
         messageApi.success('로그인 성공!');
+        // PublicRoute가 redirect 파라미터를 읽어 자동 이동 처리
       } else {
         messageApi.error('아이디 또는 비밀번호가 올바르지 않습니다.');
       }
