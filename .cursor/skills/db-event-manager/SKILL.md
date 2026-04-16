@@ -98,8 +98,9 @@ front/src/
 
 ## 반영 날짜 검증 규칙
 
-- DEV/QA: `현재시간 < dtDeployDate` 이어야 실행 허용
-- LIVE: `현재시간 >= dtDeployDate` 이어야 실행 허용
+- QA : `dtQaDeployDate` 있으면 `현재시간 >= dtQaDeployDate` 이어야 실행 허용 (없으면 제한 없음)
+- LIVE: `dtLiveDeployDate` (없으면 `dtDeployDate`) — `현재시간 >= 해당날짜` 이어야 실행 허용
+- `dtDeployDate`는 하위 호환용 (QA 또는 LIVE 날짜 중 대표값)
 
 ## 인메모리 데이터 위치
 
