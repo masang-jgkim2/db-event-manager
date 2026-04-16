@@ -1,4 +1,4 @@
-# 이벤트 매니저 & DB 쿼리 매니저 - 개발 명세서
+# Database Query Process Manager (DQPM) - 개발 명세서
 
 > 최종 업데이트: 2026-03-10
 > 버전: v0.3.0
@@ -633,7 +633,7 @@ interface IQueryLog {
 
 ### 7.4 공통 레이아웃 (MainLayout)
 - **사이드바** (왼쪽 고정, 접기/펼치기 가능):
-  - 로고 + 타이틀 "이벤트 매니저"
+  - 로고 + 타이틀 "Database Query Process Manager"
   - 관리자: 대시보드, 프로덕트 관리, 쿼리 템플릿, 사용자 관리, 이벤트 생성
   - GM/기획자: 이벤트 생성만
 - **헤더** (상단 고정):

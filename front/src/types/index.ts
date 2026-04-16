@@ -409,7 +409,11 @@ export interface IEventInstance {
   strInputValues: string;
   strGeneratedQuery: string;
   arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
-  dtDeployDate: string;             // 반영 날짜 (datetime, ISO 8601)
+  /** @deprecated dtQaDeployDate / dtLiveDeployDate 분리 후 하위 호환용 */
+  dtDeployDate: string;
+  dtQaDeployDate?: string;          // QA 반영 날짜 (이 시각 이전에 QA 실행 허용)
+  dtLiveDeployDate?: string;        // LIVE 반영 날짜 (이 시각 이후에 LIVE 실행 허용)
+  strAlloLink?: string;             // 알로 업무 카드 링크 (선택)
   arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];

@@ -6,6 +6,7 @@ import {
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
 import type { CollapseProps } from 'antd';
+import { useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
@@ -13,7 +14,7 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
-  TableOutlined, AppstoreOutlined,
+  TableOutlined, AppstoreOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
@@ -609,6 +610,8 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
 };
 
 const MyDashboardPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
   // 테이블에서 선택된 이벤트 (상단 스테퍼 표시용)
@@ -620,7 +623,10 @@ const MyDashboardPage = () => {
   const [strEditInputValues, setStrEditInputValues] = useState('');
   /** 다중 쿼리 세트일 때 세트별 입력값 (수정 모달) */
   const [arrEditInputValues, setArrEditInputValues] = useState<string[]>([]);
-  const [strEditDeployDate, setStrEditDeployDate] = useState('');  // ISO 8601
+  const [strEditDeployDate, setStrEditDeployDate] = useState('');  // 하위 호환 (미사용)
+  const [strEditQaDeployDate, setStrEditQaDeployDate] = useState('');
+  const [strEditLiveDeployDate, setStrEditLiveDeployDate] = useState('');
+  const [strEditAlloLink, setStrEditAlloLink] = useState('');
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
   // DBA 쿼리 수정 모달
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
@@ -685,6 +691,32 @@ const MyDashboardPage = () => {
   useEffect(() => {
     fnFetchInstances();
   }, [fnFetchInstances]);
+
+  // URL ?nId=N 처리 — 인스턴스 로드 후 해당 항목 상세 자동 열기 (퍼머링크·딥링크)
+  useEffect(() => {
+    if (bLoading) return;
+    const strNId = searchParams.get('nId');
+    if (!strNId) return;
+    const nTargetId = parseInt(strNId, 10);
+    if (isNaN(nTargetId)) return;
+
+    const objTarget = arrAllInstances.find((e) => e.nId === nTargetId);
+    if (objTarget) {
+      // 완료·숨김 탭에 있는 항목이면 탭 자동 전환 (삭제 또는 숨김 처리된 경우)
+      const bIsInCompleted = Boolean(objTarget.bPermanentlyRemoved) || setHiddenIds.has(objTarget.nId);
+      if (bIsInCompleted) setStrDashTab('completed');
+
+      setObjSelectedRow(objTarget);
+      setObjDetail(objTarget);
+      setBDetailOpen(true);
+      // URL에서 nId 파라미터 제거 (뒤로가기 시 다시 열리는 것 방지)
+      setSearchParams((prev) => {
+        prev.delete('nId');
+        return prev;
+      }, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bLoading, arrAllInstances]);
 
   // SSE·완료 카운트와 rAF 루프 동기화
   useEffect(() => {
@@ -865,6 +897,9 @@ const MyDashboardPage = () => {
       setArrEditInputValues([]);
     }
     setStrEditDeployDate(r.dtDeployDate);
+    setStrEditQaDeployDate(r.dtQaDeployDate ?? r.dtDeployDate ?? '');
+    setStrEditLiveDeployDate(r.dtLiveDeployDate ?? r.dtDeployDate ?? '');
+    setStrEditAlloLink(r.strAlloLink ?? '');
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
     setBEditOpen(true);
   };
@@ -877,8 +912,11 @@ const MyDashboardPage = () => {
       : strEditInputValues;
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
+      strAlloLink: strEditAlloLink.trim() || undefined,
       strInputValues: strPayloadInputValues,
-      dtDeployDate: strEditDeployDate,
+      dtQaDeployDate: strEditQaDeployDate || undefined,
+      dtLiveDeployDate: strEditLiveDeployDate || undefined,
+      dtDeployDate: strEditQaDeployDate || strEditLiveDeployDate || strEditDeployDate,
       arrDeployScope: arrEditDeployScope,
     });
     if (result.bSuccess) {
@@ -957,9 +995,24 @@ const MyDashboardPage = () => {
   const nInProgress = arrAllInstances.filter((e) => e.strStatus !== 'live_verified').length;
   const nCompleted = arrAllInstances.filter((e) => e.strStatus === 'live_verified').length;
 
+  // 퍼머링크 URL 생성 및 클립보드 복사
+  const fnCopyInstanceLink = useCallback((nId: number) => {
+    const strUrl = `${window.location.origin}/my-dashboard?nId=${nId}`;
+    fnCopyTextToClipboard(strUrl, messageApi);
+  }, [messageApi]);
+
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
     const arrButtons = [];
+
+    // 링크 복사 — 권한 무관, 항상 표시
+    arrButtons.push(
+      <Tooltip key="link" title="이벤트 링크 복사">
+        <Button size="small" icon={<LinkOutlined />}
+          onClick={() => fnCopyInstanceLink(r.nId)} />
+      </Tooltip>
+    );
+
     // 삭제 처리됨: 상세만 (워크플로·실행·수정 불가)
     if (r.bPermanentlyRemoved) {
       if (fnHasPermission('my_dashboard.detail')) {
@@ -1780,11 +1833,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
                     <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
                     <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
-                    <Descriptions.Item label="반영 날짜">
-                      {objDetail.dtDeployDate
-                        ? new Date(objDetail.dtDeployDate).toLocaleString('ko-KR')
-                        : '-'}
-                    </Descriptions.Item>
+                    {objDetail.strAlloLink && (
+                      <Descriptions.Item label="알로 링크" span={2}>
+                        <a href={objDetail.strAlloLink} target="_blank" rel="noreferrer">{objDetail.strAlloLink}</a>
+                      </Descriptions.Item>
+                    )}
                     <Descriptions.Item label="반영 범위">
                       <Space size={4}>
                         {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
@@ -1792,6 +1845,16 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
                         })}
                       </Space>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="QA 반영 날짜">
+                      {objDetail.dtQaDeployDate
+                        ? new Date(objDetail.dtQaDeployDate).toLocaleString('ko-KR')
+                        : (objDetail.arrDeployScope?.includes('qa') ? '-' : '해당없음')}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="LIVE 반영 날짜">
+                      {objDetail.dtLiveDeployDate
+                        ? new Date(objDetail.dtLiveDeployDate).toLocaleString('ko-KR')
+                        : (objDetail.arrDeployScope?.includes('live') ? '-' : '해당없음')}
                     </Descriptions.Item>
                     <Descriptions.Item label="상태">
                       <Space size={4} wrap align="center">
@@ -1959,6 +2022,19 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>
+                <Text strong>알로 링크</Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>선택사항</Text>
+              </Space>
+              <Input
+                value={strEditAlloLink}
+                onChange={(e) => setStrEditAlloLink(e.target.value)}
+                placeholder="https://allo.io/... 알로 업무 카드 링크"
+                allowClear
+                style={{ marginTop: 4 }}
+              />
+            </div>
+            <div>
+              <Space style={{ marginBottom: 4 }}>
                 <Text strong>반영 범위</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
                   <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
@@ -1991,19 +2067,36 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 )}
               </div>
             </div>
-            <div>
-              <Space style={{ marginBottom: 4 }}>
-                <Text strong>반영 날짜</Text>
-                <Text type="secondary" style={{ fontSize: 11 }}>DEV/QA: 이 시각 이전 실행 가능 · LIVE: 이 시각 이후 실행 가능</Text>
-              </Space>
-              <DatePicker
-                style={{ width: '100%', marginTop: 4 }}
-                showTime={{ format: 'HH:mm:ss' }}
-                format="YYYY-MM-DD HH:mm:ss"
-                value={strEditDeployDate ? dayjs(strEditDeployDate) : null}
-                onChange={(date) => setStrEditDeployDate(date ? date.toISOString() : '')}
-              />
-            </div>
+            {arrEditDeployScope.includes('qa') && (
+              <div>
+                <Space style={{ marginBottom: 4 }}>
+                  <Text strong>QA 반영 날짜</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 QA 실행 가능</Text>
+                </Space>
+                <DatePicker
+                  style={{ width: '100%', marginTop: 4 }}
+                  showTime={{ format: 'HH:mm:ss' }}
+                  format="YYYY-MM-DD HH:mm:ss"
+                  value={strEditQaDeployDate ? dayjs(strEditQaDeployDate) : null}
+                  onChange={(date) => setStrEditQaDeployDate(date ? date.toISOString() : '')}
+                />
+              </div>
+            )}
+            {arrEditDeployScope.includes('live') && (
+              <div>
+                <Space style={{ marginBottom: 4 }}>
+                  <Text strong>LIVE 반영 날짜</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                </Space>
+                <DatePicker
+                  style={{ width: '100%', marginTop: 4 }}
+                  showTime={{ format: 'HH:mm:ss' }}
+                  format="YYYY-MM-DD HH:mm:ss"
+                  value={strEditLiveDeployDate ? dayjs(strEditLiveDeployDate) : null}
+                  onChange={(date) => setStrEditLiveDeployDate(date ? date.toISOString() : '')}
+                />
+              </div>
+            )}
             {(objEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
               <>
                 <div>

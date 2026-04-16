@@ -55,7 +55,10 @@ const QueryPage = () => {
   const [strInputValues, setStrInputValues] = useState('');
   /** 다중 쿼리 세트일 때 세트별 입력값 (인덱스 = 세트 순서) */
   const [arrInputValues, setArrInputValues] = useState<string[]>([]);
-  const [strDeployDate, setStrDeployDate] = useState('');  // 반영 날짜 (ISO 8601)
+  const [strDeployDate, setStrDeployDate] = useState('');  // 하위 호환용 (미사용)
+  const [strQaDeployDate, setStrQaDeployDate] = useState('');   // QA 반영 날짜 (ISO 8601)
+  const [strLiveDeployDate, setStrLiveDeployDate] = useState(''); // LIVE 반영 날짜 (ISO 8601)
+  const [strAlloLink, setStrAlloLink] = useState('');
 
   // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
@@ -174,6 +177,9 @@ const QueryPage = () => {
     setStrInputValues('');
     setArrInputValues([]);
     setStrDeployDate('');
+    setStrQaDeployDate('');
+    setStrLiveDeployDate('');
+    setStrAlloLink('');
     setStrGeneratedQuery('');
 
     // 서비스가 1개뿐이면 자동 선택
@@ -190,6 +196,8 @@ const QueryPage = () => {
     setStrInputValues('');
     setArrInputValues([]);
     setStrDeployDate('');
+    setStrQaDeployDate('');
+    setStrLiveDeployDate('');
     setStrGeneratedQuery('');
   };
 
@@ -220,7 +228,8 @@ const QueryPage = () => {
   // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride로 세트별 입력 사용
   const fnApplyTemplate = (strTemplate: string, strItemsOverride?: string): string => {
     const strItems = strItemsOverride !== undefined ? strItemsOverride.trim() : strInputValues.trim();
-    const strDateOnly = strDeployDate.slice(0, 10);
+    // {{date}} 치환: QA 날짜 우선, 없으면 LIVE 날짜
+    const strDateOnly = (strQaDeployDate || strLiveDeployDate || strDeployDate).slice(0, 10);
     let str = strTemplate;
     str = str.replace(/\{\{items\}\}/g, strItems);
     str = str.replace(/\{\{date\}\}/g, strDateOnly);
@@ -235,9 +244,15 @@ const QueryPage = () => {
   const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
 
-    // 반영 날짜 필수 체크
-    if (!strDeployDate) {
-      messageApi.warning('반영 날짜를 선택해주세요.');
+    // 반영 날짜 필수 체크 — QA 또는 LIVE 중 해당 범위의 날짜가 있어야 함
+    const bNeedQa = arrDeployScope.includes('qa');
+    const bNeedLive = arrDeployScope.includes('live');
+    if (bNeedQa && !strQaDeployDate) {
+      messageApi.warning('QA 반영 날짜를 선택해주세요.');
+      return;
+    }
+    if (bNeedLive && !strLiveDeployDate) {
+      messageApi.warning('LIVE 반영 날짜를 선택해주세요.');
       return;
     }
 
@@ -305,9 +320,13 @@ const QueryPage = () => {
         strCategory: objSelectedEvent.strCategory,
         strType: objSelectedEvent.strType,
         strEventName,
+        strAlloLink: strAlloLink.trim() || undefined,
         strInputValues: strPayloadInputValues,
         strGeneratedQuery: arrTargets[0]?.strQuery ?? strQuery,
-        dtDeployDate: strDeployDate,
+        dtQaDeployDate: strQaDeployDate || undefined,
+        dtLiveDeployDate: strLiveDeployDate || undefined,
+        // 하위 호환: QA 또는 LIVE 날짜 중 대표값
+        dtDeployDate: strQaDeployDate || strLiveDeployDate,
         arrDeployScope,
         strCreatedBy: user?.strDisplayName || '',
       };
@@ -346,6 +365,9 @@ const QueryPage = () => {
     setStrInputValues('');
     setArrInputValues([]);
     setStrDeployDate('');
+    setStrQaDeployDate('');
+    setStrLiveDeployDate('');
+    setStrAlloLink('');
     setStrGeneratedQuery('');
     setArrExecutionTargets([]);
     setArrDeployScope(['qa', 'live']);
@@ -559,23 +581,14 @@ const QueryPage = () => {
                   </Text>
                 </Form.Item>
 
-                {/* 반영 날짜 (필수, 날짜+시분초) */}
-                <Form.Item
-                  label={
-                    <Space>
-                      반영 날짜
-                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
-                      <Text type="secondary" style={{ fontSize: 11 }}>DEV/QA: 이 시각 이전에 실행, LIVE: 이 시각 이후에 실행</Text>
-                    </Space>
-                  }
-                >
-                  <DatePicker
-                    style={{ width: '100%' }}
-                    showTime={{ format: 'HH:mm:ss' }}
-                    format="YYYY-MM-DD HH:mm:ss"
-                    placeholder="반영 날짜/시각을 선택하세요"
-                    onChange={(date) => setStrDeployDate(date ? date.toISOString() : '')}
+                {/* 알로 링크 (선택) */}
+                <Form.Item label={<Space>알로 링크 <Text type="secondary" style={{ fontSize: 11 }}>선택사항</Text></Space>}>
+                  <Input
+                    value={strAlloLink}
+                    onChange={(e) => setStrAlloLink(e.target.value)}
+                    placeholder="https://allo.io/... 알로 업무 카드 링크를 붙여넣으세요"
                     size="large"
+                    allowClear
                   />
                 </Form.Item>
 
@@ -620,6 +633,52 @@ const QueryPage = () => {
                     </Space>
                   </Checkbox.Group>
                 </Form.Item>
+
+                {/* QA 반영 날짜 — QA 범위 선택 시 표시 */}
+                {arrDeployScope.includes('qa') && (
+                  <Form.Item
+                    label={
+                      <Space>
+                        QA 반영 날짜
+                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 QA 실행 가능</Text>
+                      </Space>
+                    }
+                  >
+                    <DatePicker
+                      style={{ width: '100%' }}
+                      showTime={{ format: 'HH:mm:ss' }}
+                      format="YYYY-MM-DD HH:mm:ss"
+                      placeholder="QA 반영 날짜/시각을 선택하세요"
+                      value={strQaDeployDate ? dayjs(strQaDeployDate) : null}
+                      onChange={(date) => setStrQaDeployDate(date ? date.toISOString() : '')}
+                      size="large"
+                    />
+                  </Form.Item>
+                )}
+
+                {/* LIVE 반영 날짜 — LIVE 범위 선택 시 표시 */}
+                {arrDeployScope.includes('live') && (
+                  <Form.Item
+                    label={
+                      <Space>
+                        LIVE 반영 날짜
+                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                      </Space>
+                    }
+                  >
+                    <DatePicker
+                      style={{ width: '100%' }}
+                      showTime={{ format: 'HH:mm:ss' }}
+                      format="YYYY-MM-DD HH:mm:ss"
+                      placeholder="LIVE 반영 날짜/시각을 선택하세요"
+                      value={strLiveDeployDate ? dayjs(strLiveDeployDate) : null}
+                      onChange={(date) => setStrLiveDeployDate(date ? date.toISOString() : '')}
+                      size="large"
+                    />
+                  </Form.Item>
+                )}
 
                 {/* 쿼리 템플릿에 맞는 입력 공간: 다중 세트면 탭으로 세트별, 단일이면 1개 */}
                 {objSelectedEvent.strInputFormat !== 'none' && (

@@ -1,4 +1,4 @@
-# DB Process Manager
+# Database Query Process Manager (DQPM)
 
 ## 개요
 

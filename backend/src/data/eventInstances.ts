@@ -68,7 +68,11 @@ export interface IEventInstance {
   strGeneratedQuery: string;
   /** 실행 대상 목록 (템플릿에 arrQueryTemplates 있을 때: DB 연결별 생성 쿼리) */
   arrExecutionTargets?: IExecutionTarget[];
-  dtDeployDate: string;                   // 반영 날짜 (datetime, ISO 8601)
+  /** @deprecated dtQaDeployDate / dtLiveDeployDate 분리 후 호환용으로 유지 */
+  dtDeployDate: string;
+  dtQaDeployDate?: string;                // QA 반영 날짜 (이 시각 이전에 QA 실행 허용)
+  dtLiveDeployDate?: string;              // LIVE 반영 날짜 (이 시각 이후에 LIVE 실행 허용)
+  strAlloLink?: string;                   // 알로 업무 카드 링크 (선택)
   arrDeployScope: Array<'qa' | 'live'>;   // 쿼리 실행 대상: 단일 서버(QA만 또는 LIVE만) 또는 다중 서버(QA+LIVE)
   // 상태
   strStatus: TEventStatus;

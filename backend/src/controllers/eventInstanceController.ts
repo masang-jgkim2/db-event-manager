@@ -96,12 +96,18 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     const {
       nEventTemplateId, nProductId, strEventLabel, strProductName,
       strServiceAbbr, strServiceRegion, strCategory, strType,
-      strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets, dtDeployDate,
+      strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets,
+      dtDeployDate, dtQaDeployDate, dtLiveDeployDate, strAlloLink,
       arrDeployScope: arrReqScope, strCreatedBy,
     } = req.body;
 
-    if (!strEventName || !dtDeployDate || !nEventTemplateId) {
+    if (!strEventName || !nEventTemplateId) {
       res.status(400).json({ bSuccess: false, strMessage: '필수 항목을 입력해주세요.' });
+      return;
+    }
+    // QA/LIVE 날짜 중 최소 하나는 있어야 함 (dtDeployDate는 하위 호환)
+    if (!dtQaDeployDate && !dtLiveDeployDate && !dtDeployDate) {
+      res.status(400).json({ bSuccess: false, strMessage: '반영 날짜를 입력해주세요.' });
       return;
     }
 
@@ -135,10 +141,14 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strCategory: strCategory || '',
       strType: strType || '',
       strEventName,
+      strAlloLink: strAlloLink || undefined,
       strInputValues: strInputValues || '',
       strGeneratedQuery: strGeneratedQuery || '',
       arrExecutionTargets: Array.isArray(arrExecutionTargets) ? arrExecutionTargets : undefined,
-      dtDeployDate,
+      // QA/LIVE 날짜 분리 저장; dtDeployDate는 하위 호환용으로 동일값 유지
+      dtDeployDate: dtQaDeployDate || dtLiveDeployDate || dtDeployDate,
+      dtQaDeployDate: dtQaDeployDate || undefined,
+      dtLiveDeployDate: dtLiveDeployDate || undefined,
       arrDeployScope,
       strStatus: 'event_created' as TEventStatus,
       arrStatusLogs: [{
@@ -405,23 +415,40 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    // ── 반영 날짜 시점 체크 ────────────────────────────────
-    // QA  : 시간 제한 없음 — LIVE 반영 전 언제든지 실행 가능
-    // LIVE : 현재 시각 >= 반영 날짜 → 반영 날짜 이후에만 실행 허용 (운영 반영)
+    // ── 반영 날짜 시점 체크 ──────────────────────────────────────────────────
+    // QA  : dtQaDeployDate 있으면 해당 시각 이후에만 실행 허용
+    // LIVE: dtLiveDeployDate (없으면 dtDeployDate) 이후에만 실행 허용
     const dtNow = new Date();
-    const dtDeploy = new Date(objInstance.dtDeployDate);
 
-    if (isNaN(dtDeploy.getTime())) {
-      res.status(400).json({ bSuccess: false, strMessage: '반영 날짜가 올바르지 않습니다.' });
-      return;
+    if (strEnv === 'qa' && objInstance.dtQaDeployDate) {
+      const dtQaDeploy = new Date(objInstance.dtQaDeployDate);
+      if (isNaN(dtQaDeploy.getTime())) {
+        res.status(400).json({ bSuccess: false, strMessage: 'QA 반영 날짜가 올바르지 않습니다.' });
+        return;
+      }
+      if (dtNow < dtQaDeploy) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `QA 쿼리 실행은 QA 반영 날짜(${dtQaDeploy.toLocaleString('ko-KR')}) 이후에만 가능합니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
+        });
+        return;
+      }
     }
 
-    if (strEnv === 'live' && dtNow < dtDeploy) {
-      res.status(400).json({
-        bSuccess: false,
-        strMessage: `LIVE 쿼리 실행은 반영 날짜(${dtDeploy.toLocaleString('ko-KR')}) 이후에만 가능합니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
-      });
-      return;
+    if (strEnv === 'live') {
+      const strLiveDate = objInstance.dtLiveDeployDate ?? objInstance.dtDeployDate;
+      const dtLiveDeploy = new Date(strLiveDate);
+      if (isNaN(dtLiveDeploy.getTime())) {
+        res.status(400).json({ bSuccess: false, strMessage: 'LIVE 반영 날짜가 올바르지 않습니다.' });
+        return;
+      }
+      if (dtNow < dtLiveDeploy) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage: `LIVE 쿼리 실행은 LIVE 반영 날짜(${dtLiveDeploy.toLocaleString('ko-KR')}) 이후에만 가능합니다. 현재 시각: ${dtNow.toLocaleString('ko-KR')}`,
+        });
+        return;
+      }
     }
 
     // 쿼리 실행: 다중 세트(arrExecutionTargets 2개 이상)면 세트별로 동일 종류(strKind)의 요청 env 접속으로 실행
@@ -765,10 +792,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     }
 
     // 수정 가능한 단순 필드 업데이트
-    const arrSimpleFields = ['strEventName', 'strServiceAbbr', 'strServiceRegion'];
+    const arrSimpleFields = ['strEventName', 'strServiceAbbr', 'strServiceRegion', 'strAlloLink'];
     for (const key of arrSimpleFields) {
       if (req.body[key] !== undefined) {
-        (objInstance as any)[key] = req.body[key];
+        (objInstance as any)[key] = req.body[key] || undefined;
       }
     }
 
@@ -783,16 +810,21 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
+    // QA/LIVE 날짜 개별 업데이트; dtDeployDate는 하위 호환용으로 동기화
+    if (req.body.dtQaDeployDate !== undefined)   objInstance.dtQaDeployDate   = req.body.dtQaDeployDate   || undefined;
+    if (req.body.dtLiveDeployDate !== undefined) objInstance.dtLiveDeployDate = req.body.dtLiveDeployDate || undefined;
+    // dtDeployDate는 QA/LIVE 중 대표값으로 유지
+    objInstance.dtDeployDate = objInstance.dtQaDeployDate ?? objInstance.dtLiveDeployDate ?? objInstance.dtDeployDate;
+
     // inputValues / dtDeployDate 실제 변경 시에만 쿼리 재생성 (값이 동일하면 GM이 수정한 쿼리 유지)
     const strNewInput = req.body.strInputValues;
-    const strNewDate  = req.body.dtDeployDate;
+    const strNewDate  = req.body.dtDeployDate ?? req.body.dtQaDeployDate ?? req.body.dtLiveDeployDate;
     const bInputChanged =
       strNewInput !== undefined && String(strNewInput).trim() !== String(objInstance.strInputValues || '').trim();
     const bDateChanged =
       strNewDate !== undefined && String(strNewDate) !== String(objInstance.dtDeployDate || '');
 
     if (strNewInput !== undefined) objInstance.strInputValues = strNewInput;
-    if (strNewDate !== undefined)  objInstance.dtDeployDate   = strNewDate;
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
