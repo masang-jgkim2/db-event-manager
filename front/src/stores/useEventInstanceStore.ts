@@ -72,13 +72,29 @@ const fnUpsertInstance = (
   return [objInstance, ...arrList];
 };
 
-// 두 목록에서 상태만 업데이트하는 헬퍼
-const fnPatchStatus = (
+/** 비관여자용 SSE 요약(instance_status_changed) — 상태·메타·영구 삭제 플래그 병합 */
+const fnPatchInstanceLight = (
   arrList: IEventInstance[],
-  nId: number,
-  strStatus: TEventStatus
+  objSummary: {
+    nId: number;
+    strStatus: TEventStatus;
+    strEventName?: string;
+    strProductName?: string;
+    bPermanentlyRemoved?: boolean;
+    dtPermanentlyRemovedAt?: string;
+  },
 ): IEventInstance[] =>
-  arrList.map((e) => e.nId === nId ? { ...e, strStatus } : e);
+  arrList.map((e) => {
+    if (e.nId !== objSummary.nId) return e;
+    return {
+      ...e,
+      strStatus: objSummary.strStatus,
+      strEventName: objSummary.strEventName ?? e.strEventName,
+      strProductName: objSummary.strProductName ?? e.strProductName,
+      ...(objSummary.bPermanentlyRemoved !== undefined && { bPermanentlyRemoved: objSummary.bPermanentlyRemoved }),
+      ...(objSummary.dtPermanentlyRemovedAt !== undefined && { dtPermanentlyRemovedAt: objSummary.dtPermanentlyRemovedAt }),
+    };
+  });
 
 export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => ({
   arrInstances: [],
@@ -211,11 +227,18 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objInstance),
       }));
     } else if (strEvent === 'instance_status_changed') {
-      // 비관여자에게 오는 상태 요약 업데이트
-      const objSummary = objPayload as { nId: number; strStatus: TEventStatus };
+      // 비관여자에게 오는 상태 요약 업데이트 (영구 삭제 시 bPermanentlyRemoved 포함)
+      const objSummary = objPayload as {
+        nId: number;
+        strStatus: TEventStatus;
+        strEventName?: string;
+        strProductName?: string;
+        bPermanentlyRemoved?: boolean;
+        dtPermanentlyRemovedAt?: string;
+      };
       set((state) => ({
-        arrInstances: fnPatchStatus(state.arrInstances, objSummary.nId, objSummary.strStatus),
-        arrAllInstances: fnPatchStatus(state.arrAllInstances, objSummary.nId, objSummary.strStatus),
+        arrInstances: fnPatchInstanceLight(state.arrInstances, objSummary),
+        arrAllInstances: fnPatchInstanceLight(state.arrAllInstances, objSummary),
       }));
     }
   },

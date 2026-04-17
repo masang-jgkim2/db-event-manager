@@ -683,9 +683,17 @@ const MyDashboardPage = () => {
 
   // 권한 확인 헬퍼
   const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
-  // 삭제(복원 불가): delete_instance 또는 레거시 delete(서버·로그인 확장과 동일)
-  const fnCanPermanentDelete = () =>
-    fnHasPermission('my_dashboard.delete_instance') || fnHasPermission('my_dashboard.delete');
+  // 삭제(복원 불가): 타인 삭제(delete_any·레거시) 또는 본인 작성 + instance.delete_own
+  const fnCanDeleteInstanceRow = (r: IEventInstance) => {
+    if (r.bPermanentlyRemoved) return false;
+    const bDeleteAny =
+      fnHasPermission('my_dashboard.delete_any')
+      || fnHasPermission('my_dashboard.delete_instance')
+      || fnHasPermission('my_dashboard.delete');
+    const bDeleteOwn =
+      fnHasPermission('instance.delete_own') && user?.nId === r.nCreatedByUserId;
+    return bDeleteAny || bDeleteOwn;
+  };
 
   // 페이지 진입 시 최초 1회 로드 (이후는 SSE가 자동 동기화)
   useEffect(() => {
@@ -1497,7 +1505,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       key: 'actions',
       width: 420,
       render: (_: unknown, r: IEventInstance) => {
-        const bCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+        const bCanDelete = fnCanDeleteInstanceRow(r);
         return (
           <Space wrap size="small" align="start">
             {fnRenderActions(r)}
@@ -1730,7 +1738,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}
                         {(() => {
-                          const bCardCanDelete = !r.bPermanentlyRemoved && fnCanPermanentDelete();
+                          const bCardCanDelete = fnCanDeleteInstanceRow(r);
                           if (r.bPermanentlyRemoved) {
                             return <Tag color="red">삭제됨 · 복원 불가</Tag>;
                           }

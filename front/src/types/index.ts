@@ -13,6 +13,7 @@ export type TPermission =
   // 이벤트 인스턴스 권한
   | 'instance.view'             // 이벤트 생성 페이지 보기
   | 'instance.create'            // 이벤트 인스턴스 생성
+  | 'instance.delete_own'       // 본인 작성 이벤트 인스턴스 영구 삭제
   | 'instance.approve_qa'       // QA 승인 요청
   | 'instance.execute_qa'       // QA DB 실제 실행
   | 'instance.verify_qa'        // QA 결과 확인
@@ -30,6 +31,7 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'db.manage':               'DB 접속 정보 관리',
   'instance.view':          '이벤트 생성 보기',
   'instance.create':         '이벤트 생성',
+  'instance.delete_own':     '내 이벤트 삭제',
   'instance.approve_qa':     'QA 승인',
   'instance.execute_qa':     'QA DB 실행',
   'instance.verify_qa':      'QA 확인',
@@ -103,11 +105,12 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'my_dashboard.verify_live', label: 'LIVE 확인' },
     { value: 'my_dashboard.request_live_rereq', label: 'LIVE 재반영 요청' },
     { value: 'my_dashboard.hide', label: '숨기기/복원' },
-    { value: 'my_dashboard.delete_instance', label: '삭제' },
+    { value: 'my_dashboard.delete_any', label: '타인 이벤트 삭제' },
   ]},
   { groupLabel: '이벤트 생성', permissions: [
     { value: 'instance.view', label: '보기' },
     { value: 'instance.create', label: '생성' },
+    { value: 'instance.delete_own', label: '내 이벤트 삭제' },
   ]},
   { groupLabel: '시스템', permissions: [
     { value: 'system.save_test_seed', label: '테스트 시드 저장' },
@@ -150,7 +153,8 @@ const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
   'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.view', 'instance.create'],
-  'my_dashboard.delete': ['my_dashboard.delete_instance'],
+  'my_dashboard.delete': ['my_dashboard.delete_any'],
+  'my_dashboard.delete_instance': ['my_dashboard.delete_any'],
 };
 export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
   const setOut = new Set<string>(arrRaw);

@@ -1099,11 +1099,17 @@ describe('API 전체 테스트', () => {
       expect([200, 400, 404]).toContain(res.status);
     });
 
-    it('DELETE /api/event-instances/:id (my_dashboard.delete_instance 없으면) → 403', async () => {
-      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
+    it('DELETE /api/event-instances/:id (delete_any·delete_own 모두 해당 없으면) → 403', async () => {
+      // 기획자(planner): 나의 대시보드 보기는 있으나 삭제 권한 없음 — GM은 instance.delete_own이 있어 본인 건 삭제 가능
+      const loginPlanner = await request(app)
+        .post('/api/auth/login')
+        .send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
+      expect(loginPlanner.status).toBe(200);
+      const strPlannerToken = loginPlanner.body?.strToken;
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strPlannerToken}`);
       const live = (list.body?.arrInstances ?? []).find((i: { strStatus: string }) => i.strStatus === 'live_verified');
       const nId = live?.nId ?? 1;
-      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strGmToken}`);
+      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strPlannerToken}`);
       expect(res.status).toBe(403);
     });
 
