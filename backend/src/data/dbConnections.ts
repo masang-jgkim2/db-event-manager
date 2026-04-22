@@ -1,4 +1,6 @@
 import { IDbConnection, TDbConnectionKind } from '../types';
+import { fnGetStoreBackend } from '../persistence/storeBackend';
+import { fnPersistDbConnectionsToRdb } from '../persistence/rdb/dbConnectionsPersistence';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 
 const STR_FILE = 'dbConnections.json';
@@ -11,7 +13,13 @@ export const arrDbConnections: IDbConnection[] = fnNormalizeConnections(
   fnLoadJson<IDbConnection>(STR_FILE, [])
 );
 
-export const fnSaveDbConnections = () => fnSaveJson(STR_FILE, arrDbConnections);
+export const fnSaveDbConnections = async (): Promise<void> => {
+  if (fnGetStoreBackend() === 'rdb') {
+    await fnPersistDbConnectionsToRdb(arrDbConnections);
+    return;
+  }
+  fnSaveJson(STR_FILE, arrDbConnections);
+};
 
 export const fnGetNextDbConnectionId = (): number =>
   arrDbConnections.length > 0 ? Math.max(...arrDbConnections.map((c) => c.nId)) + 1 : 1;

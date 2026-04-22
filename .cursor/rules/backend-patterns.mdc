@@ -20,6 +20,12 @@ backend/src/
   types/         # index.ts — 공유 인터페이스
 ```
 
+## STORE_BACKEND
+
+- `json`: 읽기·쓰기 원천 `data/*.json` (`DATA_DIR`).
+- `rdb`: 쓰기 원천 시스템 MSSQL(`DB_SYSTEM_*`); 부팅 시 마이그레이션 후 조건부 RDB→메모리. **RDB→JSON 파일 동기 불필요** — 이관은 JSON으로 메모리 채운 뒤 저장 API가 RDB 플러시.
+- `seed_test.json` + `rdb`: 기본 무시. `SEED_TEST_WITH_RDB=1`이면 시드 후 접속·카탈로그·auth RDB 플러시.
+
 ## 권한 체크
 
 ```typescript

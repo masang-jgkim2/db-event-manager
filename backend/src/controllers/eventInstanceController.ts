@@ -174,7 +174,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
-    fnSaveEventInstances();
+    await fnSaveEventInstances();
     // 생성자 외 모든 클라이언트에 신규 이벤트 알림 (instance_created)
     fnBroadcastInstanceCreated(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
@@ -295,7 +295,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       dtChangedAt: new Date().toISOString(),
     });
 
-    fnSaveEventInstances();
+    await fnSaveEventInstances();
     // 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
@@ -590,7 +590,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
             arrQueryResults: objExecResult.arrQueryResults,
           },
         });
-        fnSaveEventInstances();
+        await fnSaveEventInstances();
         fnBroadcastInstanceUpdate(objInstance);
         if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
           fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
@@ -653,7 +653,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       },
     });
 
-    fnSaveEventInstances();
+    await fnSaveEventInstances();
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
@@ -768,7 +768,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
           dtChangedAt: new Date().toISOString(),
         });
       }
-      fnSaveEventInstances();
+      await fnSaveEventInstances();
       fnBroadcastInstanceUpdate(objInstance);
       res.json({ bSuccess: true, objInstance });
       return;
@@ -864,7 +864,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    fnSaveEventInstances();
+    await fnSaveEventInstances();
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
@@ -919,7 +919,7 @@ export const fnDeleteInstance = async (req: Request, res: Response): Promise<voi
       dtChangedAt: new Date().toISOString(),
     });
 
-    fnSaveEventInstances();
+    await fnSaveEventInstances();
     try {
       fnBroadcastInstanceUpdate(objInstance);
     } catch (err: any) {

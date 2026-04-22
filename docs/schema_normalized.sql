@@ -78,7 +78,8 @@ CREATE TABLE event_templates (
   str_input_format  VARCHAR(50)   NOT NULL,
   str_description   TEXT          NULL,
   str_default_items TEXT          NULL,
-  str_query_template TEXT        NULL,
+  str_query_template TEXT        NULL COMMENT '레거시 단일 쿼리',
+  arr_query_templates JSON       NOT NULL DEFAULT ('[]') COMMENT '또는 아래 event_template_query_sets 정규화 테이블',
   dt_created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE RESTRICT
 );
@@ -90,6 +91,7 @@ CREATE TABLE db_connections (
   n_id              INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_product_id      INT           NOT NULL,
   str_product_name  VARCHAR(100)  NOT NULL,
+  str_kind          VARCHAR(20)   NOT NULL DEFAULT 'GAME' COMMENT 'GAME | WEB | LOG',
   str_env           VARCHAR(10)   NOT NULL,
   str_db_type       VARCHAR(20)   NOT NULL,
   str_host          VARCHAR(255)  NOT NULL,
@@ -101,7 +103,21 @@ CREATE TABLE db_connections (
   dt_created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   dt_updated_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE CASCADE,
-  UNIQUE KEY uq_product_env (n_product_id, str_env)
+  UNIQUE KEY uq_product_env_kind (n_product_id, str_env, str_kind)
+);
+
+-- 쿼리 템플릿 다중 세트 (코드: arrQueryTemplates — 정규화 버전)
+CREATE TABLE event_template_query_sets (
+  n_id                   INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  n_event_template_id    INT           NOT NULL,
+  n_sort_index           INT           NOT NULL DEFAULT 0,
+  n_db_connection_id     INT           NOT NULL,
+  str_default_items      TEXT          NULL,
+  str_query_template     LONGTEXT      NOT NULL,
+  FOREIGN KEY (n_event_template_id) REFERENCES event_templates(n_id) ON DELETE CASCADE,
+  FOREIGN KEY (n_db_connection_id) REFERENCES db_connections(n_id) ON DELETE RESTRICT,
+  UNIQUE KEY uq_template_sort (n_event_template_id, n_sort_index),
+  INDEX idx_template (n_event_template_id)
 );
 
 -- -----------------------------------------
@@ -120,7 +136,11 @@ CREATE TABLE event_instances (
   str_event_name            VARCHAR(200)  NOT NULL,
   str_input_values          TEXT          NULL,
   str_generated_query       LONGTEXT      NULL,
-  dt_deploy_date            DATETIME      NOT NULL,
+  arr_execution_targets     JSON          NOT NULL DEFAULT ('[]') COMMENT '또는 아래 instance_execution_targets',
+  dt_deploy_date            DATETIME      NOT NULL COMMENT '레거시/호환',
+  dt_qa_deploy_date         DATETIME      NULL,
+  dt_live_deploy_date       DATETIME      NULL,
+  str_allo_link             VARCHAR(500)  NULL,
   str_status                VARCHAR(30)   NOT NULL DEFAULT 'event_created',
 
   -- 처리자 (기존 obj_* JSON → FK)
@@ -136,6 +156,8 @@ CREATE TABLE event_instances (
   str_created_by            VARCHAR(100)  NOT NULL,
   n_created_by_user_id      INT           NOT NULL,
   dt_created_at             DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  b_permanently_removed     TINYINT(1)    NOT NULL DEFAULT 0,
+  dt_permanently_removed_at DATETIME      NULL,
 
   FOREIGN KEY (n_event_template_id) REFERENCES event_templates(n_id) ON DELETE RESTRICT,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE RESTRICT,
@@ -153,6 +175,19 @@ CREATE TABLE event_instances (
   INDEX idx_product_id (n_product_id),
   INDEX idx_created_by (n_created_by_user_id),
   INDEX idx_created_at (dt_created_at)
+);
+
+-- 인스턴스 실행 대상 (코드: arrExecutionTargets — 정규화 버전)
+CREATE TABLE instance_execution_targets (
+  n_id                   INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  n_instance_id          INT           NOT NULL,
+  n_sort_index           INT           NOT NULL DEFAULT 0,
+  n_db_connection_id     INT           NOT NULL,
+  str_query              LONGTEXT      NOT NULL,
+  FOREIGN KEY (n_instance_id) REFERENCES event_instances(n_id) ON DELETE CASCADE,
+  FOREIGN KEY (n_db_connection_id) REFERENCES db_connections(n_id) ON DELETE RESTRICT,
+  UNIQUE KEY uq_instance_sort (n_instance_id, n_sort_index),
+  INDEX idx_instance (n_instance_id)
 );
 
 -- 인스턴스별 반영 범위 (기존 arr_deploy_scope JSON 분리)

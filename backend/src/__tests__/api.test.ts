@@ -39,10 +39,10 @@ describe('API 전체 테스트', () => {
         strDisplayName: '기획자_이영희',
         dtCreatedAt: new Date().toISOString(),
       });
-      fnSaveUsers();
+      await fnSaveUsers();
       if (!arrUserRoles.some((r) => r.nUserId === nId && r.nRoleId === 4)) {
         fnSetRolesForUser(nId, [4]);
-        fnSaveUserRoles();
+        await fnSaveUserRoles();
       }
     }
     // 테스트에서 사용할 비밀번호로 통일 (저장소 상태와 무관하게 동일 결과 보장)

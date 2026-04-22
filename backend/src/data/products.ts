@@ -1,3 +1,4 @@
+import { fnGetStoreBackend } from '../persistence/storeBackend';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 
 // 프로덕트 데이터 저장소
@@ -87,7 +88,14 @@ const ARR_SEED: IProduct[] = [
 
 export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
 
-export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
+export const fnSaveProducts = async (): Promise<void> => {
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
+    await fnFlushProductCatalogToRdb();
+    return;
+  }
+  fnSaveJson(STR_FILE, arrProducts);
+};
 
 export const fnGetNextProductId = (): number =>
   arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;

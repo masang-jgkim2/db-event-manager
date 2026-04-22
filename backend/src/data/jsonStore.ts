@@ -2,7 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 // JSON 파일 저장 경로 — DATA_DIR 미설정 시 process.cwd()/data (백엔드 한 곳만 실행 시 데이터 한 세트만 유지)
-const STR_DATA_DIR = process.env.DATA_DIR ? path.resolve(process.cwd(), process.env.DATA_DIR) : path.join(process.cwd(), 'data');
+export const fnGetDataDir = (): string =>
+  process.env.DATA_DIR ? path.resolve(process.cwd(), process.env.DATA_DIR) : path.join(process.cwd(), 'data');
+
+const STR_DATA_DIR = fnGetDataDir();
 
 // data 폴더가 없으면 자동 생성
 if (!fs.existsSync(STR_DATA_DIR)) {

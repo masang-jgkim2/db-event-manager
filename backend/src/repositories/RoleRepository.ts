@@ -35,7 +35,7 @@ export class RoleRepository {
       dtCreatedAt: objData.dtCreatedAt ?? strNow,
       dtUpdatedAt: objData.dtUpdatedAt ?? strNow,
     });
-    fnSaveRoleAndPermissions(nId, objData.arrPermissions ?? []);
+    await fnSaveRoleAndPermissions(nId, objData.arrPermissions ?? []);
     return (await this.findById(nId))!;
   }
 
@@ -48,9 +48,9 @@ export class RoleRepository {
     if (objData.bIsSystem !== undefined) row.bIsSystem = objData.bIsSystem;
     row.dtUpdatedAt = new Date().toISOString();
     if (objData.arrPermissions !== undefined) {
-      fnSaveRoleAndPermissions(nId, objData.arrPermissions as TPermission[]);
+      await fnSaveRoleAndPermissions(nId, objData.arrPermissions as TPermission[]);
     } else {
-      fnSaveRoles();
+      await fnSaveRoles();
     }
     return this.findById(nId);
   }
@@ -58,9 +58,9 @@ export class RoleRepository {
   async delete(nId: number): Promise<boolean> {
     const nIdx = arrRoles.findIndex((r) => r.nId === nId);
     if (nIdx === -1) return false;
-    fnRemoveRolePermissionsAndSave(nId);
+    await fnRemoveRolePermissionsAndSave(nId);
     arrRoles.splice(nIdx, 1);
-    fnSaveRoles();
+    await fnSaveRoles();
     return true;
   }
 }

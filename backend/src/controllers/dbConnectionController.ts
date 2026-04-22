@@ -85,7 +85,7 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
     };
 
     arrDbConnections.push(objNew);
-    fnSaveDbConnections();
+    await fnSaveDbConnections();
     res.json({
       bSuccess: true,
       strMessage: 'DB 접속 정보가 등록되었습니다.',
@@ -126,7 +126,7 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
     if (strKind     !== undefined && ARR_DB_KIND.includes(strKind)) objConn.strKind = strKind;
     if (bIsActive   !== undefined) objConn.bIsActive   = bIsActive;
     objConn.dtUpdatedAt = new Date().toISOString();
-    fnSaveDbConnections();
+    await fnSaveDbConnections();
 
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);
@@ -154,7 +154,7 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
     }
 
     arrDbConnections.splice(nIndex, 1);
-    fnSaveDbConnections();
+    await fnSaveDbConnections();
 
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);

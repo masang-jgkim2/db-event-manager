@@ -1,3 +1,4 @@
+import { fnGetStoreBackend } from '../persistence/storeBackend';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
 
@@ -48,11 +49,18 @@ function fnMigrateToQuerySets(raw: IEventTemplate[]): IEventTemplate[] {
 const rawEvents = fnLoadJson<IEventTemplate>(STR_FILE, []);
 const migrated = fnMigrateToQuerySets(rawEvents);
 const bNeedSave = migrated.some((e, i) => e !== rawEvents[i]);
-if (bNeedSave) fnSaveJson(STR_FILE, migrated);
+if (bNeedSave && fnGetStoreBackend() === 'json') fnSaveJson(STR_FILE, migrated);
 
 export const arrEvents: IEventTemplate[] = migrated;
 
-export const fnSaveEvents = () => fnSaveJson(STR_FILE, arrEvents);
+export const fnSaveEvents = async (): Promise<void> => {
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
+    await fnFlushProductCatalogToRdb();
+    return;
+  }
+  fnSaveJson(STR_FILE, arrEvents);
+};
 
 export const fnGetNextEventId = (): number =>
   arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;

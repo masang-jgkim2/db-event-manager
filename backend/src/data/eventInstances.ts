@@ -95,13 +95,21 @@ export interface IEventInstance {
   dtPermanentlyRemovedAt?: string;
 }
 
+import { fnGetStoreBackend } from '../persistence/storeBackend';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 
 const STR_FILE = 'eventInstances.json';
 
 export const arrEventInstances: IEventInstance[] = fnLoadJson<IEventInstance>(STR_FILE, []);
 
-export const fnSaveEventInstances = () => fnSaveJson(STR_FILE, arrEventInstances);
+export const fnSaveEventInstances = async (): Promise<void> => {
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
+    await fnFlushProductCatalogToRdb();
+    return;
+  }
+  fnSaveJson(STR_FILE, arrEventInstances);
+};
 
 export const fnGetNextInstanceId = (): number =>
   arrEventInstances.length > 0 ? Math.max(...arrEventInstances.map((e) => e.nId)) + 1 : 1;

@@ -1,5 +1,6 @@
 // 역할 — 정규화: 권한은 rolePermissions.ts에서 조회/저장
 import { IRole, TPermission } from '../types';
+import { fnGetStoreBackend } from '../persistence/storeBackend';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 import {
   fnDeletePermissionsForRole,
@@ -9,7 +10,7 @@ import {
 } from './rolePermissions';
 
 /** 저장용 역할 행 (arrPermissions 없음) */
-interface IRoleRow {
+export interface IRoleRow {
   nId: number;
   strCode: string;
   strDisplayName: string;
@@ -30,7 +31,14 @@ const ARR_SEED_ROWS: IRoleRow[] = [
 
 export const arrRoles: IRoleRow[] = fnLoadJson<IRoleRow>(STR_FILE, ARR_SEED_ROWS);
 
-export const fnSaveRoles = () => fnSaveJson(STR_FILE, arrRoles);
+export const fnSaveRoles = async (): Promise<void> => {
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushAuthDomainToRdb } = await import('../persistence/rdb/authPersistHelper');
+    await fnFlushAuthDomainToRdb();
+    return;
+  }
+  fnSaveJson(STR_FILE, arrRoles);
+};
 
 export const fnGetNextRoleId = (): number =>
   arrRoles.length > 0 ? Math.max(...arrRoles.map((r) => r.nId)) + 1 : 1;
@@ -55,16 +63,26 @@ export const fnGetRolesWithPermissions = (): IRole[] =>
   }));
 
 /** 권한 수정 시 호출 (role_permissions 갱신 + 저장) */
-export const fnSaveRoleAndPermissions = (nRoleId: number, arrPermissions: TPermission[]) => {
+export const fnSaveRoleAndPermissions = async (nRoleId: number, arrPermissions: TPermission[]) => {
   fnSetPermissionsForRole(nRoleId, arrPermissions);
-  fnSaveRolePermissions();
-  fnSaveRoles();
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushAuthDomainToRdb } = await import('../persistence/rdb/authPersistHelper');
+    await fnFlushAuthDomainToRdb();
+    return;
+  }
+  await fnSaveRolePermissions();
+  await fnSaveRoles();
 };
 
 /** 역할 삭제 시 해당 역할 권한 행 제거 후 저장 */
-export const fnRemoveRolePermissionsAndSave = (nRoleId: number) => {
+export const fnRemoveRolePermissionsAndSave = async (nRoleId: number) => {
   fnDeletePermissionsForRole(nRoleId);
-  fnSaveRolePermissions();
+  if (fnGetStoreBackend() === 'rdb') {
+    const { fnFlushAuthDomainToRdb } = await import('../persistence/rdb/authPersistHelper');
+    await fnFlushAuthDomainToRdb();
+    return;
+  }
+  await fnSaveRolePermissions();
 };
 
 /** 역할별 권한 합집합 (저장된 코드만) */

@@ -21,7 +21,7 @@ export const fnCreateProduct = async (req: Request, res: Response): Promise<void
     };
 
     arrProducts.push(objNew);
-    fnSaveProducts();
+    await fnSaveProducts();
     res.json({ bSuccess: true, objProduct: objNew });
   } catch (error) {
     console.error('프로덕트 생성 오류:', error);
@@ -45,7 +45,7 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
     if (strDbType      !== undefined) arrProducts[nIndex].strDbType      = strDbType;
     if (arrServices    !== undefined) arrProducts[nIndex].arrServices    = arrServices;
 
-    fnSaveProducts();
+    await fnSaveProducts();
     res.json({ bSuccess: true, objProduct: arrProducts[nIndex] });
   } catch (error) {
     console.error('프로덕트 수정 오류:', error);
@@ -64,7 +64,7 @@ export const fnDeleteProduct = async (req: Request, res: Response): Promise<void
     }
 
     arrProducts.splice(nIndex, 1);
-    fnSaveProducts();
+    await fnSaveProducts();
     res.json({ bSuccess: true, strMessage: '프로덕트가 삭제되었습니다.' });
   } catch (error) {
     console.error('프로덕트 삭제 오류:', error);

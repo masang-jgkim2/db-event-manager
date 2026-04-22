@@ -47,7 +47,8 @@ CREATE TABLE event_templates (
   str_input_format  VARCHAR(50)   NOT NULL COMMENT '입력 형식',
   str_description   TEXT          NULL,
   str_default_items TEXT          NULL,
-  str_query_template TEXT         NULL COMMENT '{{items}}, {{date}}, {{event_name}} 치환 변수',
+  str_query_template TEXT         NULL COMMENT '{{items}}, {{date}}, {{event_name}} 치환 변수 (레거시 단일)',
+  arr_query_templates JSON        NOT NULL DEFAULT ('[]') COMMENT 'IQueryTemplateItem[] 다중 쿼리 세트',
   dt_created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE RESTRICT
 );
@@ -57,6 +58,7 @@ CREATE TABLE db_connections (
   n_id              INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_product_id      INT           NOT NULL,
   str_product_name  VARCHAR(100)  NOT NULL,
+  str_kind          VARCHAR(20)     NOT NULL DEFAULT 'GAME' COMMENT 'GAME | WEB | LOG',
   str_env           VARCHAR(10)   NOT NULL COMMENT 'dev | qa | live',
   str_db_type       VARCHAR(20)   NOT NULL COMMENT 'mssql | mysql',
   str_host          VARCHAR(255)  NOT NULL,
@@ -68,7 +70,7 @@ CREATE TABLE db_connections (
   dt_created_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   dt_updated_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE CASCADE,
-  UNIQUE KEY uq_product_env (n_product_id, str_env)  -- 프로덕트당 환경 1개
+  UNIQUE KEY uq_product_env_kind (n_product_id, str_env, str_kind)
 );
 
 -- 이벤트 인스턴스 테이블
@@ -85,7 +87,11 @@ CREATE TABLE event_instances (
   str_event_name          VARCHAR(200)  NOT NULL,
   str_input_values        TEXT          NULL,
   str_generated_query     LONGTEXT      NULL,
-  dt_deploy_date          DATETIME      NOT NULL COMMENT '반영 일시 (코드: dtDeployDate ISO 8601)',
+  arr_execution_targets   JSON          NOT NULL DEFAULT ('[]') COMMENT 'IExecutionTarget[] {nDbConnectionId, strQuery}',
+  dt_deploy_date          DATETIME      NOT NULL COMMENT '레거시/호환 (코드: dtDeployDate ISO 8601)',
+  dt_qa_deploy_date       DATETIME      NULL COMMENT 'QA 실행 허용 기준일 (코드: dtQaDeployDate)',
+  dt_live_deploy_date     DATETIME      NULL COMMENT 'LIVE 실행 허용 기준일 (코드: dtLiveDeployDate)',
+  str_allo_link           VARCHAR(500)  NULL COMMENT '알로 업무 카드 링크 (코드: strAlloLink)',
   arr_deploy_scope        JSON          NOT NULL DEFAULT ('["qa", "live"]') COMMENT '반영 범위 qa|live (코드: arrDeployScope)',
   str_status              VARCHAR(30)   NOT NULL DEFAULT 'event_created',
 
@@ -105,6 +111,8 @@ CREATE TABLE event_instances (
   str_created_by          VARCHAR(100)  NOT NULL,
   n_created_by_user_id    INT           NOT NULL,
   dt_created_at           DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  b_permanently_removed   TINYINT(1)    NOT NULL DEFAULT 0 COMMENT '복원 불가 삭제 (코드: bPermanentlyRemoved)',
+  dt_permanently_removed_at DATETIME      NULL COMMENT '코드: dtPermanentlyRemovedAt',
 
   FOREIGN KEY (n_event_template_id) REFERENCES event_templates(n_id) ON DELETE RESTRICT,
   FOREIGN KEY (n_product_id) REFERENCES products(n_id) ON DELETE RESTRICT,
