@@ -95,21 +95,24 @@ export interface IEventInstance {
   dtPermanentlyRemovedAt?: string;
 }
 
-import { fnGetStoreBackend } from '../persistence/storeBackend';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 
 const STR_FILE = 'eventInstances.json';
 
 export const arrEventInstances: IEventInstance[] = fnLoadJson<IEventInstance>(STR_FILE, []);
 
-export const fnSaveEventInstances = async (): Promise<void> => {
-  if (fnGetStoreBackend() === 'rdb') {
-    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
-    await fnFlushProductCatalogToRdb();
-    return;
-  }
-  fnSaveJson(STR_FILE, arrEventInstances);
+/** 메모리가 비어 있고 디스크에 건수가 있으면 eventInstances.json에서 다시 채움 */
+export const fnReloadEventInstancesFromDiskIfEmpty = (): boolean => {
+  if (arrEventInstances.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IEventInstance>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  arrEventInstances.length = 0;
+  arrEventInstances.push(...arrRaw);
+  console.log(`[eventInstances] 메모리 비어 ${STR_FILE}에서 ${arrRaw.length}건 재로드`);
+  return true;
 };
+
+export const fnSaveEventInstances = () => fnSaveJson(STR_FILE, arrEventInstances);
 
 export const fnGetNextInstanceId = (): number =>
   arrEventInstances.length > 0 ? Math.max(...arrEventInstances.map((e) => e.nId)) + 1 : 1;

@@ -1,6 +1,5 @@
 // 정규화: 역할별 권한 (roles.arr_permissions 분리)
 import type { TPermission } from '../types';
-import { fnGetStoreBackend } from '../persistence/storeBackend';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
 
 export interface IRolePermissionRow {
@@ -12,7 +11,7 @@ const STR_FILE = 'rolePermissions.json';
 
 // 시드: 파일 없거나 비어 있을 때 역할별 권한 초기 데이터
 const ARR_SEED: IRolePermissionRow[] = [
-  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live','system.save_test_seed','activity.view'].map((strPermission) => ({ nRoleId: 1, strPermission })),
+  ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live','system.save_test_seed','activity.view','activity.clear'].map((strPermission) => ({ nRoleId: 1, strPermission })),
   ...['my_dashboard.view','my_dashboard.detail','my_dashboard.confirm','my_dashboard.execute_qa','my_dashboard.execute_live'].map((strPermission) => ({ nRoleId: 2, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
@@ -27,7 +26,7 @@ const arrDbaCurrent = arrLoaded.filter((r) => r.nRoleId === N_DBA_ROLE_ID).map((
 const arrMissing = ARR_DBA_REQUIRED.filter((p) => !arrDbaCurrent.includes(p));
 if (arrMissing.length > 0) {
   arrMissing.forEach((strPermission) => arrLoaded.push({ nRoleId: N_DBA_ROLE_ID, strPermission }));
-  if (fnGetStoreBackend() === 'json') fnSaveJson(STR_FILE, arrLoaded);
+  fnSaveJson(STR_FILE, arrLoaded);
 }
 
 // 관리자: 활동 로그 조회 권한 보강 (기존 rolePermissions.json에 없을 때)
@@ -37,19 +36,20 @@ const bAdminHasActivity = arrLoaded.some(
 );
 if (!bAdminHasActivity) {
   arrLoaded.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.view' });
-  if (fnGetStoreBackend() === 'json') fnSaveJson(STR_FILE, arrLoaded);
+  fnSaveJson(STR_FILE, arrLoaded);
+}
+
+const bAdminHasActivityClear = arrLoaded.some(
+  (r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.clear',
+);
+if (!bAdminHasActivityClear) {
+  arrLoaded.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.clear' });
+  fnSaveJson(STR_FILE, arrLoaded);
 }
 
 export const arrRolePermissions: IRolePermissionRow[] = arrLoaded;
 
-export const fnSaveRolePermissions = async (): Promise<void> => {
-  if (fnGetStoreBackend() === 'rdb') {
-    const { fnFlushAuthDomainToRdb } = await import('../persistence/rdb/authPersistHelper');
-    await fnFlushAuthDomainToRdb();
-    return;
-  }
-  fnSaveJson(STR_FILE, arrRolePermissions);
-};
+export const fnSaveRolePermissions = () => fnSaveJson(STR_FILE, arrRolePermissions);
 
 /** 해당 역할의 권한 코드 배열 반환 */
 export const fnGetPermissionsByRoleId = (nRoleId: number): TPermission[] =>

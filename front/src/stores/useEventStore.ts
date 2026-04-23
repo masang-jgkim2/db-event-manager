@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import type { IEventTemplate } from '../types';
 import { fnApiGetEvents, fnApiCreateEvent, fnApiUpdateEvent, fnApiDeleteEvent } from '../api/eventApi';
 
+let promiseFetchEvents: Promise<void> | null = null;
+let nLastEventsSuccessAt = 0;
+const N_FETCH_DEBOUNCE_MS = 450;
+
 export interface IStoreResult {
   bSuccess: boolean;
   strMessage: string;
@@ -16,22 +20,32 @@ interface IEventStore {
   fnDeleteEvent: (nId: number) => Promise<IStoreResult>;
 }
 
-export const useEventStore = create<IEventStore>((set) => ({
+export const useEventStore = create<IEventStore>((set, get) => ({
   arrEvents: [],
   bLoading: false,
 
   fnFetchEvents: async () => {
-    set({ bLoading: true });
-    try {
-      const result = await fnApiGetEvents();
-      if (result.bSuccess) {
-        set({ arrEvents: result.arrEvents });
+    if (promiseFetchEvents != null) return promiseFetchEvents;
+    const dtNow = Date.now();
+    const arr = get().arrEvents;
+    if (arr.length > 0 && dtNow - nLastEventsSuccessAt < N_FETCH_DEBOUNCE_MS) return;
+
+    promiseFetchEvents = (async () => {
+      set({ bLoading: true });
+      try {
+        const result = await fnApiGetEvents();
+        if (result.bSuccess) {
+          set({ arrEvents: result.arrEvents });
+          nLastEventsSuccessAt = Date.now();
+        }
+      } catch {
+        console.error('쿼리 템플릿 목록 조회 실패');
+      } finally {
+        set({ bLoading: false });
+        promiseFetchEvents = null;
       }
-    } catch {
-      console.error('쿼리 템플릿 목록 조회 실패');
-    } finally {
-      set({ bLoading: false });
-    }
+    })();
+    return promiseFetchEvents;
   },
 
   fnAddEvent: async (objEvent) => {

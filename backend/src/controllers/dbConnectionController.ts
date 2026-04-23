@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { arrDbConnections, fnGetNextDbConnectionId, fnSaveDbConnections } from '../data/dbConnections';
+import { arrDbConnections, fnGetNextDbConnectionId, fnSaveDbConnections, fnReloadDbConnectionsFromDiskIfEmpty } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { IDbConnection } from '../types';
 import { fnTestDbConnection } from '../db/dbManager';
@@ -7,6 +7,7 @@ import { fnTestDbConnection } from '../db/dbManager';
 // DB 접속 정보 목록 조회
 export const fnGetDbConnections = async (_req: Request, res: Response): Promise<void> => {
   try {
+    fnReloadDbConnectionsFromDiskIfEmpty();
     const arrSafe = arrDbConnections.map((c) => ({ ...c, strPassword: '••••••••' }));
     res.json({ bSuccess: true, arrDbConnections: arrSafe });
   } catch (error) {
@@ -85,7 +86,7 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
     };
 
     arrDbConnections.push(objNew);
-    await fnSaveDbConnections();
+    fnSaveDbConnections();
     res.json({
       bSuccess: true,
       strMessage: 'DB 접속 정보가 등록되었습니다.',
@@ -126,7 +127,7 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
     if (strKind     !== undefined && ARR_DB_KIND.includes(strKind)) objConn.strKind = strKind;
     if (bIsActive   !== undefined) objConn.bIsActive   = bIsActive;
     objConn.dtUpdatedAt = new Date().toISOString();
-    await fnSaveDbConnections();
+    fnSaveDbConnections();
 
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);
@@ -154,7 +155,7 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
     }
 
     arrDbConnections.splice(nIndex, 1);
-    await fnSaveDbConnections();
+    fnSaveDbConnections();
 
     const { fnInvalidatePool } = await import('../db/dbManager');
     fnInvalidatePool(nId);

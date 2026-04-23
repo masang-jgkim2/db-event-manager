@@ -19,7 +19,9 @@ export type TPermission =
   | 'instance.verify_qa'        // QA 결과 확인
   | 'instance.approve_live'     // LIVE 승인 요청
   | 'instance.execute_live'     // LIVE DB 실제 실행
-  | 'instance.verify_live';     // LIVE 결과 확인
+  | 'instance.verify_live'     // LIVE 결과 확인
+  | 'activity.view'             // HTTP 활동 로그 조회
+  | 'activity.clear';           // HTTP 활동 로그 전체 삭제
 
 // 권한 표시 라벨
 export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
@@ -38,6 +40,8 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'instance.approve_live':   'LIVE 승인',
   'instance.execute_live':   'LIVE DB 실행',
   'instance.verify_live':    'LIVE 확인',
+  'activity.view':           '활동 로그 조회',
+  'activity.clear':          '활동 로그 전체 삭제',
 };
 
 /** 세분화 권한 그룹 (역할 권한 수정 화면용) */
@@ -87,6 +91,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
   ]},
   { groupLabel: '활동', permissions: [
     { value: 'activity.view', label: '활동 로그 조회' },
+    { value: 'activity.clear', label: '활동 로그 전체 삭제' },
   ]},
   { groupLabel: '나의 대시보드', permissions: [
     { value: 'my_dashboard.view', label: '보기' },

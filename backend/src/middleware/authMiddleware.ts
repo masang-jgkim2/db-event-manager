@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { IJwtPayload } from '../types';
 import { fnTouchUserPresence } from '../services/userPresence';
+import { fnFindUserByStrUserId } from '../data/users';
+import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
 
 // Request 확장 - 인증된 사용자 정보 포함
 declare global {
@@ -34,7 +36,20 @@ export const fnAuthMiddleware = (req: Request, res: Response, next: NextFunction
 
   try {
     const decoded = jwt.verify(strToken, strJwtSecret) as IJwtPayload;
-    req.user = decoded;
+    const objFullUser = fnFindUserByStrUserId(decoded.strUserId);
+    if (!objFullUser || objFullUser.nId !== decoded.nId) {
+      res.status(401).json({ bSuccess: false, strMessage: '유효하지 않은 토큰입니다.' });
+      return;
+    }
+    // JWT의 arrPermissions는 발급 시점 고정 — 역할/권한 추가 후에도 동작하도록 매 요청 최신 합집합 반영
+    const arrRaw = fnGetMergedPermissions(objFullUser.arrRoles);
+    const arrPermissions = fnExpandPermissions(arrRaw, objFullUser.arrRoles);
+    req.user = {
+      ...decoded,
+      strDisplayName: objFullUser.strDisplayName,
+      arrRoles: objFullUser.arrRoles,
+      arrPermissions: arrPermissions as IJwtPayload['arrPermissions'],
+    };
     fnTouchUserPresence(decoded.nId);
     next();
   } catch {

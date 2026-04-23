@@ -1,7 +1,7 @@
 import { Request, Response, Router } from 'express';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
-import { fnGetActivityActors, fnGetActivityLogs } from '../controllers/activityController';
+import { fnDeleteActivityLogs, fnGetActivityActors, fnGetActivityLogs } from '../controllers/activityController';
 import {
   fnRegisterActivityStreamClient,
   fnUnregisterActivityStreamClient,
@@ -40,6 +40,7 @@ router.get('/stream', fnAuthMiddleware, fnRequireAnyPermission('activity.view'),
 
 router.use(fnAuthMiddleware);
 router.get('/logs', fnRequireAnyPermission('activity.view'), fnGetActivityLogs);
+router.delete('/logs', fnRequireAnyPermission('activity.clear'), fnDeleteActivityLogs);
 router.get('/actors', fnRequireAnyPermission('activity.view'), fnGetActivityActors);
 
 export default router;

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
+  fnReloadEventInstancesFromDiskIfEmpty,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
 import { fnResolveExecuteConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
@@ -174,7 +175,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
-    await fnSaveEventInstances();
+    fnSaveEventInstances();
     // 생성자 외 모든 클라이언트에 신규 이벤트 알림 (instance_created)
     fnBroadcastInstanceCreated(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
@@ -187,6 +188,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
 // 이벤트 인스턴스 목록 조회
 export const fnGetInstances = async (req: Request, res: Response): Promise<void> => {
   try {
+    fnReloadEventInstancesFromDiskIfEmpty();
     const nUserId = req.user?.nId || 0;
     const strFilter = req.query.filter as string || 'all';
 
@@ -295,7 +297,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       dtChangedAt: new Date().toISOString(),
     });
 
-    await fnSaveEventInstances();
+    fnSaveEventInstances();
     // 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
@@ -590,7 +592,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
             arrQueryResults: objExecResult.arrQueryResults,
           },
         });
-        await fnSaveEventInstances();
+        fnSaveEventInstances();
         fnBroadcastInstanceUpdate(objInstance);
         if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
           fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
@@ -653,7 +655,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       },
     });
 
-    await fnSaveEventInstances();
+    fnSaveEventInstances();
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
@@ -768,7 +770,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
           dtChangedAt: new Date().toISOString(),
         });
       }
-      await fnSaveEventInstances();
+      fnSaveEventInstances();
       fnBroadcastInstanceUpdate(objInstance);
       res.json({ bSuccess: true, objInstance });
       return;
@@ -864,7 +866,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    await fnSaveEventInstances();
+    fnSaveEventInstances();
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
@@ -919,7 +921,7 @@ export const fnDeleteInstance = async (req: Request, res: Response): Promise<voi
       dtChangedAt: new Date().toISOString(),
     });
 
-    await fnSaveEventInstances();
+    fnSaveEventInstances();
     try {
       fnBroadcastInstanceUpdate(objInstance);
     } catch (err: any) {

@@ -1,5 +1,4 @@
-import { fnGetStoreBackend } from '../persistence/storeBackend';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
 
 /** 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
@@ -49,18 +48,23 @@ function fnMigrateToQuerySets(raw: IEventTemplate[]): IEventTemplate[] {
 const rawEvents = fnLoadJson<IEventTemplate>(STR_FILE, []);
 const migrated = fnMigrateToQuerySets(rawEvents);
 const bNeedSave = migrated.some((e, i) => e !== rawEvents[i]);
-if (bNeedSave && fnGetStoreBackend() === 'json') fnSaveJson(STR_FILE, migrated);
+if (bNeedSave) fnSaveJson(STR_FILE, migrated);
 
 export const arrEvents: IEventTemplate[] = migrated;
 
-export const fnSaveEvents = async (): Promise<void> => {
-  if (fnGetStoreBackend() === 'rdb') {
-    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
-    await fnFlushProductCatalogToRdb();
-    return;
-  }
-  fnSaveJson(STR_FILE, arrEvents);
+/** 메모리가 비어 있고 디스크에 건수가 있으면 events.json에서 다시 채움 (시드 적용 후·수동 JSON 편집 불일치 보정) */
+export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
+  if (arrEvents.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IEventTemplate>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  const arrMigrated = fnMigrateToQuerySets(arrRaw);
+  arrEvents.length = 0;
+  arrEvents.push(...arrMigrated);
+  console.log(`[events] 메모리 비어 ${STR_FILE}에서 ${arrMigrated.length}건 재로드`);
+  return true;
 };
+
+export const fnSaveEvents = () => fnSaveJson(STR_FILE, arrEvents);
 
 export const fnGetNextEventId = (): number =>
   arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;

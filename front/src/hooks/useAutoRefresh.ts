@@ -5,14 +5,21 @@ import { useEffect, useRef } from 'react';
 export const useAutoRefresh = (fnRefetch: () => void, nIntervalMs?: number) => {
   const refFn = useRef(fnRefetch);
   refFn.current = fnRefetch;
+  const refBAllowAutoRefetch = useRef(false);
 
   useEffect(() => {
+    const nArmTimer = window.setTimeout(() => {
+      refBAllowAutoRefetch.current = true;
+    }, 500);
+
     const fnHandleVisible = () => {
+      if (!refBAllowAutoRefetch.current) return;
       if (document.visibilityState === 'visible') {
         refFn.current();
       }
     };
     const fnHandleFocus = () => {
+      if (!refBAllowAutoRefetch.current) return;
       refFn.current();
     };
 
@@ -25,6 +32,8 @@ export const useAutoRefresh = (fnRefetch: () => void, nIntervalMs?: number) => {
       : undefined;
 
     return () => {
+      window.clearTimeout(nArmTimer);
+      refBAllowAutoRefetch.current = false;
       document.removeEventListener('visibilitychange', fnHandleVisible);
       window.removeEventListener('focus', fnHandleFocus);
       if (nTimer !== undefined) clearInterval(nTimer);

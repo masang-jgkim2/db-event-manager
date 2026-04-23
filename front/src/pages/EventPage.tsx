@@ -20,10 +20,9 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from 
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { fnApiGetDbConnections } from '../api/dbConnectionApi';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat } from '../types';
-import type { IDbConnection } from '../types';
+import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat, IDbConnection } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
 const { Title, Text } = Typography;
@@ -160,7 +159,6 @@ const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
-  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   /** 쿼리 템플릿 탭 활성 키 (세트 1, 세트 2, … 또는 __add__) */
@@ -174,6 +172,8 @@ const EventPage = () => {
   const fnDeleteEvent = useEventStore((s) => s.fnDeleteEvent);
   const arrProducts = useProductStore((s) => s.arrProducts);
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
+  const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
+  const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
 
   // 세분화 권한: 생성/수정/삭제 (레거시 event_template.manage 포함)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
@@ -183,22 +183,12 @@ const EventPage = () => {
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
   const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
-  // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드
-  useEffect(() => { fnFetchEvents(); fnFetchProducts(); }, [fnFetchEvents, fnFetchProducts]);
+  // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드(한 effect + 스토어 dedupe)
   useEffect(() => {
-    let bMounted = true;
-    const fnLoad = async () => {
-      try {
-        const res = await fnApiGetDbConnections();
-        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
-          setArrDbConnections(res.arrDbConnections);
-      } catch {
-        // 권한 없으면 빈 배열 유지
-      }
-    };
-    fnLoad();
-    return () => { bMounted = false; };
-  }, []);
+    void fnFetchEvents();
+    void fnFetchProducts();
+    void fnFetchDbConnections();
+  }, [fnFetchEvents, fnFetchProducts, fnFetchDbConnections]);
   useAutoRefresh(fnFetchEvents);
 
   const fnOpenModal = (objEvent?: IEventTemplate) => {

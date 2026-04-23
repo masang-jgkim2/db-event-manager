@@ -16,7 +16,8 @@ if (!strUserId || !strNewPassword) {
   process.exit(1);
 }
 
-const strDataDir = path.join(process.cwd(), 'data');
+// backend/scripts → backend/data (실행 cwd와 무관)
+const strDataDir = path.join(__dirname, '..', 'data');
 const strFilePath = path.join(strDataDir, 'users.json');
 
 if (!fs.existsSync(strFilePath)) {

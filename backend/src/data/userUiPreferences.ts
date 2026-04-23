@@ -1,8 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-
-// jsonStore와 동일한 데이터 디렉터리
-const STR_DATA_DIR = process.env.DATA_DIR ? path.resolve(process.cwd(), process.env.DATA_DIR) : path.join(process.cwd(), 'data');
+import { STR_DATA_DIR } from './jsonStore';
 
 const STR_FILE = 'userUiPreferences.json';
 

@@ -145,6 +145,15 @@ export const fnBroadcastActivityLog = (objData: unknown): void => {
   }
 };
 
+/** 활동 로그 전체 삭제 후 목록 재조회용 */
+export const fnBroadcastActivityLogsCleared = (): void => {
+  for (const setClients of mapActivityStreamClients.values()) {
+    for (const res of setClients) {
+      fnSendEvent(res, 'activity_logs_cleared', {});
+    }
+  }
+};
+
 // ── 사용자 접속 상태 SSE (user.view) ──
 const mapUserPresenceStreamClients = new Map<number, Set<Response>>();
 

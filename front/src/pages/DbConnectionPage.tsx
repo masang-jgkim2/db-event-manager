@@ -12,11 +12,12 @@ import {
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
-  fnApiGetDbConnections, fnApiCreateDbConnection,
+  fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
   fnApiTestDbConnection,
 } from '../api/dbConnectionApi';
 import { useProductStore } from '../stores/useProductStore';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind } from '../types';
@@ -91,8 +92,9 @@ const DbConnectionPage = () => {
   const fnLoad = useCallback(async () => {
     setBLoading(true);
     try {
-      const result = await fnApiGetDbConnections();
-      if (result.bSuccess) setArrConnections(result.arrDbConnections);
+      await useDbConnectionStore.getState().fnFetchDbConnections();
+      const arr = useDbConnectionStore.getState().arrDbConnections;
+      setArrConnections(arr);
     } catch {
       messageApi.error('DB 접속 정보를 불러올 수 없습니다.');
     } finally {

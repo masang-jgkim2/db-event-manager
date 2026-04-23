@@ -29,12 +29,11 @@ import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
-import { fnApiGetDbConnections } from '../api/dbConnectionApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
-import type { IDbConnection } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 
 const { Title, Text } = Typography;
@@ -63,9 +62,6 @@ const QueryPage = () => {
   // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
 
-  // DB 접속 목록 (이벤트 생성 시 QA/LIVE 선택 가능 여부 검사용)
-  const [arrDbConnections, setArrDbConnections] = useState<IDbConnection[]>([]);
-
   // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
   const [arrExecutionTargets, setArrExecutionTargets] = useState<Array<{ nDbConnectionId: number; strQuery: string }>>([]);
@@ -78,25 +74,21 @@ const QueryPage = () => {
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const arrEvents = useEventStore((s) => s.arrEvents);
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
+  const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
+  const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
   const user = useAuthStore((s) => s.user);
 
-  // 페이지 진입 시 최신 프로덕트/쿼리 템플릿 목록 및 DB 접속 목록 로드
-  useEffect(() => { fnFetchProducts(); fnFetchEvents(); }, [fnFetchProducts, fnFetchEvents]);
+  // 페이지 진입 시 한 effect에서 목록 로드(StrictMode 이중 effect 시에도 스토어 dedupe로 GET 완화)
   useEffect(() => {
-    let bMounted = true;
-    const fnLoad = async () => {
-      try {
-        const res = await fnApiGetDbConnections();
-        if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
-          setArrDbConnections(res.arrDbConnections);
-      } catch {
-        // 권한 없음 등 실패해도 페이지는 표시
-      }
-    };
-    fnLoad();
-    return () => { bMounted = false; };
-  }, []);
-  useAutoRefresh(() => { fnFetchProducts(); fnFetchEvents(); });
+    void fnFetchProducts();
+    void fnFetchEvents();
+    void fnFetchDbConnections();
+  }, [fnFetchProducts, fnFetchEvents, fnFetchDbConnections]);
+  useAutoRefresh(() => {
+    fnFetchProducts();
+    fnFetchEvents();
+    void fnFetchDbConnections();
+  });
 
   // 선택된 프로덕트
   const objSelectedProduct = useMemo(() => {

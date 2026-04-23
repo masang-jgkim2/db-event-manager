@@ -1,7 +1,5 @@
 import { IDbConnection, TDbConnectionKind } from '../types';
-import { fnGetStoreBackend } from '../persistence/storeBackend';
-import { fnPersistDbConnectionsToRdb } from '../persistence/rdb/dbConnectionsPersistence';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 
 const STR_FILE = 'dbConnections.json';
 
@@ -13,13 +11,19 @@ export const arrDbConnections: IDbConnection[] = fnNormalizeConnections(
   fnLoadJson<IDbConnection>(STR_FILE, [])
 );
 
-export const fnSaveDbConnections = async (): Promise<void> => {
-  if (fnGetStoreBackend() === 'rdb') {
-    await fnPersistDbConnectionsToRdb(arrDbConnections);
-    return;
-  }
-  fnSaveJson(STR_FILE, arrDbConnections);
+/** 메모리가 비어 있고 디스크에 건수가 있으면 dbConnections.json에서 다시 채움 */
+export const fnReloadDbConnectionsFromDiskIfEmpty = (): boolean => {
+  if (arrDbConnections.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IDbConnection>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  const arrNorm = fnNormalizeConnections(arrRaw);
+  arrDbConnections.length = 0;
+  arrDbConnections.push(...arrNorm);
+  console.log(`[dbConnections] 메모리 비어 ${STR_FILE}에서 ${arrNorm.length}건 재로드`);
+  return true;
 };
+
+export const fnSaveDbConnections = () => fnSaveJson(STR_FILE, arrDbConnections);
 
 export const fnGetNextDbConnectionId = (): number =>
   arrDbConnections.length > 0 ? Math.max(...arrDbConnections.map((c) => c.nId)) + 1 : 1;

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
-import { STR_API_BASE } from '../api/axiosInstance';
+import { fnBuildSseApiUrl } from '../api/axiosInstance';
 
 const N_DEBOUNCE_MS = 400;
 
 /**
  * 활동 로그 전용 SSE — 신규 로그 적재 시 콜백(보통 목록 재조회).
- * EventSource는 헤더 불가 → token 쿼리(기존 대시보드 SSE와 동일).
+ * EventSource는 헤더 불가 → token 쿼리. URL은 `fnBuildSseApiUrl`(Vite /api 프록시 SSE 버퍼링 회피).
  */
 export const useActivityLogStream = (objParam: {
   bEnabled: boolean;
@@ -36,7 +36,7 @@ export const useActivityLogStream = (objParam: {
       return;
     }
 
-    const strUrl = `${STR_API_BASE}/activity/stream?token=${encodeURIComponent(strToken)}`;
+    const strUrl = fnBuildSseApiUrl(`activity/stream?token=${encodeURIComponent(strToken)}`);
     const objEs = new EventSource(strUrl);
     refEventSource.current = objEs;
 
@@ -56,6 +56,10 @@ export const useActivityLogStream = (objParam: {
     });
 
     objEs.addEventListener('activity_log_appended', () => {
+      fnScheduleRefresh();
+    });
+
+    objEs.addEventListener('activity_logs_cleared', () => {
       fnScheduleRefresh();
     });
 

@@ -1,5 +1,4 @@
-import { fnGetStoreBackend } from '../persistence/storeBackend';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 
 // 프로덕트 데이터 저장소
 
@@ -88,14 +87,18 @@ const ARR_SEED: IProduct[] = [
 
 export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
 
-export const fnSaveProducts = async (): Promise<void> => {
-  if (fnGetStoreBackend() === 'rdb') {
-    const { fnFlushProductCatalogToRdb } = await import('../persistence/rdb/catalogPersistHelper');
-    await fnFlushProductCatalogToRdb();
-    return;
-  }
-  fnSaveJson(STR_FILE, arrProducts);
+/** 메모리가 비어 있고 디스크에 건수가 있으면 products.json에서 다시 채움 */
+export const fnReloadProductsFromDiskIfEmpty = (): boolean => {
+  if (arrProducts.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IProduct>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  arrProducts.length = 0;
+  arrProducts.push(...arrRaw);
+  console.log(`[products] 메모리 비어 ${STR_FILE}에서 ${arrRaw.length}건 재로드`);
+  return true;
 };
+
+export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
 
 export const fnGetNextProductId = (): number =>
   arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;

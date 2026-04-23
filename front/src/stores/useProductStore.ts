@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import type { IProduct } from '../types';
 import { fnApiGetProducts, fnApiCreateProduct, fnApiUpdateProduct, fnApiDeleteProduct } from '../api/productApi';
 
+let promiseFetchProducts: Promise<void> | null = null;
+let nLastProductsSuccessAt = 0;
+const N_FETCH_DEBOUNCE_MS = 450;
+
 // 모든 뮤테이션 함수의 반환 타입 — 성공/실패 + 원인 메시지
 export interface IStoreResult {
   bSuccess: boolean;
@@ -17,22 +21,32 @@ interface IProductStore {
   fnDeleteProduct: (nId: number) => Promise<IStoreResult>;
 }
 
-export const useProductStore = create<IProductStore>((set) => ({
+export const useProductStore = create<IProductStore>((set, get) => ({
   arrProducts: [],
   bLoading: false,
 
   fnFetchProducts: async () => {
-    set({ bLoading: true });
-    try {
-      const result = await fnApiGetProducts();
-      if (result.bSuccess) {
-        set({ arrProducts: result.arrProducts });
+    if (promiseFetchProducts != null) return promiseFetchProducts;
+    const dtNow = Date.now();
+    const arr = get().arrProducts;
+    if (arr.length > 0 && dtNow - nLastProductsSuccessAt < N_FETCH_DEBOUNCE_MS) return;
+
+    promiseFetchProducts = (async () => {
+      set({ bLoading: true });
+      try {
+        const result = await fnApiGetProducts();
+        if (result.bSuccess) {
+          set({ arrProducts: result.arrProducts });
+          nLastProductsSuccessAt = Date.now();
+        }
+      } catch {
+        console.error('프로덕트 목록 조회 실패');
+      } finally {
+        set({ bLoading: false });
+        promiseFetchProducts = null;
       }
-    } catch {
-      console.error('프로덕트 목록 조회 실패');
-    } finally {
-      set({ bLoading: false });
-    }
+    })();
+    return promiseFetchProducts;
   },
 
   fnAddProduct: async (objProduct) => {

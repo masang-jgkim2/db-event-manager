@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
-import { arrEvents, fnGetNextEventId, fnSaveEvents } from '../data/events';
+import { arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty } from '../data/events';
 import { arrProducts } from '../data/products';
 
 // 쿼리 템플릿 목록 조회 (모든 인증 사용자)
 export const fnGetEvents = async (_req: Request, res: Response): Promise<void> => {
+  fnReloadEventsFromDiskIfEmpty();
   res.json({ bSuccess: true, arrEvents });
 };
 
@@ -40,7 +41,7 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     };
 
     arrEvents.push(objNew);
-    await fnSaveEvents();
+    fnSaveEvents();
     res.json({ bSuccess: true, objEvent: objNew });
   } catch (error) {
     console.error('쿼리 템플릿 추가 오류:', error);
@@ -84,7 +85,7 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       arrEvents[nIndex].strProductName = objProduct?.strName || '';
     }
 
-    await fnSaveEvents();
+    fnSaveEvents();
     res.json({ bSuccess: true, objEvent: arrEvents[nIndex] });
   } catch (error) {
     console.error('쿼리 템플릿 수정 오류:', error);
@@ -104,7 +105,7 @@ export const fnDeleteEvent = async (req: Request, res: Response): Promise<void> 
     }
 
     arrEvents.splice(nIndex, 1);
-    await fnSaveEvents();
+    fnSaveEvents();
     res.json({ bSuccess: true, strMessage: '쿼리 템플릿이 삭제되었습니다.' });
   } catch (error) {
     console.error('쿼리 템플릿 삭제 오류:', error);
