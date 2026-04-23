@@ -59,6 +59,9 @@ import apiClient from './axiosInstance';
 export const fnApiGetProducts = () => apiClient.get('/products');
 ```
 
+- **목록 GET 중복 완화**: `eventInstanceApi.ts`의 `fnApiGetInstances`는 `filter`별 in-flight Promise 공유(StrictMode·대시보드+스토어 동시 호출 시 HTTP 1회).
+- **SSE URL**: `EventSource`·스트리밍 `fetch`는 `axiosInstance`의 `fnBuildSseApiUrl` — Vite `/api` 프록시가 SSE를 버퍼링할 수 있어 동일 호스트·`VITE_SSE_PORT`(기본 4000)로 직접 붙음.
+
 ## 계정 스코프 UI·서버 동기화
 
 - 논리 키만 쓰고 실제 키는 `fnScopedStorageGetItem`/`SetItem` → `dbem:u{nUserId}:논리키`. 로그인 전 테마는 `dbem:guest:…` (`useThemeStore` persist `skipHydration` + 수동 `rehydrate`).

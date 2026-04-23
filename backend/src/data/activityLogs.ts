@@ -6,12 +6,18 @@ import { fnBroadcastActivityLog } from '../services/sseBroadcaster';
  * 대량 누적 대응: (1) 상한 초과 시 오래된 행부터 삭제 — `ACTIVITY_LOG_MAX_ROWS`(기본 10000)
  * (2) MySQL 등 전환 시 전용 테이블+인덱스(dt_at, str_category, n_actor_user_id) 및 파티션·보관 주기
  * (3) 디스크 보존이 필요하면 주기적 export 또는 WAL 분리 검토
+ *
+ * 디스크 쓰기: 요청마다 `writeFileSync` 대신 배치 flush — `ACTIVITY_LOG_FLUSH_MS`(기본 2000),
+ * `ACTIVITY_LOG_FLUSH_EVERY`(기본 200건 누적 시 즉시 저장). 비정상 종료 시 직전 flush 이후 로그 유실 가능.
+ * `ACTIVITY_LOG_ENABLED`: **명시적 옵트인** — `1`/`true`/`on`/`yes`만 기록. 그 외(미설정·`0` 등)는 비기록.
  */
 /** 활동 로그 대분류 (필터용) */
 export type TActivityCategory = 'auth' | 'event' | 'user' | 'ops' | 'other';
 
 const STR_FILE = 'activity_logs.json';
 const N_MAX_ROWS = Math.max(1000, Math.min(500000, Number(process.env.ACTIVITY_LOG_MAX_ROWS) || 10000));
+const N_FLUSH_DEBOUNCE_MS = Math.max(100, Math.min(120_000, Number(process.env.ACTIVITY_LOG_FLUSH_MS) || 2000));
+const N_FLUSH_EVERY_N_PUSHES = Math.max(1, Math.min(50_000, Number(process.env.ACTIVITY_LOG_FLUSH_EVERY) || 200));
 
 export interface IActivityLogRow {
   nId: number;
@@ -33,8 +39,58 @@ export const arrActivityLogs: IActivityLogRow[] = fnLoadJson<TActivityLogRowFile
   arrActorRoles: r.arrActorRoles ?? null,
 }));
 
-const fnGetNextId = (): number =>
-  arrActivityLogs.length > 0 ? Math.max(...arrActivityLogs.map((r) => r.nId)) + 1 : 1;
+/** 로드된 행 기준 다음 nId (매 push마다 O(n) 스캔 방지) */
+const fnInitNextIdFromLoaded = (): number => {
+  let nMax = 0;
+  for (const r of arrActivityLogs) {
+    if (r.nId > nMax) nMax = r.nId;
+  }
+  return nMax + 1;
+};
+let nNextActivityLogId = fnInitNextIdFromLoaded();
+
+let bActivityLogsDirty = false;
+let nPushCountSinceFlush = 0;
+let refFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+const fnCancelActivityLogsFlushTimer = (): void => {
+  if (refFlushTimer != null) {
+    clearTimeout(refFlushTimer);
+    refFlushTimer = null;
+  }
+};
+
+/** 메모리 → JSON 동기 저장(배치 flush·종료 시·전체 삭제 후) */
+export const fnFlushActivityLogsToDisk = (): void => {
+  fnCancelActivityLogsFlushTimer();
+  if (!bActivityLogsDirty) return;
+  bActivityLogsDirty = false;
+  nPushCountSinceFlush = 0;
+  fnSaveJson(STR_FILE, arrActivityLogs);
+};
+
+const fnScheduleActivityLogsDebouncedFlush = (): void => {
+  fnCancelActivityLogsFlushTimer();
+  refFlushTimer = setTimeout(() => {
+    refFlushTimer = null;
+    fnFlushActivityLogsToDisk();
+  }, N_FLUSH_DEBOUNCE_MS);
+};
+
+// Jest: 타이머 없이 매 건 저장해 테스트·파일 상태 결정적 유지
+const bActivityLogSyncEveryPush = Boolean(process.env.JEST_WORKER_ID);
+
+if (!process.env.JEST_WORKER_ID) {
+  const fnOnShutdownFlush = () => {
+    try {
+      fnFlushActivityLogsToDisk();
+    } catch (err: unknown) {
+      console.error('[활동 로그] 종료 시 저장 실패 |', err);
+    }
+  };
+  process.once('SIGINT', fnOnShutdownFlush);
+  process.once('SIGTERM', fnOnShutdownFlush);
+}
 
 /** API 경로 → 필터 카테고리 (쿼리스트링 제외된 path 기준) */
 export const fnResolveActivityCategory = (strPath: string): TActivityCategory => {
@@ -60,15 +116,24 @@ export interface IPushActivityInput {
   arrActorRoles?: string[] | null;
 }
 
-/** 활동 1건 추가 (파일 동기 저장) */
+/** HTTP·로그인 등 활동 기록 — `ACTIVITY_LOG_ENABLED=1`(또는 true/on/yes)일 때만. Jest는 항상 기록 */
+export const fnIsActivityLogEnabled = (): boolean => {
+  if (process.env.JEST_WORKER_ID) return true;
+  const strRaw = process.env.ACTIVITY_LOG_ENABLED?.trim().toLowerCase();
+  return strRaw === '1' || strRaw === 'true' || strRaw === 'on' || strRaw === 'yes';
+};
+
+/** 활동 1건 추가 (메모리 즉시·디스크는 배치 flush, SSE 즉시) */
 export const fnPushActivityLog = (objInput: IPushActivityInput): void => {
+  if (!fnIsActivityLogEnabled()) return;
+
   const strPath = objInput.strPath.split('?')[0] || objInput.strPath;
   const arrRoles =
     objInput.arrActorRoles != null && objInput.arrActorRoles.length > 0
       ? [...objInput.arrActorRoles]
       : null;
   const objRow: IActivityLogRow = {
-    nId: fnGetNextId(),
+    nId: nNextActivityLogId++,
     dtAt: new Date().toISOString(),
     strMethod: objInput.strMethod,
     strPath: strPath,
@@ -82,7 +147,13 @@ export const fnPushActivityLog = (objInput: IPushActivityInput): void => {
   while (arrActivityLogs.length > N_MAX_ROWS) {
     arrActivityLogs.shift();
   }
-  fnSaveJson(STR_FILE, arrActivityLogs);
+  bActivityLogsDirty = true;
+  nPushCountSinceFlush++;
+  if (bActivityLogSyncEveryPush || nPushCountSinceFlush >= N_FLUSH_EVERY_N_PUSHES) {
+    fnFlushActivityLogsToDisk();
+  } else {
+    fnScheduleActivityLogsDebouncedFlush();
+  }
   try {
     fnBroadcastActivityLog(objRow);
   } catch (err: unknown) {
@@ -160,6 +231,16 @@ export interface IQueryActivityInput {
   /** HTTP 상태 코드 일치 */
   nStatusCode?: number;
 }
+
+/** 인메모리·JSON 파일의 활동 로그 전부 제거(복구 불가) */
+export const fnClearAllActivityLogs = (): void => {
+  fnCancelActivityLogsFlushTimer();
+  arrActivityLogs.length = 0;
+  nNextActivityLogId = 1;
+  bActivityLogsDirty = false;
+  nPushCountSinceFlush = 0;
+  fnSaveJson(STR_FILE, arrActivityLogs);
+};
 
 export const fnQueryActivityLogs = (objQuery: IQueryActivityInput): { arrRows: IActivityLogRow[]; nTotal: number } => {
   let arrFiltered =

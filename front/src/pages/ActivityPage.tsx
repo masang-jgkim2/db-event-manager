@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Typography, Card, Tag, message, Form, Select, Button, Space, DatePicker, Pagination, Switch,
+  Typography, Card, Tag, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
 } from 'antd';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
+  fnApiClearActivityLogs,
   fnApiGetActivityActors,
   fnApiGetActivityLogs,
   type IActivityActorOption,
@@ -13,6 +14,7 @@ import {
   type TActivityCategory,
 } from '../api/activityApi';
 import { useActivityLogStream } from '../hooks/useActivityLogStream';
+import { useAuthStore } from '../stores/useAuthStore';
 
 const { Title, Text } = Typography;
 
@@ -95,6 +97,8 @@ const ActivityPage = () => {
   const [arrActorOptions, setArrActorOptions] = useState<IActivityActorOption[]>([]);
   const [bRealtime, setBRealtime] = useState(true);
   const [messageApi, contextHolder] = message.useMessage();
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
+  const bCanClearLogs = arrPermissions.includes('activity.clear');
 
   const [objBootstrap] = useState(() => {
     const [d0, d1] = fnDefaultActivityDtRange();
@@ -150,9 +154,11 @@ const ActivityPage = () => {
   });
   refLoadCtx.current = { objFilter, nPage, fnLoad };
 
+  // SSE로 신규 로그가 들어오면 최신은 1페이지 상단 — 현재 2페이지만 새로고침하면 목록에 안 보이는 문제 방지
   const fnOnStreamRefresh = useCallback(() => {
-    const { objFilter: f, nPage: p, fnLoad: l } = refLoadCtx.current;
-    if (l) void l(f, p, true);
+    setNPage(1);
+    const { objFilter: f, fnLoad: l } = refLoadCtx.current;
+    if (l) void l(f, 1, true);
   }, []);
 
   useActivityLogStream({
@@ -208,6 +214,36 @@ const ActivityPage = () => {
       }
     })();
   }, []);
+
+  const fnClearAllServerLogs = () => {
+    Modal.confirm({
+      title: '활동 로그 전체 삭제',
+      content: '서버에 저장된 HTTP 활동 로그를 모두 지웁니다. 복구할 수 없습니다. 계속할까요?',
+      okText: '삭제',
+      okType: 'danger',
+      cancelText: '취소',
+      onOk: async () => {
+        try {
+          const objRes = await fnApiClearActivityLogs();
+          if (objRes.bSuccess) {
+            messageApi.success(objRes.strMessage || '삭제했습니다.');
+            setNPage(1);
+            await fnLoad(objFilter, 1);
+            const objActors = await fnApiGetActivityActors();
+            if (objActors.bSuccess && objActors.arrActors) setArrActorOptions(objActors.arrActors);
+          } else {
+            messageApi.error(objRes.strMessage || '삭제에 실패했습니다.');
+          }
+        } catch (err: unknown) {
+          const strMsg =
+            err && typeof err === 'object' && 'message' in err
+              ? String((err as { message?: string }).message)
+              : '삭제 요청에 실패했습니다.';
+          messageApi.error(strMsg);
+        }
+      },
+    });
+  };
 
   const fnReset = () => {
     const [d0, d1] = fnDefaultActivityDtRange();
@@ -372,7 +408,12 @@ const ActivityPage = () => {
                 <Button type="primary" onClick={() => fnSubmitSearch()}>
                   조회
                 </Button>
-                <Button onClick={fnReset}>초기화</Button>
+                <Button onClick={fnReset}>필터 초기화</Button>
+                {bCanClearLogs ? (
+                  <Button danger onClick={fnClearAllServerLogs}>
+                    서버 로그 전체 삭제
+                  </Button>
+                ) : null}
               </Space>
             </Form.Item>
           </Space>

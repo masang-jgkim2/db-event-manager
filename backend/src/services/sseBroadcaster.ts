@@ -87,12 +87,14 @@ export const fnBroadcastInstanceUpdate = (objInstance: IEventInstance): void => 
     }
   }
 
-  // 상태 변경 요약 (가벼운 알림용)
+  // 상태 변경 요약 (가벼운 알림용) — 영구 삭제는 strStatus가 그대로이므로 bPermanentlyRemoved 반드시 포함
   const objStatusUpdate = {
     nId: objInstance.nId,
     strStatus: objInstance.strStatus,
     strEventName: objInstance.strEventName,
     strProductName: objInstance.strProductName,
+    bPermanentlyRemoved: Boolean(objInstance.bPermanentlyRemoved),
+    dtPermanentlyRemovedAt: objInstance.dtPermanentlyRemovedAt,
   };
 
   for (const [nUserId, setClients] of mapClients.entries()) {
@@ -139,6 +141,15 @@ export const fnBroadcastActivityLog = (objData: unknown): void => {
   for (const setClients of mapActivityStreamClients.values()) {
     for (const res of setClients) {
       fnSendEvent(res, 'activity_log_appended', objData);
+    }
+  }
+};
+
+/** 활동 로그 전체 삭제 후 목록 재조회용 */
+export const fnBroadcastActivityLogsCleared = (): void => {
+  for (const setClients of mapActivityStreamClients.values()) {
+    for (const res of setClients) {
+      fnSendEvent(res, 'activity_logs_cleared', {});
     }
   }
 };

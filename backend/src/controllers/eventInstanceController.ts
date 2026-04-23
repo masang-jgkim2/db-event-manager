@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
+  fnReloadEventInstancesFromDiskIfEmpty,
   TEventStatus, IStageActor,
 } from '../data/eventInstances';
 import { fnResolveExecuteConnection, fnFindConnectionById, fnFindActiveConnectionByKind } from '../data/dbConnections';
@@ -187,6 +188,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
 // 이벤트 인스턴스 목록 조회
 export const fnGetInstances = async (req: Request, res: Response): Promise<void> => {
   try {
+    fnReloadEventInstancesFromDiskIfEmpty();
     const nUserId = req.user?.nId || 0;
     const strFilter = req.query.filter as string || 'all';
 
@@ -884,6 +886,23 @@ export const fnDeleteInstance = async (req: Request, res: Response): Promise<voi
     }
     if (fnIsPermanentlyRemoved(objInstance)) {
       res.status(400).json({ bSuccess: false, strMessage: '이미 삭제 처리된 이벤트입니다.' });
+      return;
+    }
+
+    const arrPerms = (req.user?.arrPermissions ?? []) as string[];
+    const nActorId = req.user?.nId ?? 0;
+    const bDeleteAny =
+      arrPerms.includes('my_dashboard.delete_any')
+      || arrPerms.includes('my_dashboard.delete_instance')
+      || arrPerms.includes('my_dashboard.delete');
+    const bDeleteOwn =
+      arrPerms.includes('instance.delete_own')
+      && objInstance.nCreatedByUserId === nActorId;
+    if (!bDeleteAny && !bDeleteOwn) {
+      res.status(403).json({
+        bSuccess: false,
+        strMessage: '삭제 권한이 없습니다. 타인 이벤트 삭제(my_dashboard.delete_any) 또는 본인 이벤트 삭제(instance.delete_own)가 필요합니다.',
+      });
       return;
     }
 

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { arrProducts, fnGetNextProductId, fnSaveProducts } from '../data/products';
+import { arrProducts, fnGetNextProductId, fnSaveProducts, fnReloadProductsFromDiskIfEmpty } from '../data/products';
 
 export const fnGetProducts = async (_req: Request, res: Response): Promise<void> => {
+  fnReloadProductsFromDiskIfEmpty();
   res.json({ bSuccess: true, arrProducts });
 };
 

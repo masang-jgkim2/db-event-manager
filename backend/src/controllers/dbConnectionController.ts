@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { arrDbConnections, fnGetNextDbConnectionId, fnSaveDbConnections } from '../data/dbConnections';
+import { arrDbConnections, fnGetNextDbConnectionId, fnSaveDbConnections, fnReloadDbConnectionsFromDiskIfEmpty } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { IDbConnection } from '../types';
 import { fnTestDbConnection } from '../db/dbManager';
@@ -7,6 +7,7 @@ import { fnTestDbConnection } from '../db/dbManager';
 // DB 접속 정보 목록 조회
 export const fnGetDbConnections = async (_req: Request, res: Response): Promise<void> => {
   try {
+    fnReloadDbConnectionsFromDiskIfEmpty();
     const arrSafe = arrDbConnections.map((c) => ({ ...c, strPassword: '••••••••' }));
     res.json({ bSuccess: true, arrDbConnections: arrSafe });
   } catch (error) {

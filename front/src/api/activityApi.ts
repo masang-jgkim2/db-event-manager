@@ -87,6 +87,16 @@ export const fnApiGetActivityLogs = async (objParams: IActivityLogsQuery): Promi
   return p;
 };
 
+export interface IActivityClearResponse {
+  bSuccess: boolean;
+  strMessage?: string;
+}
+
+export const fnApiClearActivityLogs = async (): Promise<IActivityClearResponse> => {
+  const res = await apiClient.delete<IActivityClearResponse>('/activity/logs');
+  return res.data;
+};
+
 export const fnApiGetActivityActors = async (): Promise<IActivityActorsResponse> => {
   if (pInflightActors) {
     return pInflightActors;

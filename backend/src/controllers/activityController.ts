@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import {
+  fnClearAllActivityLogs,
   fnListDistinctActivityActors,
   fnQueryActivityLogs,
   type TActivityCategory,
 } from '../data/activityLogs';
+import { fnBroadcastActivityLogsCleared } from '../services/sseBroadcaster';
 
 const ARR_VALID: Array<'all' | TActivityCategory> = ['all', 'auth', 'event', 'user', 'ops', 'other'];
 
@@ -68,6 +70,19 @@ export const fnGetActivityLogs = async (req: Request, res: Response): Promise<vo
     res.json({ bSuccess: true, arrLogs: arrRows, nTotal });
   } catch (error) {
     console.error('활동 로그 조회 오류:', error);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// DELETE /api/activity/logs — 활동 로그 전체 초기화 (activity.clear)
+export const fnDeleteActivityLogs = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    fnClearAllActivityLogs();
+    fnBroadcastActivityLogsCleared();
+    console.log('[activityController] 활동 로그 전체 초기화 완료');
+    res.json({ bSuccess: true, strMessage: '활동 로그를 모두 삭제했습니다.' });
+  } catch (error) {
+    console.error('[activityController] 활동 로그 초기화 오류 |', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

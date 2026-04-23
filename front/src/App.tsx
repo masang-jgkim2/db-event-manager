@@ -6,8 +6,6 @@ import { useAuthStore } from './stores/useAuthStore';
 import { useThemeStore } from './stores/useThemeStore';
 import { fnBuildDesignSystem } from './styles/design-system';
 import { DesignSystemContext } from './styles/DesignSystemContext';
-import { useProductStore } from './stores/useProductStore';
-import { useEventStore } from './stores/useEventStore';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ProductPage from './pages/ProductPage';
@@ -134,8 +132,6 @@ const DefaultRedirect = () => {
 const App = () => {
   const fnVerifyToken = useAuthStore((state) => state.fnVerifyToken);
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
-  const fnFetchProducts = useProductStore((state) => state.fnFetchProducts);
-  const fnFetchEvents = useEventStore((state) => state.fnFetchEvents);
 
   // 테마 스토어
   const fnGetIsDark = useThemeStore((state) => state.fnGetIsDark);
@@ -172,13 +168,7 @@ const App = () => {
     }
   }, [bIsAuthenticated]);
 
-  // 인증 완료 후 프로덕트/이벤트 데이터 서버에서 로드
-  useEffect(() => {
-    if (bIsAuthenticated) {
-      fnFetchProducts();
-      fnFetchEvents();
-    }
-  }, [bIsAuthenticated, fnFetchProducts, fnFetchEvents]);
+  // 프로덕트/이벤트/DB목록은 각 페이지에서 로드(전역 prefetch 시 활동 로그·이중 GET 증가)
 
   const bIsDark = fnGetIsDark();
 

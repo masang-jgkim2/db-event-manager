@@ -68,10 +68,15 @@ router.post('/', fnRequireAnyPermission('instance.create'), fnCreateInstance);
 // PUT /api/event-instances/:id - 이벤트 수정 (my_dashboard.edit) 또는 DBA 쿼리 수정(my_dashboard.query_edit)
 router.put('/:id', fnRequireAnyPermission('my_dashboard.edit', 'my_dashboard.query_edit'), fnUpdateInstance);
 
-// DELETE /api/event-instances/:id — 삭제(복원 불가). delete_instance 또는 레거시 delete 권한
+// DELETE /api/event-instances/:id — 삭제(복원 불가). 타인 삭제(delete_any·레거시) 또는 본인 삭제(delete_own, 핸들러에서 생성자 검증)
 router.delete(
   '/:id',
-  fnRequireAnyPermission('my_dashboard.delete_instance', 'my_dashboard.delete'),
+  fnRequireAnyPermission(
+    'my_dashboard.delete_any',
+    'my_dashboard.delete_instance',
+    'my_dashboard.delete',
+    'instance.delete_own',
+  ),
   fnDeleteInstance
 );
 

@@ -453,6 +453,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/activity/actors').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
+      await expect(request(app).delete('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
     });
 
     it('GM: 프로덕트·쿼리 템플릿·이벤트 인스턴스 보기 200, 사용자/역할 403, DB접속은 my_dashboard.view로 200', async () => {
@@ -465,6 +466,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/activity/actors').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).delete('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
 
     it('DBA(실행 권한만 부여 시): 이벤트 인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {
@@ -1099,11 +1101,17 @@ describe('API 전체 테스트', () => {
       expect([200, 400, 404]).toContain(res.status);
     });
 
-    it('DELETE /api/event-instances/:id (my_dashboard.delete_instance 없으면) → 403', async () => {
-      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strGmToken}`);
+    it('DELETE /api/event-instances/:id (delete_any·delete_own 모두 해당 없으면) → 403', async () => {
+      // 기획자(planner): 나의 대시보드 보기는 있으나 삭제 권한 없음 — GM은 instance.delete_own이 있어 본인 건 삭제 가능
+      const loginPlanner = await request(app)
+        .post('/api/auth/login')
+        .send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
+      expect(loginPlanner.status).toBe(200);
+      const strPlannerToken = loginPlanner.body?.strToken;
+      const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strPlannerToken}`);
       const live = (list.body?.arrInstances ?? []).find((i: { strStatus: string }) => i.strStatus === 'live_verified');
       const nId = live?.nId ?? 1;
-      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strGmToken}`);
+      const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strPlannerToken}`);
       expect(res.status).toBe(403);
     });
 

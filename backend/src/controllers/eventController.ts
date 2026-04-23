@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
-import { arrEvents, fnGetNextEventId, fnSaveEvents } from '../data/events';
+import { arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty } from '../data/events';
 import { arrProducts } from '../data/products';
 
 // 쿼리 템플릿 목록 조회 (모든 인증 사용자)
 export const fnGetEvents = async (_req: Request, res: Response): Promise<void> => {
+  fnReloadEventsFromDiskIfEmpty();
   res.json({ bSuccess: true, arrEvents });
 };
 

@@ -1,9 +1,23 @@
-import apiClient, { STR_API_BASE } from './axiosInstance';
+import apiClient, { fnBuildSseApiUrl } from './axiosInstance';
+
+/** 동일 filter 목록 GET 합치기 — StrictMode 이중 effect·대시보드+스토어 동시 호출 시 HTTP 1회 */
+const mapPromiseGetInstancesByFilter = new Map<string, Promise<unknown>>();
 
 // 이벤트 인스턴스 목록 조회
 export const fnApiGetInstances = async (strFilter: string = 'all') => {
-  const response = await apiClient.get(`/event-instances?filter=${strFilter}`);
-  return response.data;
+  const strKey = (strFilter || 'all').trim() || 'all';
+  const existing = mapPromiseGetInstancesByFilter.get(strKey);
+  if (existing != null) return existing;
+
+  const promise = apiClient
+    .get(`/event-instances?filter=${strKey}`)
+    .then((response) => response.data)
+    .finally(() => {
+      mapPromiseGetInstancesByFilter.delete(strKey);
+    });
+
+  mapPromiseGetInstancesByFilter.set(strKey, promise);
+  return promise;
 };
 
 // 이벤트 인스턴스 단건 조회
@@ -87,7 +101,7 @@ export const fnApiExecuteQueryStream = async (
   onProgress: (nCompleted: number) => void
 ): Promise<{ bSuccess: boolean; strMessage?: string; objInstance?: unknown; objExecutionResult?: unknown }> => {
   const strToken = typeof localStorage !== 'undefined' ? localStorage.getItem('strToken') : null;
-  const res = await fetch(`${STR_API_BASE}/event-instances/${nId}/execute?stream=1`, {
+  const res = await fetch(fnBuildSseApiUrl(`event-instances/${nId}/execute?stream=1`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

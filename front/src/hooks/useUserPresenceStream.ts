@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/useAuthStore';
-import { STR_API_BASE } from '../api/axiosInstance';
+import { fnBuildSseApiUrl } from '../api/axiosInstance';
 
 export interface IUserPresenceSseRow {
   nUserId: number;
@@ -38,7 +38,7 @@ export const useUserPresenceStream = (objParam: {
       return;
     }
 
-    const strUrl = `${STR_API_BASE}/users/presence-stream?token=${encodeURIComponent(strToken)}`;
+    const strUrl = fnBuildSseApiUrl(`users/presence-stream?token=${encodeURIComponent(strToken)}`);
     const objEs = new EventSource(strUrl);
     refEventSource.current = objEs;
 

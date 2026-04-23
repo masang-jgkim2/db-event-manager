@@ -39,7 +39,7 @@ import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { fnApiGetInstances } from '../api/eventInstanceApi';
-import { fnApiGetDbConnections } from '../api/dbConnectionApi';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { fnApiGetUsers } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
 import type { IProduct, IService, TEventStatus, IEventInstance } from '../types';
@@ -1184,9 +1184,9 @@ const DashboardPage = () => {
         arrPromises.push(
           (async () => {
             try {
-              const res = await fnApiGetDbConnections();
-              if (bMounted && res?.bSuccess && Array.isArray(res.arrDbConnections))
-                setNDbConnections(res.arrDbConnections.length);
+              await useDbConnectionStore.getState().fnFetchDbConnections();
+              if (bMounted)
+                setNDbConnections(useDbConnectionStore.getState().arrDbConnections.length);
             } catch {
               if (bMounted) setNDbConnections(0);
             }

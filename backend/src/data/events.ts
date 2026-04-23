@@ -1,4 +1,4 @@
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
 
 /** 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
@@ -51,6 +51,18 @@ const bNeedSave = migrated.some((e, i) => e !== rawEvents[i]);
 if (bNeedSave) fnSaveJson(STR_FILE, migrated);
 
 export const arrEvents: IEventTemplate[] = migrated;
+
+/** 메모리가 비어 있고 디스크에 건수가 있으면 events.json에서 다시 채움 (시드 적용 후·수동 JSON 편집 불일치 보정) */
+export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
+  if (arrEvents.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IEventTemplate>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  const arrMigrated = fnMigrateToQuerySets(arrRaw);
+  arrEvents.length = 0;
+  arrEvents.push(...arrMigrated);
+  console.log(`[events] 메모리 비어 ${STR_FILE}에서 ${arrMigrated.length}건 재로드`);
+  return true;
+};
 
 export const fnSaveEvents = () => fnSaveJson(STR_FILE, arrEvents);
 

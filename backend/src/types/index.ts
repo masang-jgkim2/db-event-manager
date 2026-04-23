@@ -12,12 +12,15 @@ export type TPermission =
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
   | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
   | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
-  | 'my_dashboard.delete' | 'my_dashboard.delete_instance' // delete: 레거시 별칭 → 로그인 시 delete_instance로 확장
+  | 'my_dashboard.delete' | 'my_dashboard.delete_instance' // 레거시 → 로그인 시 delete_any로 확장
+  | 'my_dashboard.delete_any' // 타인이 생성한 이벤트 인스턴스 영구 삭제
+  | 'instance.delete_own' // 본인이 생성한 이벤트 인스턴스만 영구 삭제
   | 'my_dashboard.edit_any'   // 타인 작성 이벤트(event_created) 수정 (역할 대신 권한으로 제어)
   | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
   | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live'
   | 'system.save_test_seed'  // 테스트 시드 저장 (관리 기능)
-  | 'activity.view';           // HTTP 활동 로그 조회
+  | 'activity.view'            // HTTP 활동 로그 조회
+  | 'activity.clear';           // HTTP 활동 로그 전체 삭제(초기화)
 
 // =============================================
 // 역할 모델 (동적 관리)

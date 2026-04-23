@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { STR_DATA_DIR } from './jsonStore';
 import { arrProducts } from './products';
 import { arrEvents } from './events';
 import { arrUsers } from './users';
@@ -9,7 +10,6 @@ import { arrEventInstances } from './eventInstances';
 
 // 테스트 초기화 데이터 파일명 (서버 재시작 시 이 파일이 있으면 우선 로드)
 const STR_SEED_FILENAME = 'seed_test.json';
-const STR_DATA_DIR = path.join(process.cwd(), 'data');
 
 export interface ISeedData {
   products: unknown[];

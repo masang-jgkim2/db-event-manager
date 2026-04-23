@@ -92,8 +92,9 @@ const OBJ_EXPAND: Record<string, string[]> = {
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
-  // 역할 JSON에 my_dashboard.delete만 있는 경우(구 코드) 삭제 API와 맞춤
-  'my_dashboard.delete': ['my_dashboard.delete_instance'],
+  // 삭제: 레거시 delete / delete_instance → 타인 삭제(delete_any)로 통합
+  'my_dashboard.delete': ['my_dashboard.delete_any'],
+  'my_dashboard.delete_instance': ['my_dashboard.delete_any'],
 };
 
 export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): string[] => {
@@ -103,7 +104,7 @@ export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): s
     if (arrExp) arrExp.forEach((e) => setOut.add(e));
   });
   if (arrRoleCodes.includes('admin')) {
-    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view'].forEach((p) => setOut.add(p));
+    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view', 'activity.clear'].forEach((p) => setOut.add(p));
   }
   return Array.from(setOut);
 };

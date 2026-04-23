@@ -5,6 +5,13 @@ import {
   fnApiUpdateInstance, fnApiExecuteQuery, fnApiCreateInstance, fnApiDeleteInstance,
 } from '../api/eventInstanceApi';
 import { fnScopedStorageSetItem } from '../utils/userScopedStorage';
+import { fnApplyEventInstanceListFilter } from '../utils/eventInstanceListFilter';
+import { useAuthStore } from './useAuthStore';
+
+/** GET filter=all 1회 + StrictMode 이중 호출 합치기 */
+let promiseFetchInstances: Promise<void> | null = null;
+let nLastInstancesFetchSuccessAt = 0;
+const N_INSTANCES_FETCH_DEBOUNCE_MS = 450;
 
 const STR_HIDDEN_LOGICAL_KEY = 'db-event-manager-hidden-ids';
 
@@ -72,13 +79,42 @@ const fnUpsertInstance = (
   return [objInstance, ...arrList];
 };
 
-// 두 목록에서 상태만 업데이트하는 헬퍼
-const fnPatchStatus = (
+/** 비관여자용 SSE 요약(instance_status_changed) — 상태·메타·영구 삭제 플래그 병합 */
+const fnSyncArrInstancesToFilter = (
+  get: () => IEventInstanceStore,
+  set: (partial: Partial<IEventInstanceStore>) => void,
+): void => {
+  const { strFilter, arrAllInstances } = get();
+  const objUser = useAuthStore.getState().user;
+  const nUserId = objUser?.nId ?? 0;
+  const arrPerms = (objUser?.arrPermissions ?? []) as string[];
+  set({
+    arrInstances: fnApplyEventInstanceListFilter(arrAllInstances, strFilter, nUserId, arrPerms),
+  });
+};
+
+const fnPatchInstanceLight = (
   arrList: IEventInstance[],
-  nId: number,
-  strStatus: TEventStatus
+  objSummary: {
+    nId: number;
+    strStatus: TEventStatus;
+    strEventName?: string;
+    strProductName?: string;
+    bPermanentlyRemoved?: boolean;
+    dtPermanentlyRemovedAt?: string;
+  },
 ): IEventInstance[] =>
-  arrList.map((e) => e.nId === nId ? { ...e, strStatus } : e);
+  arrList.map((e) => {
+    if (e.nId !== objSummary.nId) return e;
+    return {
+      ...e,
+      strStatus: objSummary.strStatus,
+      strEventName: objSummary.strEventName ?? e.strEventName,
+      strProductName: objSummary.strProductName ?? e.strProductName,
+      ...(objSummary.bPermanentlyRemoved !== undefined && { bPermanentlyRemoved: objSummary.bPermanentlyRemoved }),
+      ...(objSummary.dtPermanentlyRemovedAt !== undefined && { dtPermanentlyRemovedAt: objSummary.dtPermanentlyRemovedAt }),
+    };
+  });
 
 export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => ({
   arrInstances: [],
@@ -103,39 +139,64 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
 
   fnFetchInstances: async (strFilter?: string) => {
     const strActiveFilter = strFilter ?? get().strFilter;
-    set({ bLoading: true });
-    try {
-      // 필터된 목록과 전체 목록을 병렬로 가져옴
-      const [objFiltered, objAll] = await Promise.all([
-        fnApiGetInstances(strActiveFilter),
-        strActiveFilter !== 'all' ? fnApiGetInstances('all') : Promise.resolve(null),
-      ]);
-      if (objFiltered.bSuccess) {
-        set({
-          arrInstances: objFiltered.arrInstances,
-          // 전체 필터면 arrAllInstances도 동일하게, 아니면 별도 조회 결과 사용
-          arrAllInstances: objAll?.bSuccess
-            ? objAll.arrInstances
-            : (strActiveFilter === 'all' ? objFiltered.arrInstances : get().arrAllInstances),
-        });
-      }
-    } finally {
-      set({ bLoading: false });
+    if (promiseFetchInstances != null) return promiseFetchInstances;
+
+    const dtNow = Date.now();
+    const { arrAllInstances, strFilter: strStoreFilter } = get();
+    if (
+      arrAllInstances.length > 0
+      && dtNow - nLastInstancesFetchSuccessAt < N_INSTANCES_FETCH_DEBOUNCE_MS
+      && strActiveFilter === strStoreFilter
+    ) {
+      fnSyncArrInstancesToFilter(get, set);
+      return;
     }
+
+    promiseFetchInstances = (async () => {
+      set({ bLoading: true });
+      try {
+        // 서버는 filter=all 한 번으로 전체 전달 — mine/involved 등은 클라에서 동일 규칙 적용(활동 로그 GET 2배 제거)
+        const objAll = await fnApiGetInstances('all');
+        if (!objAll.bSuccess) return;
+        const objUser = useAuthStore.getState().user;
+        const nUserId = objUser?.nId ?? 0;
+        const arrPerms = (objUser?.arrPermissions ?? []) as string[];
+        const arrVisible = fnApplyEventInstanceListFilter(
+          objAll.arrInstances,
+          strActiveFilter,
+          nUserId,
+          arrPerms,
+        );
+        set({
+          arrAllInstances: objAll.arrInstances,
+          arrInstances: arrVisible,
+        });
+        nLastInstancesFetchSuccessAt = Date.now();
+      } finally {
+        set({ bLoading: false });
+        promiseFetchInstances = null;
+      }
+    })();
+    return promiseFetchInstances;
   },
 
   fnSetFilter: (strFilter: string) => {
     set({ strFilter });
-    get().fnFetchInstances(strFilter);
+    const arrAll = get().arrAllInstances;
+    if (arrAll.length === 0) {
+      void get().fnFetchInstances(strFilter);
+      return;
+    }
+    fnSyncArrInstancesToFilter(get, set);
   },
 
   fnUpdateStatus: async (nId, strNextStatus, strComment, strActorName) => {
     const objResult = await fnApiUpdateStatus(nId, strNextStatus, strComment, strActorName);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
+      fnSyncArrInstancesToFilter(get, set);
     }
     return objResult;
   },
@@ -145,9 +206,9 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
       const objResult = await fnApiExecuteQuery(nId, strEnv, strActorName);
       if (objResult.bSuccess && objResult.objInstance) {
         set((state) => ({
-          arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
           arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
         }));
+        fnSyncArrInstancesToFilter(get, set);
       }
       return objResult;
     } catch (error: any) {
@@ -162,9 +223,9 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
     const objResult = await fnApiUpdateInstance(nId, objData);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
+      fnSyncArrInstancesToFilter(get, set);
     }
     return objResult;
   },
@@ -173,9 +234,9 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
     const objResult = await fnApiCreateInstance(objData);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: [objResult.objInstance!, ...state.arrInstances],
         arrAllInstances: [objResult.objInstance!, ...state.arrAllInstances],
       }));
+      fnSyncArrInstancesToFilter(get, set);
     }
     return objResult;
   },
@@ -184,39 +245,40 @@ export const useEventInstanceStore = create<IEventInstanceStore>((set, get) => (
     const objResult = await fnApiDeleteInstance(nId);
     if (objResult.bSuccess && objResult.objInstance) {
       set((state) => ({
-        arrInstances: fnUpsertInstance(state.arrInstances, objResult.objInstance!),
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objResult.objInstance!),
       }));
+      fnSyncArrInstancesToFilter(get, set);
     }
     return objResult;
   },
 
-  // SSE push → 스토어 동기화
+  // SSE push → arrAllInstances 갱신 후 현재 필터로 표시 목록 재계산
   fnHandleSseEvent: (strEvent, objPayload) => {
     if (strEvent === 'instance_created') {
-      // 다른 유저가 생성한 신규 이벤트 → 전체 목록과 현재 필터 목록 모두 추가
       const objInstance = objPayload as IEventInstance;
       set((state) => ({
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objInstance),
-        // 현재 필터가 'all' 이면 표시 목록에도 추가
-        arrInstances: state.strFilter === 'all'
-          ? fnUpsertInstance(state.arrInstances, objInstance)
-          : state.arrInstances,
       }));
+      fnSyncArrInstancesToFilter(get, set);
     } else if (strEvent === 'instance_updated') {
-      // 관여자에게 오는 전체 객체 업데이트
       const objInstance = objPayload as IEventInstance;
       set((state) => ({
-        arrInstances: fnUpsertInstance(state.arrInstances, objInstance),
         arrAllInstances: fnUpsertInstance(state.arrAllInstances, objInstance),
       }));
+      fnSyncArrInstancesToFilter(get, set);
     } else if (strEvent === 'instance_status_changed') {
-      // 비관여자에게 오는 상태 요약 업데이트
-      const objSummary = objPayload as { nId: number; strStatus: TEventStatus };
+      const objSummary = objPayload as {
+        nId: number;
+        strStatus: TEventStatus;
+        strEventName?: string;
+        strProductName?: string;
+        bPermanentlyRemoved?: boolean;
+        dtPermanentlyRemovedAt?: string;
+      };
       set((state) => ({
-        arrInstances: fnPatchStatus(state.arrInstances, objSummary.nId, objSummary.strStatus),
-        arrAllInstances: fnPatchStatus(state.arrAllInstances, objSummary.nId, objSummary.strStatus),
+        arrAllInstances: fnPatchInstanceLight(state.arrAllInstances, objSummary),
       }));
+      fnSyncArrInstancesToFilter(get, set);
     }
   },
 }));

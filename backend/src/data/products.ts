@@ -1,4 +1,4 @@
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 
 // 프로덕트 데이터 저장소
 
@@ -7,6 +7,7 @@ export interface IService {
   strRegion: string;
 }
 
+/** 서비스 목록·영속화는 전부 `arrServices` → `products.json` 한 곳 (별도 정규화 JSON 없음) */
 export interface IProduct {
   nId: number;
   strName: string;
@@ -86,6 +87,17 @@ const ARR_SEED: IProduct[] = [
 ];
 
 export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
+
+/** 메모리가 비어 있고 디스크에 건수가 있으면 products.json에서 다시 채움 */
+export const fnReloadProductsFromDiskIfEmpty = (): boolean => {
+  if (arrProducts.length > 0) return false;
+  const arrRaw = fnReadJsonArrayFromDisk<IProduct>(STR_FILE);
+  if (!arrRaw?.length) return false;
+  arrProducts.length = 0;
+  arrProducts.push(...arrRaw);
+  console.log(`[products] 메모리 비어 ${STR_FILE}에서 ${arrRaw.length}건 재로드`);
+  return true;
+};
 
 export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
 
