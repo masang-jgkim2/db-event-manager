@@ -45,7 +45,6 @@ CREATE TABLE db_connections (
   n_id             INT           IDENTITY(1,1) PRIMARY KEY,
   n_product_id     INT           NOT NULL,
   str_product_name NVARCHAR(100) NOT NULL,
-  str_kind         NVARCHAR(20)  NOT NULL DEFAULT N'GAME',  -- GAME | WEB | LOG
   str_env          NVARCHAR(10)  NOT NULL,    -- dev | qa | live
   str_db_type      NVARCHAR(20)  NOT NULL,    -- mssql | mysql
   str_host         NVARCHAR(255) NOT NULL,
@@ -56,7 +55,7 @@ CREATE TABLE db_connections (
   b_is_active      BIT           NOT NULL DEFAULT 1,
   dt_created_at    DATETIME2     NOT NULL DEFAULT SYSDATETIME(),
   dt_updated_at    DATETIME2     NOT NULL DEFAULT SYSDATETIME(),
-  CONSTRAINT uq_product_env_kind UNIQUE (n_product_id, str_env, str_kind)
+  CONSTRAINT uq_product_env UNIQUE (n_product_id, str_env)  -- 프로덕트당 환경 1개
 );
 GO
 

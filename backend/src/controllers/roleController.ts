@@ -56,7 +56,7 @@ export const fnCreateRole = async (req: Request, res: Response): Promise<void> =
       dtUpdatedAt: strNow,
     });
     const arrPerms = Array.isArray(arrPermissions) ? (arrPermissions as TPermission[]) : [];
-    await fnSaveRoleAndPermissions(nId, arrPerms);
+    fnSaveRoleAndPermissions(nId, arrPerms);
 
     const objNewRole: IRole = {
       nId,
@@ -89,14 +89,14 @@ export const fnUpdateRole = async (req: Request, res: Response): Promise<void> =
     const { strDisplayName, strDescription, arrPermissions } = req.body;
 
     if (objRole.bIsSystem) {
-      if (Array.isArray(arrPermissions)) await fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
+      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
     } else {
       if (strDisplayName !== undefined) objRole.strDisplayName = strDisplayName;
       if (strDescription !== undefined) objRole.strDescription = strDescription;
-      if (Array.isArray(arrPermissions)) await fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
+      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
     }
     objRole.dtUpdatedAt = new Date().toISOString();
-    await fnSaveRoles();
+    fnSaveRoles();
 
     const arrPerms = fnGetPermissionsByRoleId(nId);
     res.json({
@@ -137,8 +137,8 @@ export const fnDeleteRole = async (req: Request, res: Response): Promise<void> =
 
     const nIndex = arrRoles.findIndex((r) => r.nId === nId);
     arrRoles.splice(nIndex, 1);
-    await fnRemoveRolePermissionsAndSave(nId);
-    await fnSaveRoles();
+    fnRemoveRolePermissionsAndSave(nId);
+    fnSaveRoles();
     res.json({ bSuccess: true, strMessage: '역할이 삭제되었습니다.' });
   } catch (error) {
     console.error('역할 삭제 오류:', error);

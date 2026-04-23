@@ -10,9 +10,7 @@
     "test": "jest --runInBand",
     "test:api": "jest --runInBand --testPathPattern=api.test",
     "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\"",
-    "reset-password": "node scripts/reset-password.js",
-    "backup:data": "node scripts/backup-data-dir.cjs",
-    "rdb:reset": "node scripts/rdb-reset.cjs --yes"
+    "reset-password": "node scripts/reset-password.js"
   },
   "keywords": [],
   "author": "",

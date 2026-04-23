@@ -37,7 +37,7 @@ export class UserRepository {
         : new Date().toISOString(),
     });
     const arrRoleIds = fnGetRoleIdsByRoleCodes(objData.arrRoles ?? []);
-    await fnSaveUserAndRoles(nId, arrRoleIds);
+    fnSaveUserAndRoles(nId, arrRoleIds);
     return (await this.findById(nId))!;
   }
 
@@ -48,9 +48,9 @@ export class UserRepository {
     if ((objData as any).strPassword !== undefined) row.strPassword = (objData as any).strPassword;
     if (objData.arrRoles !== undefined) {
       const arrRoleIds = fnGetRoleIdsByRoleCodes(objData.arrRoles);
-      await fnSaveUserAndRoles(nId, arrRoleIds);
+      fnSaveUserAndRoles(nId, arrRoleIds);
     } else {
-      await fnSaveUsers();
+      fnSaveUsers();
     }
     return this.findById(nId);
   }
@@ -58,9 +58,9 @@ export class UserRepository {
   async delete(nId: number): Promise<boolean> {
     const nIdx = arrUsers.findIndex((u) => u.nId === nId);
     if (nIdx === -1) return false;
-    await fnRemoveUserRolesAndSave(nId);
+    fnRemoveUserRolesAndSave(nId);
     arrUsers.splice(nIdx, 1);
-    await fnSaveUsers();
+    fnSaveUsers();
     return true;
   }
 }

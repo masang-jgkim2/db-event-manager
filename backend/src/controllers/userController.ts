@@ -63,7 +63,7 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
       dtCreatedAt: new Date().toISOString(),
     });
     const arrRoleIds = fnGetRoleIdsByRoleCodes(arrRoleCodes);
-    await fnSaveUserAndRoles(nId, arrRoleIds);
+    fnSaveUserAndRoles(nId, arrRoleIds);
 
     const arrPermissions = fnGetMergedPermissions(arrRoleCodes);
     res.json({
@@ -98,9 +98,9 @@ export const fnUpdateUser = async (req: Request, res: Response): Promise<void> =
     if (strDisplayName !== undefined) objUser.strDisplayName = strDisplayName;
     if (Array.isArray(arrRoleCodes) && arrRoleCodes.length > 0) {
       const arrRoleIds = fnGetRoleIdsByRoleCodes(arrRoleCodes);
-      await fnSaveUserAndRoles(nId, arrRoleIds);
+      fnSaveUserAndRoles(nId, arrRoleIds);
     } else {
-      await fnSaveUsers();
+      fnSaveUsers();
     }
 
     const arrWithRoles = fnGetUsersWithRoles();
@@ -139,9 +139,9 @@ export const fnDeleteUser = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    await fnRemoveUserRolesAndSave(nId);
+    fnRemoveUserRolesAndSave(nId);
     arrUsers.splice(nIndex, 1);
-    await fnSaveUsers();
+    fnSaveUsers();
     res.json({ bSuccess: true, strMessage: '사용자가 삭제되었습니다.' });
   } catch (error) {
     console.error('사용자 삭제 오류:', error);
@@ -167,7 +167,7 @@ export const fnResetPassword = async (req: Request, res: Response): Promise<void
     }
 
     objUser.strPassword = await bcrypt.hash(strNewPassword, 10);
-    await fnSaveUsers();
+    fnSaveUsers();
     res.json({ bSuccess: true, strMessage: '비밀번호가 초기화되었습니다.' });
   } catch (error) {
     console.error('비밀번호 초기화 오류:', error);
