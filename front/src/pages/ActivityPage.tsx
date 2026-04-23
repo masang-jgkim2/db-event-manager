@@ -154,9 +154,11 @@ const ActivityPage = () => {
   });
   refLoadCtx.current = { objFilter, nPage, fnLoad };
 
+  // SSE로 신규 로그가 들어오면 최신은 1페이지 상단 — 현재 2페이지만 새로고침하면 목록에 안 보이는 문제 방지
   const fnOnStreamRefresh = useCallback(() => {
-    const { objFilter: f, nPage: p, fnLoad: l } = refLoadCtx.current;
-    if (l) void l(f, p, true);
+    setNPage(1);
+    const { objFilter: f, fnLoad: l } = refLoadCtx.current;
+    if (l) void l(f, 1, true);
   }, []);
 
   useActivityLogStream({

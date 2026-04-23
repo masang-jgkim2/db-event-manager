@@ -66,9 +66,30 @@ function fnUseDirectSseOrigin(): boolean {
   return strPort === '4173' || strPort === '5173' || strPort === '5174';
 }
 
+/** SSE 직접 연결 시 백엔드 포트 — VITE_SSE_PORT → VITE_PROXY_TARGET 파싱 → 기본 4000 */
+function fnResolveSseBackendPort(): number {
+  const strSse = (import.meta.env.VITE_SSE_PORT as string | undefined)?.trim();
+  if (strSse) {
+    const n = Number(strSse);
+    if (Number.isFinite(n) && n > 0 && n < 65536) return n;
+  }
+  const strProxy = (import.meta.env.VITE_PROXY_TARGET as string | undefined)?.trim();
+  if (strProxy) {
+    try {
+      const u = new URL(strProxy.includes('://') ? strProxy : `http://${strProxy}`);
+      const nFromUrl = Number(u.port);
+      if (Number.isFinite(nFromUrl) && nFromUrl > 0) return nFromUrl;
+      return u.protocol === 'https:' ? 443 : 80;
+    } catch {
+      /* */
+    }
+  }
+  return 4000;
+}
+
 /**
  * EventSource·스트리밍 fetch 전용 URL (`fnBuildApiUrl`과 달리 프록시 우회).
- * `VITE_API_URL`이 있으면 그 origin 사용. 백엔드 포트는 `VITE_SSE_PORT`(기본 4000).
+ * `VITE_API_URL`이 있으면 그 origin 사용. 포트는 `fnResolveSseBackendPort()`.
  */
 export function fnBuildSseApiUrl(strUnderApi: string): string {
   const s = strUnderApi.replace(/^\//, '');
@@ -80,9 +101,7 @@ export function fnBuildSseApiUrl(strUnderApi: string): string {
   if (fnUseDirectSseOrigin()) {
     const strH = window.location.hostname;
     const strProto = window.location.protocol;
-    const strPortEnv = (import.meta.env.VITE_SSE_PORT as string | undefined)?.trim();
-    const nPort = strPortEnv ? Number(strPortEnv) : 4000;
-    const nSafe = Number.isFinite(nPort) && nPort > 0 && nPort < 65536 ? nPort : 4000;
+    const nSafe = fnResolveSseBackendPort();
     return `${strProto}//${strH}:${nSafe}${strPath}`;
   }
   return fnBuildApiUrl(strUnderApi);

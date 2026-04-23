@@ -34,9 +34,13 @@ app.use((req, res, next) => {
 });
 
 // localhost + IP(외부 접속) 허용 — 동일 서버를 IP로 접근해도 로그인 등 동작
+// SSE는 브라우저가 :5173 → :4000 등 다른 포트로 직접 붙어 Origin이 달라짐. PC 이름 Origin은 `DQPM_RELAX_CORS=true`로 허용 확대.
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
+    if (process.env.DQPM_RELAX_CORS === 'true' || process.env.DQPM_RELAX_CORS === '1') {
+      return cb(null, true);
+    }
     if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
     if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return cb(null, true);
     if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);

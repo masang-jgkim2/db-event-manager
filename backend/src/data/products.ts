@@ -7,6 +7,7 @@ export interface IService {
   strRegion: string;
 }
 
+/** 서비스 목록·영속화는 전부 `arrServices` → `products.json` 한 곳 (별도 정규화 JSON 없음) */
 export interface IProduct {
   nId: number;
   strName: string;

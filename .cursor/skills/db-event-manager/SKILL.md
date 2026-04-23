@@ -115,3 +115,4 @@ front/src/
 - **JSON ↔ 메모리**: 기동 시 `fnLoadJson` 1회 로드, 변경 시 `fnSaveJson`. 사용자는 로그인 시 `fnReloadUsersFromFile`로 파일 재동기 가능.
 - **활동 로그 JSON**: `ACTIVITY_LOG_ENABLED=1|true|on|yes`일 때만 `fnPushActivityLog`(메모리·SSE·JSON). 미설정·`0` 등은 비기록. `activity_logs.json` 배치는 `ACTIVITY_LOG_FLUSH_MS`·`ACTIVITY_LOG_FLUSH_EVERY`, 종료 시 flush. Jest는 기록 강제 ON·push마다 즉시 저장.
 - **목록 GET 보정**: 메모리가 비어 있고 디스크 `data/*.json`에 1건 이상이면 해당 목록 API에서 `fnReadJsonArrayFromDisk`로 재채움 — `events`(마이그레이션 `fnMigrateToQuerySets` 포함), `products`, `dbConnections`, `eventInstances`.
+- **프로덕트 서비스**: `products.json`의 `IProduct.arrServices`만 사용 — 과거 `productServices.json` 분리 모듈은 제거됨.
