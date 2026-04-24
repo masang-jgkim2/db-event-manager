@@ -10,7 +10,10 @@
     "test": "jest --runInBand",
     "test:api": "jest --runInBand --testPathPattern=api.test",
     "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\"",
-    "reset-password": "node scripts/reset-password.js"
+    "test:mysql-meta": "jest --runInBand --testPathPattern=mysqlMetaSync",
+    "reset-password": "node scripts/reset-password.js",
+    "import-json-to-mysql": "tsx src/scripts/importJsonToMysql.ts",
+    "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,6 @@
 // 정규화: 사용자별 역할 (users.arr_roles 분리)
 import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnIsJsonStore } from './dataStore';
 
 export interface IUserRoleRow {
   nUserId: number;
@@ -18,8 +19,8 @@ const ARR_SEED: IUserRoleRow[] = [
 
 export const arrUserRoles: IUserRoleRow[] = fnLoadJson<IUserRoleRow>(STR_FILE, ARR_SEED);
 
-// 파일이 존재하지만 비어 있었을 경우 시드 복구 (권한 뷰가 전부 동일하게 나오는 현상 방지)
-if (arrUserRoles.length === 0 && ARR_SEED.length > 0) {
+// 파일이 존재하지만 비어 있었을 경우 시드 복구 (권한 뷰가 전부 동일하게 나오는 현상 방지) — JSON 모드만
+if (fnIsJsonStore() && arrUserRoles.length === 0 && ARR_SEED.length > 0) {
   ARR_SEED.forEach((r) => arrUserRoles.push({ nUserId: r.nUserId, nRoleId: r.nRoleId }));
   fnSaveJson(STR_FILE, arrUserRoles);
 }

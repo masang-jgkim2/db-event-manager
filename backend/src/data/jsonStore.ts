@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import { fnIsMysqlStore } from './dataStore';
+import { fnScheduleMysqlDocReplace } from '../db/mysqlDocPersist';
 
 /** DATA_DIR 있으면 cwd 기준 절대경로. 없으면 이 파일 기준 backend/data (실행 cwd와 무관) */
 function fnResolveDataDir(): string {
@@ -40,6 +42,10 @@ if (!process.env.JEST_WORKER_ID) {
 
 // JSON 파일에서 배열 로드 (파일 없을 때만 시드 저장·반환; 파싱 실패 시 파일은 건드리지 않음)
 export const fnLoadJson = <T>(strFilename: string, arrSeed: T[]): T[] => {
+  // MySQL 모드: 부팅 시 `bootstrapDataStore`가 메모리를 채움 — 여기서는 디스크/시드로 채우지 않음
+  if (fnIsMysqlStore()) {
+    return [];
+  }
   const strFilePath = path.join(STR_DATA_DIR, strFilename);
   try {
     if (fs.existsSync(strFilePath)) {
@@ -66,6 +72,10 @@ export const fnLoadJson = <T>(strFilename: string, arrSeed: T[]): T[] => {
 
 // 배열을 JSON 파일에 저장 (동기 쓰기 — 데이터 유실 방지)
 export const fnSaveJson = <T>(strFilename: string, arrData: T[]): void => {
+  if (fnIsMysqlStore()) {
+    fnScheduleMysqlDocReplace(strFilename, arrData as unknown[]);
+    return;
+  }
   const strFilePath = path.join(STR_DATA_DIR, strFilename);
   try {
     fs.writeFileSync(strFilePath, JSON.stringify(arrData, null, 2), 'utf-8');
@@ -76,6 +86,7 @@ export const fnSaveJson = <T>(strFilename: string, arrData: T[]): void => {
 
 /** 디스크의 JSON 배열만 읽음 (파일 없음·파싱 실패·비배열 시 null, 시드 파일 자동 생성 없음) */
 export const fnReadJsonArrayFromDisk = <T>(strFilename: string): T[] | null => {
+  if (fnIsMysqlStore()) return null;
   const strFilePath = path.join(STR_DATA_DIR, strFilename);
   try {
     if (!fs.existsSync(strFilePath)) return null;

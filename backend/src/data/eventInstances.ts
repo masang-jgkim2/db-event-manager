@@ -96,6 +96,7 @@ export interface IEventInstance {
 }
 
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { fnIsMysqlStore } from './dataStore';
 
 const STR_FILE = 'eventInstances.json';
 
@@ -104,6 +105,7 @@ export const arrEventInstances: IEventInstance[] = fnLoadJson<IEventInstance>(ST
 /** 메모리가 비어 있고 디스크에 건수가 있으면 eventInstances.json에서 다시 채움 */
 export const fnReloadEventInstancesFromDiskIfEmpty = (): boolean => {
   if (arrEventInstances.length > 0) return false;
+  if (fnIsMysqlStore()) return false;
   const arrRaw = fnReadJsonArrayFromDisk<IEventInstance>(STR_FILE);
   if (!arrRaw?.length) return false;
   arrEventInstances.length = 0;
