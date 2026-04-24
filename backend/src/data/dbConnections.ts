@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { IDbConnection, TDbConnectionKind } from '../types';
-import { STR_DATA_DIR, fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { STR_DATA_DIR, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
 import {
   fnDecryptDbConnPasswordIfNeeded,
@@ -19,7 +19,11 @@ const fnReadRawDbConnectionsFromDiskFile = (): IDbConnection[] => {
   try {
     const parsed = JSON.parse(fs.readFileSync(strP, 'utf-8')) as unknown;
     return Array.isArray(parsed) ? (parsed as IDbConnection[]) : [];
-  } catch {
+  } catch (err: unknown) {
+    console.warn(
+      `[dbConnections] ${STR_FILE} 읽기/파싱 실패 — 접속 0건으로 진행 |`,
+      (err as Error)?.message ?? err,
+    );
     return [];
   }
 };
