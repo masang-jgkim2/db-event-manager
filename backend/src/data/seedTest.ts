@@ -5,8 +5,9 @@ import { arrProducts } from './products';
 import { arrEvents } from './events';
 import { arrUsers } from './users';
 import { arrRoles } from './roles';
-import { arrDbConnections } from './dbConnections';
+import { arrDbConnections, fnNormalizeConnections } from './dbConnections';
 import { arrEventInstances } from './eventInstances';
+import type { IDbConnection } from '../types';
 
 // 테스트 초기화 데이터 파일명 (서버 재시작 시 이 파일이 있으면 우선 로드)
 const STR_SEED_FILENAME = 'seed_test.json';
@@ -63,7 +64,9 @@ export const fnApplySeedToMemory = (seed: ISeedData): void => {
   arrRoles.push(...(seed.roles as typeof arrRoles));
 
   arrDbConnections.length = 0;
-  arrDbConnections.push(...(seed.dbConnections as typeof arrDbConnections));
+  arrDbConnections.push(
+    ...fnNormalizeConnections(seed.dbConnections as unknown as IDbConnection[]),
+  );
 
   arrEventInstances.length = 0;
   arrEventInstances.push(...(seed.eventInstances as typeof arrEventInstances));
