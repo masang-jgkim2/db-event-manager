@@ -1,4 +1,5 @@
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { fnIsMysqlStore } from './dataStore';
 
 // 프로덕트 데이터 저장소
 
@@ -91,6 +92,7 @@ export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
 /** 메모리가 비어 있고 디스크에 건수가 있으면 products.json에서 다시 채움 */
 export const fnReloadProductsFromDiskIfEmpty = (): boolean => {
   if (arrProducts.length > 0) return false;
+  if (fnIsMysqlStore()) return false;
   const arrRaw = fnReadJsonArrayFromDisk<IProduct>(STR_FILE);
   if (!arrRaw?.length) return false;
   arrProducts.length = 0;

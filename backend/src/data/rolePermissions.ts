@@ -1,6 +1,7 @@
 // 정규화: 역할별 권한 (roles.arr_permissions 분리)
 import type { TPermission } from '../types';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnIsJsonStore } from './dataStore';
 
 export interface IRolePermissionRow {
   nRoleId: number;
@@ -22,34 +23,42 @@ const N_DBA_ROLE_ID = 2;
 const ARR_DBA_REQUIRED: TPermission[] = ['my_dashboard.view', 'my_dashboard.detail', 'my_dashboard.confirm', 'my_dashboard.execute_qa', 'my_dashboard.execute_live'];
 
 const arrLoaded = fnLoadJson<IRolePermissionRow>(STR_FILE, ARR_SEED);
-const arrDbaCurrent = arrLoaded.filter((r) => r.nRoleId === N_DBA_ROLE_ID).map((r) => r.strPermission as TPermission);
-const arrMissing = ARR_DBA_REQUIRED.filter((p) => !arrDbaCurrent.includes(p));
-if (arrMissing.length > 0) {
-  arrMissing.forEach((strPermission) => arrLoaded.push({ nRoleId: N_DBA_ROLE_ID, strPermission }));
-  fnSaveJson(STR_FILE, arrLoaded);
-}
 
-// 관리자: 활동 로그 조회 권한 보강 (기존 rolePermissions.json에 없을 때)
-const N_ADMIN_ROLE_ID = 1;
-const bAdminHasActivity = arrLoaded.some(
-  (r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.view',
-);
-if (!bAdminHasActivity) {
-  arrLoaded.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.view' });
-  fnSaveJson(STR_FILE, arrLoaded);
-}
+/** DBA 필수·admin activity 권한 보강 — 변경 여부만 반환 */
+const fnMutateRolePermissionBootFixes = (arr: IRolePermissionRow[]): boolean => {
+  let bChanged = false;
+  const arrDbaCurrent = arr.filter((r) => r.nRoleId === N_DBA_ROLE_ID).map((r) => r.strPermission as TPermission);
+  const arrMissing = ARR_DBA_REQUIRED.filter((p) => !arrDbaCurrent.includes(p));
+  if (arrMissing.length > 0) {
+    arrMissing.forEach((strPermission) => arr.push({ nRoleId: N_DBA_ROLE_ID, strPermission }));
+    bChanged = true;
+  }
+  const N_ADMIN_ROLE_ID = 1;
+  if (!arr.some((r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.view')) {
+    arr.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.view' });
+    bChanged = true;
+  }
+  if (!arr.some((r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.clear')) {
+    arr.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.clear' });
+    bChanged = true;
+  }
+  return bChanged;
+};
 
-const bAdminHasActivityClear = arrLoaded.some(
-  (r) => r.nRoleId === N_ADMIN_ROLE_ID && r.strPermission === 'activity.clear',
-);
-if (!bAdminHasActivityClear) {
-  arrLoaded.push({ nRoleId: N_ADMIN_ROLE_ID, strPermission: 'activity.clear' });
+if (fnMutateRolePermissionBootFixes(arrLoaded) && fnIsJsonStore()) {
   fnSaveJson(STR_FILE, arrLoaded);
 }
 
 export const arrRolePermissions: IRolePermissionRow[] = arrLoaded;
 
 export const fnSaveRolePermissions = () => fnSaveJson(STR_FILE, arrRolePermissions);
+
+/** MySQL 하이드레이트 직후 보강 + 영속화 */
+export const fnApplyRolePermissionBootFixesAfterHydrate = (): void => {
+  if (fnMutateRolePermissionBootFixes(arrLoaded)) {
+    fnSaveRolePermissions();
+  }
+};
 
 /** 해당 역할의 권한 코드 배열 반환 */
 export const fnGetPermissionsByRoleId = (nRoleId: number): TPermission[] =>

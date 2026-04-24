@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 import { IUser } from '../types';
 import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnIsMysqlStore } from './dataStore';
 import { arrRoles, fnGetRoleIdsByRoleCodes } from './roles';
 import { fnGetRoleIdsByUserId, fnSaveUserRoles, fnSetRolesForUser } from './userRoles';
 
@@ -47,6 +48,7 @@ export const fnGetUsersWithRoles = (): IUser[] =>
 /** strUserId로 조립된 사용자 1명 반환 (로그인/검증용) */
 /** 파일에서 사용자 목록 다시 로드 (서버 재시작 없이 수동 추가 사용자 반영) */
 export const fnReloadUsersFromFile = (): void => {
+  if (fnIsMysqlStore()) return;
   const arrLoaded = fnLoadJson<IUserRow>(STR_FILE, ARR_SEED);
   arrUsers.length = 0;
   arrUsers.push(...arrLoaded);

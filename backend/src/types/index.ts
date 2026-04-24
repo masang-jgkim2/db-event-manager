@@ -94,7 +94,8 @@ export interface IDbConnection {
   nPort: number;                    // MSSQL 기본 1433, MySQL 기본 3306
   strDatabase: string;
   strUser: string;
-  strPassword: string;              // 인메모리 평문 저장 (Phase 2 암호화 예정)
+  /** 인메모리 평문. JSON/디스크는 DB_CONNECTION_PASSWORD_SECRET(16자+) 있으면 enc:v1:… 로 저장 */
+  strPassword: string;
   bIsActive: boolean;               // 비활성화 시 실행 차단
   dtCreatedAt: string;
   dtUpdatedAt: string;

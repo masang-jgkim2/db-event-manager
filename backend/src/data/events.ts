@@ -1,5 +1,7 @@
+import type { IDbConnection } from '../types';
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
+import { fnIsMysqlStore } from './dataStore';
 
 /** 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
 export interface IQueryTemplateItem {
@@ -26,12 +28,15 @@ export interface IEventTemplate {
 
 const STR_FILE = 'events.json';
 
-/** 기존 단일 쿼리/기본값 → 쿼리 템플릿 세트 1건으로 이전 */
-function fnMigrateToQuerySets(raw: IEventTemplate[]): IEventTemplate[] {
-  return raw.map((e) => {
+/** 기존 단일 쿼리/기본값 → 쿼리 템플릿 세트 1건으로 이전 (JSON→MySQL 임포트 시 `arrDbConnections` 스냅샷 전달) */
+export const fnMigrateToQuerySetsWithConnections = (
+  raw: IEventTemplate[],
+  arrConns: Pick<IDbConnection, 'nId' | 'nProductId' | 'bIsActive'>[],
+): IEventTemplate[] =>
+  raw.map((e) => {
     if (e.arrQueryTemplates?.length) return e;
     if (!e.strQueryTemplate?.trim()) return e;
-    const firstConn = arrDbConnections.find((c) => c.nProductId === e.nProductId && c.bIsActive);
+    const firstConn = arrConns.find((c) => c.nProductId === e.nProductId && c.bIsActive);
     return {
       ...e,
       arrQueryTemplates: [{
@@ -43,7 +48,9 @@ function fnMigrateToQuerySets(raw: IEventTemplate[]): IEventTemplate[] {
       strDefaultItems: '',
     };
   });
-}
+
+const fnMigrateToQuerySets = (raw: IEventTemplate[]): IEventTemplate[] =>
+  fnMigrateToQuerySetsWithConnections(raw, arrDbConnections);
 
 const rawEvents = fnLoadJson<IEventTemplate>(STR_FILE, []);
 const migrated = fnMigrateToQuerySets(rawEvents);
@@ -55,6 +62,7 @@ export const arrEvents: IEventTemplate[] = migrated;
 /** 메모리가 비어 있고 디스크에 건수가 있으면 events.json에서 다시 채움 (시드 적용 후·수동 JSON 편집 불일치 보정) */
 export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
   if (arrEvents.length > 0) return false;
+  if (fnIsMysqlStore()) return false;
   const arrRaw = fnReadJsonArrayFromDisk<IEventTemplate>(STR_FILE);
   if (!arrRaw?.length) return false;
   const arrMigrated = fnMigrateToQuerySets(arrRaw);

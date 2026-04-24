@@ -15,8 +15,8 @@ backend/src/
   middleware/    # authMiddleware, permissionMiddleware
   services/      # queryExecutor, sseBroadcaster
   repositories/  # 데이터 접근 추상화 (인메모리 → DB 교체 대비)
-  data/          # 인메모리 저장소 (arrUsers, arrRoles 등) — 실제 파일은 `backend/data/*.json` (`jsonStore`의 `STR_DATA_DIR`, `DATA_DIR` 없을 때 `__dirname` 기준)
-  db/            # dbManager (커넥션 풀)
+  data/          # 인메모리 저장소 — `DATA_STORE=json`이면 `backend/data/*.json` (`jsonStore`의 `STR_DATA_DIR`)
+  db/            # dbManager(게임 DB 풀), 메타 MySQL: mysqlAppSchema.ts(DDL), mysqlRelationalSync.ts(적재·로드·스냅샷), mysqlAppDataAccess.ts, mysqlDocPersist.ts, mysqlAppPool.ts
   types/         # index.ts — 공유 인터페이스
 ```
 
@@ -42,11 +42,11 @@ router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
 - **DB 접속**: `db_connection.view`(GET만) / `db_connection.create`(POST) / `db_connection.edit`(PUT) / `db_connection.delete`(DELETE) / `db_connection.test`(POST :id/test). `db.manage` 있으면 전부 가능.
 - **이벤트 인스턴스**: `instance.create`(POST 생성), `my_dashboard.edit`(PUT 수정), `my_dashboard.detail`(상세 버튼), DELETE 삭제: `my_dashboard.delete_any`(타인) 또는 `instance.delete_own`(본인 작성만·핸들러에서 생성자 검증), 레거시 `my_dashboard.delete`/`delete_instance`→`delete_any` 확장. execute/상태 전이는 `my_dashboard.*` 또는 레거시 `instance.*`.
 - **로그인 시 확장**: `roles.ts`의 `OBJ_EXPAND`로 레거시 → 세분화. `instance.create`는 `instance.view`만 확장(이벤트 수정/컨펌은 역할에 명시된 권한만).
-- **활동 로그**: `activityLogMiddleware` + `activityLogs.ts` → `activity_logs.json`. `ACTIVITY_LOG_ENABLED=1|true|on|yes`만 기록; 미설정·`0`은 비기록(`fnPushActivityLog` 생략). API: `activity.view`(목록/SSE), `activity.clear`(`DELETE /api/activity/logs`). 디스크 배치 `ACTIVITY_LOG_FLUSH_MS`·`ACTIVITY_LOG_FLUSH_EVERY`, `SIGINT`/`SIGTERM`에서 `fnFlushActivityLogsToDisk`; Jest는 push마다 즉시 저장·기록 강제 ON. 상한 `ACTIVITY_LOG_MAX_ROWS`.
+- **활동 로그**: `activityLogMiddleware` + `activityLogs.ts` — json이면 `activity_logs.json`, mysql이면 `activity_log`. `ACTIVITY_LOG_ENABLED=1|true|on|yes`만 기록; 미설정·`0`은 비기록(`fnPushActivityLog` 생략). API: `activity.view`(목록/SSE), `activity.clear`(`DELETE /api/activity/logs`). 디스크 배치 `ACTIVITY_LOG_FLUSH_MS`·`ACTIVITY_LOG_FLUSH_EVERY`, `SIGINT`/`SIGTERM`에서 `fnFlushActivityLogsToDisk`; Jest는 push마다 즉시 저장·기록 강제 ON. 상한 `ACTIVITY_LOG_MAX_ROWS`.
 
 ## Auth·UI·사용자 접속
 
-- `GET`/`PUT /api/auth/ui-preferences` — `fnAuthMiddleware`만, PUT 본문 `{ objEntries: Record<string,string> }`, 저장 `data/userUiPreferences.json` (`userUiPreferences.ts`). 활동 로그에서 해당 경로 제외.
+- `GET`/`PUT /api/auth/ui-preferences` — `fnAuthMiddleware`만, PUT `{ objEntries }`. `DATA_STORE=json` → `userUiPreferences.json`; **mysql** → `user_ui_preference` (`userUiPreferences.ts`). 활동 로그에서 해당 경로 제외.
 - `GET /api/users/presence-stream` — `fnRequireAnyPermission('user.view','user.manage')`, SSE `connected` → `presence_snapshot` → `user_presence` (`sseBroadcaster` + `userPresence` 스윕).
 
 ## 컨트롤러 응답 형식

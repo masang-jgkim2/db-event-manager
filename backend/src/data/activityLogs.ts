@@ -60,6 +60,21 @@ const fnCancelActivityLogsFlushTimer = (): void => {
   }
 };
 
+/** MySQL 하이드레이트 후 메모리·다음 ID 재바인딩 */
+export const fnRehydrateActivityLogsFromDocs = (arrDocs: IActivityLogRow[]): void => {
+  fnCancelActivityLogsFlushTimer();
+  arrActivityLogs.length = 0;
+  arrActivityLogs.push(
+    ...arrDocs.map((r) => ({
+      ...r,
+      arrActorRoles: r.arrActorRoles ?? null,
+    })),
+  );
+  nNextActivityLogId = fnInitNextIdFromLoaded();
+  bActivityLogsDirty = false;
+  nPushCountSinceFlush = 0;
+};
+
 /** 메모리 → JSON 동기 저장(배치 flush·종료 시·전체 삭제 후) */
 export const fnFlushActivityLogsToDisk = (): void => {
   fnCancelActivityLogsFlushTimer();
