@@ -21,7 +21,7 @@
 | `nChangedByUserId` | number | 처리자 사용자 ID |
 | `strComment` | string | 코멘트 (예: "이벤트 생성", "QA 반영 완료 - 3건 처리", "DBA 쿼리 직접 수정") |
 | `dtChangedAt` | string | 변경 시각 (ISO 8601) |
-| `objExecutionResult?` | object | qa_deployed / live_deployed 시에만: strEnv, nTotalAffectedRows, nElapsedMs, arrQueryResults |
+| `objExecutionResult?` | object | **성공**: 전이 후 `qa_deployed`/`live_deployed` 로그 — `strEnv`, `nTotalAffectedRows`, `nElapsedMs`, `arrQueryResults`, 선택 `strConnectionSummary`(접속 요약, 비밀번호 제외). **실패**: 상태 유지(`qa_requested`/`live_requested`)인 채 동일 필드 + `bSuccess: false`, `strError`, 부분 `arrQueryResults` |
 
 ### 1.3 로그가 기록되는 시점 (백엔드)
 
@@ -29,7 +29,8 @@
 |------|------|------|
 | 인스턴스 생성 | `fnCreateInstance` | 1건 추가 (strStatus: event_created, strComment: "이벤트 생성") |
 | 상태 변경 | `fnChangeStatus` (PATCH .../status) | 1건 추가 (다음 상태 + 코멘트) |
-| QA/LIVE 실행 | `fnExecuteAndDeploy` (POST .../execute) | 1건 추가 + objExecutionResult (건수, 소요시간, 쿼리별 결과) |
+| QA/LIVE 실행 성공 | `fnExecuteAndDeploy` (POST .../execute) | 전이 + 1건 + `objExecutionResult` (건수·시간·쿼리별·선택 접속 요약) |
+| QA/LIVE 실행 실패 | 동일 | 상태 유지 + 1건(실패 코멘트·`objExecutionResult`에 오류·접속 요약) |
 | DBA 쿼리 수정 | `fnUpdateInstance` (요청 대기 단계에서 strGeneratedQuery 수정 시) | 1건 추가 (strComment: "DBA 쿼리 직접 수정") |
 
 ---
