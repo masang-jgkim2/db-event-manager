@@ -143,6 +143,7 @@ export const fnApiExecuteQueryStream = async (
               bSuccess: false,
               strMessage: (obj as { strMessage?: string }).strMessage || '실행 중 오류가 발생했습니다.',
               objExecutionResult: (obj as { objExecutionResult?: unknown }).objExecutionResult,
+              objInstance: (obj as { objInstance?: unknown }).objInstance,
             };
           }
         } catch {
