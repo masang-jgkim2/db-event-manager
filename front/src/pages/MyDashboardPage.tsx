@@ -849,6 +849,7 @@ const MyDashboardPage = () => {
           // DB 실행 중 오류 (쿼리 오류, 연결 실패 등) → 실행 결과 모달
           setObjExecResult(objExecRes);
           setBExecResultOpen(true);
+          if (objDetail?.nId === r.nId && result.objInstance) setObjDetail(result.objInstance as IEventInstance);
         } else {
           // 사전 검증 오류 (반영 날짜 조건, 상태 불일치, DB 접속 정보 없음 등) → 에러 모달
           setObjExecResult({
@@ -1984,18 +1985,39 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               </Text>
                             </div>
                           )}
-                          {log.objExecutionResult && (
-                            <div style={{ marginTop: 6, padding: '6px 10px', background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 4 }}>
-                              <Space>
-                                <Tag color={log.objExecutionResult.strEnv === 'qa' ? 'orange' : 'red'}>
-                                  {log.objExecutionResult.strEnv.toUpperCase()}
-                                </Tag>
-                                <Text style={{ fontSize: 12 }}>처리 {log.objExecutionResult.nTotalAffectedRows}건</Text>
-                                <Divider type="vertical" />
-                                <Text type="secondary" style={{ fontSize: 11 }}>{log.objExecutionResult.nElapsedMs}ms</Text>
+                          {log.objExecutionResult && (() => {
+                            const objEx = log.objExecutionResult;
+                            const bExecFail = objEx.bSuccess === false;
+                            return (
+                            <div style={{
+                              marginTop: 6,
+                              padding: '6px 10px',
+                              background: bExecFail ? token.colorFillAlter : '#f6ffed',
+                              border: `1px solid ${bExecFail ? token.colorErrorBorder : '#b7eb8f'}`,
+                              borderRadius: 4,
+                            }}>
+                              <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                                <Space wrap>
+                                  <Tag color={objEx.strEnv === 'qa' ? 'orange' : 'red'}>
+                                    {objEx.strEnv.toUpperCase()}
+                                  </Tag>
+                                  {bExecFail && <Tag color="error">실패</Tag>}
+                                  <Text style={{ fontSize: 12 }}>처리 {objEx.nTotalAffectedRows}건</Text>
+                                  <Divider type="vertical" />
+                                  <Text type="secondary" style={{ fontSize: 11 }}>{objEx.nElapsedMs}ms</Text>
+                                </Space>
+                                {objEx.strConnectionSummary && (
+                                  <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
+                                    접속: {objEx.strConnectionSummary}
+                                  </Text>
+                                )}
+                                {bExecFail && objEx.strError && (
+                                  <Text type="danger" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{objEx.strError}</Text>
+                                )}
                               </Space>
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
                         ),
                       };

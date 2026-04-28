@@ -21,11 +21,16 @@ export interface IStatusLog {
   nChangedByUserId: number;   // 처리자 사용자 ID
   strComment: string;
   dtChangedAt: string;
-  // 쿼리 실행 결과 (qa_deployed, live_deployed 단계에서만 포함)
+  // 쿼리 실행 결과 (성공: qa_deployed/live_deployed 직전 로그, 실패: qa_requested/live_requested 유지 시 실패 이력)
   objExecutionResult?: {
     strEnv: 'qa' | 'live';
+    /** false면 실행 실패 이력(상태는 전이되지 않음) */
+    bSuccess?: boolean;
     nTotalAffectedRows: number;
     nElapsedMs: number;
+    strError?: string;
+    /** 사용 접속 요약(비밀번호 제외) — 다중 세트면 세트 순서대로 구분 */
+    strConnectionSummary?: string;
     arrQueryResults: Array<{
       nIndex: number;
       strQuery: string;

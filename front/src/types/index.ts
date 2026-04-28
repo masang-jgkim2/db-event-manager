@@ -389,8 +389,11 @@ export interface IStatusLog {
   dtChangedAt: string;
   objExecutionResult?: {
     strEnv: 'qa' | 'live';
+    bSuccess?: boolean;
     nTotalAffectedRows: number;
     nElapsedMs: number;
+    strError?: string;
+    strConnectionSummary?: string;
     arrQueryResults: IQueryPartResult[];
   };
 }
