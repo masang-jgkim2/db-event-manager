@@ -14,12 +14,13 @@ import {
   Row,
   Col,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IProduct, IService } from '../types';
+import type { IProduct, IService, TPermission } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
 
 const { Title } = Typography;
@@ -39,11 +40,10 @@ const ProductPage = () => {
 
   // 세분화 권한: 생성/수정/삭제 (레거시 product.manage 포함)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
-  const fnHas = (p: string) => arrPermissions.includes(p);
+  const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('product.create') || fnHas('product.manage');
   const bCanEdit   = fnHas('product.edit') || fnHas('product.manage');
   const bCanDelete = fnHas('product.delete') || fnHas('product.manage');
-  const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
   // 페이지 진입 및 탭 포커스 시 자동 리페치 (다른 유저가 수정한 내용 반영)
   useEffect(() => { fnFetchProducts(); }, [fnFetchProducts]);
@@ -99,8 +99,8 @@ const ProductPage = () => {
   };
 
   // 테이블 컬럼
-  const arrColumns = [
-    fnMakeIndexColumn(),
+  const arrColumns: ColumnsType<IProduct> = [
+    fnMakeIndexColumn<IProduct>(),
     {
       title: '프로젝트명',
       dataIndex: 'strName',

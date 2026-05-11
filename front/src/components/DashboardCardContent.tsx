@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
 
 /** 대시보드 카드 내부 공통 레이아웃: 아이콘(좌상단) · 제목 · 내용 영역 */
 export const N_DASHBOARD_ICON_SIZE = 24;
@@ -8,8 +9,8 @@ export const N_DASHBOARD_VALUE_FONT_SIZE = 20;
 
 /** 커스텀 카드 등: dnd-kit 핸들을 제목 줄에만 붙일 때 사용 */
 export interface IDashboardCardTitleDragHandle {
-  listeners: Record<string, unknown>;
-  attributes: Record<string, unknown>;
+  listeners: DraggableSyntheticListeners;
+  attributes: DraggableAttributes;
   isDragging: boolean;
 }
 

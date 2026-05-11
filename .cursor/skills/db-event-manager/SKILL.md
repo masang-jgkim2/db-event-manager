@@ -34,7 +34,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 ## 핵심 도메인
 
 - **이벤트 인스턴스**: 9단계 워크플로 (event_created → … → live_verified). **재요청** 전이: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
-- **쿼리 실행**: 이벤트 아이템/퀘스트 데이터를 DEV/QA/LIVE DB에 반영
+- **쿼리 실행**: QA/LIVE는 `fnResolveExecuteConnection`(단일·다중 세트 동일). 실패 시 상태 유지 + `arrStatusLogs`에 오류·접속 요약 기록; 성공 이력에 선택 `strConnectionSummary`.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
 - **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`, 오프라인은 서버 스윕(`userPresence.ts`)
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
@@ -84,11 +84,12 @@ front/src/
   hooks/useUserPresenceStream.ts          # 사용자 접속 SSE
   pages/UserPage.tsx                      # 연결 점 + presence 스트림(목록 1차 로드 후 구독)
   components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
-  types/index.ts                          # ARR_PERMISSION_GROUPS, 권한 라벨(역할 권한 화면)
+  types/index.ts                          # TPermission(백엔드와 동일 유니온), OBJ_PERMISSION_LABELS, ARR_PERMISSION_GROUPS
 ```
 
 ## 권한·메뉴 (세분화)
 
+- **TPermission 타입 동기**: `front/src/types/index.ts`의 `TPermission`·`OBJ_PERMISSION_LABELS`는 백엔드 `backend/src/types/index.ts` 권한 유니온과 **동일**하게 유지(JWT `arrPermissions` 전부). 신규·변경 권한 시 양쪽 갱신.
 - **원칙**: 모든 메뉴/페이지는 해당 **보기 권한** 필수. 없으면 메뉴 비노출·직접 URL 403.
 - **메뉴명**: 대시보드, **프로덕트**, **쿼리 템플릿**, DB 접속 정보, **사용자**, **역할 권한**, **활동**(`activity.view`), 나의 대시보드, 이벤트 생성.
 

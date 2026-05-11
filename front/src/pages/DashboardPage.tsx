@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import {
-  Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, InputNumber, Segmented, Collapse, Table,
+  Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, InputNumber, Collapse, Table,
   Divider, Spin, DatePicker,
 } from 'antd';
 import dayjs from 'dayjs';
@@ -12,6 +12,8 @@ import {
   useSensor,
   useSensors,
   useDraggable,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -42,7 +44,7 @@ import { fnApiGetInstances } from '../api/eventInstanceApi';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { fnApiGetUsers } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
-import type { IProduct, IService, TEventStatus, IEventInstance } from '../types';
+import type { IProduct, IService, TEventStatus, IEventInstance, TPermission } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
@@ -665,8 +667,8 @@ const fnComputeGroupSummaryAuto = (
 
 // 리사이즈 가능 + 호버 시 제외(-) 버튼, 호버 시 카드 영역 드래그로 이동
 interface IDragHandleProps {
-  listeners: Record<string, unknown>;
-  attributes: Record<string, unknown>;
+  listeners: DraggableSyntheticListeners;
+  attributes: DraggableAttributes;
   isDragging: boolean;
 }
 
@@ -902,7 +904,7 @@ const DashboardPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
 
-  const fnHas = (strPerm: string) => arrPermissions.includes(strPerm);
+  const fnHas = (strPerm: TPermission) => arrPermissions.includes(strPerm);
 
   const [arrCustomCards, setArrCustomCards] = useState<ICustomEventDashboardCard[]>(fnLoadCustomCards);
   const [arrEnabledCardIds, setArrEnabledCardIds] = useState<string[]>(() => fnLoadEnabledCards(fnLoadCustomCards()));

@@ -23,6 +23,7 @@ import { useEventStream } from '../hooks/useEventStream';
 import { useThemeStore, N_SIDER_MIN } from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
+import type { TPermission } from '../types';
 import type { MenuProps } from 'antd';
 
 const { Header, Sider, Content } = Layout;
@@ -144,7 +145,7 @@ const MainLayout = () => {
   const arrRoles = user?.arrRoles || []; // UI 표시용(첫 역할 라벨), 접근 제어는 권한만 사용
 
   // 권한 보유 여부 헬퍼 (역할 대신 권한만 사용)
-  const fnHasPerm = (strPerm: string) => arrPermissions.includes(strPerm);
+  const fnHasPerm = (strPerm: TPermission) => arrPermissions.includes(strPerm);
 
   const objMg = ds.objMenuGroup;
 

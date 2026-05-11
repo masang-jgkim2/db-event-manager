@@ -20,7 +20,7 @@ import { useProductStore } from '../stores/useProductStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IDbConnection, TDbConnectionKind } from '../types';
+import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
 
 const { Title, Text } = Typography;
@@ -82,7 +82,7 @@ const DbConnectionPage = () => {
 
   const arrProducts = useProductStore((s) => s.arrProducts);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
-  const fnHas = (p: string) => arrPermissions.includes(p);
+  const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('db_connection.create') || fnHas('db.manage');
   const bCanEdit = fnHas('db_connection.edit') || fnHas('db.manage');
   const bCanDelete = fnHas('db_connection.delete') || fnHas('db.manage');

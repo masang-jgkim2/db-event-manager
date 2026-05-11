@@ -15,6 +15,8 @@ import {
   Col,
   Tabs,
 } from 'antd';
+import type { FormListFieldData } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
@@ -22,7 +24,7 @@ import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat, IDbConnection } from '../types';
+import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat, IDbConnection, TPermission } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
 
 const { Title, Text } = Typography;
@@ -48,9 +50,9 @@ const QUERY_TABS_ADD_KEY = '__add__';
 
 // Form.List 렌더 prop 안에서는 훅 호출 불가 → 별도 컴포넌트로 분리
 type TQueryTemplatesTabContentProps = {
-  fields: { key: number; name: number; [k: string]: unknown }[];
-  add: (defaultValue: unknown) => void;
-  remove: (index: number) => void;
+  fields: FormListFieldData[];
+  add: (defaultValue?: unknown, insertIndex?: number) => void;
+  remove: (index: number | number[]) => void;
   arrConnectionsByProduct: IDbConnection[];
   activeKey: string;
   setActiveKey: (k: string) => void;
@@ -177,11 +179,10 @@ const EventPage = () => {
 
   // 세분화 권한: 생성/수정/삭제 (레거시 event_template.manage 포함)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
-  const fnHas = (p: string) => arrPermissions.includes(p);
+  const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('event_template.create') || fnHas('event_template.manage');
   const bCanEdit   = fnHas('event_template.edit') || fnHas('event_template.manage');
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
-  const bCanManage = bCanCreate || bCanEdit || bCanDelete;
 
   // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드(한 effect + 스토어 dedupe)
   useEffect(() => {
@@ -286,8 +287,8 @@ const EventPage = () => {
   };
 
   // 테이블 컬럼
-  const arrColumns = [
-    fnMakeIndexColumn(),
+  const arrColumns: ColumnsType<IEventTemplate> = [
+    fnMakeIndexColumn<IEventTemplate>(),
     {
       title: '프로덕트',
       dataIndex: 'strProductName',

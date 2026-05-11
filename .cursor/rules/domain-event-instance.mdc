@@ -14,37 +14,33 @@ event_created → confirm_requested → dba_confirmed
   → live_requested → live_deployed → live_verified(완료)
 ```
 
-- 반영 범위가 `['live']`만이면: `dba_confirmed` 다음에 `live_requested`로 직행 (QA 단계 스킵).
-- 상태 전이·허용 역할: `OBJ_STATUS_TRANSITIONS_BASE` 및 `fnGetTransitions(..., arrDeployScope)` 참고.
+- 반영 범위 `['live']`만: `dba_confirmed` 다음 `live_requested` 직행.
+- 전이: `OBJ_STATUS_TRANSITIONS_BASE`, `fnGetTransitions(..., arrDeployScope)`.
 
-## 재요청 전이 (QA/LIVE 확인 후 재반영 요청)
+## 재요청
 
-- `qa_verified` → `qa_requested`: QA 확인 후 QA 재반영 요청 (GM/game_designer/admin).
-- `live_deployed` → `live_requested`, `live_verified` → `live_requested`: LIVE 재반영 요청.
-- 프론트: QA 확인 / LIVE 확인 시 Popconfirm에 취소·확인·재요청 버튼. 재미 모드 시 롱프레스로 재요청(`RequestWithLongPressButton`).
+`qa_verified`→`qa_requested`, `live_deployed`/`live_verified`→`live_requested`. Popconfirm + 재미 모드 `RequestWithLongPressButton`.
 
-## 반영 날짜 조건 (실제 검증)
+## 반영 날짜 (실행 API 검증)
 
-- **QA**: 시간 제한 없음. LIVE 반영 전 언제든 실행 가능.
-- **LIVE**: `현재 시각 >= 반영 날짜(dtDeployDate)` 일 때만 실행 허용.
-- DEV 환경 직접 실행은 API에서 차단.
+- **QA**: `dtQaDeployDate` 있으면 `현재 >= 해당 시각` (없으면 제한 없음).
+- **LIVE**: `dtLiveDeployDate` 없으면 `dtDeployDate` — `현재 >= 해당 시각`.
+- DEV 직접 실행 차단.
 
-## DBA 쿼리 수정 가능 상태 (백엔드·프론트 동일)
+## DBA 쿼리 수정 가능
 
-- `confirm_requested` (컨펌 요청)
-- `qa_requested` (QA 반영 요청)
-- `live_requested` (LIVE 반영 요청)
+`confirm_requested`, `qa_requested`, `live_requested`에서만 `strGeneratedQuery`(및 세트 쿼리) 수정.
 
-위 3단계에서만 DBA/admin이 `strGeneratedQuery` 수정 가능. 그 외 단계는 API·UI 모두 수정 불가.
+## 쿼리 재생성
 
-## 쿼리 재생성 조건
+`event_created`만. `strInputValues`·날짜가 **실제 변경**될 때만 `fnApplyQueryTemplate`.
 
-`event_created` 상태에서만 일반 수정 가능. `strInputValues` 또는 `dtDeployDate`가 **실제로 변경된 경우에만** `fnApplyQueryTemplate`으로 쿼리 재생성 (동일 값이면 GM이 수정한 쿼리 유지).
+## QA/LIVE 실행·접속 (`fnExecuteAndDeploy`)
 
-## DB 커넥션 조회 (실행)
+- 접속: **`fnResolveExecuteConnection`** — 단일·다중 세트 모두 세트별 `nDbConnectionId`(레거시는 GAME).
+- **성공**: `qa_deployed`/`live_deployed` + `objExecutionResult`(`strConnectionSummary` 선택).
+- **실패**: 상태 유지 + `arrStatusLogs`에 실패 행 — `bSuccess: false`, `strError`, `strConnectionSummary`, 부분 `arrQueryResults`. `fnSaveEventInstances` + `fnBroadcastInstanceUpdate`.
 
-`fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?)` — `arrExecutionTargets`가 있으면(길이 1 포함) 세트의 `nDbConnectionId`로 템플릿 연결 해석, 없으면 GAME 활성 접속. `nProductId` 없으면 `strProductName`으로 프로덕트 조회 후 동일.
+## IEventInstance 핵심
 
-## IEventInstance 핵심 필드
-
-- `nProductId`, `strProductName`, `dtDeployDate`, `strGeneratedQuery`, `strStatus`(TEventStatus), `arrStatusLogs`, `arrDeployScope` 등.
+`nProductId`, `strGeneratedQuery`, `arrExecutionTargets`, `strStatus`, `arrStatusLogs`, `arrDeployScope`.

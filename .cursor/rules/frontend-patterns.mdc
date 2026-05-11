@@ -98,6 +98,7 @@ export const fnApiGetProducts = () => apiClient.get('/products');
 - **재요청 UX**: QA 확인 / LIVE 확인 시 Popconfirm(취소·확인·재요청 버튼). 굳굳 설정의 **재미 모드** 켜면 재요청은 **롱프레스**(`RequestWithLongPressButton`)로만 동작.
 - **테이블**: `AppTable`. **번호** `fnMakeIndexColumn(55)` 최좌측 — 헤더 `번호`, 값 기본 PK `nId`(2번째 인자로 다른 키), PK 없으면 순번 폴백. 확장 `expandable.columnWidth: 24`.
 - **SQL 클립보드**: `copy` 이벤트에서 `clipboardData.setData('text/plain')` → `execCommand('copy')` → `clipboard.writeText` 후 가능하면 `readText`로 검증(불일치 시 성공 토스트 금지). `onMouseDown` + `preventDefault` 금지.
+- **상세·진행 이력**: 타임라인의 `objExecutionResult` — 성공은 초록 톤, `bSuccess === false`면 경고 톤·`strError`·`strConnectionSummary`. 실행 실패 응답에 `objInstance` 오면 동일 인스턴스 상세 갱신.
 
 ## 이벤트 대시보드 (DashboardPage)
 
