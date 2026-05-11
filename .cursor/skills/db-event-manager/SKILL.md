@@ -44,7 +44,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
-- **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`
+- **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md` — 1단계: `useNotificationStore`·`fnPushNotification`·`MainLayout` 벨(`NotificationBellDropdown`), 계정 스코프 localStorage·`skipHydration`+`rehydrate`; SSE `instance_created`/`instance_status_changed` 요약 적재
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
 
 ```
@@ -83,7 +83,10 @@ front/src/
   hooks/useEventStream.ts                 # SSE 연결 훅
   hooks/useUserPresenceStream.ts          # 사용자 접속 SSE
   pages/UserPage.tsx                      # 연결 점 + presence 스트림(목록 1차 로드 후 구독)
-  components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
+  components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출) + 알림 벨
+  components/NotificationBellDropdown.tsx # 헤더 알림 목록·읽음·딥링크
+  stores/useNotificationStore.ts          # 인앱 알림 persist(`db-event-manager-notifications`, `dbem:u{nId}`)
+  utils/notificationHelpers.ts            # fnPushNotification, fnNotifyError, SSE 요약
   types/index.ts                          # TPermission(백엔드와 동일 유니온), OBJ_PERMISSION_LABELS, ARR_PERMISSION_GROUPS
 ```
 

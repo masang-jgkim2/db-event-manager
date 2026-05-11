@@ -31,6 +31,7 @@ import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
+import { fnNotifyError } from '../utils/notificationHelpers';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
@@ -812,11 +813,22 @@ const MyDashboardPage = () => {
         messageApi.success(`${strActionLabel} 처리 완료`);
         if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
-        messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'));
+        const strMsg = fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.');
+        fnNotifyError(messageApi, `${strActionLabel} 처리 실패`, strMsg, {
+          strRoute: '/my-dashboard',
+          objQuery: { nInstanceId: nId },
+          strSource: 'page:MyDashboard',
+        });
       }
     } catch (err: any) {
-      const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
-      messageApi.error(fnFormatPermissionErrorMessage(strMsg));
+      const strMsg = fnFormatPermissionErrorMessage(
+        err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.',
+      );
+      fnNotifyError(messageApi, `${strActionLabel} 처리 실패`, strMsg, {
+        strRoute: '/my-dashboard',
+        objQuery: { nInstanceId: nId },
+        strSource: 'page:MyDashboard',
+      });
     }
   };
 

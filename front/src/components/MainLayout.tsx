@@ -23,6 +23,7 @@ import { useEventStream } from '../hooks/useEventStream';
 import { useThemeStore, N_SIDER_MIN } from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
+import NotificationBellDropdown from './NotificationBellDropdown';
 import type { TPermission } from '../types';
 import type { MenuProps } from 'antd';
 
@@ -368,6 +369,7 @@ const MainLayout = () => {
 
           {/* 실시간 연결 상태 + 사용자 정보 + 설정 버튼 */}
           <Space>
+            <NotificationBellDropdown />
             <Badge
               status={bConnected ? 'success' : 'default'}
               title={bConnected ? '실시간 연결됨' : '연결 중...'}

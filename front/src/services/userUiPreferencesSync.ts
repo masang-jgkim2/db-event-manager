@@ -1,6 +1,7 @@
 import { fnApiGetUiPreferences, fnApiPutUiPreferences } from '../api/userUiPreferencesApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
+import { useNotificationStore } from '../stores/useNotificationStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import {
   fnApplyPulledUiEntries,
@@ -67,5 +68,6 @@ export const fnRunUiPreferencesPullForUser = async (nUserId: number): Promise<vo
     }
   }
   await useThemeStore.persist.rehydrate();
+  await useNotificationStore.persist.rehydrate();
   useEventInstanceStore.setState({ setHiddenIds: fnLoadHiddenSetAfterPull() });
 };
