@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Button, Modal, Form, Input, Select, Space, Tag,
-  Popconfirm, message, Card, Divider, Tooltip,
+  Popconfirm, message, Card, Tooltip,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
@@ -12,7 +13,7 @@ import {
 import { fnApiGetRoles } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserPresenceStream } from '../hooks/useUserPresenceStream';
-import type { IRole } from '../types';
+import type { IRole, TPermission } from '../types';
 
 const { Title, Text } = Typography;
 
@@ -49,7 +50,7 @@ const UserPage = () => {
 
   // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
-  const fnHas = (p: string) => arrPermissions.includes(p);
+  const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('user.create') || fnHas('user.manage');
   const bCanEdit = fnHas('user.edit') || fnHas('user.manage');
   const bCanDelete = fnHas('user.delete') || fnHas('user.manage');
@@ -205,8 +206,8 @@ const UserPage = () => {
   };
 
   // 테이블 컬럼
-  const arrColumns = [
-    fnMakeIndexColumn(),
+  const arrColumns: ColumnsType<IUserRow> = [
+    fnMakeIndexColumn<IUserRow>(),
     {
       title: '아이디',
       dataIndex: 'strUserId',

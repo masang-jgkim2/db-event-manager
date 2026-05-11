@@ -84,11 +84,12 @@ front/src/
   hooks/useUserPresenceStream.ts          # 사용자 접속 SSE
   pages/UserPage.tsx                      # 연결 점 + presence 스트림(목록 1차 로드 후 구독)
   components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
-  types/index.ts                          # ARR_PERMISSION_GROUPS, 권한 라벨(역할 권한 화면)
+  types/index.ts                          # TPermission(백엔드와 동일 유니온), OBJ_PERMISSION_LABELS, ARR_PERMISSION_GROUPS
 ```
 
 ## 권한·메뉴 (세분화)
 
+- **TPermission 타입 동기**: `front/src/types/index.ts`의 `TPermission`·`OBJ_PERMISSION_LABELS`는 백엔드 `backend/src/types/index.ts` 권한 유니온과 **동일**하게 유지(JWT `arrPermissions` 전부). 신규·변경 권한 시 양쪽 갱신.
 - **원칙**: 모든 메뉴/페이지는 해당 **보기 권한** 필수. 없으면 메뉴 비노출·직접 URL 403.
 - **메뉴명**: 대시보드, **프로덕트**, **쿼리 템플릿**, DB 접속 정보, **사용자**, **역할 권한**, **활동**(`activity.view`), 나의 대시보드, 이벤트 생성.
 

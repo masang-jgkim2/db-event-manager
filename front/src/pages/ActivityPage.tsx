@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Typography, Card, Tag, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -147,10 +148,14 @@ const ActivityPage = () => {
     }
   }, [messageApi]);
 
-  const refLoadCtx = useRef({
+  const refLoadCtx = useRef<{
+    objFilter: TActivityFilter;
+    nPage: number;
+    fnLoad: null | ((f: TActivityFilter, p: number, bQuiet?: boolean) => Promise<void>);
+  }>({
     objFilter: objBootstrap.objFilter,
     nPage: 1,
-    fnLoad: null as null | ((f: TActivityFilter, p: number, bQuiet?: boolean) => Promise<void>),
+    fnLoad: null,
   });
   refLoadCtx.current = { objFilter, nPage, fnLoad };
 
@@ -265,8 +270,8 @@ const ActivityPage = () => {
     void fnLoad(next, 1);
   };
 
-  const arrColumns = [
-    fnMakeIndexColumn(),
+  const arrColumns: ColumnsType<IActivityLogRow> = [
+    fnMakeIndexColumn<IActivityLogRow>(),
     {
       title: '시각',
       dataIndex: 'dtAt',

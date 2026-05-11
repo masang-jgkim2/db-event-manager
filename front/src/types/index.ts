@@ -1,47 +1,86 @@
 // =============================================
-// 권한 코드
+// 권한 코드 (백엔드 types와 동기 — JWT arrPermissions 전부)
 // =============================================
 export type TPermission =
-  // 조회 권한
-  | 'product.view'              // 프로덕트 목록/상세 조회
-  | 'event_template.view'       // 쿼리 템플릿 목록/상세 조회
-  // 관리 권한 (CRUD)
-  | 'product.manage'            // 프로덕트 CRUD (view 포함)
-  | 'event_template.manage'     // 쿼리 템플릿 CRUD (view 포함)
-  | 'user.manage'               // 사용자 관리
-  | 'db.manage'                 // DB 접속 정보 관리
-  // 이벤트 인스턴스 권한
-  | 'instance.view'             // 이벤트 생성 페이지 보기
-  | 'instance.create'            // 이벤트 인스턴스 생성
-  | 'instance.delete_own'       // 본인 작성 이벤트 인스턴스 영구 삭제
-  | 'instance.approve_qa'       // QA 승인 요청
-  | 'instance.execute_qa'       // QA DB 실제 실행
-  | 'instance.verify_qa'        // QA 결과 확인
-  | 'instance.approve_live'     // LIVE 승인 요청
-  | 'instance.execute_live'     // LIVE DB 실제 실행
-  | 'instance.verify_live'     // LIVE 결과 확인
-  | 'activity.view'             // HTTP 활동 로그 조회
-  | 'activity.clear';           // HTTP 활동 로그 전체 삭제
+  | 'dashboard.view'
+  | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
+  | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
+  | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
+  | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
+  | 'my_dashboard.request_qa' | 'my_dashboard.execute_qa' | 'my_dashboard.verify_qa' | 'my_dashboard.request_qa_rereq'
+  | 'my_dashboard.request_live' | 'my_dashboard.execute_live' | 'my_dashboard.verify_live' | 'my_dashboard.request_live_rereq' | 'my_dashboard.hide'
+  | 'my_dashboard.delete' | 'my_dashboard.delete_instance'
+  | 'my_dashboard.delete_any'
+  | 'instance.delete_own'
+  | 'my_dashboard.edit_any'
+  | 'instance.view' | 'instance.create' | 'instance.approve_qa' | 'instance.execute_qa' | 'instance.verify_qa'
+  | 'instance.approve_live' | 'instance.execute_live' | 'instance.verify_live'
+  | 'system.save_test_seed'
+  | 'activity.view' | 'activity.clear';
 
 // 권한 표시 라벨
 export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
-  'product.view':            '프로덕트 조회',
-  'event_template.view':     '쿼리 템플릿 조회',
-  'product.manage':          '프로덕트 관리 (CRUD)',
-  'event_template.manage':   '쿼리 템플릿 관리 (CRUD)',
-  'user.manage':             '사용자 관리',
-  'db.manage':               'DB 접속 정보 관리',
-  'instance.view':          '이벤트 생성 보기',
-  'instance.create':         '이벤트 생성',
-  'instance.delete_own':     '내 이벤트 삭제',
-  'instance.approve_qa':     'QA 승인',
-  'instance.execute_qa':     'QA DB 실행',
-  'instance.verify_qa':      'QA 확인',
-  'instance.approve_live':   'LIVE 승인',
-  'instance.execute_live':   'LIVE DB 실행',
-  'instance.verify_live':    'LIVE 확인',
-  'activity.view':           '활동 로그 조회',
-  'activity.clear':          '활동 로그 전체 삭제',
+  'dashboard.view': '대시보드 보기',
+  'product.view': '프로덕트 조회',
+  'product.create': '프로덕트 생성',
+  'product.edit': '프로덕트 수정',
+  'product.delete': '프로덕트 삭제',
+  'product.manage': '프로덕트 관리 (CRUD)',
+  'event_template.view': '쿼리 템플릿 조회',
+  'event_template.create': '쿼리 템플릿 생성',
+  'event_template.edit': '쿼리 템플릿 수정',
+  'event_template.delete': '쿼리 템플릿 삭제',
+  'event_template.manage': '쿼리 템플릿 관리 (CRUD)',
+  'user.view': '사용자 조회',
+  'user.create': '사용자 생성',
+  'user.edit': '사용자 수정',
+  'user.delete': '사용자 삭제',
+  'user.reset_password': '비밀번호 초기화',
+  'user.manage': '사용자 관리',
+  'role.view': '역할 조회',
+  'role.create': '역할 생성',
+  'role.edit': '역할 수정',
+  'role.delete': '역할 삭제',
+  'role.edit_permissions': '역할 권한 수정',
+  'db_connection.view': 'DB 접속 조회',
+  'db_connection.create': 'DB 접속 생성',
+  'db_connection.edit': 'DB 접속 수정',
+  'db_connection.delete': 'DB 접속 삭제',
+  'db_connection.test': 'DB 연결 테스트',
+  'db.manage': 'DB 접속 정보 관리',
+  'my_dashboard.view': '나의 대시보드 보기',
+  'my_dashboard.detail': '나의 대시보드 상세',
+  'my_dashboard.edit': '이벤트 수정',
+  'my_dashboard.request_confirm': '컨펌 요청',
+  'my_dashboard.query_edit': '쿼리 수정',
+  'my_dashboard.confirm': 'DBA 컨펌',
+  'my_dashboard.request_qa': 'QA 반영 요청',
+  'my_dashboard.execute_qa': 'QA 반영 실행',
+  'my_dashboard.verify_qa': 'QA 확인',
+  'my_dashboard.request_qa_rereq': 'QA 재반영 요청',
+  'my_dashboard.request_live': 'LIVE 반영 요청',
+  'my_dashboard.execute_live': 'LIVE 반영 실행',
+  'my_dashboard.verify_live': 'LIVE 확인',
+  'my_dashboard.request_live_rereq': 'LIVE 재반영 요청',
+  'my_dashboard.hide': '숨기기/복원',
+  'my_dashboard.delete': '이벤트 삭제(레거시)',
+  'my_dashboard.delete_instance': '이벤트 삭제(레거시)',
+  'my_dashboard.delete_any': '타인 이벤트 삭제',
+  'my_dashboard.edit_any': '타인 이벤트 수정',
+  'instance.view': '이벤트 생성 보기',
+  'instance.create': '이벤트 생성',
+  'instance.delete_own': '내 이벤트 삭제',
+  'instance.approve_qa': 'QA 승인',
+  'instance.execute_qa': 'QA DB 실행',
+  'instance.verify_qa': 'QA 확인',
+  'instance.approve_live': 'LIVE 승인',
+  'instance.execute_live': 'LIVE DB 실행',
+  'instance.verify_live': 'LIVE 확인',
+  'system.save_test_seed': '테스트 시드 저장',
+  'activity.view': '활동 로그 조회',
+  'activity.clear': '활동 로그 전체 삭제',
 };
 
 /** 세분화 권한 그룹 (역할 권한 수정 화면용) */

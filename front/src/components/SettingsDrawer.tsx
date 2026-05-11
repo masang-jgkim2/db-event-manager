@@ -16,28 +16,6 @@ interface ISettingsDrawerProps {
   fnOnClose: () => void;
 }
 
-// 컬러 팔레트 프리뷰 — primary 컬러 선택 시 팔레트 10단계를 미니 스와치로 표시
-const ColorPalettePreview = ({ strColor, bDark }: { strColor: string; bDark: boolean }) => {
-  const arrPalette = fnGenPalette(strColor, bDark);
-  return (
-    <div style={{ display: 'flex', gap: 2, marginTop: 4 }}>
-      {arrPalette.map((strSwatchColor, nIdx) => (
-        <Tooltip key={nIdx} title={`${nIdx + 1}번 (${strSwatchColor})`}>
-          <div
-            style={{
-              width: 18,
-              height: 12,
-              borderRadius: 2,
-              background: strSwatchColor,
-              border: nIdx === 5 ? '1.5px solid rgba(0,0,0,0.25)' : 'none',
-            }}
-          />
-        </Tooltip>
-      ))}
-    </div>
-  );
-};
-
 const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const { token } = antdTheme.useToken();
 

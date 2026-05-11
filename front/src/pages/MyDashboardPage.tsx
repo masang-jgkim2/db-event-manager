@@ -24,7 +24,7 @@ import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, TEventStatus, IStageActor,
-  IQueryExecutionResult, IQueryPartResult, TDeployScope,
+  IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
@@ -33,6 +33,7 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import type { ICardLabelRow } from '../types/dashboardLayout';
+import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -199,7 +200,9 @@ const PopconfirmWithSkip = ({
 
   if (bSkip) {
     if (disabled) return children;
-    return React.cloneElement(children, { onClick: fnHandleConfirm });
+    return React.cloneElement(children as React.ReactElement<{ onClick?: () => void }>, {
+      onClick: fnHandleConfirm,
+    });
   }
 
   const content = (
@@ -565,7 +568,6 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
 // 이벤트별 진행 상태 스테퍼 컴포넌트 — 행 인라인 확장용
 const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
   const { arrSteps, nStep, bFinished } = fnBuildSteps(objInstance);
-  const arrScope = objInstance.arrDeployScope ?? ['qa', 'live'];
   const { token } = antdTheme.useToken();
 
   return (
@@ -598,10 +600,10 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
         items={arrSteps.map((s, nIdx) => ({
           icon: fnRenderStatusIcon(s.strStatus, 16),
           title: s.strLabel,
-          status: (() => {
-            if (nIdx < nStep) return 'finish' as const;
-            if (nIdx === nStep) return (bFinished ? 'finish' : 'process') as const;
-            return 'wait' as const;
+          status: ((): 'wait' | 'finish' | 'process' => {
+            if (nIdx < nStep) return 'finish';
+            if (nIdx === nStep) return bFinished ? 'finish' : 'process';
+            return 'wait';
           })(),
         }))}
       />
@@ -682,7 +684,7 @@ const MyDashboardPage = () => {
   const bFunMode = useThemeStore((s) => s.bFunMode);
 
   // 권한 확인 헬퍼
-  const fnHasPermission = (strPerm: string) => arrPermissions.includes(strPerm as any);
+  const fnHasPermission = (strPerm: TPermission) => arrPermissions.includes(strPerm);
   // 삭제(복원 불가): 타인 삭제(delete_any·레거시) 또는 본인 작성 + instance.delete_own
   const fnCanDeleteInstanceRow = (r: IEventInstance) => {
     if (r.bPermanentlyRemoved) return false;
@@ -809,14 +811,14 @@ const MyDashboardPage = () => {
       if (result.bSuccess) {
         messageApi.success(`${strActionLabel} 처리 완료`);
         if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
-    } else {
-      messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'));
+      } else {
+        messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'));
+      }
+    } catch (err: any) {
+      const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
+      messageApi.error(fnFormatPermissionErrorMessage(strMsg));
     }
-  } catch (err: any) {
-    const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
-    messageApi.error(fnFormatPermissionErrorMessage(strMsg));
-  }
-};
+  };
 
   // QA/LIVE DB 실행 (다중 세트면 스트리밍으로 진행율 반영)
   const fnHandleExecute = async (r: IEventInstance, strEnv: 'qa' | 'live') => {
@@ -829,11 +831,17 @@ const MyDashboardPage = () => {
     setNDisplayPercent(0);
     refExecProgress.current = { completed: 0, total: Math.max(1, nTotal) };
     setStrExecEnv(strEnv);
-    let result: { bSuccess: boolean; strMessage?: string; objInstance?: IEventInstance; objExecutionResult?: unknown };
+    type TExecResult = {
+      bSuccess: boolean;
+      strMessage?: string;
+      objInstance?: IEventInstance;
+      objExecutionResult?: unknown;
+    };
+    let result: TExecResult | undefined;
     try {
-      result = await (nTotal >= 2
+      result = (await (nTotal >= 2
         ? fnApiExecuteQueryStream(r.nId, strEnv, user?.strDisplayName || '', (nCompleted) => setNExecutingCompletedQueries(nCompleted))
-        : fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || ''));
+        : fnStoreExecuteQuery(r.nId, strEnv, user?.strDisplayName || ''))) as TExecResult;
 
       if (result.bSuccess) {
         const objExec = result.objExecutionResult as IQueryExecutionResult | undefined;
@@ -986,7 +994,7 @@ const MyDashboardPage = () => {
 
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
   // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
-  const OBJ_ACTION_PERMISSIONS: Record<string, string[]> = {
+  const OBJ_ACTION_PERMISSIONS: Partial<Record<TEventStatus, TPermission[]>> = {
     event_created: ['my_dashboard.request_confirm'],
     confirm_requested: ['my_dashboard.confirm'],
     qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
@@ -1452,8 +1460,8 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
   // 테이블 컬럼 — 번호(nId) + 헤더·액션 정리
-  const arrColumns = [
-    fnMakeIndexColumn(55),
+  const arrColumns: ColumnsType<IEventInstance> = [
+    fnMakeIndexColumn<IEventInstance>(55),
     {
       title: '이벤트명',
       dataIndex: 'strEventName',

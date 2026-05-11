@@ -581,9 +581,11 @@ describe('API 전체 테스트', () => {
 
     it('프로덕트 권한 제거 시 GET /api/products → 403, 복원 후 재로그인 시 200', async () => {
       arrBackupPerms = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_GM).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
+      // GET /api/products는 dashboard.view만으로도 200 — 프로덕트 메뉴 차단 검증 시 OR 전부 제거
+      const arrGetProductPerms = ['product.view', 'product.manage', 'product.create', 'product.edit', 'product.delete', 'dashboard.view'];
       const arrWithoutProduct = arrBackupPerms
         .map((p) => p.strPermission)
-        .filter((p) => p !== 'product.view' && p !== 'product.manage') as TPermission[];
+        .filter((p) => !arrGetProductPerms.includes(p)) as TPermission[];
       fnSetPermissionsForRole(N_ROLE_GM, arrWithoutProduct);
 
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'gm01', strPassword: OBJ_PASSWORDS.gm01 });
