@@ -18,6 +18,17 @@ import RolePage from './pages/RolePage';
 import ActivityPage from './pages/ActivityPage';
 import MainLayout from './components/MainLayout';
 import { fnRunUiPreferencesPullForUser } from './services/userUiPreferencesSync';
+import type { TPermission } from './types';
+
+const ARR_REQ_DASHBOARD = ['dashboard.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_PRODUCT = ['product.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_EVENT = ['event_template.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_USER = ['user.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_DB = ['db_connection.view', 'db.manage'] as const satisfies readonly TPermission[];
+const ARR_REQ_ROLE = ['role.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_ACTIVITY = ['activity.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_MY_DASH = ['my_dashboard.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_QUERY = ['instance.view', 'instance.create'] as const satisfies readonly TPermission[];
 
 // 인증된 사용자만 접근 가능한 라우트
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -76,7 +87,7 @@ const PermissionRoute = ({
   arrRequiredPerms,
 }: {
   children: React.ReactNode;
-  arrRequiredPerms: string[];
+  arrRequiredPerms: readonly TPermission[];
 }) => {
   const user = useAuthStore((state) => state.user);
   const arrPerms = user?.arrPermissions || [];
@@ -215,7 +226,7 @@ const App = () => {
             <Route
               path="/"
               element={
-                <PermissionRoute arrRequiredPerms={['dashboard.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_DASHBOARD}>
                   <DashboardPage />
                 </PermissionRoute>
               }
@@ -223,7 +234,7 @@ const App = () => {
             <Route
               path="/products"
               element={
-                <PermissionRoute arrRequiredPerms={['product.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_PRODUCT}>
                   <ProductPage />
                 </PermissionRoute>
               }
@@ -231,7 +242,7 @@ const App = () => {
             <Route
               path="/events"
               element={
-                <PermissionRoute arrRequiredPerms={['event_template.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_EVENT}>
                   <EventPage />
                 </PermissionRoute>
               }
@@ -239,7 +250,7 @@ const App = () => {
             <Route
               path="/users"
               element={
-                <PermissionRoute arrRequiredPerms={['user.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_USER}>
                   <UserPage />
                 </PermissionRoute>
               }
@@ -247,7 +258,7 @@ const App = () => {
             <Route
               path="/db-connections"
               element={
-                <PermissionRoute arrRequiredPerms={['db_connection.view', 'db.manage']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_DB}>
                   <DbConnectionPage />
                 </PermissionRoute>
               }
@@ -255,7 +266,7 @@ const App = () => {
             <Route
               path="/roles"
               element={
-                <PermissionRoute arrRequiredPerms={['role.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_ROLE}>
                   <RolePage />
                 </PermissionRoute>
               }
@@ -263,7 +274,7 @@ const App = () => {
             <Route
               path="/activity"
               element={
-                <PermissionRoute arrRequiredPerms={['activity.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_ACTIVITY}>
                   <ActivityPage />
                 </PermissionRoute>
               }
@@ -273,7 +284,7 @@ const App = () => {
             <Route
               path="/my-dashboard"
               element={
-                <PermissionRoute arrRequiredPerms={['my_dashboard.view']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_MY_DASH}>
                   <MyDashboardPage />
                 </PermissionRoute>
               }
@@ -281,7 +292,7 @@ const App = () => {
             <Route
               path="/query"
               element={
-                <PermissionRoute arrRequiredPerms={['instance.view', 'instance.create']}>
+                <PermissionRoute arrRequiredPerms={ARR_REQ_QUERY}>
                   <QueryPage />
                 </PermissionRoute>
               }
