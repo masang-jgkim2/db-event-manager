@@ -4,7 +4,6 @@ import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
 import { useAuthStore } from './stores/useAuthStore';
 import { useThemeStore } from './stores/useThemeStore';
-import { useNotificationStore } from './stores/useNotificationStore';
 import { fnBuildDesignSystem } from './styles/design-system';
 import { DesignSystemContext } from './styles/DesignSystemContext';
 import LoginPage from './pages/LoginPage';
@@ -169,16 +168,14 @@ const App = () => {
     fnVerifyToken();
   }, [fnVerifyToken]);
 
-  // 로그인 전·로그아웃 후 테마·알림은 guest 버킷(dbem:guest:…)에서 복원
+  // 로그인 전·로그아웃 후 테마는 guest 버킷(dbem:guest:…)에서 복원
   useEffect(() => {
     void useThemeStore.persist.rehydrate();
-    void useNotificationStore.persist.rehydrate();
   }, []);
 
   useEffect(() => {
     if (!bIsAuthenticated) {
       void useThemeStore.persist.rehydrate();
-      void useNotificationStore.persist.rehydrate();
     }
   }, [bIsAuthenticated]);
 

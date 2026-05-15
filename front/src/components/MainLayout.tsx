@@ -369,7 +369,6 @@ const MainLayout = () => {
 
           {/* 실시간 연결 상태 + 사용자 정보 + 설정 버튼 */}
           <Space>
-            <NotificationBellDropdown />
             <Badge
               status={bConnected ? 'success' : 'default'}
               title={bConnected ? '실시간 연결됨' : '연결 중...'}
@@ -381,6 +380,7 @@ const MainLayout = () => {
                 }}
               />
             </Badge>
+            <NotificationBellDropdown />
             <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar

@@ -44,3 +44,7 @@ event_created → confirm_requested → dba_confirmed
 ## IEventInstance 핵심
 
 `nProductId`, `strGeneratedQuery`, `arrExecutionTargets`, `strStatus`, `arrStatusLogs`, `arrDeployScope`.
+
+## SSE·알림(1순위)
+
+`fnBroadcastInstanceUpdate` — SSE `instance_updated`/`instance_status_changed`. **mysql** `inAppNotificationNotifier`·Web Push는 `eventInstanceNotificationEligibility`·`fnShouldNotifyEventInstanceProgress`와 동일. **`bPermanentlyRemoved`·`qa_verified`면 알림·푸시 생략**(SSE만). 숨기기는 알림 없음.

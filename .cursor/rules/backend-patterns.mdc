@@ -49,6 +49,12 @@ router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
 - `GET`/`PUT /api/auth/ui-preferences` — `fnAuthMiddleware`만, PUT `{ objEntries }`. `DATA_STORE=json` → `userUiPreferences.json`; **mysql** → `user_ui_preference` (`userUiPreferences.ts`). 활동 로그에서 해당 경로 제외.
 - `GET /api/users/presence-stream` — `fnRequireAnyPermission('user.view','user.manage')`, SSE `connected` → `presence_snapshot` → `user_presence` (`sseBroadcaster` + `userPresence` 스윕).
 
+## Web Push·인앱 알림
+
+- **구독 API**: `GET /api/push/vapid-public-key`, `POST`/`DELETE /api/push/subscribe` — `fnAuthMiddleware`만. 저장: json=`notificationSubscriptions.json`, mysql=`notification_subscription`(기동 시 `push_subscription`→`RENAME` 이관).
+- **인앱 목록 API**: `GET /api/notifications`, `POST /`(대시보드 실패 등), `PATCH /:strId/read`, `PATCH /read-all` — **mysql**만 서버 저장(`user_notification`). json은 `bPersisted: false`·로컬 persist.
+- **SSE**: 인스턴스 브로드캐스트 후 **mysql**이면 `inAppNotificationNotifier`가 1순위 대상에 적재·`notification_appended`. Web Push는 `webPushNotifier`+`user_ui_preference` ON/OFF. 활동 로그에서 `/api/notifications` 제외.
+
 ## 컨트롤러 응답 형식
 
 ```typescript

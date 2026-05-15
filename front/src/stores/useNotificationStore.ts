@@ -49,6 +49,8 @@ const notificationPersistStorage = {
 interface INotificationStore {
   arrNotifications: INotification[];
   fnPush: (objInput: INotificationInput) => INotification;
+  fnReplaceFromServer: (arrNotifications: INotification[]) => void;
+  fnUpsertFromServer: (objNotification: INotification) => void;
   fnMarkRead: (strId: string) => void;
   fnMarkAllRead: () => void;
   fnClear: () => void;
@@ -75,6 +77,29 @@ export const useNotificationStore = create<INotificationStore>()(
           return { arrNotifications: arrNext };
         });
         return objNew;
+      },
+
+      fnReplaceFromServer: (arrNotifications) => {
+        const arrNext = [...arrNotifications]
+          .sort((objA, objB) => objB.dtAt.localeCompare(objA.dtAt))
+          .slice(0, N_MAX_NOTIFICATIONS);
+        set({ arrNotifications: arrNext });
+      },
+
+      fnUpsertFromServer: (objNotification) => {
+        set((state) => {
+          const nIdx = state.arrNotifications.findIndex((objItem) => objItem.strId === objNotification.strId);
+          if (nIdx >= 0) {
+            const arrNext = [...state.arrNotifications];
+            arrNext[nIdx] = objNotification;
+            return { arrNotifications: arrNext };
+          }
+          const arrNext = [objNotification, ...state.arrNotifications];
+          if (arrNext.length > N_MAX_NOTIFICATIONS) {
+            arrNext.length = N_MAX_NOTIFICATIONS;
+          }
+          return { arrNotifications: arrNext };
+        });
       },
 
       fnMarkRead: (strId) => {

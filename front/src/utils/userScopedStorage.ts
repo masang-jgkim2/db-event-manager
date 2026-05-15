@@ -12,6 +12,7 @@ export const ARR_LEGACY_UI_STATIC_KEYS: string[] = [
   'db-event-manager-dashboard-custom-cards',
   'db-event-manager-dashboard-custom-collapse',
   'db-event-manager-hidden-ids',
+  'db-event-manager-web-push-enabled',
 ];
 
 export const fnScopedStorageFullKey = (strLogicalKey: string, nUserId: number): string => {

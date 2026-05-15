@@ -1,5 +1,12 @@
 import { Response } from 'express';
 import { IEventInstance } from '../data/eventInstances';
+import {
+  fnNotifyWebPushInstanceCreated,
+  fnNotifyWebPushInstanceStatusChanged,
+  fnNotifyWebPushInstanceUpdated,
+} from './webPushNotifier';
+import { fnIsInAppNotificationsPersisted } from '../data/userNotifications';
+import { fnShouldSkipEventInstanceProgressNotification } from './eventInstanceNotificationEligibility';
 
 // SSE 클라이언트 연결 풀
 // Map<userId, Set<Response>> - 같은 유저가 여러 탭 열 수 있음
@@ -63,6 +70,10 @@ export const fnBroadcastInstanceCreated = (objInstance: IEventInstance): void =>
       fnSendEvent(res, 'instance_created', objInstance);
     }
   }
+  fnNotifyWebPushInstanceCreated(objInstance);
+  if (fnIsInAppNotificationsPersisted()) {
+    void import('./inAppNotificationNotifier').then((m) => m.fnNotifyInAppInstanceCreated(objInstance));
+  }
 };
 
 // 이벤트 인스턴스 상태 변경 브로드캐스트
@@ -104,6 +115,15 @@ export const fnBroadcastInstanceUpdate = (objInstance: IEventInstance): void => 
     for (const res of setClients) {
       fnSendEvent(res, strEvent, objPayload);
     }
+  }
+  if (fnShouldSkipEventInstanceProgressNotification(objInstance)) return;
+  fnNotifyWebPushInstanceUpdated(objInstance);
+  fnNotifyWebPushInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+  if (fnIsInAppNotificationsPersisted()) {
+    void import('./inAppNotificationNotifier').then((m) => {
+      void m.fnNotifyInAppInstanceUpdated(objInstance);
+      void m.fnNotifyInAppInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+    });
   }
 };
 

@@ -36,6 +36,19 @@ export const fnFilenameToMysqlTable = (strFilename: string): string | null => {
 };
 
 export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
+  const [arrLegacyRows] = await pool.query<RowDataPacket[]>(
+    `SELECT TABLE_NAME AS strTableName
+     FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME IN ('push_subscription', 'notification_subscription')`,
+  );
+  const setTableNames = new Set(
+    (arrLegacyRows as RowDataPacket[]).map((row) => String(row.strTableName)),
+  );
+  if (setTableNames.has('push_subscription') && !setTableNames.has('notification_subscription')) {
+    await pool.query('RENAME TABLE push_subscription TO notification_subscription');
+    console.log('[DATA_MYSQL] 테이블 명칭 이관 | push_subscription → notification_subscription');
+  }
   const nDdl = ARR_MYSQL_APP_DDL.length;
   console.log(`[DATA_MYSQL] 스키마 DDL 적용 시작 | 문장=${nDdl}건`);
   for (let nIdx = 0; nIdx < nDdl; nIdx++) {

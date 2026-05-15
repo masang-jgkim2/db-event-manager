@@ -53,9 +53,9 @@ const { bConnected } = useEventStream();
 
 ## 인앱 알림 목록
 
-- **저장**: `useNotificationStore` persist — 논리 키 `db-event-manager-notifications`, 실제 키 `dbem:u{nUserId}:`/`guest`. `skipHydration` + `App`·`fnRunUiPreferencesPullForUser`에서 `rehydrate`.
-- **UI**: `MainLayout` 헤더 `NotificationBellDropdown` — 미읽음 배지, 목록·모두 읽음, `strRoute`+`objQuery` 딥링크.
-- **적재**: `fnPushNotification` / `fnNotifyError`(토스트+목록, 실패 위주). `useEventStream`은 `instance_created`·`instance_status_changed`만 요약 적재(`instance_updated` 제외).
+- **저장**: **json** — `useNotificationStore` persist `db-event-manager-notifications`(`dbem:u{nUserId}:`). **mysql** — `GET /api/notifications` 로그인 pull·SSE `notification_appended`; 읽음 `PATCH` (`notificationSync.ts`). 로컬은 캐시·오프라인 폴백.
+- **UI**: `MainLayout` `NotificationBellDropdown` — 미읽음 배지, 목록·모두 읽음, `strRoute`+`objQuery` 딥링크(`nInstanceId`·`nId` 모두 수용).
+- **적재 1순위**: `fnShouldNotifyEventInstanceProgress` 통과 시만. **mysql**은 서버 `inAppNotificationNotifier`·클라 SSE 중복 적재 생략(`fnIsServerInAppNotificationsSync`). `MyDashboardPage` 실패는 `fnNotifyError`→서버 `POST` 또는 로컬.
 
 ## API 클라이언트
 

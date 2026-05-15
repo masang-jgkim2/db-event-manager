@@ -9,6 +9,9 @@ node_modules/
 # Build
 dist/
 
+# mkcert dev TLS (front/.env VITE_DEV_SSL_*)
+certs/
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
