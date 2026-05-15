@@ -23,6 +23,7 @@ import { useEventStream } from '../hooks/useEventStream';
 import { useThemeStore, N_SIDER_MIN } from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
+import NotificationBellDropdown from './NotificationBellDropdown';
 import type { TPermission } from '../types';
 import type { MenuProps } from 'antd';
 
@@ -379,6 +380,7 @@ const MainLayout = () => {
                 }}
               />
             </Badge>
+            <NotificationBellDropdown />
             <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar

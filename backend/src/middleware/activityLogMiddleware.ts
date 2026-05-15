@@ -10,6 +10,7 @@ const fnShouldSkipActivityLog = (req: Request): boolean => {
   // 새로고침마다 대량 적재 방지
   if (req.method === 'GET' && strPath === '/api/auth/verify') return true;
   if (strPath === '/api/auth/ui-preferences') return true;
+  if (strPath === '/api/notifications' || strPath.startsWith('/api/notifications/')) return true;
   // 활동 화면 조회·SSE는 기록 시 GET logs → SSE → 무한 재조회 루프가 되므로 제외
   if (req.method === 'GET' && strPath === '/api/activity/logs') return true;
   if (req.method === 'GET' && strPath === '/api/activity/stream') return true;

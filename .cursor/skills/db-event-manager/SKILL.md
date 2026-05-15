@@ -38,6 +38,8 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
 - **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`, 오프라인은 서버 스윕(`userPresence.ts`)
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
+- **Web Push 구독**: `GET/POST/DELETE /api/push/*` — json=`notificationSubscriptions.json`(레거시 `pushSubscriptions.json` 1회 이관), **mysql**=`notification_subscription`. ON/OFF는 `user_ui_preference` 키 `db-event-manager-web-push-enabled`. VAPID는 `.env`만.
+- **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일.
 - **쿼리 실행 Progress**: `GET .../template-exec-elapsed`로 마지막 성공 `nElapsedMs` 조회 → 프론트에서 그 시간에 맞춰 0→99% 선형(rAF), 다중 세트는 SSE 진행률과 `max` (`templateExecElapsed.ts` 인메모리). DB화 시 영속화.
 
 ## 주요 파일 위치
@@ -54,7 +56,12 @@ backend/src/
   services/sseBroadcaster.ts              # SSE 클라이언트 관리 + `user_presence` 브로드캐스트
   services/userPresence.ts                # 접속 터치·스윕·스냅샷
   data/userUiPreferences.ts               # 사용자별 UI — json=`userUiPreferences.json`, mysql=`user_ui_preference`
+  data/notificationSubscriptions.ts       # Web Push 구독 — json=`notificationSubscriptions.json`, mysql=`notification_subscription`
+  data/userNotifications.ts               # 인앱 알림 — mysql=`user_notification`만( json은 프론트 localStorage)
   controllers/userUiPreferencesController.ts
+  controllers/notificationsController.ts
+  services/inAppNotificationNotifier.ts   # SSE 연동 인앱 알림 적재·`notification_appended`
+  services/webPushService.ts              # VAPID·구독 조회·전송
   db/dbManager.ts                         # 게임 DB 커넥션 풀
   db/mysqlAppSchema.ts                  # 메타 MySQL 정규화 DDL (`product`, `users`, …)
   db/mysqlRelationalSync.ts             # 메타 JSON 동등 ↔ 테이블 적재·로드·전체 스냅샷
@@ -72,7 +79,12 @@ front/src/
   pages/QueryPage.tsx                     # 이벤트 생성
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, 번호 컬럼 fnMakeIndexColumn — 기본 PK nId)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청
-  components/SettingsDrawer.tsx          # 굳굳 설정 (재미 모드 스위치)
+  components/SettingsDrawer.tsx          # 굳굳 설정 (Web Push·재미 모드)
+  components/NotificationBellDropdown.tsx # 헤더 인앱 알림
+  stores/useNotificationStore.ts          # 인앱 알림 persist( json )·서버 pull 병합( mysql )
+  services/notificationSync.ts            # `GET/PATCH /api/notifications`·`fnPullInAppNotificationsForUser`
+  api/notificationsApi.ts
+  api/pushApi.ts
   stores/useEventInstanceStore.ts         # 인스턴스 상태 관리
   stores/useThemeStore.ts                 # persist `skipHydration` + `dbem:u{nId}`/`guest` 버킷, 변경 시 UI 동기화 푸시
   utils/userScopedStorage.ts              # `dbem:u{nUserId}:논리키`, 레거시 키 1회 이관

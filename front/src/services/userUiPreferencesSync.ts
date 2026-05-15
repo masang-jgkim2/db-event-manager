@@ -1,6 +1,7 @@
 import { fnApiGetUiPreferences, fnApiPutUiPreferences } from '../api/userUiPreferencesApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
+import { fnPullInAppNotificationsForUser } from './notificationSync';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import {
   fnApplyPulledUiEntries,
@@ -8,7 +9,6 @@ import {
   fnMigrateLegacyUiKeysToScoped,
   fnScopedStorageGetItem,
 } from '../utils/userScopedStorage';
-
 const N_PUSH_DEBOUNCE_MS = 2_000;
 
 let nPushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -31,6 +31,15 @@ export const fnSchedulePushUserUiPreferences = (): void => {
   if (nUserId <= 0) return;
   if (nPushTimer != null) window.clearTimeout(nPushTimer);
   nPushTimer = window.setTimeout(() => void fnDoPush(), N_PUSH_DEBOUNCE_MS);
+};
+
+/** Web Push 등 즉시 서버 반영이 필요할 때 디바운스 없이 PUT */
+export const fnFlushPushUserUiPreferencesNow = async (): Promise<void> => {
+  if (nPushTimer != null) {
+    window.clearTimeout(nPushTimer);
+    nPushTimer = null;
+  }
+  await fnDoPush();
 };
 
 const fnLoadHiddenSetAfterPull = (): Set<number> => {
@@ -67,5 +76,8 @@ export const fnRunUiPreferencesPullForUser = async (nUserId: number): Promise<vo
     }
   }
   await useThemeStore.persist.rehydrate();
+  await fnPullInAppNotificationsForUser(nUserId);
   useEventInstanceStore.setState({ setHiddenIds: fnLoadHiddenSetAfterPull() });
+  const objWebPush = await import('../utils/webPushManager');
+  await objWebPush.fnSyncWebPushAfterLogin();
 };

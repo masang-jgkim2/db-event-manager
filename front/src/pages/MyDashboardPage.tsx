@@ -30,6 +30,7 @@ import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPL
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
+import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import type { ICardLabelRow } from '../types/dashboardLayout';
@@ -613,6 +614,7 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
 
 const MyDashboardPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const strDeepLinkInstanceId = searchParams.get('nId') ?? searchParams.get('nInstanceId');
 
   const [objDetail, setObjDetail] = useState<IEventInstance | null>(null);
   const [bDetailOpen, setBDetailOpen] = useState(false);
@@ -702,31 +704,36 @@ const MyDashboardPage = () => {
     fnFetchInstances();
   }, [fnFetchInstances]);
 
-  // URL ?nId=N 처리 — 인스턴스 로드 후 해당 항목 상세 자동 열기 (퍼머링크·딥링크)
+  // URL ?nId= / ?nInstanceId= — 알림 딥링크·퍼머링크 (같은 페이지에서 쿼리만 바뀔 때도 반응)
   useEffect(() => {
     if (bLoading) return;
-    const strNId = searchParams.get('nId');
-    if (!strNId) return;
-    const nTargetId = parseInt(strNId, 10);
+    if (!strDeepLinkInstanceId) return;
+    const nTargetId = parseInt(strDeepLinkInstanceId, 10);
     if (isNaN(nTargetId)) return;
 
     const objTarget = arrAllInstances.find((e) => e.nId === nTargetId);
     if (objTarget) {
+      const setHiddenIdsStore = useEventInstanceStore.getState().setHiddenIds;
       // 완료·숨김 탭에 있는 항목이면 탭 자동 전환 (삭제 또는 숨김 처리된 경우)
-      const bIsInCompleted = Boolean(objTarget.bPermanentlyRemoved) || setHiddenIds.has(objTarget.nId);
-      if (bIsInCompleted) setStrDashTab('completed');
+      const bIsInCompleted = Boolean(objTarget.bPermanentlyRemoved) || setHiddenIdsStore.has(objTarget.nId);
+      if (bIsInCompleted) {
+        setStrDashTab('completed');
+      } else {
+        setStrDashTab('active');
+      }
 
       setObjSelectedRow(objTarget);
       setObjDetail(objTarget);
       setBDetailOpen(true);
-      // URL에서 nId 파라미터 제거 (뒤로가기 시 다시 열리는 것 방지)
+      // URL에서 nId 파라미터 제거 — prev를 직접 mutate하면 라우터가 갱신을 놓쳐 쿼리가 남고 effect가 SSE마다 탭을 되돌릴 수 있음
       setSearchParams((prev) => {
-        prev.delete('nId');
-        return prev;
+        const next = new URLSearchParams(prev);
+        next.delete('nId');
+        next.delete('nInstanceId');
+        return next;
       }, { replace: true });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bLoading, arrAllInstances]);
+  }, [bLoading, arrAllInstances, strDeepLinkInstanceId, setSearchParams]);
 
   // SSE·완료 카운트와 rAF 루프 동기화
   useEffect(() => {
@@ -812,11 +819,21 @@ const MyDashboardPage = () => {
         messageApi.success(`${strActionLabel} 처리 완료`);
         if (objDetail?.nId === nId && result.objInstance) setObjDetail(result.objInstance);
       } else {
-        messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'));
+        fnNotifyError(
+          messageApi,
+          '상태 변경 실패',
+          fnFormatPermissionErrorMessage(result.strMessage || '처리에 실패했습니다.'),
+          { strRoute: '/my-dashboard', objQuery: { nInstanceId: nId }, strSource: 'page:MyDashboard' },
+        );
       }
     } catch (err: any) {
       const strMsg = err?.response?.data?.strMessage || err?.message || '해당 상태를 변경할 권한이 없습니다.';
-      messageApi.error(fnFormatPermissionErrorMessage(strMsg));
+      fnNotifyError(
+        messageApi,
+        '상태 변경 실패',
+        fnFormatPermissionErrorMessage(strMsg),
+        { strRoute: '/my-dashboard', objQuery: { nInstanceId: nId }, strSource: 'page:MyDashboard' },
+      );
     }
   };
 
@@ -940,7 +957,12 @@ const MyDashboardPage = () => {
       messageApi.success('이벤트가 수정되었습니다.');
       setBEditOpen(false);
     } else {
-      messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '수정에 실패했습니다.'));
+      fnNotifyError(
+        messageApi,
+        '이벤트 수정 실패',
+        fnFormatPermissionErrorMessage(result.strMessage || '수정에 실패했습니다.'),
+        { strRoute: '/my-dashboard', objQuery: { nInstanceId: objEditInstance.nId }, strSource: 'page:MyDashboard' },
+      );
     }
   };
 
@@ -980,7 +1002,12 @@ const MyDashboardPage = () => {
           setObjDetail(result.objInstance);
         }
       } else {
-        messageApi.error(fnFormatPermissionErrorMessage(result.strMessage || '쿼리 수정에 실패했습니다.'));
+        fnNotifyError(
+          messageApi,
+          '쿼리 수정 실패',
+          fnFormatPermissionErrorMessage(result.strMessage || '쿼리 수정에 실패했습니다.'),
+          { strRoute: '/my-dashboard', objQuery: { nInstanceId: objQueryEditInstance.nId }, strSource: 'page:MyDashboard' },
+        );
       }
     } finally {
       setBQuerySaving(false);
@@ -998,11 +1025,9 @@ const MyDashboardPage = () => {
     event_created: ['my_dashboard.request_confirm'],
     confirm_requested: ['my_dashboard.confirm'],
     qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
-    qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq'],
-    qa_verified: ['my_dashboard.request_live', 'my_dashboard.request_qa_rereq'],
+    qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq', 'my_dashboard.request_live'],
     live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],
     live_deployed: ['my_dashboard.verify_live', 'my_dashboard.request_live_rereq'],
-    live_verified: ['my_dashboard.request_live_rereq'],
   };
   const nTotal = arrAllInstances.length;
   const nMyAction = arrAllInstances.filter((e) =>
@@ -1380,7 +1405,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     return <Space wrap>{arrButtons}</Space>;
   };
 
-  // 탭 (진행 이벤트 / 완료·숨김)
+  // 탭 (진행중 / 완료·숨김)
   const [strDashTab, setStrDashTab] = useState<'active' | 'completed'>('active');
   // 보기 형태: 테이블(행) / 카드
   const [strViewMode, setStrViewMode] = useState<'table' | 'card'>('table');
@@ -1551,7 +1576,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
                         setStrDashTab('completed');
                       } else {
-                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                        fnNotifyError(
+                          messageApi,
+                          '이벤트 삭제 실패',
+                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                        );
                       }
                     }}
                   >
@@ -1561,7 +1591,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               </>
             ) : (
               <>
-                <Tooltip title="진행 이벤트 탭으로 복원">
+                <Tooltip title="진행중 탭으로 복원">
                   <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
                     보이기
                   </Button>
@@ -1579,7 +1609,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         messageApi.success('삭제되었습니다.');
                         setStrDashTab('completed');
                       } else {
-                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                        fnNotifyError(
+                          messageApi,
+                          '이벤트 삭제 실패',
+                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                        );
                       }
                     }}
                   >
@@ -1637,14 +1672,30 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <Segmented
             options={[
-              { label: `진행 이벤트 (${arrActiveInstances.length})`, value: 'active' },
+              { label: `진행중 (${arrActiveInstances.length})`, value: 'active' },
               { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
             ]}
             value={strDashTab}
-            onChange={(v) => setStrDashTab(v as 'active' | 'completed')}
+            onChange={(v) => {
+              const strNext = v as 'active' | 'completed';
+              setStrDashTab(strNext);
+              // 다른 탭에 없는 행이 선택된 채로 남으면 테이블·탭 상태가 꼬일 수 있음
+              if (strNext === 'active' && objSelectedRow
+                && !arrActiveInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                setObjSelectedRow(null);
+                setObjDetail(null);
+                setBDetailOpen(false);
+              }
+              if (strNext === 'completed' && objSelectedRow
+                && !arrCompletedInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                setObjSelectedRow(null);
+                setObjDetail(null);
+                setBDetailOpen(false);
+              }
+            }}
           />
           <Space size="middle">
-            {/* 진행 이벤트 탭일 때 필터 — 드롭다운 */}
+            {/* 진행중 탭일 때 필터 — 드롭다운 */}
             {strDashTab === 'active' && (
               <Select
                 options={arrFilterOptions}
@@ -1780,7 +1831,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                         messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
                                         setStrDashTab('completed');
                                       } else {
-                                        messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                        fnNotifyError(
+                          messageApi,
+                          '이벤트 삭제 실패',
+                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                        );
                                       }
                                     }}
                                   >
@@ -1792,7 +1848,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           }
                           return (
                             <>
-                              <Tooltip title="진행 이벤트 탭으로 복원">
+                              <Tooltip title="진행중 탭으로 복원">
                                 <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
                               </Tooltip>
                               {bCardCanDelete && (
@@ -1808,7 +1864,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                       messageApi.success('삭제되었습니다.');
                                       setStrDashTab('completed');
                                     } else {
-                                      messageApi.error(fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'));
+                                      fnNotifyError(
+                          messageApi,
+                          '이벤트 삭제 실패',
+                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                        );
                                     }
                                   }}
                                 >

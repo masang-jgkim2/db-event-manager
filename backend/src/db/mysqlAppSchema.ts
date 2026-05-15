@@ -227,6 +227,39 @@ COMMENT='activity_logs.json'`,
   CONSTRAINT fk_uip_user FOREIGN KEY (n_user_id) REFERENCES users(n_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='userUiPreferences.json mapByUserId'`,
+
+  `CREATE TABLE IF NOT EXISTS notification_subscription (
+  n_id          INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  n_user_id     INT           NOT NULL,
+  str_endpoint  VARCHAR(768)  NOT NULL,
+  str_p256dh    VARCHAR(256)  NOT NULL,
+  str_auth      VARCHAR(128)  NOT NULL,
+  str_user_agent VARCHAR(512) NULL,
+  dt_created_at DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uk_ns_endpoint (str_endpoint),
+  KEY idx_ns_user (n_user_id),
+  CONSTRAINT fk_ns_user FOREIGN KEY (n_user_id) REFERENCES users(n_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Web Push 구독(브라우저 endpoint·키)'`,
+
+  `CREATE TABLE IF NOT EXISTS user_notification (
+  n_id           INT           NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  n_user_id      INT           NOT NULL,
+  str_id         CHAR(36)      NOT NULL,
+  dt_at          DATETIME(6)   NOT NULL,
+  str_level      VARCHAR(16)   NOT NULL,
+  str_title      VARCHAR(255)  NOT NULL,
+  str_body       VARCHAR(512)  NULL,
+  str_route      VARCHAR(128)  NULL,
+  str_query_json VARCHAR(512)  NULL,
+  b_read         TINYINT(1)    NOT NULL DEFAULT 0,
+  str_source     VARCHAR(64)   NULL,
+  dt_created_at  DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uk_un_user_str_id (n_user_id, str_id),
+  KEY idx_un_user_dt (n_user_id, dt_at),
+  CONSTRAINT fk_un_user FOREIGN KEY (n_user_id) REFERENCES users(n_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='인앱 알림 목록(계정별, MySQL 모드)'`,
 ];
 
 /** 스키마 점검·문서용 메타 테이블 목록 (dqpm_ 접두사 없음) */
@@ -247,4 +280,6 @@ export const ARR_META_TABLE_NAMES: readonly string[] = [
   'event_instance_stage_actor',
   'activity_log',
   'user_ui_preference',
+  'notification_subscription',
+  'user_notification',
 ];

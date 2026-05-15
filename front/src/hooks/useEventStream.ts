@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { fnBuildSseApiUrl } from '../api/axiosInstance';
+import {
+  fnIsProgressNotificationMuted,
+  fnNotifySseInstanceCreated,
+  fnNotifySseInstanceStatusChanged,
+  fnNotifySseInstanceUpdated,
+} from '../utils/notificationHelpers';
+import { fnIsServerInAppNotificationsSync } from '../services/notificationSync';
+import { useNotificationStore, type INotification } from '../stores/useNotificationStore';
+import type { IEventInstance, TEventStatus } from '../types';
 
 // SSE 연결 및 이벤트 인스턴스 실시간 동기화 훅
 // MainLayout에 한 번만 마운트하면 앱 전체에서 동작
@@ -13,6 +22,14 @@ export const useEventStream = () => {
   const bIsAuthenticated = useAuthStore((s) => s.bIsAuthenticated);
   const strToken = useAuthStore((s) => s.strToken);
   const fnHandleSseEvent = useEventInstanceStore((s) => s.fnHandleSseEvent);
+
+  const fnGetNotifyContext = () => {
+    const objUser = useAuthStore.getState().user;
+    return {
+      nUserId: objUser?.nId ?? 0,
+      arrPermissions: objUser?.arrPermissions ?? [],
+    };
+  };
 
   useEffect(() => {
     if (!bIsAuthenticated || !strToken) {
@@ -40,8 +57,12 @@ export const useEventStream = () => {
     // 다른 유저가 생성한 신규 이벤트 수신
     objEs.addEventListener('instance_created', (e: MessageEvent) => {
       try {
-        const objInstance = JSON.parse(e.data);
+        const objInstance = JSON.parse(e.data) as IEventInstance;
         fnHandleSseEvent('instance_created', objInstance);
+        if (!fnIsServerInAppNotificationsSync()) {
+          const { nUserId, arrPermissions } = fnGetNotifyContext();
+          fnNotifySseInstanceCreated(objInstance, nUserId, arrPermissions);
+        }
       } catch {
         console.warn('[SSE] instance_created 파싱 실패');
       }
@@ -50,8 +71,12 @@ export const useEventStream = () => {
     // 관여한 인스턴스 전체 업데이트
     objEs.addEventListener('instance_updated', (e: MessageEvent) => {
       try {
-        const objInstance = JSON.parse(e.data);
+        const objInstance = JSON.parse(e.data) as IEventInstance;
         fnHandleSseEvent('instance_updated', objInstance);
+        if (!fnIsServerInAppNotificationsSync() && !fnIsProgressNotificationMuted(objInstance)) {
+          const { nUserId, arrPermissions } = fnGetNotifyContext();
+          fnNotifySseInstanceUpdated(objInstance, nUserId, arrPermissions);
+        }
       } catch {
         console.warn('[SSE] instance_updated 파싱 실패');
       }
@@ -60,10 +85,33 @@ export const useEventStream = () => {
     // 상태 변경 요약 (관여하지 않은 이벤트)
     objEs.addEventListener('instance_status_changed', (e: MessageEvent) => {
       try {
-        const objSummary = JSON.parse(e.data);
+        const objSummary = JSON.parse(e.data) as {
+          nId: number;
+          strStatus: TEventStatus;
+          strEventName?: string;
+          strProductName?: string;
+          bPermanentlyRemoved?: boolean;
+        };
         fnHandleSseEvent('instance_status_changed', objSummary);
+        if (!fnIsServerInAppNotificationsSync() && !fnIsProgressNotificationMuted(objSummary)) {
+          const objInstance = useEventInstanceStore
+            .getState()
+            .arrAllInstances
+            .find((objRow) => objRow.nId === objSummary.nId);
+          const { nUserId, arrPermissions } = fnGetNotifyContext();
+          fnNotifySseInstanceStatusChanged(objSummary, nUserId, arrPermissions, objInstance);
+        }
       } catch {
         console.warn('[SSE] instance_status_changed 파싱 실패');
+      }
+    });
+
+    objEs.addEventListener('notification_appended', (e: MessageEvent) => {
+      try {
+        const objNotification = JSON.parse(e.data) as INotification;
+        useNotificationStore.getState().fnUpsertFromServer(objNotification);
+      } catch {
+        console.warn('[SSE] notification_appended 파싱 실패');
       }
     });
 

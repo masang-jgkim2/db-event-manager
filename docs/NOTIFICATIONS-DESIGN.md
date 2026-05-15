@@ -1,120 +1,122 @@
-# DQPM 인앱 알림 목록 — 검토 및 설계 (초안)
+# DQPM 인앱 알림 목록 — 설계
 
-> 사용자에게 보이는 **토스트·결과 메시지**를 “목록으로 다시 볼 수 있게” 할지에 대한 정리. HTTP **활동 로그**(`ActivityPage`)와 목적이 다름. (2026-03-30)
-
----
-
-## 1. 용어 구분
-
-| 구분 | 역할 | 현재 구현 |
-|------|------|-----------|
-| **토스트 (`message`)** | 작업 직후 1~3초 피드백 | 대부분의 페이지에서 `message.useMessage()` |
-| **인앱 알림 목록** | 사라진 메시지·중요 이벤트 **재확인·이동** | **없음** |
-| **활동 로그** | 서버에 기록된 HTTP 요청 메타(메서드·경로·상태·행위자) | `GET /api/activity/logs`, `ActivityPage` |
-
-알림 목록은 활동 로그를 **대체하지 않음**. “내가 방금 뭐가 실패했더라?” / “다른 탭에서 온 SSE 요약” 같은 **UX 보조**에 가깝다.
+> 토스트 보조·이벤트 진행 요약. HTTP **활동 로그**·**Web Push**와 분리. (최종 갱신 2026-05-13)
 
 ---
 
-## 2. 현재 코드베이스 요약 (알림에 가까운 것)
+## 1. 용어
 
-- **패턴**: Ant Design `message` (success / error / warning). `notification.*` 전역 API는 사실상 미사용.
-- **예외**: `SettingsDrawer`에서 재미 모드 안내 시 전역 `message.success` 1건.
-- **페이지별**: 로그인, 프로덕트, 쿼리 템플릿, 이벤트 생성, DB 접속, 사용자, 역할, 활동(조회 실패), 나의 대시보드(워크플로·실행·수정·삭제·복사 등)에서 토스트 다수.
-- **이벤트 대시보드 (`DashboardPage`)**: `message` 없음.
-- **누락 예**: 프로덕트 목록 `GET` 실패는 `console.error`만 있고 사용자 토스트 없음 — 알림 목록 도입 시 “시스템 알림”으로 넣을 후보.
-
-자세한 줄 단위 목록은 구현 전 **grep: `messageApi.` / `message.`** 로 재점검하면 된다.
-
----
-
-## 3. 알림 목록이 제공할 기능 (목표)
-
-1. **히스토리**: 토스트가 사라진 뒤에도 최근 알림을 헤더 등에서 다시 확인.
-2. **맥락 이동(선택)**: 클릭 시 해당 이벤트/페이지로 이동(쿼리스트링 등).
-3. **구분(선택)**: 성공 / 실패 / 경고 / 정보, 또는 소스(`api` / `sse` / `client`).
-4. **읽음(선택)**: 배지 숫자, “모두 읽음”.
+| 구분 | 역할 |
+|------|------|
+| **토스트** | 작업 직후 1~3초 피드백 |
+| **인앱 알림 목록** | 헤더 벨 — 재확인·딥링크 (최대 100건, 계정별 `localStorage`) |
+| **활동 로그** | 서버 HTTP 감사 (`ActivityPage`) |
+| **Web Push** | OS 알림 — `notification_subscription` + 전송 페이로드 (본문 DB 없음) |
 
 ---
 
-## 4. 알림 한 건 — 데이터 모델 (초안)
+## 2. 이벤트 인스턴스 진행 (9단계)
+
+```
+event_created → confirm_requested → dba_confirmed
+  → qa_requested → qa_deployed → qa_verified
+  → live_requested → live_deployed → live_verified
+```
+
+- 반영 범위 `['live']`만: `dba_confirmed` 후 `live_requested` 직행.
+- 재요청: `qa_verified`→`qa_requested`, `live_deployed`/`live_verified`→`live_requested`.
+- 단계 처리자: `objCreator`·`objConfirmer`·`objQaRequester`·`objQaDeployer`·`objQaVerifier`·`objLiveRequester`·`objLiveDeployer`·`objLiveVerifier`.
+
+---
+
+## 3. 알림 한 건 모델
 
 | 필드 | 설명 |
 |------|------|
-| `strId` | UUID 등 고유 ID |
-| `dtAt` | ISO 시각 |
+| `strId` / `dtAt` / `bRead` | UUID, ISO 시각, 읽음 |
 | `strLevel` | `success` \| `error` \| `warning` \| `info` |
-| `strTitle` | 한 줄 제목(필수) |
-| `strBody?` | 부가 설명(접기 가능) |
-| `strRoute?` | 예: `/my-dashboard`, `/query` |
-| `objQuery?` | 예: `{ nInstanceId: 123 }` — 라우터 state/query로 전달 |
-| `bRead?` | 읽음 처리 시 |
-| `strSource?` | `page:MyDashboard` / `sse:instance` 등 디버그·필터용 |
-
-상한: 예) 최대 **100건**, 초과 시 오래된 것부터 삭제.
+| `strTitle` / `strBody?` | 제목·부가 설명 |
+| `strRoute?` / `objQuery?` | 이동 (예: `/my-dashboard`, `nInstanceId`) |
+| `strSource?` | `sse:instance_*`, `page:MyDashboard` 등 |
 
 ---
 
-## 5. UI 방향
+## 4. 수신 범위 (우선순위)
 
-### 5.1 1차 추천
+### 4.1 1순위 — 진행 관련 (구현)
 
-- **위치**: `MainLayout` 헤더 우측 — `Badge` + 벨 아이콘.
-- **상호작용**: 클릭 시 `Dropdown` 내부에 `List` (스크롤, 최근 N건).
-- **하단(선택)**: “전체 보기” → `/notifications` 단일 페이지(필터·검색은 후순위).
+**조건** (`fnShouldNotifyEventInstanceProgress`): 단계 **관여자**이거나, 현재 `strStatus`에서 **내 액션 권한**(`my_action` 필터와 동일)이 있는 인스턴스.
 
-### 5.2 Ant Design
+| 상태 | 액션 권한 예 |
+|------|----------------|
+| `event_created` | `my_dashboard.request_confirm` |
+| `confirm_requested` | `my_dashboard.confirm` |
+| `qa_requested` | `my_dashboard.execute_qa`, `instance.execute_qa` |
+| `qa_deployed` | `my_dashboard.verify_qa`, `my_dashboard.request_qa_rereq`, `my_dashboard.request_live` |
+| `live_requested` | `my_dashboard.execute_live`, `instance.execute_live` |
+| `live_deployed` | `my_dashboard.verify_live`, `my_dashboard.request_live_rereq` |
 
-- `List` + `Empty` + `Tag`(레벨별 색).
-- 기존 `message` 토스트는 **유지 가능** — 정책만 정하면 됨(아래 7절).
+**저장 항목 (1순위)**
 
-### 5.3 접근성·모바일
+| 트리거 | 제목 | 본문 | 레벨 | `strSource` |
+|--------|------|------|------|-------------|
+| SSE `instance_created` | 새 이벤트 | 이벤트명·상태 라벨 | info | `sse:instance_created` |
+| SSE `instance_updated` | 내 이벤트 업데이트 | 이벤트명·상태 라벨 | info | `sse:instance_updated` |
+| SSE `instance_status_changed` | 이벤트 상태 변경 | 이벤트명·(프로덕트)·상태 | info | `sse:instance_status_changed` |
+| 나의 대시보드 API 실패 | 상태/수정/쿼리/삭제 실패 | 서버·권한 메시지 | error | `page:MyDashboard` |
 
-- 키보드 포커스, 드롭다운 외부 클릭 닫기 등 Ant 기본 동작 활용.
-- 좁은 화면에서는 `Drawer`로 목록만 보여주는 변형 가능(2차).
+- 생성자 본인에게 `instance_created` 목록 적재 없음.
+- **영구 삭제**(`bPermanentlyRemoved`)·**`qa_verified`**: SSE로 목록만 갱신 — 인앱·Web Push·json 로컬 벨 없음. 삭제 API **실패**만 `page:MyDashboard` error.
+- **숨기기**: 계정·브라우저 숨김 ID만 — 알림 없음.
+- Web Push도 동일 **진행 대상** 사용자만 (`eventInstanceNotificationEligibility`).
 
----
+### 4.2 2순위 — 기타 화면 (미연동)
 
-## 6. 데이터 소스 전략 (단계)
+쿼리 생성·DB 접속·사용자·역할·프로덕트 등 **error** 토스트 후보. 정책: **실패만 목록**, 성공은 토스트만.
 
-| 단계 | 저장 위치 | 장점 | 한계 |
-|------|-----------|------|------|
-| **1** | 프론트만 (Zustand + 메모리 또는 `localStorage`) | 구현 빠름 | 탭/기기 간 미공유 |
-| **2** | 계정 스코프 로컬 + 선택적 서버 시드 | UI 설정(`userUiPreferences`)과 동일 철학 | 서버 부하·스키마 필요 |
-| **3** | 서버 전용 저장 (`GET/PUT` 알림 API 또는 파일) | 다중 클라이언트 일관 | 백엔드 작업·마이그레이션 |
+### 4.3 제외
 
-**SSE**: 인스턴스 생성/상태 변경은 이미 스트림이 있음 → “요약 한 줄”을 알림 스토어에 넣는 것은 2단계 후보.
-
----
-
-## 7. 정책 (결정 필요)
-
-- **토스트와 중복**: (A) 성공은 토스트만·실패만 목록 (B) 전부 둘 다 (C) 목록만(토스트 축소).
-- **누가 보나**: 로그인 사용자 `nUserId` 기준 분리(권장). 게스트는 목록 비활성 또는 세션 한정.
-- **메뉴 권한**: 알림 전용 메뉴를 둘 경우 `dashboard.view` 등 기존 메뉴와 정렬할지 결정.
-- **활동 로그와의 문구**: 사용자에게 “활동 로그와 다릅니다” 안내 여부.
+활동 로그 복사, SQL·스택, 무관 타인 이벤트 열람용 요약, 서버 알림 본문 테이블(미도입), 영구 삭제 성공, `qa_verified` 갱신, 숨기기.
 
 ---
 
-## 8. 구현 순서 제안
+## 5. 저장·UI
 
-1. `useNotificationStore` + `fnPushNotification` 헬퍼 + 헤더 드롭다운 UI.
-2. 실패·권한 오류 위주로 `MyDashboardPage` 등 1~2 화면에 연동 검증.
-3. SSE·다른 페이지 확장, 딥링크.
-4. 필요 시 서버 동기화 및 `docs`·`SKILL.md` 갱신.
+| 단계 | 위치 | 비고 |
+|------|------|------|
+| 1 | 프론트 `localStorage` | `DATA_STORE=json` — 기기·브라우저별 |
+| 2 | MySQL `user_notification` | `DATA_STORE=mysql` — 계정별 최근 100건, 로그인 pull·읽음 PATCH |
+| — | MySQL `notification_subscription` | Web Push 구독(endpoint·키), 본문 DB 없음 |
 
----
-
-## 9. 관련 파일 (구현 시 손대게 될 곳)
-
-- `front/src/components/MainLayout.tsx` — 벨·드롭다운.
-- 신규: `front/src/stores/useNotificationStore.ts`, (선택) `front/src/utils/notificationHelpers.ts`.
-- 점진 연동: `MyDashboardPage.tsx`, `QueryPage.tsx`, `UserPage.tsx` 등 `messageApi` 사용처.
+- UI: `MainLayout` `NotificationBellDropdown` — 배지, 읽음 PATCH·딥링크. **미읽음:** `colorFillAlter` 배경 + 왼쪽 primary 점(8px), 제목 `strong`; **읽음:** 동일 너비 여백으로 정렬, `title="미읽음"` 툴팁. 선택/호버는 기존 primary 배경·inset 우선. `sse:instance_*`는 `nInstanceId`당 최신 1건만 표시(저장은 건별).
+- `/notifications` 전용 페이지: 후순위.
 
 ---
 
-## 10. 변경 이력
+## 6. 정책 (확정)
+
+- 토스트: 성공만 / 실패는 토스트+목록(1순위 진행 실패).
+- 수신: 로그인 `nUserId`; 게스트 목록 없음.
+- 전용 메뉴·`TPermission` 없음 (헤더 공통).
+
+---
+
+## 7. 구현 파일
+
+- `front/src/utils/eventInstanceListFilter.ts` — 관여·`my_action`·`fnShouldNotifyEventInstanceProgress`
+- `front/src/utils/notificationHelpers.ts`, `front/src/hooks/useEventStream.ts`, `front/src/services/notificationSync.ts`
+- `front/src/pages/MyDashboardPage.tsx` — `fnNotifyError`
+- `backend/src/services/eventInstanceNotificationEligibility.ts`, `inAppNotificationNotifier.ts`, `webPushNotifier.ts`
+- `backend/src/data/userNotifications.ts`, `notificationSubscriptions.ts` — mysql `user_notification` / `notification_subscription`
+
+---
+
+## 8. 변경 이력
 
 | 날짜 | 내용 |
 |------|------|
-| 2026-03-30 | 초안 작성 — 검토·기능·UI·단계·정책 항목 정리 |
+| 2026-03-30 | 초안 |
+| 2026-05-11 | 1순위 진행 알림·저장 항목 표·수신 조건 확정, Web Push 정렬 |
+| 2026-05-12 | mysql 인앱 `user_notification`·구독 `notification_subscription`·API/SSE 동기화 |
+| 2026-05-12 | `qa_deployed`/`live_deployed` my_action·벨 `nInstanceId` 접기·영구 삭제·`qa_verified`·숨기기 알림 제외 |
+| 2026-05-13 | 벨 드롭다운 읽음/미읽음 시각 구분(배경·왼쪽 점·정렬) 문서 반영 |

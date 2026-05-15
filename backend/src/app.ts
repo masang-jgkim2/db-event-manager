@@ -19,6 +19,9 @@ import dbConnectionRoutes from './routes/dbConnectionRoutes';
 import roleRoutes from './routes/roleRoutes';
 import adminRoutes from './routes/adminRoutes';
 import activityRoutes from './routes/activityRoutes';
+import pushRoutes from './routes/pushRoutes';
+import notificationRoutes from './routes/notificationRoutes';
+import { fnIsInAppNotificationsPersisted } from './data/userNotifications';
 import { fnActivityLogMiddleware } from './middleware/activityLogMiddleware';
 
 const app = express();
@@ -61,6 +64,8 @@ app.use('/api/db-connections', dbConnectionRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/activity', activityRoutes);
+app.use('/api/push', pushRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({
@@ -68,6 +73,7 @@ app.get('/api/health', (_req, res) => {
     strMessage: '서버가 정상 동작 중입니다.',
     strDataDir: STR_DATA_DIR,
     strCwd: process.cwd(),
+    bInAppNotificationsPersisted: fnIsInAppNotificationsPersisted(),
     // UI와 불일치 시: 브라우저가 다른 백엔드를 치는지 vs 이 프로세스 메모리가 비었는지 구분용
     objMemoryCounts: {
       nProducts: arrProducts.length,

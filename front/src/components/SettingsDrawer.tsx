@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Drawer, Segmented, Slider, Switch, Typography, Divider, Button, Tooltip, message, theme as antdTheme } from 'antd';
 import {
   SunOutlined,
@@ -8,6 +9,14 @@ import {
 } from '@ant-design/icons';
 import { useThemeStore, ARR_PRIMARY_COLORS, fnGenPalette } from '../stores/useThemeStore';
 import type { TThemeMode } from '../stores/useThemeStore';
+import {
+  fnDisableWebPush,
+  fnEnableWebPush,
+  fnGetWebPushEffectiveEnabled,
+  fnGetWebPushUnsupportedReason,
+  fnIsWebPushEnabledPref,
+  fnIsWebPushSupported,
+} from '../utils/webPushManager';
 
 const { Text, Title } = Typography;
 
@@ -34,6 +43,22 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const fnReset = useThemeStore((s) => s.fnReset);
 
   const bIsDark = fnGetIsDark();
+  const bWebPushSupported = fnIsWebPushSupported();
+  const strWebPushUnsupportedReason = fnGetWebPushUnsupportedReason();
+  const [bWebPushEnabled, setBWebPushEnabled] = useState(() => fnIsWebPushEnabledPref());
+  const [bWebPushBusy, setBWebPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!bOpen) return;
+    let bCancelled = false;
+    void (async () => {
+      const bEffective = await fnGetWebPushEffectiveEnabled();
+      if (!bCancelled) setBWebPushEnabled(bEffective);
+    })();
+    return () => {
+      bCancelled = true;
+    };
+  }, [bOpen]);
 
   // 섹션 제목 스타일
   const objSectionTitleStyle: React.CSSProperties = {
@@ -183,6 +208,55 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
           }}
         />
       </div>
+
+      <Divider />
+
+      <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>브라우저 알림</Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Text style={{ fontSize: 13 }}>Web Push</Text>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              탭을 닫아도 이벤트 변경 알림을 받습니다.
+            </Text>
+          </div>
+        </div>
+        <Switch
+          checked={bWebPushEnabled}
+          disabled={!bWebPushSupported || bWebPushBusy}
+          loading={bWebPushBusy}
+          onChange={async (bChecked) => {
+            setBWebPushBusy(true);
+            try {
+              if (bChecked) {
+                const objRes = await fnEnableWebPush();
+                if (!objRes.bSuccess) {
+                  message.error(objRes.strMessage ?? 'Web Push를 켤 수 없습니다.');
+                  setBWebPushEnabled(fnIsWebPushEnabledPref());
+                  return;
+                }
+                setBWebPushEnabled(true);
+                message.success('브라우저 알림이 켜졌습니다.');
+                return;
+              }
+              await fnDisableWebPush();
+              setBWebPushEnabled(false);
+              message.success('브라우저 알림이 꺼졌습니다.');
+            } catch (err: unknown) {
+              const strMessage = err instanceof Error ? err.message : 'Web Push 설정 변경에 실패했습니다.';
+              message.error(strMessage);
+              setBWebPushEnabled(fnIsWebPushEnabledPref());
+            } finally {
+              setBWebPushBusy(false);
+            }
+          }}
+        />
+      </div>
+      {!bWebPushSupported && (
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+          {strWebPushUnsupportedReason ?? 'Web Push를 사용할 수 없습니다.'}
+        </Text>
+      )}
 
       <Divider />
 
