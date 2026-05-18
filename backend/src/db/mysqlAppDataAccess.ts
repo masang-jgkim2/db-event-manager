@@ -80,6 +80,17 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
       `[DATA_MYSQL] 메타 테이블이 ${nExpected}개 미만입니다. CREATE 권한·스키마를 확인하세요.`,
     );
   }
+
+  const [colRows] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance_status_log' AND COLUMN_NAME = 'json_query_edit'`,
+  );
+  if (Number((colRows as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance_status_log ADD COLUMN json_query_edit JSON NULL COMMENT 'IStatusLog.objQueryEdit' AFTER json_execution_result`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance_status_log.json_query_edit');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {

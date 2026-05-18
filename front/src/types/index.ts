@@ -294,8 +294,8 @@ export const ARR_EVENT_TYPES: TEventType[] = ['삭제', '지급', '초기화'];
 // 입력 형식
 export type TInputFormat = 'item_number' | 'item_string' | 'date' | 'none';
 export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
-  { value: 'item_number', label: '아이템 번호 (숫자, 쉼표 구분)' },
-  { value: 'item_string', label: '아이템 문자열 (줄바꿈 구분)' },
+  { value: 'item_number', label: '번호' },
+  { value: 'item_string', label: '문자열' },
   { value: 'date', label: '날짜' },
   { value: 'none', label: '입력 없음' },
 ];
@@ -419,6 +419,17 @@ export interface IDbConnection {
   dtUpdatedAt: string;
 }
 
+/** DBA 쿼리 직접 수정 diff (진행 이력) */
+export interface IQueryEditLog {
+  strBefore?: string;
+  strAfter?: string;
+  arrSetChanges?: Array<{
+    nSetIndex: number;
+    strBefore: string;
+    strAfter: string;
+  }>;
+}
+
 // 상태 변경 이력
 export interface IStatusLog {
   strStatus: TEventStatus;
@@ -426,6 +437,7 @@ export interface IStatusLog {
   nChangedByUserId: number;
   strComment: string;
   dtChangedAt: string;
+  objQueryEdit?: IQueryEditLog;
   objExecutionResult?: {
     strEnv: 'qa' | 'live';
     bSuccess?: boolean;
@@ -464,7 +476,7 @@ export interface IEventInstance {
   dtDeployDate: string;
   dtQaDeployDate?: string;          // QA 반영 날짜 (이 시각 이전에 QA 실행 허용)
   dtLiveDeployDate?: string;        // LIVE 반영 날짜 (이 시각 이후에 LIVE 실행 허용)
-  strAlloLink?: string;             // 알로 업무 카드 링크 (선택)
+  strAlloLink?: string;             // 업무 링크 URL (알로·코웤 등, 선택)
   arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];

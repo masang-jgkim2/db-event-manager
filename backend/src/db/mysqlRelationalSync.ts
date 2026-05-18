@@ -327,8 +327,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     for (const log of inst.arrStatusLogs ?? []) {
       await conn.execute(
         `INSERT INTO event_instance_status_log (
-          n_instance_id, n_sort, str_status, str_changed_by, n_changed_by_user_id, str_comment, dt_changed_at, json_execution_result
-        ) VALUES (?,?,?,?,?,?,?,?)`,
+          n_instance_id, n_sort, str_status, str_changed_by, n_changed_by_user_id, str_comment, dt_changed_at, json_execution_result, json_query_edit
+        ) VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           inst.nId,
           nLogSort,
@@ -338,6 +338,7 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
           log.strComment ?? null,
           fnToMysqlDatetime6Required(log.dtChangedAt, inst.dtCreatedAt),
           log.objExecutionResult != null ? JSON.stringify(log.objExecutionResult) : null,
+          log.objQueryEdit != null ? JSON.stringify(log.objQueryEdit) : null,
         ],
       );
       nLogSort += 1;
@@ -617,6 +618,14 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
         objExec = undefined;
       }
     }
+    let objQueryEdit: IStatusLog['objQueryEdit'] | undefined;
+    if (r.json_query_edit != null) {
+      try {
+        objQueryEdit = fnJsonVal(r.json_query_edit) as IStatusLog['objQueryEdit'];
+      } catch {
+        objQueryEdit = undefined;
+      }
+    }
     const row: IStatusLog = {
       strStatus: String(r.str_status) as TEventStatus,
       strChangedBy: String(r.str_changed_by),
@@ -625,6 +634,7 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
       dtChangedAt: new Date(r.dt_changed_at as string | Date).toISOString(),
     };
     if (objExec !== undefined) row.objExecutionResult = objExec;
+    if (objQueryEdit !== undefined) row.objQueryEdit = objQueryEdit;
     mapLog.get(id)!.push(row);
   }
   const mapActor = new Map<string, IStageActor>();

@@ -184,6 +184,7 @@ COMMENT='JSON arrExecutionTargets[]'`,
   str_comment           TEXT          NULL,
   dt_changed_at         DATETIME(6)   NOT NULL,
   json_execution_result JSON         NULL COMMENT 'IStatusLog.objExecutionResult',
+  json_query_edit       JSON         NULL COMMENT 'IStatusLog.objQueryEdit',
   CONSTRAINT fk_eisl_instance FOREIGN KEY (n_instance_id) REFERENCES event_instance(n_id) ON DELETE CASCADE,
   KEY idx_eisl_instance_time (n_instance_id, dt_changed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

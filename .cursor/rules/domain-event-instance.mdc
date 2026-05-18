@@ -31,9 +31,9 @@ event_created → confirm_requested → dba_confirmed
 
 `confirm_requested`, `qa_requested`, `live_requested`에서만 `strGeneratedQuery`(및 세트 쿼리) 수정.
 
-## 쿼리 재생성
+## 쿼리 재생성·{{items}}
 
-`event_created`만. `strInputValues`·날짜가 **실제 변경**될 때만 `fnApplyQueryTemplate`.
+`event_created`만, 입력·날짜 **실제 변경** 시 `fnApplyQueryTemplate`(+`strInputFormat`). `fnReplaceItemsInTemplate` — `'{{items}}'`·`({{items}})`→쉼표 목록 / `VALUES {{items}}`→`(n), (n)`. DBA 쿼리 수정 시 `objQueryEdit` diff 저장·진행 이력 표시.
 
 ## QA/LIVE 실행·접속 (`fnExecuteAndDeploy`)
 
@@ -47,4 +47,4 @@ event_created → confirm_requested → dba_confirmed
 
 ## SSE·알림(1순위)
 
-`fnBroadcastInstanceUpdate` — SSE `instance_updated`/`instance_status_changed`. **mysql** `inAppNotificationNotifier`·Web Push는 `eventInstanceNotificationEligibility`·`fnShouldNotifyEventInstanceProgress`와 동일. **`bPermanentlyRemoved`·`qa_verified`면 알림·푸시 생략**(SSE만). 숨기기는 알림 없음.
+`fnBroadcastInstanceUpdate` — SSE 항상. 인앱·푸시는 eligibility 동일; `bPermanentlyRemoved`·`qa_verified`·숨기기는 생략. DBA 쿼리만 수정 시 `fnBroadcastInstanceUpdate(obj, false)` — 상태 변경 알림만 생략.

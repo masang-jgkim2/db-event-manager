@@ -86,7 +86,10 @@ const DbConnectionPage = () => {
   const bCanCreate = fnHas('db_connection.create') || fnHas('db.manage');
   const bCanEdit = fnHas('db_connection.edit') || fnHas('db.manage');
   const bCanDelete = fnHas('db_connection.delete') || fnHas('db.manage');
-  const bCanTest = fnHas('db_connection.test') || fnHas('db.manage');
+  /** 「연결」열 표시 — 보기 또는 관리 */
+  const bShowConnectionColumn = fnHas('db_connection.view') || fnHas('db.manage');
+  /** 연결 테스트 API 호출(자동 점검·행 펼침 시 실행) — 테스트 또는 관리 */
+  const bCanRunConnectionTest = fnHas('db_connection.test') || fnHas('db.manage');
 
   // 목록 조회
   const fnLoad = useCallback(async () => {
@@ -169,6 +172,7 @@ const DbConnectionPage = () => {
 
   // 연결 테스트 — 행 선택 시·수동 호출(긴 타임아웃). 토스트 + 하단 패널
   const fnHandleTest = useCallback(async (objConn: IDbConnection) => {
+    if (!bCanRunConnectionTest) return;
     setObjSelectedRow(objConn);
     setBTesting(objConn.nId);
     setObjTestResult(null);
@@ -187,21 +191,21 @@ const DbConnectionPage = () => {
     } finally {
       setBTesting(null);
     }
-  }, [messageApi]);
+  }, [messageApi, bCanRunConnectionTest]);
 
   const fnHandleTestRef = useRef(fnHandleTest);
   fnHandleTestRef.current = fnHandleTest;
 
-  // 행 선택 시 자동 테스트(db_connection.test 권한) — fnHandleTest 참조 변경으로 중복 실행 방지
+  // 행 선택 시 자동 테스트 — 연결 테스트 실행 권한 있을 때만
   useEffect(() => {
-    if (!objSelectedRow || !bCanTest) return;
+    if (!objSelectedRow || !bCanRunConnectionTest) return;
     void fnHandleTestRef.current(objSelectedRow);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 선택 id·권한만 반응
-  }, [objSelectedRow?.nId, bCanTest]);
+  }, [objSelectedRow?.nId, bCanRunConnectionTest]);
 
   // 탭이 보일 때 주기 점검 — 파란점(정상) / 빨간점(실패·무응답). pending 일괄 갱신 없음(깜빡임 방지)
   useEffect(() => {
-    if (!bCanTest) return undefined;
+    if (!bCanRunConnectionTest) return undefined;
 
     const fnPoll = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -232,10 +236,19 @@ const DbConnectionPage = () => {
       window.clearInterval(nTimerId);
       document.removeEventListener('visibilitychange', fnVis);
     };
-  }, [bCanTest]);
+  }, [bCanRunConnectionTest]);
 
   // 선택된 행 아래에 표시할 연결 테스트 상태/결과 패널
   const fnRenderTestPanel = (r: IDbConnection) => {
+    if (!bCanRunConnectionTest) {
+      return (
+        <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
+          <Text type="secondary">
+            연결 테스트를 실행하려면 db_connection.test 또는 db.manage 권한이 필요합니다. 「연결」열은 보기 권한이 있으면 표시되며, 점검·색상은 테스트 권한이 있을 때만 갱신됩니다.
+          </Text>
+        </div>
+      );
+    }
     const bIsTesting = bTesting === r.nId;
     const objResultForRow = objTestResult?.nId === r.nId ? objTestResult.result : null;
 
@@ -261,6 +274,8 @@ const DbConnectionPage = () => {
                 </Text>
                 {objResultForRow.objDbInfo && (
                   <Descriptions size="small" column={3} style={{ marginTop: 8 }}>
+                    <Descriptions.Item label="IP">{r.strHost}</Descriptions.Item>
+                    <Descriptions.Item label="PORT">{r.nPort}</Descriptions.Item>
                     <Descriptions.Item label="DB명">{objResultForRow.objDbInfo.strDatabase}</Descriptions.Item>
                     <Descriptions.Item label="사용자">{objResultForRow.objDbInfo.strUser}</Descriptions.Item>
                     <Descriptions.Item label="서버">{objResultForRow.objDbInfo.strServer}</Descriptions.Item>
@@ -285,9 +300,7 @@ const DbConnectionPage = () => {
     return (
       <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
         <Text type="secondary">
-          {bCanTest
-            ? '행을 선택하면 연결 테스트가 실행되고, 결과가 여기에 표시됩니다. 연결 열은 약 10초마다 자동 점검합니다.'
-            : '연결 테스트·연결 표시는 db_connection.test(또는 db.manage) 권한이 있을 때 사용할 수 있습니다.'}
+          행을 선택하면 연결 테스트가 실행되고, 결과가 여기에 표시됩니다. 연결 열은 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 자동 점검합니다.
         </Text>
       </div>
     );
@@ -347,7 +360,7 @@ const DbConnectionPage = () => {
         ? <Tag color="green">활성</Tag>
         : <Tag color="default">비활성</Tag>,
     },
-    ...(bCanTest
+    ...(bShowConnectionColumn
       ? [
           {
             title: '연결',
@@ -356,14 +369,17 @@ const DbConnectionPage = () => {
             align: 'center' as const,
             render: (_: unknown, r: IDbConnection) => {
               const strSt = mapMonitorStatus[r.nId] ?? 'unknown';
+              const strConnAddr = `${r.strHost}:${r.nPort}`;
               const strTip =
                 strSt === 'ok'
-                  ? '연결 정상 (자동 점검, 약 10초마다)'
+                  ? `연결 정상 · ${strConnAddr} / ${r.strDatabase} (자동 점검, 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다)`
                   : strSt === 'fail'
-                    ? '연결 실패·무응답 또는 타임아웃(12초)'
+                    ? `연결 실패 · ${strConnAddr} / ${r.strDatabase} · 무응답 또는 타임아웃(${N_MONITOR_TIMEOUT_MS / 1000}초)`
                     : strSt === 'pending'
                       ? '점검 중…'
-                      : '점검 전';
+                      : bCanRunConnectionTest
+                        ? '점검 전'
+                        : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
               const strColor =
                 strSt === 'ok'
                   ? '#1677ff'
@@ -452,11 +468,24 @@ const DbConnectionPage = () => {
       </style>
       {contextHolder}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>
-          <DatabaseOutlined style={{ marginRight: 8 }} />
-          DB 접속 정보 관리
-        </Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
+            <DatabaseOutlined style={{ marginRight: 8 }} />
+            DB 접속 정보 관리
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+            {bShowConnectionColumn && bCanRunConnectionTest ? (
+              <>
+                「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
+              </>
+            ) : bShowConnectionColumn ? (
+              <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
+            ) : (
+              <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
+            )}
+          </Text>
+        </div>
         {bCanCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
             새로운 DB 접속 정보

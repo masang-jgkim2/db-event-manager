@@ -13,6 +13,7 @@
     "test:mysql-meta": "jest --runInBand --testPathPattern=mysqlMetaSync",
     "reset-password": "node scripts/reset-password.js",
     "import-json-to-mysql": "tsx src/scripts/importJsonToMysql.ts",
+    "repair-users-from-json": "tsx src/scripts/repairUsersFromJson.ts",
     "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts"
   },
   "keywords": [],

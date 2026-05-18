@@ -65,6 +65,10 @@ const fnStartServer = async (): Promise<void> => {
   process.once('SIGTERM', fnOnShutdown);
 };
 
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('[서버] unhandledRejection |', reason);
+});
+
 void fnStartServer().catch((err: unknown) => {
   console.error('[서버] 기동 실패 |', err);
   process.exit(1);

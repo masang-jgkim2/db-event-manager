@@ -79,7 +79,11 @@ export const fnBroadcastInstanceCreated = (objInstance: IEventInstance): void =>
 // 이벤트 인스턴스 상태 변경 브로드캐스트
 // - 관여자(생성자 + 처리자)에게는 전체 인스턴스 객체 전송 (instance_updated)
 // - 나머지 연결된 유저에게는 가벼운 상태 변경 알림만 전송 (instance_status_changed)
-export const fnBroadcastInstanceUpdate = (objInstance: IEventInstance): void => {
+// - bNotifyStatusProgress: false면 strStatus 미변경 업데이트(예: DBA 쿼리 직접 수정) — WebPush·인앱의 «상태 변경» 경로만 생략(중복 노트 방지). «업데이트» 경로는 유지.
+export const fnBroadcastInstanceUpdate = (
+  objInstance: IEventInstance,
+  bNotifyStatusProgress: boolean = true,
+): void => {
   // 관여자 ID 수집
   const setInvolvedUserIds = new Set<number>();
   const arrActorFields = [
@@ -118,11 +122,15 @@ export const fnBroadcastInstanceUpdate = (objInstance: IEventInstance): void => 
   }
   if (fnShouldSkipEventInstanceProgressNotification(objInstance)) return;
   fnNotifyWebPushInstanceUpdated(objInstance);
-  fnNotifyWebPushInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+  if (bNotifyStatusProgress) {
+    fnNotifyWebPushInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+  }
   if (fnIsInAppNotificationsPersisted()) {
     void import('./inAppNotificationNotifier').then((m) => {
       void m.fnNotifyInAppInstanceUpdated(objInstance);
-      void m.fnNotifyInAppInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+      if (bNotifyStatusProgress) {
+        void m.fnNotifyInAppInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
+      }
     });
   }
 };

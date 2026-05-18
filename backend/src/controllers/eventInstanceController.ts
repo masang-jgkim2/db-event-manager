@@ -11,6 +11,10 @@ import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
 import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/templateExecElapsed';
 import { IQueryExecutionResult, IDbConnection } from '../types';
+import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
+import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
+import { fnIsMysqlStore } from '../data/dataStore';
+import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 
 // 상태 전이 규칙 (9단계 + 재요청)
 // 쿼리 실행 대상이 LIVE만(단일 서버)인 경우 fnGetTransitions에서 QA 단계 스킵
@@ -756,11 +760,11 @@ const fnApplyQueryTemplate = (
   strEventName: string,
   strServiceAbbr: string,
   strProductName: string,
-  strServiceRegion: string
+  strServiceRegion: string,
+  strInputFormat: TInputFormatForItems = 'item_number',
 ): string => {
   const strDateOnly = strDeployDate.slice(0, 10);  // YYYY-MM-DD 부분만
-  let strQuery = strTemplate;
-  strQuery = strQuery.replace(/\{\{items\}\}/g, strInputValues.trim());
+  let strQuery = fnReplaceItemsInTemplate(strTemplate, strInputValues, strInputFormat);
   strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
   strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
   strQuery = strQuery.replace(/\{\{abbr\}\}/g, strServiceAbbr);
@@ -800,6 +804,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         res.status(403).json({ bSuccess: false, strMessage: '이 단계에서는 쿼리 수정 권한(my_dashboard.query_edit)이 필요합니다.' });
         return;
       }
+      const bQueryBody =
+        req.body.strGeneratedQuery !== undefined || req.body.arrExecutionTargets !== undefined;
+      const objQueryBefore = bQueryBody ? fnSnapshotQueryBefore(objInstance) : null;
+
       if (req.body.strGeneratedQuery !== undefined) {
         objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
       }
@@ -809,18 +817,32 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
           objInstance.strGeneratedQuery = objInstance.arrExecutionTargets[0].strQuery;
         }
       }
-      if (req.body.strGeneratedQuery !== undefined || req.body.arrExecutionTargets !== undefined) {
-        const objActor = fnMakeActor(req);
-        objInstance.arrStatusLogs.push({
-          strStatus: objInstance.strStatus,
-          strChangedBy: objActor.strDisplayName,
-          nChangedByUserId: objActor.nUserId,
-          strComment: 'DBA 쿼리 직접 수정',
-          dtChangedAt: new Date().toISOString(),
-        });
+      if (bQueryBody && objQueryBefore) {
+        const objQueryEdit = fnBuildQueryEditLog(objQueryBefore, objInstance);
+        if (objQueryEdit) {
+          const objActor = fnMakeActor(req);
+          objInstance.arrStatusLogs.push({
+            strStatus: objInstance.strStatus,
+            strChangedBy: objActor.strDisplayName,
+            nChangedByUserId: objActor.nUserId,
+            strComment: 'DBA 쿼리 직접 수정',
+            dtChangedAt: new Date().toISOString(),
+            objQueryEdit,
+          });
+        }
       }
       fnSaveEventInstances();
-      fnBroadcastInstanceUpdate(objInstance);
+      if (fnIsMysqlStore()) {
+        try {
+          await fnAwaitMysqlDocFlush();
+        } catch (err: unknown) {
+          console.error('[이벤트 인스턴스] DBA 쿼리 수정 MySQL 반영 실패 |', (err as Error)?.message);
+          res.status(500).json({ bSuccess: false, strMessage: '쿼리 수정은 적용됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
+          return;
+        }
+      }
+      // strStatus 불변 — «상태 변경» WebPush·인앱 생략(비관여자 이중 노트 방지). SSE는 그대로.
+      fnBroadcastInstanceUpdate(objInstance, false);
       res.json({ bSuccess: true, objInstance });
       return;
     }
@@ -879,6 +901,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
+      const strInputFormat = (objTemplate?.strInputFormat ?? 'item_number') as TInputFormatForItems;
       const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
       if (arrSets.length > 0) {
         const MULTI_INPUT_DELIMITER = '\u0001';
@@ -892,7 +915,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
             objInstance.strEventName,
             objInstance.strServiceAbbr,
             objInstance.strProductName,
-            objInstance.strServiceRegion
+            objInstance.strServiceRegion,
+            strInputFormat,
           );
           return { nDbConnectionId: s.nDbConnectionId, strQuery };
         });
@@ -908,7 +932,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
             objInstance.strEventName,
             objInstance.strServiceAbbr,
             objInstance.strProductName,
-            objInstance.strServiceRegion
+            objInstance.strServiceRegion,
+            strInputFormat,
           );
           objInstance.arrExecutionTargets = undefined;
         }

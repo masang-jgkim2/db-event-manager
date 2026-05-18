@@ -73,6 +73,7 @@ res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했�
 상태 변경 후 반드시 브로드캐스트 호출:
 ```typescript
 fnBroadcastInstanceUpdate(objInstance);  // 인스턴스 변경 시
+// strStatus 불변(예: DBA 쿼리 직접 수정): fnBroadcastInstanceUpdate(objInstance, false);
 ```
 
 ## Repository 패턴

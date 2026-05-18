@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Typography,
   Button,
@@ -26,6 +26,7 @@ import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat, IDbConnection, TPermission } from '../types';
 import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
+import { useSearchParams } from 'react-router-dom';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -158,6 +159,9 @@ const QueryTemplatesTabContent = ({
 };
 
 const EventPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const strDeepLinkTemplateId = searchParams.get('nTemplateId');
+
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
@@ -192,7 +196,7 @@ const EventPage = () => {
   }, [fnFetchEvents, fnFetchProducts, fnFetchDbConnections]);
   useAutoRefresh(fnFetchEvents);
 
-  const fnOpenModal = (objEvent?: IEventTemplate) => {
+  const fnOpenModal = useCallback((objEvent?: IEventTemplate) => {
     setStrQueryTabsActiveKey('0');
     if (objEvent) {
       setObjEditEvent(objEvent);
@@ -219,13 +223,34 @@ const EventPage = () => {
       form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
-  };
+  }, [form]);
 
   const fnCloseModal = () => {
     setBModalOpen(false);
     setObjEditEvent(null);
     form.resetFields();
   };
+
+  const refDeepLinkTemplateOpened = useRef<number | null>(null);
+
+  // 나의 대시보드 등 ?nTemplateId= — 목록 로드 후 해당 템플릿 수정 모달 자동 오픈
+  useEffect(() => {
+    if (!strDeepLinkTemplateId) {
+      refDeepLinkTemplateOpened.current = null;
+      return;
+    }
+    const nTargetId = parseInt(strDeepLinkTemplateId, 10);
+    if (isNaN(nTargetId) || refDeepLinkTemplateOpened.current === nTargetId) return;
+
+    const objTpl = arrEvents.find((e) => e.nId === nTargetId);
+    if (!objTpl) return;
+
+    refDeepLinkTemplateOpened.current = nTargetId;
+    fnOpenModal(objTpl);
+    const objNextParams = new URLSearchParams(searchParams);
+    objNextParams.delete('nTemplateId');
+    setSearchParams(objNextParams, { replace: true });
+  }, [strDeepLinkTemplateId, arrEvents, fnOpenModal, searchParams, setSearchParams]);
 
   const fnHandleSave = async () => {
     try {
