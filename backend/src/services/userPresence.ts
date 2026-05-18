@@ -12,9 +12,10 @@ const mapSweepPrevOnline = new Map<number, boolean>();
 
 let nSweepTimer: ReturnType<typeof setInterval> | null = null;
 
+// 미설정 시 30초 — 탭 종료 후 오프라인 반영 지연. 최소 30초·최대 60분(운영에서 env로 조정)
 const N_ONLINE_WINDOW_MS = Math.max(
-  60_000,
-  Math.min(60 * 60_000, Number(process.env.USER_ONLINE_WINDOW_MS) || 3 * 60_000),
+  30_000,
+  Math.min(60 * 60_000, Number(process.env.USER_ONLINE_WINDOW_MS) || 30_000),
 );
 
 const N_SSE_THROTTLE_MS = 1_200;
@@ -75,6 +76,19 @@ export const fnTouchUserPresence = (nUserId: number): void => {
     mapSweepPrevOnline.set(nUserId, true);
     fnEmitPresenceSseThrottled(nUserId);
   }
+};
+
+/** 로그아웃 등 — API 활동 window와 무관하게 즉시 오프라인(SSE). 스프와 상태 일치 */
+export const fnMarkUserOffline = (nUserId: number): void => {
+  if (nUserId <= 0) return;
+  mapLastSeenMs.delete(nUserId);
+  mapLastSseEmitMs.delete(nUserId);
+  mapSweepPrevOnline.set(nUserId, false);
+  fnBroadcastUserPresence({
+    nUserId,
+    bOnline: false,
+    strLastSeenAt: null,
+  });
 };
 
 /** SSE 연결 직후 스냅샷 — 등록된 사용자 nId 기준 */

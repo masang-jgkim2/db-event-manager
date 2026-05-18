@@ -36,10 +36,10 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **이벤트 인스턴스**: 9단계 워크플로 (event_created → … → live_verified). **재요청** 전이: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
 - **쿼리 실행**: QA/LIVE는 `fnResolveExecuteConnection`(단일·다중 세트 동일). 실패 시 상태 유지 + `arrStatusLogs`에 오류·접속 요약 기록; 성공 이력에 선택 `strConnectionSummary`.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
-- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`, 오프라인은 서버 스윕(`userPresence.ts`)
+- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸.
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
 - **Web Push 구독**: `GET/POST/DELETE /api/push/*` — json=`notificationSubscriptions.json`(레거시 `pushSubscriptions.json` 1회 이관), **mysql**=`notification_subscription`. ON/OFF는 `user_ui_preference` 키 `db-event-manager-web-push-enabled`. VAPID는 `.env`만.
-- **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일.
+- **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일. **DBA 쿼리 직접 수정**(strStatus 불변)은 `fnBroadcastInstanceUpdate(_, false)`로 «상태 변경» 인앱·Web Push만 생략(중복 노트 완화).
 - **쿼리 실행 Progress**: `GET .../template-exec-elapsed`로 마지막 성공 `nElapsedMs` 조회 → 프론트에서 그 시간에 맞춰 0→99% 선형(rAF), 다중 세트는 SSE 진행률과 `max` (`templateExecElapsed.ts` 인메모리). DB화 시 영속화.
 
 ## 주요 파일 위치
@@ -54,7 +54,7 @@ backend/src/
   controllers/eventInstanceController.ts  # 워크플로·재요청 전이 + 실행 로직
   services/queryExecutor.ts               # SQL 파싱 + 트랜잭션 실행
   services/sseBroadcaster.ts              # SSE 클라이언트 관리 + `user_presence` 브로드캐스트
-  services/userPresence.ts                # 접속 터치·스윕·스냅샷
+  services/userPresence.ts                # 접속 터치·fnMarkUserOffline·스윕·스냅샷
   data/userUiPreferences.ts               # 사용자별 UI — json=`userUiPreferences.json`, mysql=`user_ui_preference`
   data/notificationSubscriptions.ts       # Web Push 구독 — json=`notificationSubscriptions.json`, mysql=`notification_subscription`
   data/userNotifications.ts               # 인앱 알림 — mysql=`user_notification`만( json은 프론트 localStorage)
@@ -111,7 +111,7 @@ front/src/
 |--------|------|---------------------|
 | 프로덕트 | product.view | product.create / edit / delete |
 | 쿼리 템플릿 | event_template.view | event_template.create / edit / delete |
-| DB 접속 | db_connection.view | db_connection.create / edit / delete / test |
+| DB 접속 | db_connection.view(목록·「연결」열) | create / edit / delete / test(연결 테스트 API·자동 점검; `db.manage` 시 전부) |
 | 사용자 | user.view | user.create / edit / delete / reset_password |
 | 역할 | role.view | role.create / edit / delete / edit_permissions |
 | 활동 | activity.view (`GET /api/activity/logs` 등) | activity.clear (`DELETE /api/activity/logs` 전체 삭제) |

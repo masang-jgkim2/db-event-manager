@@ -50,7 +50,11 @@ export const fnAuthMiddleware = (req: Request, res: Response, next: NextFunction
       arrRoles: objFullUser.arrRoles,
       arrPermissions: arrPermissions as IJwtPayload['arrPermissions'],
     };
-    fnTouchUserPresence(decoded.nId);
+    // 로그아웃은 직후 fnMarkUserOffline으로 끊음 — 여기서 터치하면 window 내 녹색 잔류
+    const bIsLogout = req.method === 'POST' && req.path === '/logout';
+    if (!bIsLogout) {
+      fnTouchUserPresence(decoded.nId);
+    }
     next();
   } catch {
     res.status(401).json({ bSuccess: false, strMessage: '유효하지 않은 토큰입니다.' });
