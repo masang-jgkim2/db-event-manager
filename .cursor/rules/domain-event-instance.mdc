@@ -1,6 +1,6 @@
 ---
 description: 이벤트 인스턴스 도메인 규칙 — 워크플로, 반영 날짜 조건, DBA 쿼리 수정
-globs: {backend/src/controllers/eventInstanceController.ts,front/src/pages/MyDashboardPage.tsx,front/src/stores/useEventInstanceStore.ts}
+globs: {backend/src/controllers/eventInstanceController.ts,backend/src/controllers/eventController.ts,front/src/pages/MyDashboardPage.tsx,front/src/pages/EventPage.tsx,front/src/stores/useEventInstanceStore.ts}
 alwaysApply: false
 ---
 
@@ -44,6 +44,13 @@ event_created → confirm_requested → dba_confirmed
 ## IEventInstance 핵심
 
 `nProductId`, `strGeneratedQuery`, `arrExecutionTargets`, `strStatus`, `arrStatusLogs`, `arrDeployScope`.
+
+## 쿼리 템플릿 삭제·MySQL 스텁
+
+- **삭제 차단**: 활성 인스턴스(`!bPermanentlyRemoved`)가 `nEventTemplateId` 참조 중 → 400 (`GET /api/events/:id/instances`로 확인).
+- **삭제 허용 시**: 해당 템플릿만 참조하던 **영구 삭제** 인스턴스는 메모리·`eventInstances.json`에서 제거 (`eventController.fnDeleteEvent` → `fnSaveEventInstances`).
+- **MySQL flush** (`fnRelationalWriteFullFromMemory`): `bAllowStubTemplates` 없음 → 삭제한 템플릿 **스텁 재삽입 안 함**. 스텁(`strInputFormat: raw` 등)은 `import-json-to-mysql`·`fnMysqlImportAllFromJsonDisk`(`bAllowStubTemplates: true`)만 — JSON에 템플릿 없고 인스턴스만 있을 때 FK용.
+- 템플릿 CUD 후 `fnAwaitMysqlDocFlush` 필수; 실패 시 500.
 
 ## SSE·알림(1순위)
 

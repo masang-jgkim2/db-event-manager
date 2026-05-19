@@ -27,7 +27,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **시스템 DB**: `db/systemDb.ts`는 마이그레이션용 **MSSQL 전용**. 타깃 게임 DB 실행과 별개.
 - **DB 스키마 정합성**: `docs/SCHEMA-DATA-REVIEW.md` (인메모리/타입 vs `docs/schema.sql`).
 - **data JSON ↔ 모듈 ↔ 시드·중복**: `docs/DATA-JSON-MAP.md`
-- **메타 영속 MySQL**: `docs/DATA-BACKEND-MYSQL.md` (`DATA_STORE`, `DATA_MYSQL_*`). DDL `backend/src/db/mysqlAppSchema.ts` = `docs/dqpm_meta_relational_schema.sql`. 적재·하이드레이트·스냅샷 저장 `mysqlRelationalSync.ts`, `npm run import-json-to-mysql`
+- **메타 영속 MySQL**: `docs/DATA-BACKEND-MYSQL.md` (`DATA_STORE`, `DATA_MYSQL_*`). DDL `backend/src/db/mysqlAppSchema.ts` = `docs/dqpm_meta_relational_schema.sql`. 적재·하이드레이트·스냅샷 `mysqlRelationalSync.ts`, `npm run import-json-to-mysql`. **템플릿 스텁**은 JSON 전체 임포트 시에만(`bAllowStubTemplates`); 일상 flush·삭제 후에는 스텁 없음. **템플릿 삭제** 시 활성 인스턴스 참조면 400, 영구삭제만 참조 시 해당 인스턴스 정리 후 `fnAwaitMysqlDocFlush`.
 - **MSSQL 암호화**: `dbManager`가 `options.encrypt` 설정. `.env`에 **`MSSQL_ENCRYPT=false`** 이면 비암호화 TDS(구 SQL Server 등). 미설정 시 암호화 사용. 백엔드 `index.ts`는 **`import 'dotenv/config'`** 로 `.env` 선로드.
 - **MySQL 실행**: `queryExecutor`의 MySQL 경로는 **`connection.query()`** (텍스트 프로토콜). `execute()`(prepared)는 `USE`/`SET SESSION` 등과 호환되지 않아 HeidiSQL과 결과가 달라질 수 있음.
 
@@ -52,6 +52,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 ```
 backend/src/
   controllers/eventInstanceController.ts  # 워크플로·재요청 전이 + 실행 로직
+  controllers/eventController.ts          # 쿼리 템플릿 CRUD·삭제 시 참조 검사·MySQL flush
   services/queryExecutor.ts               # SQL 파싱 + 트랜잭션 실행
   services/sseBroadcaster.ts              # SSE 클라이언트 관리 + `user_presence` 브로드캐스트
   services/userPresence.ts                # 접속 터치·fnMarkUserOffline·스윕·스냅샷
@@ -134,4 +135,5 @@ front/src/
 - **JSON ↔ 메모리**: 기동 시 `fnLoadJson` 1회 로드, 변경 시 `fnSaveJson`. 사용자는 로그인 시 `fnReloadUsersFromFile`로 파일 재동기 가능.
 - **활동 로그**: `ACTIVITY_LOG_ENABLED=1|true|on|yes`일 때만 `fnPushActivityLog`(메모리·SSE). json이면 `activity_logs.json` 배치 flush; **mysql**이면 `activity_log` + 스냅샷 플러시. Jest는 기록 강제 ON·push마다 즉시 저장.
 - **목록 GET 보정**: 메모리가 비어 있고 디스크 `data/*.json`에 1건 이상이면 해당 목록 API에서 `fnReadJsonArrayFromDisk`로 재채움 — `events`(마이그레이션 `fnMigrateToQuerySets` 포함), `products`, `dbConnections`, `eventInstances`.
+- **mysql 모드 JSON 미러**: `fnSaveEvents`/`fnSaveEventInstances`가 `events.json`·`eventInstances.json` 디스크 미러 유지(재기동·`import-json-to-mysql`용).
 - **프로덕트 서비스**: `products.json`의 `IProduct.arrServices`만 사용 — 과거 `productServices.json` 분리 모듈은 제거됨.

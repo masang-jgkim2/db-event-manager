@@ -89,6 +89,7 @@ export const fnMysqlImportAllFromJsonDisk = async (): Promise<void> => {
     arrRolePermissions: arrRp as Array<{ nRoleId: number; strPermission: string }>,
     arrActivityLogs: arrLogs as unknown as IActivityLogRow[],
     objUserUi: objUi ?? { mapByUserId: {} },
+    bAllowStubTemplates: true,
   });
   console.log('[DataStore] JSON → MySQL 전체 치환 완료 | 상세 건수는 [DATA_MYSQL] 정규화 적재 완료 로그 참고');
 };

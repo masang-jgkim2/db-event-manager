@@ -47,6 +47,8 @@ export interface IRelationalImportPayload {
   arrRolePermissions: Array<{ nRoleId: number; strPermission: string }>;
   arrActivityLogs: IActivityLogRow[];
   objUserUi: { mapByUserId: Record<string, Record<string, string>> };
+  /** JSON 디스크→MySQL 최초 적재 시에만 true. 인메모리 flush 시 false(삭제한 템플릿 스텁 재생성 방지) */
+  bAllowStubTemplates?: boolean;
 }
 
 const ARR_TABLES_DELETE_ORDER = [
@@ -231,43 +233,45 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     }
   }
 
-  // 인스턴스만 있고 events.json 에 해당 n_id 템플릿이 없으면 FK 실패 → 인스턴스 필드로 스텁 템플릿 보강
   const setEventTemplateIds = new Set(arrEvents.map((e) => e.nId));
-  const arrMissingTplIds = [
-    ...new Set(
-      arrEventInstances
-        .map((i) => i.nEventTemplateId)
-        .filter((nId) => Number.isFinite(nId) && nId > 0 && !setEventTemplateIds.has(nId)),
-    ),
-  ];
-  if (arrMissingTplIds.length > 0) {
-    console.warn(
-      `[DATA_MYSQL] events.json 에 없는 n_event_template_id | ${arrMissingTplIds.join(',')} | 스텁 event_template 삽입`,
-    );
-  }
-  for (const nTplId of arrMissingTplIds) {
-    const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
-    if (!inst) continue;
-    await conn.execute(
-      `INSERT INTO event_template (
-        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, dt_created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        nTplId,
-        inst.nProductId,
-        inst.strProductName,
-        inst.strEventLabel,
-        'events.json에 해당 템플릿 없음 — 인스턴스 기준 스텁',
-        inst.strCategory,
-        inst.strType,
-        'raw',
-        null,
-        null,
-        fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
-      ],
-    );
-    setEventTemplateIds.add(nTplId);
+  // JSON→MySQL 최초 적재 시에만: 인스턴스 FK용 스텁 템플릿 (일상 flush 시 삭제 템플릿이 되살아나지 않도록)
+  if (p.bAllowStubTemplates) {
+    const arrMissingTplIds = [
+      ...new Set(
+        arrEventInstances
+          .map((i) => i.nEventTemplateId)
+          .filter((nId) => Number.isFinite(nId) && nId > 0 && !setEventTemplateIds.has(nId)),
+      ),
+    ];
+    if (arrMissingTplIds.length > 0) {
+      console.warn(
+        `[DATA_MYSQL] events.json 에 없는 n_event_template_id | ${arrMissingTplIds.join(',')} | 스텁 event_template 삽입`,
+      );
+    }
+    for (const nTplId of arrMissingTplIds) {
+      const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
+      if (!inst) continue;
+      await conn.execute(
+        `INSERT INTO event_template (
+          n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
+          str_input_format, str_default_items, str_query_template, dt_created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          nTplId,
+          inst.nProductId,
+          inst.strProductName,
+          inst.strEventLabel,
+          'events.json에 해당 템플릿 없음 — 인스턴스 기준 스텁',
+          inst.strCategory,
+          inst.strType,
+          'raw',
+          null,
+          null,
+          fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
+        ],
+      );
+      setEventTemplateIds.add(nTplId);
+    }
   }
 
   for (const inst of arrEventInstances) {

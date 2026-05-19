@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty } from '../data/events';
-import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty } from '../data/eventInstances';
+import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances } from '../data/eventInstances';
 import { arrProducts } from '../data/products';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
@@ -168,6 +168,20 @@ export const fnDeleteEvent = async (req: Request, res: Response): Promise<void> 
         nActiveRefCount: nRefCount,
       });
       return;
+    }
+
+    // 영구 삭제된 인스턴스만 이 템플릿을 참조할 때 MySQL FK·스텁 없이 반영되도록 참조 인스턴스 제거
+    let nPurgedRemovedRefs = 0;
+    for (let i = arrEventInstances.length - 1; i >= 0; i--) {
+      const inst = arrEventInstances[i];
+      if (inst.nEventTemplateId === nId && fnIsPermanentlyRemoved(inst)) {
+        arrEventInstances.splice(i, 1);
+        nPurgedRemovedRefs += 1;
+      }
+    }
+    if (nPurgedRemovedRefs > 0) {
+      console.log(`[쿼리 템플릿] 삭제 | nId=${nId} | 영구삭제 인스턴스 ${nPurgedRemovedRefs}건 정리`);
+      fnSaveEventInstances();
     }
 
     arrEvents.splice(nIndex, 1);
