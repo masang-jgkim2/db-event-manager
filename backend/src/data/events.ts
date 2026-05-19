@@ -1,5 +1,5 @@
 import type { IDbConnection } from '../types';
-import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
 import { fnIsMysqlStore } from './dataStore';
 
@@ -72,7 +72,13 @@ export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
   return true;
 };
 
-export const fnSaveEvents = () => fnSaveJson(STR_FILE, arrEvents);
+export const fnSaveEvents = () => {
+  fnSaveJson(STR_FILE, arrEvents);
+  // mysql 모드: 정규 테이블 반영(디바운스) + 재기동 시 JSON→MySQL 재적재에 쓰이는 events.json 미러
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrEvents);
+  }
+};
 
 export const fnGetNextEventId = (): number =>
   arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;

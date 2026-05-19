@@ -738,6 +738,29 @@ describe('API 전체 테스트', () => {
       expect(res.body.objEvent.arrQueryTemplates[0].strQueryTemplate).toBe('SELECT 2;');
     });
 
+    it('GET /api/events/:id/instances → 연결 인스턴스 목록', async () => {
+      const nTplId = arrEventInstances.find((i) => i.nEventTemplateId > 0)?.nEventTemplateId;
+      if (!nTplId) return;
+      const res = await request(app)
+        .get(`/api/events/${nTplId}/instances`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(Array.isArray(res.body.arrInstances)).toBe(true);
+      expect(res.body.arrInstances.every((i: { nEventTemplateId: number }) => i.nEventTemplateId === nTplId)).toBe(true);
+      expect(typeof res.body.nActiveRefCount).toBe('number');
+    });
+
+    it('인스턴스가 참조하는 템플릿 DELETE → 400', async () => {
+      const nTplId = arrEventInstances.find((i) => i.nEventTemplateId > 0)?.nEventTemplateId;
+      if (!nTplId) return;
+      const res = await request(app)
+        .delete(`/api/events/${nTplId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(400);
+      expect(res.body?.strMessage).toMatch(/인스턴스/);
+    });
+
     it('DELETE /api/events/:id → 200', async () => {
       const res = await request(app)
         .delete(`/api/events/${nEventId}`)

@@ -1,4 +1,5 @@
 import apiClient from './axiosInstance';
+import type { IEventInstance } from '../types';
 
 const fnCatchApiError = (error: any, strFallback: string) => {
   if (error.response?.data) return error.response.data;
@@ -9,6 +10,22 @@ const fnCatchApiError = (error: any, strFallback: string) => {
 export const fnApiGetEvents = async () => {
   const response = await apiClient.get('/events');
   return response.data;
+};
+
+/** 템플릿에 연결된 이벤트 인스턴스 목록 */
+export const fnApiGetEventInstancesByTemplate = async (nTemplateId: number) => {
+  try {
+    const response = await apiClient.get(`/events/${nTemplateId}/instances`);
+    return response.data as {
+      bSuccess: boolean;
+      arrInstances?: IEventInstance[];
+      nActiveRefCount?: number;
+      nRemovedRefCount?: number;
+      strMessage?: string;
+    };
+  } catch (error: unknown) {
+    return fnCatchApiError(error, '연결 이벤트 목록을 불러올 수 없습니다.');
+  }
 };
 
 // 이벤트 추가
