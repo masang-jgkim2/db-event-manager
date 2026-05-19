@@ -29,6 +29,17 @@ describe('fnReplaceItemsInTemplate', () => {
     );
   });
 
+  it('VALUES --주석 후 줄바꿈 {{items}} — VALUES 행 패턴', () => {
+    const strTpl = 'INSERT INTO ##__D_TargetItem VALUES --삭제 아이템\n{{items}};';
+    const strIn = '12694\n12701\n8833';
+    expect(fnReplaceItemsInTemplate(strTpl, strIn, 'item_string')).toBe(
+      "INSERT INTO ##__D_TargetItem VALUES --삭제 아이템\n('12694'), ('12701'), ('8833');",
+    );
+    expect(fnReplaceItemsInTemplate(strTpl, strIn, 'item_number')).toBe(
+      'INSERT INTO ##__D_TargetItem VALUES --삭제 아이템\n(12694), (12701), (8833);',
+    );
+  });
+
   it('혼합 패턴', () => {
     const str = fnReplaceItemsInTemplate(
       "A='{{items}}' B IN ({{items}}) C VALUES {{items}}",

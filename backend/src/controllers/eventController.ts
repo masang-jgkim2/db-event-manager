@@ -61,6 +61,9 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     // 프로덕트명 조회
     const objProduct = arrProducts.find((p) => p.nId === nProductId);
 
+    const nCreatorUserId = req.user?.nId && req.user.nId > 0 ? req.user.nId : undefined;
+    const strCreatorName = req.user?.strDisplayName?.trim() || req.user?.strUserId?.trim() || '';
+
     const objNew = {
       nId: fnGetNextEventId(),
       nProductId,
@@ -74,6 +77,8 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
       strQueryTemplate: strQueryTemplate || '',
       arrQueryTemplates: Array.isArray(arrQueryTemplates) ? arrQueryTemplates : undefined,
       dtCreatedAt: new Date().toISOString(),
+      strCreatedBy: strCreatorName || undefined,
+      nCreatedByUserId: nCreatorUserId,
     };
 
     arrEvents.push(objNew);

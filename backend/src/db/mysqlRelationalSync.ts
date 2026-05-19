@@ -198,11 +198,12 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
   }
 
   for (const e of arrEvents) {
+    const nCreatorUserId = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? e.nCreatedByUserId : null;
     await conn.execute(
       `INSERT INTO event_template (
         n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, dt_created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         e.nId,
         e.nProductId,
@@ -214,6 +215,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         e.strInputFormat,
         e.strDefaultItems || null,
         e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
+        e.strCreatedBy?.trim() || null,
+        nCreatorUserId,
         fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
       ],
     );
@@ -251,11 +254,12 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     for (const nTplId of arrMissingTplIds) {
       const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
       if (!inst) continue;
+      const nStubCreatorId = inst.nCreatedByUserId && inst.nCreatedByUserId > 0 ? inst.nCreatedByUserId : null;
       await conn.execute(
         `INSERT INTO event_template (
           n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-          str_input_format, str_default_items, str_query_template, dt_created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           nTplId,
           inst.nProductId,
@@ -267,6 +271,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
           'raw',
           null,
           null,
+          inst.strCreatedBy?.trim() || null,
+          nStubCreatorId,
           fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
         ],
       );
@@ -546,7 +552,8 @@ export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConn
 export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate[]> => {
   const [trows] = await pool.query<RowDataPacket[]>(
     `SELECT n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-            str_input_format, str_default_items, str_query_template, dt_created_at FROM event_template ORDER BY n_id`,
+            str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+     FROM event_template ORDER BY n_id`,
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
     `SELECT n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template
@@ -578,6 +585,11 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
       strQueryTemplate: r.str_query_template != null ? String(r.str_query_template) : '',
       arrQueryTemplates: arrQueryTemplates?.length ? arrQueryTemplates : undefined,
       dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
+      strCreatedBy: r.str_created_by != null ? String(r.str_created_by) : undefined,
+      nCreatedByUserId:
+        r.n_created_by_user_id != null && Number(r.n_created_by_user_id) > 0
+          ? Number(r.n_created_by_user_id)
+          : undefined,
     };
   });
 };

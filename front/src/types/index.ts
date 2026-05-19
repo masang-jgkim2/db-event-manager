@@ -321,6 +321,8 @@ export interface IEventTemplate {
   strQueryTemplate: string;       // SQL 쿼리 템플릿 (레거시 단일)
   arrQueryTemplates?: IQueryTemplateItem[];  // 종류별 쿼리 템플릿 (있으면 이걸 사용)
   dtCreatedAt: string;
+  strCreatedBy?: string;
+  nCreatedByUserId?: number;
 }
 
 // =============================================

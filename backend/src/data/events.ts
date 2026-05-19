@@ -24,6 +24,9 @@ export interface IEventTemplate {
   strQueryTemplate: string;           // 레거시 호환용 (세트 사용 시 비움)
   arrQueryTemplates?: IQueryTemplateItem[];  // 실제 사용: 세트 1개 이상
   dtCreatedAt: string;
+  /** 생성 시 로그인 사용자 표시명 */
+  strCreatedBy?: string;
+  nCreatedByUserId?: number;
 }
 
 const STR_FILE = 'events.json';

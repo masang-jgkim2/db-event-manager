@@ -259,6 +259,9 @@ const EventPage = () => {
           <Text strong style={{ fontSize: 13 }}>연결된 이벤트</Text>
           <Tag>템플릿 ID {objSelectedTemplate.nId}</Tag>
           <Text type="secondary" style={{ fontWeight: 400 }}>{objSelectedTemplate.strEventLabel}</Text>
+          {objSelectedTemplate.strCreatedBy && (
+            <Tag color="blue">생성자 {objSelectedTemplate.strCreatedBy}</Tag>
+          )}
           {nActiveRefCount > 0 && (
             <Tag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</Tag>
           )}
@@ -514,6 +517,17 @@ const EventPage = () => {
       dataIndex: 'strEventLabel',
       key: 'strEventLabel',
       width: 200,
+    },
+    {
+      title: '생성자',
+      dataIndex: 'strCreatedBy',
+      key: 'strCreatedBy',
+      width: 110,
+      render: (str: string | undefined) => (
+        <Text type={str ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+          {str?.trim() || '-'}
+        </Text>
+      ),
     },
     {
       title: '종류',

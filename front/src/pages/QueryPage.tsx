@@ -510,32 +510,31 @@ const QueryPage = () => {
                 size="large"
               >
                 {arrFilteredEvents.map((e) => (
-                  <Select.Option key={e.nId} value={e.nId}>
-                    {e.strEventLabel}
-                    <Space style={{ marginLeft: 8 }}>
-                      <Tag color="blue" style={{ fontSize: 11 }}>{e.strCategory}</Tag>
-                      <Tag color="red" style={{ fontSize: 11 }}>{e.strType}</Tag>
+                  <Select.Option
+                    key={e.nId}
+                    value={e.nId}
+                    label={`#${e.nId} ${e.strEventLabel}`}
+                  >
+                    <Space wrap size={4}>
+                      <Tag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</Tag>
+                      <span>{e.strEventLabel}</span>
+                      <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</Tag>
+                      <Tag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</Tag>
                     </Space>
                   </Select.Option>
                 ))}
               </Select>
               {objSelectedEvent && (() => {
                 const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
-                if (arrValidSets.length >= 2) {
-                  return (
-                    <Space wrap style={{ marginTop: 8 }}>
+                return (
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Tag color="purple">템플릿 번호 {objSelectedEvent.nId}</Tag>
+                    {arrValidSets.length >= 2 && (
                       <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
-                    </Space>
-                  );
-                }
-                if (arrValidSets.length === 1) {
-                  return (
-                    <Space wrap style={{ marginTop: 8 }}>
-                      <Tag>단일 쿼리</Tag>
-                    </Space>
-                  );
-                }
-                return null;
+                    )}
+                    {arrValidSets.length === 1 && <Tag>단일 쿼리</Tag>}
+                  </Space>
+                );
               })()}
               {objSelectedEvent?.strDescription && (
                 <Alert

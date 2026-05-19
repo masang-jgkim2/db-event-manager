@@ -721,6 +721,8 @@ describe('API 전체 테스트', () => {
       expect(res.status).toBe(200);
       expect(res.body.objEvent?.nId).toBeDefined();
       expect(res.body.objEvent?.arrQueryTemplates?.length).toBe(1);
+      expect(res.body.objEvent?.strCreatedBy).toBeTruthy();
+      expect(res.body.objEvent?.nCreatedByUserId).toBe(1);
       nEventId = res.body.objEvent.nId;
     });
 

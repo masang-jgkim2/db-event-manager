@@ -35,7 +35,8 @@ const fnIsParenWrappedItemsPlaceholder = (strTemplate: string, nIndex: number): 
 
 const fnIsValuesItemsPlaceholder = (strTemplate: string, nIndex: number): boolean => {
   const strBefore = strTemplate.slice(0, nIndex).replace(/\s+$/, '');
-  return /\bVALUES$/i.test(strBefore);
+  // VALUES 바로 뒤 같은 줄 `-- 주석` 허용 (다음 줄 {{items}} 인 경우)
+  return /\bVALUES(?:\s--[^\r\n]*)?$/i.test(strBefore);
 };
 
 const fnDetectItemsJoinMode = (strTemplate: string, nIndex: number): TItemsJoinMode => {
