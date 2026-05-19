@@ -1911,8 +1911,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     <Descriptions.Item label="이벤트 번호">{objDetail.nId}</Descriptions.Item>
                     <Descriptions.Item label="쿼리 템플릿">
                       {(fnHasPermission('event_template.view') || fnHasPermission('event_template.manage')) ? (
-                        <Link to={`/events?nTemplateId=${objDetail.nEventTemplateId}`}>
-                          ID {objDetail.nEventTemplateId} 템플릿 관리 <LinkOutlined />
+                        <Link
+                          to={`/events?nTemplateId=${objDetail.nEventTemplateId}&nInstanceId=${objDetail.nId}`}
+                          onClick={() => setBDetailOpen(false)}
+                        >
+                          ID {objDetail.nEventTemplateId} · 쿼리 템플릿 보기 <LinkOutlined />
                         </Link>
                       ) : (
                         <Text type="secondary">ID {objDetail.nEventTemplateId}</Text>

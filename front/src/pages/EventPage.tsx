@@ -169,6 +169,11 @@ const EventPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const strDeepLinkTemplateId = searchParams.get('nTemplateId');
+  const strDeepLinkInstanceId = searchParams.get('nInstanceId');
+
+  const N_TEMPLATE_LIST_PAGE_SIZE = 10;
+  const [nTemplateListPage, setNTemplateListPage] = useState(1);
+  const [nHighlightInstanceId, setNHighlightInstanceId] = useState<number | null>(null);
 
   const [nSelectedTemplateId, setNSelectedTemplateId] = useState<number | null>(null);
   const [arrRelatedInstances, setArrRelatedInstances] = useState<IEventInstance[]>([]);
@@ -245,6 +250,109 @@ const EventPage = () => {
     navigate(`/my-dashboard?nId=${nInstanceId}`);
   };
 
+  /** 선택한 템플릿 행 아래 펼침 영역 — 나의 대시보드 expandable 패턴과 동일 */
+  const fnRenderRelatedInstancesPanel = () => {
+    if (!objSelectedTemplate) return null;
+    return (
+      <div style={{ padding: '4px 8px 12px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <Text strong style={{ fontSize: 13 }}>연결된 이벤트</Text>
+          <Tag>템플릿 ID {objSelectedTemplate.nId}</Tag>
+          <Text type="secondary" style={{ fontWeight: 400 }}>{objSelectedTemplate.strEventLabel}</Text>
+          {nActiveRefCount > 0 && (
+            <Tag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</Tag>
+          )}
+          {nRemovedRefCount > 0 && (
+            <Tag color="default">이미 서버 삭제됨 {nRemovedRefCount}건</Tag>
+          )}
+          <Button size="small" onClick={() => void fnLoadRelatedInstances(objSelectedTemplate.nId)}>
+            새로고침
+          </Button>
+        </div>
+        {bLoadingRelated ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <Spin tip="연결 이벤트 불러오는 중…" />
+          </div>
+        ) : arrRelatedInstances.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="이 템플릿으로 생성된 이벤트가 없습니다. 템플릿을 바로 삭제할 수 있습니다."
+          />
+        ) : (
+          <>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              행을 클릭하면 나의 대시보드에서 해당 이벤트 상세가 열립니다.
+              {nActiveRefCount > 0 && ' 템플릿 삭제 전에는 아래 이벤트를 대시보드에서 삭제(복원 불가)해야 합니다.'}
+            </Text>
+            <AppTable<IEventInstance>
+              strTableId="event_template_related_instances"
+              rowKey="nId"
+              size="small"
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              dataSource={arrRelatedInstances}
+              rowClassName={(r) => (r.nId === nHighlightInstanceId ? 'ant-table-row-selected' : '')}
+              onRow={(r) => ({
+                onClick: () => fnGoToDashboardInstance(r.nId),
+                style: { cursor: bCanOpenDashboard ? 'pointer' : 'default' },
+              })}
+              columns={[
+                { title: '이벤트 번호', dataIndex: 'nId', width: 88 },
+                {
+                  title: '이벤트명',
+                  dataIndex: 'strEventName',
+                  ellipsis: true,
+                  render: (str: string, r) => (
+                    <Space size={4}>
+                      {str}
+                      {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
+                    </Space>
+                  ),
+                },
+                {
+                  title: '상태',
+                  dataIndex: 'strStatus',
+                  width: 120,
+                  render: (s: TEventStatus) => (
+                    <Space size={4}>
+                      {fnRenderStatusIcon(s, 12)}
+                      <Tag color={OBJ_STATUS_CONFIG[s]?.strColor}>{OBJ_STATUS_CONFIG[s]?.strLabel}</Tag>
+                    </Space>
+                  ),
+                },
+                { title: '생성자', dataIndex: 'strCreatedBy', width: 100 },
+                {
+                  title: '생성일',
+                  dataIndex: 'dtCreatedAt',
+                  width: 140,
+                  render: (v: string) => new Date(v).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }),
+                },
+                {
+                  title: '',
+                  key: 'go',
+                  width: 72,
+                  render: (_: unknown, r: IEventInstance) => (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<LinkOutlined />}
+                      disabled={!bCanOpenDashboard}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fnGoToDashboardInstance(r.nId);
+                      }}
+                    >
+                      열기
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
+      </div>
+    );
+  };
+
   // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드(한 effect + 스토어 dedupe)
   useEffect(() => {
     void fnFetchEvents();
@@ -288,26 +396,40 @@ const EventPage = () => {
     form.resetFields();
   };
 
-  const refDeepLinkTemplateOpened = useRef<number | null>(null);
+  const refDeepLinkTemplateApplied = useRef<number | null>(null);
 
-  // 나의 대시보드 등 ?nTemplateId= — 목록 로드 후 해당 템플릿 수정 모달 자동 오픈
+  // 나의 대시보드 등 ?nTemplateId= — 목록에서 해당 행 선택·연결 이벤트 펼침 (수정 모달 아님)
   useEffect(() => {
     if (!strDeepLinkTemplateId) {
-      refDeepLinkTemplateOpened.current = null;
+      refDeepLinkTemplateApplied.current = null;
       return;
     }
     const nTargetId = parseInt(strDeepLinkTemplateId, 10);
-    if (isNaN(nTargetId) || refDeepLinkTemplateOpened.current === nTargetId) return;
+    if (isNaN(nTargetId) || refDeepLinkTemplateApplied.current === nTargetId) return;
 
-    const objTpl = arrEvents.find((e) => e.nId === nTargetId);
-    if (!objTpl) return;
+    const nTplIndex = arrEvents.findIndex((e) => e.nId === nTargetId);
+    if (nTplIndex < 0) return;
 
-    refDeepLinkTemplateOpened.current = nTargetId;
-    fnOpenModal(objTpl);
+    refDeepLinkTemplateApplied.current = nTargetId;
+    setNTemplateListPage(Math.floor(nTplIndex / N_TEMPLATE_LIST_PAGE_SIZE) + 1);
+    setNSelectedTemplateId(nTargetId);
+
+    const nInstId = strDeepLinkInstanceId ? parseInt(strDeepLinkInstanceId, 10) : NaN;
+    setNHighlightInstanceId(!isNaN(nInstId) && nInstId > 0 ? nInstId : null);
+
     const objNextParams = new URLSearchParams(searchParams);
     objNextParams.delete('nTemplateId');
+    objNextParams.delete('nInstanceId');
     setSearchParams(objNextParams, { replace: true });
-  }, [strDeepLinkTemplateId, arrEvents, fnOpenModal, searchParams, setSearchParams]);
+
+    requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        document
+          .querySelector(`tr[data-row-key="${nTargetId}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+    });
+  }, [strDeepLinkTemplateId, strDeepLinkInstanceId, arrEvents, searchParams, setSearchParams]);
 
   const fnHandleSave = async () => {
     try {
@@ -468,139 +590,42 @@ const EventPage = () => {
         )}
       </div>
 
-      <Card style={{ marginBottom: objSelectedTemplate ? 12 : 0 }}>
+      <Card>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          행을 클릭하면 아래에 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 다시 클릭하면 접습니다.
+        </Text>
         <AppTable
           strTableId="event_templates"
           rowKey="nId"
           dataSource={arrEvents}
           columns={arrColumns}
           strEmptyText="등록된 쿼리 템플릿이 없습니다."
-          rowSelection={{
-            type: 'radio',
-            selectedRowKeys: nSelectedTemplateId != null ? [nSelectedTemplateId] : [],
-            onChange: (keys) => {
-              const nKey = keys[0];
-              setNSelectedTemplateId(
-                nKey == null || nKey === ''
-                  ? null
-                  : typeof nKey === 'number'
-                    ? nKey
-                    : Number(nKey),
-              );
+          expandable={{
+            expandedRowKeys: nSelectedTemplateId != null ? [nSelectedTemplateId] : [],
+            onExpand: (bExpanded, record) => {
+              setNSelectedTemplateId(bExpanded ? record.nId : null);
             },
+            expandedRowRender: () => fnRenderRelatedInstancesPanel(),
+            expandIcon: () => null,
+            columnWidth: 24,
+            rowExpandable: () => true,
+          }}
+          rowClassName={(record) => (record.nId === nSelectedTemplateId ? 'ant-table-row-selected' : '')}
+          pagination={{
+            pageSize: N_TEMPLATE_LIST_PAGE_SIZE,
+            current: nTemplateListPage,
+            onChange: (page) => setNTemplateListPage(page),
+            showSizeChanger: false,
           }}
           onRow={(record) => ({
-            onClick: () => setNSelectedTemplateId(record.nId),
+            onClick: () => {
+              setNHighlightInstanceId(null);
+              setNSelectedTemplateId((prev) => (prev === record.nId ? null : record.nId));
+            },
             style: { cursor: 'pointer' },
           })}
         />
       </Card>
-
-      {objSelectedTemplate && (
-        <Card
-          size="small"
-          title={(
-            <Space wrap>
-              <span>연결된 이벤트</span>
-              <Tag>템플릿 ID {objSelectedTemplate.nId}</Tag>
-              <Text type="secondary" style={{ fontWeight: 400 }}>{objSelectedTemplate.strEventLabel}</Text>
-            </Space>
-          )}
-          extra={(
-            <Space wrap size={4}>
-              {nActiveRefCount > 0 && (
-                <Tag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</Tag>
-              )}
-              {nRemovedRefCount > 0 && (
-                <Tag color="default">이미 서버 삭제됨 {nRemovedRefCount}건</Tag>
-              )}
-              <Button size="small" onClick={() => void fnLoadRelatedInstances(objSelectedTemplate.nId)}>
-                새로고침
-              </Button>
-            </Space>
-          )}
-        >
-          {bLoadingRelated ? (
-            <div style={{ textAlign: 'center', padding: 24 }}>
-              <Spin tip="연결 이벤트 불러오는 중…" />
-            </div>
-          ) : arrRelatedInstances.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="이 템플릿으로 생성된 이벤트가 없습니다. 템플릿을 바로 삭제할 수 있습니다."
-            />
-          ) : (
-            <>
-              <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-                행을 클릭하면 나의 대시보드에서 해당 이벤트 상세가 열립니다.
-                {nActiveRefCount > 0 && ' 템플릿 삭제 전에는 아래 이벤트를 대시보드에서 삭제(복원 불가)해야 합니다.'}
-              </Text>
-              <AppTable<IEventInstance>
-                strTableId="event_template_related_instances"
-                rowKey="nId"
-                size="small"
-                pagination={{ pageSize: 8, showSizeChanger: false }}
-                dataSource={arrRelatedInstances}
-                onRow={(r) => ({
-                  onClick: () => fnGoToDashboardInstance(r.nId),
-                  style: { cursor: bCanOpenDashboard ? 'pointer' : 'default' },
-                })}
-                columns={[
-                  { title: '이벤트 번호', dataIndex: 'nId', width: 88 },
-                  {
-                    title: '이벤트명',
-                    dataIndex: 'strEventName',
-                    ellipsis: true,
-                    render: (str: string, r) => (
-                      <Space size={4}>
-                        {str}
-                        {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
-                      </Space>
-                    ),
-                  },
-                  {
-                    title: '상태',
-                    dataIndex: 'strStatus',
-                    width: 120,
-                    render: (s: TEventStatus) => (
-                      <Space size={4}>
-                        {fnRenderStatusIcon(s, 12)}
-                        <Tag color={OBJ_STATUS_CONFIG[s]?.strColor}>{OBJ_STATUS_CONFIG[s]?.strLabel}</Tag>
-                      </Space>
-                    ),
-                  },
-                  { title: '생성자', dataIndex: 'strCreatedBy', width: 100 },
-                  {
-                    title: '생성일',
-                    dataIndex: 'dtCreatedAt',
-                    width: 140,
-                    render: (v: string) => new Date(v).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }),
-                  },
-                  {
-                    title: '',
-                    key: 'go',
-                    width: 72,
-                    render: (_: unknown, r: IEventInstance) => (
-                      <Button
-                        type="link"
-                        size="small"
-                        icon={<LinkOutlined />}
-                        disabled={!bCanOpenDashboard}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fnGoToDashboardInstance(r.nId);
-                        }}
-                      >
-                        열기
-                      </Button>
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-        </Card>
-      )}
 
       {/* 이벤트 추가/수정 모달 */}
       <Modal

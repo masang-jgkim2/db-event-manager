@@ -17,6 +17,11 @@ import type { IRole, TPermission } from '../types';
 
 const { Title, Text } = Typography;
 
+const fnFormatLastAccess = (strIso?: string | null): string => {
+  if (!strIso) return '-';
+  return new Date(strIso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
 interface IUserRow {
   nId: number;
   strUserId: string;
@@ -227,12 +232,9 @@ const UserPage = () => {
       align: 'center' as const,
       render: (_: unknown, r: IUserRow) => {
         const bOn = Boolean(r.bOnline);
-        const strWhen = r.strLastSeenAt
-          ? new Date(r.strLastSeenAt).toLocaleString('ko-KR')
-          : '기록 없음';
         const strTip = bOn
-          ? `온라인 (최근 API 활동 기준)\n마지막: ${strWhen}`
-          : `오프라인\n마지막: ${strWhen}`;
+          ? '온라인 (최근 API 활동 기준)'
+          : '오프라인';
         const strColor = bOn ? '#52c41a' : '#bfbfbf';
         const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
         return (
@@ -252,6 +254,21 @@ const UserPage = () => {
             />
           </Tooltip>
         );
+      },
+    },
+    {
+      title: '최근 접속일',
+      key: 'strLastSeenAt',
+      width: 150,
+      render: (_: unknown, r: IUserRow) => (
+        <Text type={r.strLastSeenAt ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+          {fnFormatLastAccess(r.strLastSeenAt)}
+        </Text>
+      ),
+      sorter: (a, b) => {
+        const nA = a.strLastSeenAt ? new Date(a.strLastSeenAt).getTime() : 0;
+        const nB = b.strLastSeenAt ? new Date(b.strLastSeenAt).getTime() : 0;
+        return nA - nB;
       },
     },
     {
