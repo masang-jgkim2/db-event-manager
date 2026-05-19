@@ -35,6 +35,7 @@ import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
+import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -219,11 +220,11 @@ const QueryPage = () => {
 
   // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride로 세트별 입력 사용
   const fnApplyTemplate = (strTemplate: string, strItemsOverride?: string): string => {
-    const strItems = strItemsOverride !== undefined ? strItemsOverride.trim() : strInputValues.trim();
+    const strRaw = strItemsOverride !== undefined ? strItemsOverride : strInputValues;
+    const strFmt = objSelectedEvent?.strInputFormat ?? 'item_number';
     // {{date}} 치환: QA 날짜 우선, 없으면 LIVE 날짜
     const strDateOnly = (strQaDeployDate || strLiveDeployDate || strDeployDate).slice(0, 10);
-    let str = strTemplate;
-    str = str.replace(/\{\{items\}\}/g, strItems);
+    let str = fnReplaceItemsInTemplate(strTemplate, strRaw, strFmt);
     str = str.replace(/\{\{date\}\}/g, strDateOnly);
     str = str.replace(/\{\{event_name\}\}/g, strEventName);
     str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
@@ -370,9 +371,9 @@ const QueryPage = () => {
     if (!objSelectedEvent) return '';
     switch (objSelectedEvent.strInputFormat) {
       case 'item_number':
-        return '아이템 번호를 쉼표로 구분하여 입력\n예: 7902, 9471, 9138, 11582';
+        return '줄바꿈·쉼표 입력. \'{{items}}\'·({{items}})→7902, 9471 / VALUES {{items}}→(7902), (9471)\n예:\n7902\n9471';
       case 'item_string':
-        return '아이템 문자열을 줄바꿈으로 구분하여 입력\n예:\n2012_yuki_giftbox\n2012_yuki_ticket';
+        return '줄바꿈·쉼표 입력. \'{{items}}\'→a,b / ({{items}})→\'a\', \'b\' / VALUES→(\'a\'), (\'b\')';
       case 'date':
         return '날짜를 입력하세요\n예: 20251125';
       default:
@@ -509,32 +510,31 @@ const QueryPage = () => {
                 size="large"
               >
                 {arrFilteredEvents.map((e) => (
-                  <Select.Option key={e.nId} value={e.nId}>
-                    {e.strEventLabel}
-                    <Space style={{ marginLeft: 8 }}>
-                      <Tag color="blue" style={{ fontSize: 11 }}>{e.strCategory}</Tag>
-                      <Tag color="red" style={{ fontSize: 11 }}>{e.strType}</Tag>
+                  <Select.Option
+                    key={e.nId}
+                    value={e.nId}
+                    label={`#${e.nId} ${e.strEventLabel}`}
+                  >
+                    <Space wrap size={4}>
+                      <Tag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</Tag>
+                      <span>{e.strEventLabel}</span>
+                      <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</Tag>
+                      <Tag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</Tag>
                     </Space>
                   </Select.Option>
                 ))}
               </Select>
               {objSelectedEvent && (() => {
                 const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
-                if (arrValidSets.length >= 2) {
-                  return (
-                    <Space wrap style={{ marginTop: 8 }}>
+                return (
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Tag color="purple">템플릿 번호 {objSelectedEvent.nId}</Tag>
+                    {arrValidSets.length >= 2 && (
                       <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
-                    </Space>
-                  );
-                }
-                if (arrValidSets.length === 1) {
-                  return (
-                    <Space wrap style={{ marginTop: 8 }}>
-                      <Tag>단일 쿼리</Tag>
-                    </Space>
-                  );
-                }
-                return null;
+                    )}
+                    {arrValidSets.length === 1 && <Tag>단일 쿼리</Tag>}
+                  </Space>
+                );
               })()}
               {objSelectedEvent?.strDescription && (
                 <Alert
@@ -573,12 +573,12 @@ const QueryPage = () => {
                   </Text>
                 </Form.Item>
 
-                {/* 알로 링크 (선택) */}
-                <Form.Item label={<Space>알로 링크 <Text type="secondary" style={{ fontSize: 11 }}>선택사항</Text></Space>}>
+                {/* 업무 링크 (선택) */}
+                <Form.Item label={<Space>업무 링크 <Text type="secondary" style={{ fontSize: 11 }}>선택사항</Text></Space>}>
                   <Input
                     value={strAlloLink}
                     onChange={(e) => setStrAlloLink(e.target.value)}
-                    placeholder="https://allo.io/... 알로 업무 카드 링크를 붙여넣으세요"
+                    placeholder="알로·코웤 등 업무 링크 URL (https://...)"
                     size="large"
                     allowClear
                   />
@@ -679,8 +679,8 @@ const QueryPage = () => {
                       label={
                         <Space>
                           <Text strong>쿼리 세트별 입력값</Text>
-                          {objSelectedEvent.strInputFormat === 'item_number' && ' — 아이템 번호'}
-                          {objSelectedEvent.strInputFormat === 'item_string' && ' — 아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'item_number' && ' — 번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && ' — 문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
                           <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
                         </Space>
@@ -712,8 +712,8 @@ const QueryPage = () => {
                     <Form.Item
                       label={
                         <Space>
-                          {objSelectedEvent.strInputFormat === 'item_number' && '아이템 번호'}
-                          {objSelectedEvent.strInputFormat === 'item_string' && '아이템 문자열'}
+                          {objSelectedEvent.strInputFormat === 'item_number' && '번호'}
+                          {objSelectedEvent.strInputFormat === 'item_string' && '문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
                           <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
                         </Space>

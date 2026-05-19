@@ -49,6 +49,12 @@ router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
 - `GET`/`PUT /api/auth/ui-preferences` — `fnAuthMiddleware`만, PUT `{ objEntries }`. `DATA_STORE=json` → `userUiPreferences.json`; **mysql** → `user_ui_preference` (`userUiPreferences.ts`). 활동 로그에서 해당 경로 제외.
 - `GET /api/users/presence-stream` — `fnRequireAnyPermission('user.view','user.manage')`, SSE `connected` → `presence_snapshot` → `user_presence` (`sseBroadcaster` + `userPresence` 스윕).
 
+## 메타 MySQL — 쿼리 템플릿·스텁
+
+- `fnSaveJson` → `mysqlDocPersist` 디바운스 → `fnRelationalWriteFullFromMemory`. CUD 후 `fnAwaitMysqlDocFlush`.
+- **스텁 `event_template`**: `IRelationalImportPayload.bAllowStubTemplates` — `true`는 `fnMysqlImportAllFromJsonDisk`·CLI 임포트만. 일상 flush는 `false`(삭제 템플릿이 인스턴스 FK로 되살아나지 않게).
+- **DELETE `/api/events/:id`**: 활성 인스턴스 참조 시 400; 영구삭제만 참조 시 해당 인스턴스 제거 후 템플릿 삭제·flush.
+
 ## Web Push·인앱 알림
 
 - **구독 API**: `GET /api/push/vapid-public-key`, `POST`/`DELETE /api/push/subscribe` — `fnAuthMiddleware`만. 저장: json=`notificationSubscriptions.json`, mysql=`notification_subscription`(기동 시 `push_subscription`→`RENAME` 이관).
@@ -73,6 +79,7 @@ res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했�
 상태 변경 후 반드시 브로드캐스트 호출:
 ```typescript
 fnBroadcastInstanceUpdate(objInstance);  // 인스턴스 변경 시
+// strStatus 불변(예: DBA 쿼리 직접 수정): fnBroadcastInstanceUpdate(objInstance, false);
 ```
 
 ## Repository 패턴

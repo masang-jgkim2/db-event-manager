@@ -6,10 +6,14 @@ import {
   fnGetNextId,
   fnGetUsersWithRoles,
   fnSaveUserAndRoles,
+  fnCommitUserDataStore,
+  fnReloadUsersFromMysql,
   fnSaveUsers,
 } from '../data/users';
 import { fnGetMergedPermissions, fnGetRoleIdsByRoleCodes } from '../data/roles';
 import { fnRemoveUserRolesAndSave } from '../data/userRoles';
+import { fnReassignUserReferencesInEventInstances } from '../services/userEventReassign';
+import { fnAwaitInFlightMysqlDocFlush, fnCancelAllPendingMysqlDocFlush } from '../db/mysqlDocPersist';
 import { fnGetUserLastSeenIso, fnIsUserOnlineByPresence } from '../services/userPresence';
 
 // 사용자 목록 조회 (정규화: user_roles에서 역할 조립)
@@ -64,6 +68,7 @@ export const fnCreateUser = async (req: Request, res: Response): Promise<void> =
     });
     const arrRoleIds = fnGetRoleIdsByRoleCodes(arrRoleCodes);
     fnSaveUserAndRoles(nId, arrRoleIds);
+    await fnCommitUserDataStore();
 
     const arrPermissions = fnGetMergedPermissions(arrRoleCodes);
     res.json({
@@ -102,6 +107,7 @@ export const fnUpdateUser = async (req: Request, res: Response): Promise<void> =
     } else {
       fnSaveUsers();
     }
+    await fnCommitUserDataStore();
 
     const arrWithRoles = fnGetUsersWithRoles();
     const objFull = arrWithRoles.find((u) => u.nId === nId);
@@ -139,10 +145,48 @@ export const fnDeleteUser = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    await fnAwaitInFlightMysqlDocFlush();
+    fnCancelAllPendingMysqlDocFlush();
+
+    const nReassignToUserId = req.user?.nId ?? 1;
+    const strReassignToName =
+      arrUsers.find((u) => u.nId === nReassignToUserId)?.strDisplayName ?? '관리자';
+
+    let objReassign = { nCreatedInstances: 0, nStageActorRows: 0, nStatusLogRows: 0 };
+    try {
+      objReassign = await fnReassignUserReferencesInEventInstances(nId, nReassignToUserId);
+    } catch (errReassign: unknown) {
+      console.error('[사용자 삭제] 이벤트 참조 이관 실패 |', (errReassign as Error)?.message);
+      res.status(500).json({
+        bSuccess: false,
+        strMessage: '이벤트 데이터 이관에 실패하여 사용자를 삭제할 수 없습니다.',
+      });
+      return;
+    }
+
     fnRemoveUserRolesAndSave(nId);
     arrUsers.splice(nIndex, 1);
-    fnSaveUsers();
-    res.json({ bSuccess: true, strMessage: '사용자가 삭제되었습니다.' });
+    try {
+      await fnCommitUserDataStore();
+    } catch (errCommit: unknown) {
+      await fnReloadUsersFromMysql();
+      console.error('[사용자 삭제] MySQL 반영 실패 — DB 기준 복구 |', (errCommit as Error)?.message);
+      res.status(500).json({
+        bSuccess: false,
+        strMessage: '사용자 삭제 저장에 실패했습니다. 목록을 새로고침해 주세요.',
+      });
+      return;
+    }
+
+    const bHadRefs =
+      objReassign.nCreatedInstances > 0
+      || objReassign.nStageActorRows > 0
+      || objReassign.nStatusLogRows > 0;
+    const strMessage = bHadRefs
+      ? `사용자가 삭제되었습니다. (생성 이벤트 ${objReassign.nCreatedInstances}건, 처리 이력 ${objReassign.nStageActorRows}건, 상태 로그 ${objReassign.nStatusLogRows}건은 ${strReassignToName}(으)로 이관됨)`
+      : '사용자가 삭제되었습니다.';
+
+    res.json({ bSuccess: true, strMessage });
   } catch (error) {
     console.error('사용자 삭제 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
@@ -168,6 +212,7 @@ export const fnResetPassword = async (req: Request, res: Response): Promise<void
 
     objUser.strPassword = await bcrypt.hash(strNewPassword, 10);
     fnSaveUsers();
+    await fnCommitUserDataStore();
     res.json({ bSuccess: true, strMessage: '비밀번호가 초기화되었습니다.' });
   } catch (error) {
     console.error('비밀번호 초기화 오류:', error);

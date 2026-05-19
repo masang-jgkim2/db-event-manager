@@ -1,13 +1,14 @@
 // 정규화: 사용자별 역할 (users.arr_roles 분리)
 import { fnLoadJson, fnSaveJson } from './jsonStore';
-import { fnIsJsonStore } from './dataStore';
+import { fnIsJsonStore, fnIsMysqlStore } from './dataStore';
 
 export interface IUserRoleRow {
   nUserId: number;
   nRoleId: number;
 }
 
-const STR_FILE = 'userRoles.json';
+export const STR_USER_ROLES_FILE = 'userRoles.json';
+const STR_FILE = STR_USER_ROLES_FILE;
 
 // 시드: admin→admin, gm01→game_manager, dba01→dba, planner01→game_designer
 const ARR_SEED: IUserRoleRow[] = [
@@ -25,7 +26,11 @@ if (fnIsJsonStore() && arrUserRoles.length === 0 && ARR_SEED.length > 0) {
   fnSaveJson(STR_FILE, arrUserRoles);
 }
 
-export const fnSaveUserRoles = () => fnSaveJson(STR_FILE, arrUserRoles);
+/** mysql 모드는 fnCommitUserDataStore 가 반영 — 전체 메타 치환 예약 금지 */
+export const fnSaveUserRoles = () => {
+  if (fnIsMysqlStore()) return;
+  fnSaveJson(STR_FILE, arrUserRoles);
+};
 
 /** 해당 사용자의 역할 ID 목록 */
 export const fnGetRoleIdsByUserId = (nUserId: number): number[] =>

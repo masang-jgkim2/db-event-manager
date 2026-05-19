@@ -47,6 +47,8 @@ export interface IRelationalImportPayload {
   arrRolePermissions: Array<{ nRoleId: number; strPermission: string }>;
   arrActivityLogs: IActivityLogRow[];
   objUserUi: { mapByUserId: Record<string, Record<string, string>> };
+  /** JSON 디스크→MySQL 최초 적재 시에만 true. 인메모리 flush 시 false(삭제한 템플릿 스텁 재생성 방지) */
+  bAllowStubTemplates?: boolean;
 }
 
 const ARR_TABLES_DELETE_ORDER = [
@@ -196,11 +198,12 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
   }
 
   for (const e of arrEvents) {
+    const nCreatorUserId = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? e.nCreatedByUserId : null;
     await conn.execute(
       `INSERT INTO event_template (
         n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, dt_created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         e.nId,
         e.nProductId,
@@ -212,6 +215,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         e.strInputFormat,
         e.strDefaultItems || null,
         e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
+        e.strCreatedBy?.trim() || null,
+        nCreatorUserId,
         fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
       ],
     );
@@ -231,43 +236,48 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     }
   }
 
-  // 인스턴스만 있고 events.json 에 해당 n_id 템플릿이 없으면 FK 실패 → 인스턴스 필드로 스텁 템플릿 보강
   const setEventTemplateIds = new Set(arrEvents.map((e) => e.nId));
-  const arrMissingTplIds = [
-    ...new Set(
-      arrEventInstances
-        .map((i) => i.nEventTemplateId)
-        .filter((nId) => Number.isFinite(nId) && nId > 0 && !setEventTemplateIds.has(nId)),
-    ),
-  ];
-  if (arrMissingTplIds.length > 0) {
-    console.warn(
-      `[DATA_MYSQL] events.json 에 없는 n_event_template_id | ${arrMissingTplIds.join(',')} | 스텁 event_template 삽입`,
-    );
-  }
-  for (const nTplId of arrMissingTplIds) {
-    const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
-    if (!inst) continue;
-    await conn.execute(
-      `INSERT INTO event_template (
-        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, dt_created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        nTplId,
-        inst.nProductId,
-        inst.strProductName,
-        inst.strEventLabel,
-        'events.json에 해당 템플릿 없음 — 인스턴스 기준 스텁',
-        inst.strCategory,
-        inst.strType,
-        'raw',
-        null,
-        null,
-        fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
-      ],
-    );
-    setEventTemplateIds.add(nTplId);
+  // JSON→MySQL 최초 적재 시에만: 인스턴스 FK용 스텁 템플릿 (일상 flush 시 삭제 템플릿이 되살아나지 않도록)
+  if (p.bAllowStubTemplates) {
+    const arrMissingTplIds = [
+      ...new Set(
+        arrEventInstances
+          .map((i) => i.nEventTemplateId)
+          .filter((nId) => Number.isFinite(nId) && nId > 0 && !setEventTemplateIds.has(nId)),
+      ),
+    ];
+    if (arrMissingTplIds.length > 0) {
+      console.warn(
+        `[DATA_MYSQL] events.json 에 없는 n_event_template_id | ${arrMissingTplIds.join(',')} | 스텁 event_template 삽입`,
+      );
+    }
+    for (const nTplId of arrMissingTplIds) {
+      const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
+      if (!inst) continue;
+      const nStubCreatorId = inst.nCreatedByUserId && inst.nCreatedByUserId > 0 ? inst.nCreatedByUserId : null;
+      await conn.execute(
+        `INSERT INTO event_template (
+          n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
+          str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          nTplId,
+          inst.nProductId,
+          inst.strProductName,
+          inst.strEventLabel,
+          'events.json에 해당 템플릿 없음 — 인스턴스 기준 스텁',
+          inst.strCategory,
+          inst.strType,
+          'raw',
+          null,
+          null,
+          inst.strCreatedBy?.trim() || null,
+          nStubCreatorId,
+          fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
+        ],
+      );
+      setEventTemplateIds.add(nTplId);
+    }
   }
 
   for (const inst of arrEventInstances) {
@@ -327,8 +337,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     for (const log of inst.arrStatusLogs ?? []) {
       await conn.execute(
         `INSERT INTO event_instance_status_log (
-          n_instance_id, n_sort, str_status, str_changed_by, n_changed_by_user_id, str_comment, dt_changed_at, json_execution_result
-        ) VALUES (?,?,?,?,?,?,?,?)`,
+          n_instance_id, n_sort, str_status, str_changed_by, n_changed_by_user_id, str_comment, dt_changed_at, json_execution_result, json_query_edit
+        ) VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           inst.nId,
           nLogSort,
@@ -338,6 +348,7 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
           log.strComment ?? null,
           fnToMysqlDatetime6Required(log.dtChangedAt, inst.dtCreatedAt),
           log.objExecutionResult != null ? JSON.stringify(log.objExecutionResult) : null,
+          log.objQueryEdit != null ? JSON.stringify(log.objQueryEdit) : null,
         ],
       );
       nLogSort += 1;
@@ -541,7 +552,8 @@ export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConn
 export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate[]> => {
   const [trows] = await pool.query<RowDataPacket[]>(
     `SELECT n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-            str_input_format, str_default_items, str_query_template, dt_created_at FROM event_template ORDER BY n_id`,
+            str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+     FROM event_template ORDER BY n_id`,
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
     `SELECT n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template
@@ -573,6 +585,11 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
       strQueryTemplate: r.str_query_template != null ? String(r.str_query_template) : '',
       arrQueryTemplates: arrQueryTemplates?.length ? arrQueryTemplates : undefined,
       dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
+      strCreatedBy: r.str_created_by != null ? String(r.str_created_by) : undefined,
+      nCreatedByUserId:
+        r.n_created_by_user_id != null && Number(r.n_created_by_user_id) > 0
+          ? Number(r.n_created_by_user_id)
+          : undefined,
     };
   });
 };
@@ -617,6 +634,14 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
         objExec = undefined;
       }
     }
+    let objQueryEdit: IStatusLog['objQueryEdit'] | undefined;
+    if (r.json_query_edit != null) {
+      try {
+        objQueryEdit = fnJsonVal(r.json_query_edit) as IStatusLog['objQueryEdit'];
+      } catch {
+        objQueryEdit = undefined;
+      }
+    }
     const row: IStatusLog = {
       strStatus: String(r.str_status) as TEventStatus,
       strChangedBy: String(r.str_changed_by),
@@ -625,6 +650,7 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
       dtChangedAt: new Date(r.dt_changed_at as string | Date).toISOString(),
     };
     if (objExec !== undefined) row.objExecutionResult = objExec;
+    if (objQueryEdit !== undefined) row.objQueryEdit = objQueryEdit;
     mapLog.get(id)!.push(row);
   }
   const mapActor = new Map<string, IStageActor>();

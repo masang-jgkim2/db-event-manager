@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Typography,
   Button,
@@ -14,18 +14,26 @@ import {
   Row,
   Col,
   Tabs,
+  Spin,
+  Empty,
 } from 'antd';
 import type { FormListFieldData } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
-import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined } from '@ant-design/icons';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IQueryTemplateItem, TEventCategory, TEventType, TInputFormat, IDbConnection, TPermission } from '../types';
-import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS } from '../types';
+import type {
+  IEventTemplate, IQueryTemplateItem, IEventInstance, TEventCategory, TEventType, TInputFormat,
+  IDbConnection, TPermission, TEventStatus,
+} from '../types';
+import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS, OBJ_STATUS_CONFIG } from '../types';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
+import { fnRenderStatusIcon } from '../constants/statusIcons';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -158,6 +166,21 @@ const QueryTemplatesTabContent = ({
 };
 
 const EventPage = () => {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const strDeepLinkTemplateId = searchParams.get('nTemplateId');
+  const strDeepLinkInstanceId = searchParams.get('nInstanceId');
+
+  const N_TEMPLATE_LIST_PAGE_SIZE = 10;
+  const [nTemplateListPage, setNTemplateListPage] = useState(1);
+  const [nHighlightInstanceId, setNHighlightInstanceId] = useState<number | null>(null);
+
+  const [nSelectedTemplateId, setNSelectedTemplateId] = useState<number | null>(null);
+  const [arrRelatedInstances, setArrRelatedInstances] = useState<IEventInstance[]>([]);
+  const [nActiveRefCount, setNActiveRefCount] = useState(0);
+  const [nRemovedRefCount, setNRemovedRefCount] = useState(0);
+  const [bLoadingRelated, setBLoadingRelated] = useState(false);
+
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
@@ -183,6 +206,155 @@ const EventPage = () => {
   const bCanCreate = fnHas('event_template.create') || fnHas('event_template.manage');
   const bCanEdit   = fnHas('event_template.edit') || fnHas('event_template.manage');
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
+  const bCanOpenDashboard = fnHas('my_dashboard.view');
+
+  const objSelectedTemplate = useMemo(
+    () => (nSelectedTemplateId != null ? arrEvents.find((e) => e.nId === nSelectedTemplateId) : undefined),
+    [arrEvents, nSelectedTemplateId],
+  );
+
+  const fnLoadRelatedInstances = useCallback(async (nTemplateId: number) => {
+    setBLoadingRelated(true);
+    try {
+      const res = await fnApiGetEventInstancesByTemplate(nTemplateId);
+      if (res.bSuccess && res.arrInstances) {
+        setArrRelatedInstances(res.arrInstances);
+        setNActiveRefCount(res.nActiveRefCount ?? 0);
+        setNRemovedRefCount(res.nRemovedRefCount ?? 0);
+      } else {
+        setArrRelatedInstances([]);
+        setNActiveRefCount(0);
+        setNRemovedRefCount(0);
+        messageApi.error(res.strMessage || '연결 이벤트 목록을 불러올 수 없습니다.');
+      }
+    } finally {
+      setBLoadingRelated(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => {
+    if (nSelectedTemplateId == null) {
+      setArrRelatedInstances([]);
+      setNActiveRefCount(0);
+      setNRemovedRefCount(0);
+      return;
+    }
+    void fnLoadRelatedInstances(nSelectedTemplateId);
+  }, [nSelectedTemplateId, fnLoadRelatedInstances]);
+
+  const fnGoToDashboardInstance = (nInstanceId: number) => {
+    if (!bCanOpenDashboard) {
+      messageApi.warning('나의 대시보드 보기 권한이 필요합니다.');
+      return;
+    }
+    navigate(`/my-dashboard?nId=${nInstanceId}`);
+  };
+
+  /** 선택한 템플릿 행 아래 펼침 영역 — 나의 대시보드 expandable 패턴과 동일 */
+  const fnRenderRelatedInstancesPanel = () => {
+    if (!objSelectedTemplate) return null;
+    return (
+      <div style={{ padding: '4px 8px 12px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <Text strong style={{ fontSize: 13 }}>연결된 이벤트</Text>
+          <Tag>템플릿 ID {objSelectedTemplate.nId}</Tag>
+          <Text type="secondary" style={{ fontWeight: 400 }}>{objSelectedTemplate.strEventLabel}</Text>
+          {objSelectedTemplate.strCreatedBy && (
+            <Tag color="blue">생성자 {objSelectedTemplate.strCreatedBy}</Tag>
+          )}
+          {nActiveRefCount > 0 && (
+            <Tag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</Tag>
+          )}
+          {nRemovedRefCount > 0 && (
+            <Tag color="default">이미 서버 삭제됨 {nRemovedRefCount}건</Tag>
+          )}
+          <Button size="small" onClick={() => void fnLoadRelatedInstances(objSelectedTemplate.nId)}>
+            새로고침
+          </Button>
+        </div>
+        {bLoadingRelated ? (
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <Spin tip="연결 이벤트 불러오는 중…" />
+          </div>
+        ) : arrRelatedInstances.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="이 템플릿으로 생성된 이벤트가 없습니다. 템플릿을 바로 삭제할 수 있습니다."
+          />
+        ) : (
+          <>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              행을 클릭하면 나의 대시보드에서 해당 이벤트 상세가 열립니다.
+              {nActiveRefCount > 0 && ' 템플릿 삭제 전에는 아래 이벤트를 대시보드에서 삭제(복원 불가)해야 합니다.'}
+            </Text>
+            <AppTable<IEventInstance>
+              strTableId="event_template_related_instances"
+              rowKey="nId"
+              size="small"
+              pagination={{ pageSize: 8, showSizeChanger: false }}
+              dataSource={arrRelatedInstances}
+              rowClassName={(r) => (r.nId === nHighlightInstanceId ? 'ant-table-row-selected' : '')}
+              onRow={(r) => ({
+                onClick: () => fnGoToDashboardInstance(r.nId),
+                style: { cursor: bCanOpenDashboard ? 'pointer' : 'default' },
+              })}
+              columns={[
+                { title: '이벤트 번호', dataIndex: 'nId', width: 88 },
+                {
+                  title: '이벤트명',
+                  dataIndex: 'strEventName',
+                  ellipsis: true,
+                  render: (str: string, r) => (
+                    <Space size={4}>
+                      {str}
+                      {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
+                    </Space>
+                  ),
+                },
+                {
+                  title: '상태',
+                  dataIndex: 'strStatus',
+                  width: 120,
+                  render: (s: TEventStatus) => (
+                    <Space size={4}>
+                      {fnRenderStatusIcon(s, 12)}
+                      <Tag color={OBJ_STATUS_CONFIG[s]?.strColor}>{OBJ_STATUS_CONFIG[s]?.strLabel}</Tag>
+                    </Space>
+                  ),
+                },
+                { title: '생성자', dataIndex: 'strCreatedBy', width: 100 },
+                {
+                  title: '생성일',
+                  dataIndex: 'dtCreatedAt',
+                  width: 140,
+                  render: (v: string) => new Date(v).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }),
+                },
+                {
+                  title: '',
+                  key: 'go',
+                  width: 72,
+                  render: (_: unknown, r: IEventInstance) => (
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<LinkOutlined />}
+                      disabled={!bCanOpenDashboard}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fnGoToDashboardInstance(r.nId);
+                      }}
+                    >
+                      열기
+                    </Button>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
+      </div>
+    );
+  };
 
   // 페이지 진입 시 이벤트/프로덕트/DB 접속 목록 로드(한 effect + 스토어 dedupe)
   useEffect(() => {
@@ -192,7 +364,7 @@ const EventPage = () => {
   }, [fnFetchEvents, fnFetchProducts, fnFetchDbConnections]);
   useAutoRefresh(fnFetchEvents);
 
-  const fnOpenModal = (objEvent?: IEventTemplate) => {
+  const fnOpenModal = useCallback((objEvent?: IEventTemplate) => {
     setStrQueryTabsActiveKey('0');
     if (objEvent) {
       setObjEditEvent(objEvent);
@@ -219,13 +391,48 @@ const EventPage = () => {
       form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
-  };
+  }, [form]);
 
   const fnCloseModal = () => {
     setBModalOpen(false);
     setObjEditEvent(null);
     form.resetFields();
   };
+
+  const refDeepLinkTemplateApplied = useRef<number | null>(null);
+
+  // 나의 대시보드 등 ?nTemplateId= — 목록에서 해당 행 선택·연결 이벤트 펼침 (수정 모달 아님)
+  useEffect(() => {
+    if (!strDeepLinkTemplateId) {
+      refDeepLinkTemplateApplied.current = null;
+      return;
+    }
+    const nTargetId = parseInt(strDeepLinkTemplateId, 10);
+    if (isNaN(nTargetId) || refDeepLinkTemplateApplied.current === nTargetId) return;
+
+    const nTplIndex = arrEvents.findIndex((e) => e.nId === nTargetId);
+    if (nTplIndex < 0) return;
+
+    refDeepLinkTemplateApplied.current = nTargetId;
+    setNTemplateListPage(Math.floor(nTplIndex / N_TEMPLATE_LIST_PAGE_SIZE) + 1);
+    setNSelectedTemplateId(nTargetId);
+
+    const nInstId = strDeepLinkInstanceId ? parseInt(strDeepLinkInstanceId, 10) : NaN;
+    setNHighlightInstanceId(!isNaN(nInstId) && nInstId > 0 ? nInstId : null);
+
+    const objNextParams = new URLSearchParams(searchParams);
+    objNextParams.delete('nTemplateId');
+    objNextParams.delete('nInstanceId');
+    setSearchParams(objNextParams, { replace: true });
+
+    requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        document
+          .querySelector(`tr[data-row-key="${nTargetId}"]`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+    });
+  }, [strDeepLinkTemplateId, strDeepLinkInstanceId, arrEvents, searchParams, setSearchParams]);
 
   const fnHandleSave = async () => {
     try {
@@ -271,7 +478,16 @@ const EventPage = () => {
 
   const fnHandleDelete = async (nId: number) => {
     const result = await fnDeleteEvent(nId);
-    messageApi[result.bSuccess ? 'success' : 'error'](result.strMessage);
+    if (result.bSuccess) {
+      messageApi.success(result.strMessage);
+      if (nSelectedTemplateId === nId) {
+        setNSelectedTemplateId(null);
+      }
+      return;
+    }
+    messageApi.error(result.strMessage);
+    setNSelectedTemplateId(nId);
+    void fnLoadRelatedInstances(nId);
   };
 
   // 입력 형식 라벨
@@ -301,6 +517,17 @@ const EventPage = () => {
       dataIndex: 'strEventLabel',
       key: 'strEventLabel',
       width: 200,
+    },
+    {
+      title: '생성자',
+      dataIndex: 'strCreatedBy',
+      key: 'strCreatedBy',
+      width: 110,
+      render: (str: string | undefined) => (
+        <Text type={str ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+          {str?.trim() || '-'}
+        </Text>
+      ),
     },
     {
       title: '종류',
@@ -344,11 +571,15 @@ const EventPage = () => {
       key: 'actions',
       width: 100,
       render: (_: unknown, objRecord: IEventTemplate) => (
-        <Space>
+        <Space onClick={(e) => e.stopPropagation()}>
           {bCanEdit && <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(objRecord)} />}
           {bCanDelete && (
             <Popconfirm
-              title="정말 삭제하시겠습니까?"
+              title={
+                nSelectedTemplateId === objRecord.nId && nActiveRefCount > 0
+                  ? `연결 이벤트 ${nActiveRefCount}건이 있습니다. 먼저 아래 목록에서 대시보드로 이동해 삭제하세요.`
+                  : '정말 삭제하시겠습니까?'
+              }
               onConfirm={() => fnHandleDelete(objRecord.nId)}
               okText="삭제"
               cancelText="취소"
@@ -374,11 +605,39 @@ const EventPage = () => {
       </div>
 
       <Card>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+          행을 클릭하면 아래에 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 다시 클릭하면 접습니다.
+        </Text>
         <AppTable
           strTableId="event_templates"
+          rowKey="nId"
           dataSource={arrEvents}
           columns={arrColumns}
           strEmptyText="등록된 쿼리 템플릿이 없습니다."
+          expandable={{
+            expandedRowKeys: nSelectedTemplateId != null ? [nSelectedTemplateId] : [],
+            onExpand: (bExpanded, record) => {
+              setNSelectedTemplateId(bExpanded ? record.nId : null);
+            },
+            expandedRowRender: () => fnRenderRelatedInstancesPanel(),
+            expandIcon: () => null,
+            columnWidth: 24,
+            rowExpandable: () => true,
+          }}
+          rowClassName={(record) => (record.nId === nSelectedTemplateId ? 'ant-table-row-selected' : '')}
+          pagination={{
+            pageSize: N_TEMPLATE_LIST_PAGE_SIZE,
+            current: nTemplateListPage,
+            onChange: (page) => setNTemplateListPage(page),
+            showSizeChanger: false,
+          }}
+          onRow={(record) => ({
+            onClick: () => {
+              setNHighlightInstanceId(null);
+              setNSelectedTemplateId((prev) => (prev === record.nId ? null : record.nId));
+            },
+            style: { cursor: 'pointer' },
+          })}
         />
       </Card>
 

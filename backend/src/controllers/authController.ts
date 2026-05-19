@@ -5,7 +5,7 @@ import { ILoginRequest, IJwtPayload } from '../types';
 import { fnFindUserByStrUserId } from '../data/users';
 import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
 import { fnPushActivityLog } from '../data/activityLogs';
-import { fnTouchUserPresence } from '../services/userPresence';
+import { fnMarkUserOffline, fnTouchUserPresence } from '../services/userPresence';
 
 const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
@@ -108,6 +108,11 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
 
 // 로그아웃 (클라이언트 토큰 폐기 전 서버에 기록 — JWT 무효화는 미적용)
 export const fnLogout = async (req: Request, res: Response): Promise<void> => {
+  const nUserId = req.user?.nId ?? 0;
+  if (nUserId > 0) {
+    // 인증 미들웨어가 직전에 fnTouchUserPresence를 호출하므로, 여기서 즉시 오프라인 반영
+    fnMarkUserOffline(nUserId);
+  }
   res.json({ bSuccess: true, strMessage: '로그아웃되었습니다.' });
 };
 

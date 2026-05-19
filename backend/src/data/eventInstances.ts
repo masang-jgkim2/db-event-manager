@@ -15,12 +15,25 @@ export type TEventStatus =
   | 'live_deployed'       // DBA LIVE 반영
   | 'live_verified';      // 운영자 LIVE 확인 (최종 완료)
 
+/** DBA 쿼리 직접 수정 diff (진행 이력) */
+export interface IQueryEditLog {
+  strBefore?: string;
+  strAfter?: string;
+  arrSetChanges?: Array<{
+    nSetIndex: number;
+    strBefore: string;
+    strAfter: string;
+  }>;
+}
+
 export interface IStatusLog {
   strStatus: TEventStatus;
   strChangedBy: string;       // 처리자 표시 이름
   nChangedByUserId: number;   // 처리자 사용자 ID
   strComment: string;
   dtChangedAt: string;
+  /** DBA 쿼리 직접 수정 시 이전·이후 텍스트 */
+  objQueryEdit?: IQueryEditLog;
   // 쿼리 실행 결과 (성공: qa_deployed/live_deployed 직전 로그, 실패: qa_requested/live_requested 유지 시 실패 이력)
   objExecutionResult?: {
     strEnv: 'qa' | 'live';
@@ -77,7 +90,7 @@ export interface IEventInstance {
   dtDeployDate: string;
   dtQaDeployDate?: string;                // QA 반영 날짜 (이 시각 이전에 QA 실행 허용)
   dtLiveDeployDate?: string;              // LIVE 반영 날짜 (이 시각 이후에 LIVE 실행 허용)
-  strAlloLink?: string;                   // 알로 업무 카드 링크 (선택)
+  strAlloLink?: string;                   // 업무 링크 URL (알로·코웤 등, 선택)
   arrDeployScope: Array<'qa' | 'live'>;   // 쿼리 실행 대상: 단일 서버(QA만 또는 LIVE만) 또는 다중 서버(QA+LIVE)
   // 상태
   strStatus: TEventStatus;
@@ -100,7 +113,7 @@ export interface IEventInstance {
   dtPermanentlyRemovedAt?: string;
 }
 
-import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
 
 const STR_FILE = 'eventInstances.json';
@@ -119,7 +132,13 @@ export const fnReloadEventInstancesFromDiskIfEmpty = (): boolean => {
   return true;
 };
 
-export const fnSaveEventInstances = () => fnSaveJson(STR_FILE, arrEventInstances);
+export const fnSaveEventInstances = () => {
+  fnSaveJson(STR_FILE, arrEventInstances);
+  // mysql 모드: 정규 테이블 반영 + 운영 확인용 eventInstances.json 미러
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrEventInstances);
+  }
+};
 
 export const fnGetNextInstanceId = (): number =>
   arrEventInstances.length > 0 ? Math.max(...arrEventInstances.map((e) => e.nId)) + 1 : 1;

@@ -70,6 +70,17 @@ export const fnLoadJson = <T>(strFilename: string, arrSeed: T[]): T[] => {
   return arrSeed;
 };
 
+/** MySQL 모드 — data/*.json 운영 스냅샷(재적재·확인용). 정규 테이블과 별도로 users 등만 즉시 미러 */
+export const fnMirrorJsonToDisk = <T>(strFilename: string, arrData: T[]): void => {
+  if (!fnIsMysqlStore()) return;
+  const strFilePath = path.join(STR_DATA_DIR, strFilename);
+  try {
+    fs.writeFileSync(strFilePath, JSON.stringify(arrData, null, 2), 'utf-8');
+  } catch (error: unknown) {
+    console.error(`[JsonStore] ${strFilename} 미러 저장 실패:`, (error as Error)?.message);
+  }
+};
+
 // 배열을 JSON 파일에 저장 (동기 쓰기 — 데이터 유실 방지)
 export const fnSaveJson = <T>(strFilename: string, arrData: T[]): void => {
   if (fnIsMysqlStore()) {
@@ -81,6 +92,20 @@ export const fnSaveJson = <T>(strFilename: string, arrData: T[]): void => {
     fs.writeFileSync(strFilePath, JSON.stringify(arrData, null, 2), 'utf-8');
   } catch (error: any) {
     console.error(`[JsonStore] ${strFilename} 저장 실패:`, error.message);
+  }
+};
+
+/** 디스크 JSON 배열 읽기 (mysql 모드에서도 읽음 — 복구·import 전용) */
+export const fnReadJsonArrayFromDiskRaw = <T>(strFilename: string): T[] | null => {
+  const strFilePath = path.join(STR_DATA_DIR, strFilename);
+  try {
+    if (!fs.existsSync(strFilePath)) return null;
+    const parsed = JSON.parse(fs.readFileSync(strFilePath, 'utf-8')) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed as T[];
+  } catch (error: unknown) {
+    console.warn(`[JsonStore] ${strFilename} 디스크 읽기 실패:`, (error as Error)?.message);
+    return null;
   }
 };
 

@@ -6,7 +6,7 @@ import {
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
 } from 'antd';
 import type { CollapseProps } from 'antd';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
@@ -17,6 +17,7 @@ import {
   TableOutlined, AppstoreOutlined, LinkOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import QueryEditDiffView from '../components/QueryEditDiffView';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
@@ -1907,6 +1908,19 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 label: '기본 정보',
                 children: (
                   <Descriptions column={2} size="small">
+                    <Descriptions.Item label="이벤트 번호">{objDetail.nId}</Descriptions.Item>
+                    <Descriptions.Item label="쿼리 템플릿">
+                      {(fnHasPermission('event_template.view') || fnHasPermission('event_template.manage')) ? (
+                        <Link
+                          to={`/events?nTemplateId=${objDetail.nEventTemplateId}&nInstanceId=${objDetail.nId}`}
+                          onClick={() => setBDetailOpen(false)}
+                        >
+                          ID {objDetail.nEventTemplateId} · 쿼리 템플릿 보기 <LinkOutlined />
+                        </Link>
+                      ) : (
+                        <Text type="secondary">ID {objDetail.nEventTemplateId}</Text>
+                      )}
+                    </Descriptions.Item>
                     <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
                     <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
                     <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
@@ -2052,6 +2066,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               >
                                 {log.strComment}
                               </Text>
+                            </div>
+                          )}
+                          {log.objQueryEdit && (
+                            <div style={{ marginTop: 6 }}>
+                              <QueryEditDiffView objQueryEdit={log.objQueryEdit} />
                             </div>
                           )}
                           {log.objExecutionResult && (() => {

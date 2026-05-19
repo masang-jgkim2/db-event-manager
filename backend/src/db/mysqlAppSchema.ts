@@ -102,8 +102,11 @@ COMMENT='dbConnections.json'`,
   str_input_format    VARCHAR(64)   NOT NULL,
   str_default_items   TEXT          NULL COMMENT '레거시 단일 필드',
   str_query_template  MEDIUMTEXT    NULL COMMENT '레거시 단일 필드(세트 사용 시 비움)',
+  str_created_by      VARCHAR(200)  NULL COMMENT 'JSON strCreatedBy',
+  n_created_by_user_id INT          NULL COMMENT 'JSON nCreatedByUserId',
   dt_created_at       DATETIME(6)   NOT NULL,
   CONSTRAINT fk_event_template_product FOREIGN KEY (n_product_id) REFERENCES product(n_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_event_template_creator FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE SET NULL,
   KEY idx_event_template_product (n_product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='events.json 본문(세트 제외)'`,
@@ -184,6 +187,7 @@ COMMENT='JSON arrExecutionTargets[]'`,
   str_comment           TEXT          NULL,
   dt_changed_at         DATETIME(6)   NOT NULL,
   json_execution_result JSON         NULL COMMENT 'IStatusLog.objExecutionResult',
+  json_query_edit       JSON         NULL COMMENT 'IStatusLog.objQueryEdit',
   CONSTRAINT fk_eisl_instance FOREIGN KEY (n_instance_id) REFERENCES event_instance(n_id) ON DELETE CASCADE,
   KEY idx_eisl_instance_time (n_instance_id, dt_changed_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

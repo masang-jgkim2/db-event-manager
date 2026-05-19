@@ -27,7 +27,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **시스템 DB**: `db/systemDb.ts`는 마이그레이션용 **MSSQL 전용**. 타깃 게임 DB 실행과 별개.
 - **DB 스키마 정합성**: `docs/SCHEMA-DATA-REVIEW.md` (인메모리/타입 vs `docs/schema.sql`).
 - **data JSON ↔ 모듈 ↔ 시드·중복**: `docs/DATA-JSON-MAP.md`
-- **메타 영속 MySQL**: `docs/DATA-BACKEND-MYSQL.md` (`DATA_STORE`, `DATA_MYSQL_*`). DDL `backend/src/db/mysqlAppSchema.ts` = `docs/dqpm_meta_relational_schema.sql`. 적재·하이드레이트·스냅샷 저장 `mysqlRelationalSync.ts`, `npm run import-json-to-mysql`
+- **메타 영속 MySQL**: `docs/DATA-BACKEND-MYSQL.md` (`DATA_STORE`, `DATA_MYSQL_*`). DDL `backend/src/db/mysqlAppSchema.ts` = `docs/dqpm_meta_relational_schema.sql`. 적재·하이드레이트·스냅샷 `mysqlRelationalSync.ts`, `npm run import-json-to-mysql`. **템플릿 스텁**은 JSON 전체 임포트 시에만(`bAllowStubTemplates`); 일상 flush·삭제 후에는 스텁 없음. **템플릿 삭제** 시 활성 인스턴스 참조면 400, 영구삭제만 참조 시 해당 인스턴스 정리 후 `fnAwaitMysqlDocFlush`.
 - **MSSQL 암호화**: `dbManager`가 `options.encrypt` 설정. `.env`에 **`MSSQL_ENCRYPT=false`** 이면 비암호화 TDS(구 SQL Server 등). 미설정 시 암호화 사용. 백엔드 `index.ts`는 **`import 'dotenv/config'`** 로 `.env` 선로드.
 - **MySQL 실행**: `queryExecutor`의 MySQL 경로는 **`connection.query()`** (텍스트 프로토콜). `execute()`(prepared)는 `USE`/`SET SESSION` 등과 호환되지 않아 HeidiSQL과 결과가 달라질 수 있음.
 
@@ -36,10 +36,10 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **이벤트 인스턴스**: 9단계 워크플로 (event_created → … → live_verified). **재요청** 전이: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
 - **쿼리 실행**: QA/LIVE는 `fnResolveExecuteConnection`(단일·다중 세트 동일). 실패 시 상태 유지 + `arrStatusLogs`에 오류·접속 요약 기록; 성공 이력에 선택 `strConnectionSummary`.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
-- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`, 오프라인은 서버 스윕(`userPresence.ts`)
+- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸.
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
 - **Web Push 구독**: `GET/POST/DELETE /api/push/*` — json=`notificationSubscriptions.json`(레거시 `pushSubscriptions.json` 1회 이관), **mysql**=`notification_subscription`. ON/OFF는 `user_ui_preference` 키 `db-event-manager-web-push-enabled`. VAPID는 `.env`만.
-- **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일.
+- **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일. **DBA 쿼리 직접 수정**(strStatus 불변)은 `fnBroadcastInstanceUpdate(_, false)`로 «상태 변경» 인앱·Web Push만 생략(중복 노트 완화).
 - **쿼리 실행 Progress**: `GET .../template-exec-elapsed`로 마지막 성공 `nElapsedMs` 조회 → 프론트에서 그 시간에 맞춰 0→99% 선형(rAF), 다중 세트는 SSE 진행률과 `max` (`templateExecElapsed.ts` 인메모리). DB화 시 영속화.
 
 ## 주요 파일 위치
@@ -52,9 +52,10 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 ```
 backend/src/
   controllers/eventInstanceController.ts  # 워크플로·재요청 전이 + 실행 로직
+  controllers/eventController.ts          # 쿼리 템플릿 CRUD·삭제 시 참조 검사·MySQL flush
   services/queryExecutor.ts               # SQL 파싱 + 트랜잭션 실행
   services/sseBroadcaster.ts              # SSE 클라이언트 관리 + `user_presence` 브로드캐스트
-  services/userPresence.ts                # 접속 터치·스윕·스냅샷
+  services/userPresence.ts                # 접속 터치·fnMarkUserOffline·스윕·스냅샷
   data/userUiPreferences.ts               # 사용자별 UI — json=`userUiPreferences.json`, mysql=`user_ui_preference`
   data/notificationSubscriptions.ts       # Web Push 구독 — json=`notificationSubscriptions.json`, mysql=`notification_subscription`
   data/userNotifications.ts               # 인앱 알림 — mysql=`user_notification`만( json은 프론트 localStorage)
@@ -111,7 +112,7 @@ front/src/
 |--------|------|---------------------|
 | 프로덕트 | product.view | product.create / edit / delete |
 | 쿼리 템플릿 | event_template.view | event_template.create / edit / delete |
-| DB 접속 | db_connection.view | db_connection.create / edit / delete / test |
+| DB 접속 | db_connection.view(목록·「연결」열) | create / edit / delete / test(연결 테스트 API·자동 점검; `db.manage` 시 전부) |
 | 사용자 | user.view | user.create / edit / delete / reset_password |
 | 역할 | role.view | role.create / edit / delete / edit_permissions |
 | 활동 | activity.view (`GET /api/activity/logs` 등) | activity.clear (`DELETE /api/activity/logs` 전체 삭제) |
@@ -134,4 +135,5 @@ front/src/
 - **JSON ↔ 메모리**: 기동 시 `fnLoadJson` 1회 로드, 변경 시 `fnSaveJson`. 사용자는 로그인 시 `fnReloadUsersFromFile`로 파일 재동기 가능.
 - **활동 로그**: `ACTIVITY_LOG_ENABLED=1|true|on|yes`일 때만 `fnPushActivityLog`(메모리·SSE). json이면 `activity_logs.json` 배치 flush; **mysql**이면 `activity_log` + 스냅샷 플러시. Jest는 기록 강제 ON·push마다 즉시 저장.
 - **목록 GET 보정**: 메모리가 비어 있고 디스크 `data/*.json`에 1건 이상이면 해당 목록 API에서 `fnReadJsonArrayFromDisk`로 재채움 — `events`(마이그레이션 `fnMigrateToQuerySets` 포함), `products`, `dbConnections`, `eventInstances`.
+- **mysql 모드 JSON 미러**: `fnSaveEvents`/`fnSaveEventInstances`가 `events.json`·`eventInstances.json` 디스크 미러 유지(재기동·`import-json-to-mysql`용).
 - **프로덕트 서비스**: `products.json`의 `IProduct.arrServices`만 사용 — 과거 `productServices.json` 분리 모듈은 제거됨.

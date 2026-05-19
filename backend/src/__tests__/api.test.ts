@@ -326,7 +326,14 @@ describe('API 전체 테스트', () => {
         await expect(request(app).get(strPath).set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: nWant });
       };
       await fnExpectView('/api/products', 'product.view');
-      await fnExpectView('/api/events', 'event_template.view');
+      const bCanEvents =
+        arrPerms.includes('event_template.view')
+        || arrPerms.includes('my_dashboard.view')
+        || arrPerms.includes('instance.view')
+        || arrPerms.includes('instance.create');
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({
+        status: bCanEvents ? 200 : 403,
+      });
       await fnExpectView('/api/users', 'user.view');
       await fnExpectView('/api/roles', 'role.view');
     });
@@ -414,12 +421,18 @@ describe('API 전체 테스트', () => {
       expect(resGm.status).toBe(200);
     });
 
-    it('event_template.view·dashboard.view 없으면 GET /api/events → 403', async () => {
+    it('템플릿·대시보드·인스턴스 조회 권한 없으면 GET /api/events → 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => ({ nRoleId: r.nRoleId, strPermission: r.strPermission }));
       const withoutEventOrDashboard = backup
         .map((p) => p.strPermission)
-        .filter((s) => !s.startsWith('event_template.') && s !== 'dashboard.view') as TPermission[];
+        .filter((s) =>
+          !s.startsWith('event_template.')
+          && s !== 'dashboard.view'
+          && s !== 'my_dashboard.view'
+          && s !== 'instance.view'
+          && s !== 'instance.create',
+        ) as TPermission[];
       fnSetPermissionsForRole(N_ROLE_DBA, withoutEventOrDashboard.length ? withoutEventOrDashboard : ['my_dashboard.execute_qa', 'my_dashboard.execute_live']);
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
       const res = await request(app).get('/api/events').set('Authorization', `Bearer ${loginRes.body.strToken}`);
@@ -469,7 +482,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).delete('/api/activity/logs').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
 
-    it('DBA(실행 권한만 부여 시): 이벤트 인스턴스·DB접속 200, 나머지 메뉴 API 403', async () => {
+    it('DBA(실행 권한만 부여 시): 인스턴스·DB접속·템플릿 목록(상세용) 200, 나머지 메뉴 API 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = arrRolePermissions.filter((r) => r.nRoleId === N_ROLE_DBA).map((r) => r.strPermission);
       fnSetPermissionsForRole(N_ROLE_DBA, ['my_dashboard.view', 'instance.execute_qa', 'instance.execute_live'] as TPermission[]);
@@ -478,7 +491,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/products').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
-      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
       fnSetPermissionsForRole(N_ROLE_DBA, backup as TPermission[]);
@@ -708,6 +721,8 @@ describe('API 전체 테스트', () => {
       expect(res.status).toBe(200);
       expect(res.body.objEvent?.nId).toBeDefined();
       expect(res.body.objEvent?.arrQueryTemplates?.length).toBe(1);
+      expect(res.body.objEvent?.strCreatedBy).toBeTruthy();
+      expect(res.body.objEvent?.nCreatedByUserId).toBe(1);
       nEventId = res.body.objEvent.nId;
     });
 
@@ -723,6 +738,29 @@ describe('API 전체 테스트', () => {
         });
       expect(res.status).toBe(200);
       expect(res.body.objEvent.arrQueryTemplates[0].strQueryTemplate).toBe('SELECT 2;');
+    });
+
+    it('GET /api/events/:id/instances → 연결 인스턴스 목록', async () => {
+      const nTplId = arrEventInstances.find((i) => i.nEventTemplateId > 0)?.nEventTemplateId;
+      if (!nTplId) return;
+      const res = await request(app)
+        .get(`/api/events/${nTplId}/instances`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(Array.isArray(res.body.arrInstances)).toBe(true);
+      expect(res.body.arrInstances.every((i: { nEventTemplateId: number }) => i.nEventTemplateId === nTplId)).toBe(true);
+      expect(typeof res.body.nActiveRefCount).toBe('number');
+    });
+
+    it('인스턴스가 참조하는 템플릿 DELETE → 400', async () => {
+      const nTplId = arrEventInstances.find((i) => i.nEventTemplateId > 0)?.nEventTemplateId;
+      if (!nTplId) return;
+      const res = await request(app)
+        .delete(`/api/events/${nTplId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      expect(res.status).toBe(400);
+      expect(res.body?.strMessage).toMatch(/인스턴스/);
     });
 
     it('DELETE /api/events/:id → 200', async () => {
@@ -1179,6 +1217,60 @@ describe('API 전체 테스트', () => {
         .send({ strGeneratedQuery: 'SELECT 1;' });
       expect(res.status).toBe(403);
       expect(res.body?.strMessage).toMatch(/query_edit|쿼리 수정/);
+
+      fnSetPermissionsForRole(N_ROLE_DBA, backup);
+    });
+
+    it('query_edit 권한 시 쿼리 수정 → objQueryEdit 이력 저장', async () => {
+      const N_ROLE_DBA = 2;
+      const backup = fnGetPermissionsByRoleId(N_ROLE_DBA);
+      const arrWithEdit = [...new Set([...backup, 'my_dashboard.query_edit' as TPermission])];
+      fnSetPermissionsForRole(N_ROLE_DBA, arrWithEdit);
+
+      const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'dba01', strPassword: OBJ_PASSWORDS.dba01 });
+      const token = loginRes.body?.strToken;
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.user?.arrPermissions).toContain('my_dashboard.query_edit');
+
+      const createRes = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({
+          nEventTemplateId: 1,
+          nProductId: 1,
+          strEventLabel: 'test',
+          strProductName: 'test',
+          strServiceAbbr: 'FH',
+          strServiceRegion: 'KR',
+          strCategory: '아이템',
+          strType: '삭제',
+          strEventName: '[FH] query-edit-test',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa'],
+        });
+      expect(createRes.status).toBe(200);
+      const nTargetId = createRes.body?.objInstance?.nId as number;
+      const patchRes = await request(app)
+        .patch(`/api/event-instances/${nTargetId}/status`)
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({ strNextStatus: 'confirm_requested', strComment: 'query-edit 테스트 컨펌 요청' });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body?.objInstance?.strStatus).toBe('confirm_requested');
+      const getRes = await request(app).get(`/api/event-instances/${nTargetId}`).set('Authorization', `Bearer ${token}`);
+      const strBefore = getRes.body?.objInstance?.strGeneratedQuery ?? 'SELECT 1;';
+      const strAfter = `${strBefore}\n-- test-edit`;
+
+      const res = await request(app)
+        .put(`/api/event-instances/${nTargetId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ strGeneratedQuery: strAfter });
+      expect(res.status).toBe(200);
+      const arrLogs = res.body?.objInstance?.arrStatusLogs ?? [];
+      const objEditLog = [...arrLogs].reverse().find((l: { strComment?: string }) => l.strComment === 'DBA 쿼리 직접 수정');
+      expect(objEditLog?.objQueryEdit).toBeDefined();
+      expect(objEditLog.objQueryEdit.strAfter).toContain('-- test-edit');
 
       fnSetPermissionsForRole(N_ROLE_DBA, backup);
     });

@@ -80,6 +80,37 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
       `[DATA_MYSQL] 메타 테이블이 ${nExpected}개 미만입니다. CREATE 권한·스키마를 확인하세요.`,
     );
   }
+
+  const [colRows] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance_status_log' AND COLUMN_NAME = 'json_query_edit'`,
+  );
+  if (Number((colRows as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance_status_log ADD COLUMN json_query_edit JSON NULL COMMENT 'IStatusLog.objQueryEdit' AFTER json_execution_result`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance_status_log.json_query_edit');
+  }
+
+  const [tplCreatorCols] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template' AND COLUMN_NAME = 'str_created_by'`,
+  );
+  if (Number((tplCreatorCols as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template
+       ADD COLUMN str_created_by VARCHAR(200) NULL COMMENT 'JSON strCreatedBy' AFTER str_query_template,
+       ADD COLUMN n_created_by_user_id INT NULL COMMENT 'JSON nCreatedByUserId' AFTER str_created_by`,
+    );
+    await pool.query(
+      `ALTER TABLE event_template
+       ADD CONSTRAINT fk_event_template_creator
+       FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE SET NULL`,
+    ).catch(() => {
+      // FK 중복·users 없음 등 — 컬럼만 있으면 동작
+    });
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_created_by, n_created_by_user_id');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {
