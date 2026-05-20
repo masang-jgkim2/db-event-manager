@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useThemeStore, ARR_PRIMARY_COLORS, fnGenPalette } from '../stores/useThemeStore';
 import type { TThemeMode } from '../stores/useThemeStore';
+import { fnApiGetPushStatus } from '../api/pushApi';
 import {
   fnDisableWebPush,
   fnEnableWebPush,
@@ -47,18 +48,34 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const strWebPushUnsupportedReason = fnGetWebPushUnsupportedReason();
   const [bWebPushEnabled, setBWebPushEnabled] = useState(() => fnIsWebPushEnabledPref());
   const [bWebPushBusy, setBWebPushBusy] = useState(false);
+  const [strWebPushDiag, setStrWebPushDiag] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bOpen) return;
     let bCancelled = false;
     void (async () => {
       const bEffective = await fnGetWebPushEffectiveEnabled();
-      if (!bCancelled) setBWebPushEnabled(bEffective);
+      const strPerm =
+        typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+      let strServer = '';
+      try {
+        const objStatus = await fnApiGetPushStatus();
+        if (objStatus.bSuccess) {
+          strServer = `서버 설정=${objStatus.bUserPrefEnabled ? 'ON' : 'OFF'}, 구독 ${objStatus.nSubscriptionCount ?? 0}건, VAPID=${objStatus.bVapidConfigured ? 'OK' : '미설정'}`;
+        }
+      } catch {
+        strServer = '서버 상태 조회 실패';
+      }
+      const strBrowser = `브라우저 권한=${strPerm}, Push API=${bWebPushSupported ? '가능' : '불가'}`;
+      if (!bCancelled) {
+        setBWebPushEnabled(bEffective);
+        setStrWebPushDiag(`${strBrowser}${strServer ? ` · ${strServer}` : ''}`);
+      }
     })();
     return () => {
       bCancelled = true;
     };
-  }, [bOpen]);
+  }, [bOpen, bWebPushSupported]);
 
   // 섹션 제목 스타일
   const objSectionTitleStyle: React.CSSProperties = {
@@ -252,9 +269,16 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
           }}
         />
       </div>
-      {!bWebPushSupported && (
+      {(strWebPushDiag || !bWebPushSupported) && (
         <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
-          {strWebPushUnsupportedReason ?? 'Web Push를 사용할 수 없습니다.'}
+          {!bWebPushSupported
+            ? (strWebPushUnsupportedReason ?? 'Web Push를 사용할 수 없습니다.')
+            : strWebPushDiag}
+        </Text>
+      )}
+      {!bWebPushSupported && typeof window !== 'undefined' && (
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+          현재 주소: {window.location.origin} — Push 테스트는 이 PC의 http://localhost:5173 또는 신뢰 HTTPS에서 하세요.
         </Text>
       )}
 

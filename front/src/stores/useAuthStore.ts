@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import type { IAuthStore } from '../types';
 import { fnApiLogin, fnApiLogout, fnApiVerifyToken } from '../api/authApi';
@@ -28,8 +29,12 @@ export const useAuthStore = create<IAuthStore>((set) => ({
 
       set({ bIsLoading: false });
       return false;
-    } catch {
+    } catch (err: unknown) {
       set({ bIsLoading: false });
+      // 네트워크·프록시 실패는 로그인 화면에서 «서버 연결 실패»로 구분
+      if (axios.isAxiosError(err) && !err.response) {
+        throw err;
+      }
       return false;
     }
   },
