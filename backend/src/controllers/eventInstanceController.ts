@@ -13,6 +13,7 @@ import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/
 import { IQueryExecutionResult, IDbConnection } from '../types';
 import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
 import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
+import { fnBuildMssqlGrantScriptForSql } from '../utils/grantScriptFromSql';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 
@@ -748,6 +749,46 @@ export const fnGetTemplateExecElapsed = async (req: Request, res: Response): Pro
     res.json({ bSuccess: true, nElapsedMs });
   } catch (error: any) {
     console.error('[fnGetTemplateExecElapsed]', error?.message);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// GET /api/event-instances/:id/grant-script — 실행(예정) 쿼리 기준 MSSQL GRANT (로그인 기본 dqpm)
+export const fnGetGrantScript = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const strLogin = String(req.query.strLogin ?? 'dqpm').trim() || 'dqpm';
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+
+    const arrQueries: string[] = [];
+    if (objInstance.arrExecutionTargets?.length) {
+      for (const t of objInstance.arrExecutionTargets) {
+        if (t.strQuery?.trim()) arrQueries.push(t.strQuery);
+      }
+    } else if (objInstance.strGeneratedQuery?.trim()) {
+      arrQueries.push(objInstance.strGeneratedQuery);
+    }
+
+    const strSql = arrQueries.join('\n');
+    if (!strSql.trim()) {
+      res.status(400).json({ bSuccess: false, strMessage: '생성된 쿼리가 없습니다.' });
+      return;
+    }
+
+    const objGrant = fnBuildMssqlGrantScriptForSql(strSql, strLogin);
+    res.json({
+      bSuccess: true,
+      strScript: objGrant.strScript,
+      nTableCount: objGrant.nTableCount,
+      arrDatabases: objGrant.arrDatabases,
+    });
+  } catch (error: unknown) {
+    const strMsg = error instanceof Error ? error.message : String(error);
+    console.error('[fnGetGrantScript]', strMsg);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };

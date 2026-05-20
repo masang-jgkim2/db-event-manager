@@ -396,7 +396,7 @@ export const fnExecuteQueryWithText = async (
         : objConn.strDbType === 'mssql' && error?.state != null
           ? `[SQL 상태: ${error.state}]`
           : null;
-    const strUserError = [
+    let strUserError = [
       strExecutionScope,
       strErrorMsg,
       strSqlNumber,
@@ -405,6 +405,17 @@ export const fnExecuteQueryWithText = async (
     ]
       .filter(Boolean)
       .join(' ');
+
+    // MSSQL 916: 로그인은 있으나 대상 DB 사용자/권한 없음 (RESTORE 직후 흔함)
+    if (
+      objConn.strDbType === 'mssql'
+      && (error?.number === 916 || /not able to access the database/i.test(strErrorMsg))
+    ) {
+      const mDb = strErrorMsg.match(/database\s+"([^"]+)"/i);
+      const strDbHint = mDb?.[1] ? `[${mDb[1]}]` : '해당 DB';
+      strUserError += ` — ${strDbHint}에 로그인 [${objConn.strUser}] 사용자 생성·GRANT 필요. ` +
+        `GET /api/event-instances/:id/grant-script 또는 scripts/dqpm_grants_from_queries_mssql.sql [C] FHGame1 절을 DBA 권한으로 실행하세요.`;
+    }
 
     // MSSQL 단일 문장은 BEGIN TRAN 없음 → 롤백 문구 부적절. MySQL은 항상 명시 트랜잭션 사용.
     const bMssqlBatchTransaction = objConn.strDbType === 'mssql' && arrQueries.length > 1;

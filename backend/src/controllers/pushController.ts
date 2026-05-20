@@ -2,9 +2,14 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import {
   fnDeleteNotificationSubscription,
+  fnListNotificationSubscriptionsByUserIds,
   fnUpsertNotificationSubscription,
 } from '../data/notificationSubscriptions';
-import { fnGetVapidPublicKey, fnIsWebPushConfigured } from '../services/webPushService';
+import {
+  fnGetVapidPublicKey,
+  fnIsUserWebPushEnabled,
+  fnIsWebPushConfigured,
+} from '../services/webPushService';
 
 const objSubscribeSchema = z.object({
   objSubscription: z.object({
@@ -19,6 +24,22 @@ const objSubscribeSchema = z.object({
 const objUnsubscribeSchema = z.object({
   strEndpoint: z.string().min(1),
 });
+
+/** GET /api/push/status — 구독·UI 설정·VAPID 진단(설정 화면용) */
+export const fnGetPushStatus = async (req: Request, res: Response): Promise<void> => {
+  const nUserId = req.user?.nId ?? 0;
+  if (nUserId <= 0) {
+    res.status(401).json({ bSuccess: false, strMessage: '인증이 필요합니다.' });
+    return;
+  }
+  const arrSubs = await fnListNotificationSubscriptionsByUserIds([nUserId]);
+  res.json({
+    bSuccess: true,
+    bVapidConfigured: fnIsWebPushConfigured(),
+    bUserPrefEnabled: fnIsUserWebPushEnabled(nUserId),
+    nSubscriptionCount: arrSubs.length,
+  });
+};
 
 export const fnGetPushVapidPublicKey = (_req: Request, res: Response): void => {
   if (!fnIsWebPushConfigured()) {
