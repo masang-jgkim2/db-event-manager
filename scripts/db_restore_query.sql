@@ -2,7 +2,7 @@ USE master;
 GO
 
 DECLARE @WinBackupPath NVARCHAR(255) = N'G:\Masang\backup\all\';
-DECLARE @WinDataPath   NVARCHAR(255) = N'F:\Masang\DB\mdf\';
+DECLARE @WinDataPath   NVARCHAR(255) = N'D:\masang\data\mdf\';
 DECLARE @WinLogPath    NVARCHAR(255) = N'F:\Masang\DB\mdf\';
 
 IF OBJECT_ID('tempdb..#BackupList') IS NOT NULL DROP TABLE #BackupList;
@@ -15,12 +15,12 @@ CREATE TABLE #BackupList
 
 INSERT INTO #BackupList (DbName, BakFile)
 VALUES
---(N'THLogin', N'THLogin_full_20260515.bak'),
---(N'cc_dbrestore_main', N'cc_dbrestore_main_full_20260515.bak'),
---(N'cc_dbrestore_test', N'cc_dbrestore_test_full_20260515.bak'),
---(N'cc_obt', N'cc_obt_full_20260515.bak'),
---(N'CC_GAMEDB', N'CC_GAMEDB_full_20260515.bak'),
---(N'AccountDB', N'AccountDB_full_20260515.bak'),
+(N'THLogin', N'THLogin_full_20260515.bak'),
+(N'cc_dbrestore_main', N'cc_dbrestore_main_full_20260515.bak'),
+(N'cc_dbrestore_test', N'cc_dbrestore_test_full_20260515.bak'),
+(N'cc_obt', N'cc_obt_full_20260515.bak'),
+(N'CC_GAMEDB', N'CC_GAMEDB_full_20260515.bak'),
+(N'AccountDB', N'AccountDB_full_20260515.bak'),
 
 (N'dk_data_release_Test', N'dk_data_release_Test_full_20260515.bak'),
 (N'dk_game_integrate', N'dk_game_integrate_full_20260515.bak'),
@@ -37,30 +37,30 @@ VALUES
 (N'Web_DK', N'Web_DK_full_20260515.bak'),
 (N'dk_game_release_239', N'dk_game_release_239_full_20260515.bak'),
 (N'dk_game_release_240', N'dk_game_release_240_full_20260515.bak'),
---(N'Account', N'Account_full_20260515.bak'),
---(N'FHEtl', N'FHEtl_full_20260515.bak'),
---(N'FHGame1', N'FHGame1_full_20260515.bak'),
---(N'SKID_DB', N'SKID_DB_full_20260515.bak'),
---(N'FHLogin', N'FHLogin_full_20260515.bak'),
---(N'FHWeb', N'FHWeb_full_20260515.bak'),
---(N'LPS_DB', N'LPS_DB_full_20260515.bak'),
---(N'MEMBER_DB', N'MEMBER_DB_full_20260515.bak'),
---(N'Web_SR', N'Web_SR_full_20260515.bak'),
---(N'ClanDB', N'ClanDB_full_20260515.bak'),
---(N'atum2_db_1', N'atum2_db_1_full_20260515.bak'),
---(N'atum2_db_7', N'atum2_db_7_full_20260515.bak'),
---(N'atum2_db_arena', N'atum2_db_arena_full_20260515.bak'),
---(N'atum2_db_account', N'atum2_db_account_full_20260515.bak'),
---(N'cc_test', N'cc_test_full_20260515.bak'),
---(N'cc_data_test', N'cc_data_test_full_20260515.bak'),
---(N'cc_data_main', N'cc_data_main_full_20260515.bak'),
---(N'dk_game_release_241', N'dk_game_release_241_full_20260515.bak'),
---(N'cc_chartreux', N'cc_chartreux_full_20260515.bak'),
---(N'cc_pyron', N'cc_pyron_full_20260515.bak'),
---(N'cc_stats', N'cc_stats_full_20260515.bak'),
---(N'cc_tortusa', N'cc_tortusa_full_20260515.bak'),
---(N'cc_bonedragon', N'cc_bonedragon_full_20260515.bak'),
---(N'dk_game_release_254', N'dk_game_release_254_full_20260515.bak'),
+(N'Account', N'Account_full_20260515.bak'),
+(N'FHEtl', N'FHEtl_full_20260515.bak'),
+(N'FHGame1', N'FHGame1_full_20260515.bak'),
+(N'SKID_DB', N'SKID_DB_full_20260515.bak'),
+(N'FHLogin', N'FHLogin_full_20260515.bak'),
+(N'FHWeb', N'FHWeb_full_20260515.bak'),
+(N'LPS_DB', N'LPS_DB_full_20260515.bak'),
+(N'MEMBER_DB', N'MEMBER_DB_full_20260515.bak'),
+(N'Web_SR', N'Web_SR_full_20260515.bak'),
+(N'ClanDB', N'ClanDB_full_20260515.bak'),
+(N'atum2_db_1', N'atum2_db_1_full_20260515.bak'),
+(N'atum2_db_7', N'atum2_db_7_full_20260515.bak'),
+(N'atum2_db_arena', N'atum2_db_arena_full_20260515.bak'),
+(N'atum2_db_account', N'atum2_db_account_full_20260515.bak'),
+(N'cc_test', N'cc_test_full_20260515.bak'),
+(N'cc_data_test', N'cc_data_test_full_20260515.bak'),
+(N'cc_data_main', N'cc_data_main_full_20260515.bak'),
+(N'dk_game_release_241', N'dk_game_release_241_full_20260515.bak'),
+(N'cc_chartreux', N'cc_chartreux_full_20260515.bak'),
+(N'cc_pyron', N'cc_pyron_full_20260515.bak'),
+(N'cc_stats', N'cc_stats_full_20260515.bak'),
+(N'cc_tortusa', N'cc_tortusa_full_20260515.bak'),
+(N'cc_bonedragon', N'cc_bonedragon_full_20260515.bak'),
+(N'dk_game_release_254', N'dk_game_release_254_full_20260515.bak'),
 (N'dk_game_release_242', N'dk_game_release_242_full_20260515.bak')
 ;
 
