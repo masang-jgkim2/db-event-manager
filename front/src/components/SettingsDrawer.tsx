@@ -1,0 +1,272 @@
+import { useEffect, useState } from 'react';
+import { Drawer, Segmented, Slider, Switch, Typography, Divider, Button, Tooltip, message, theme as antdTheme } from 'antd';
+import {
+  SunOutlined,
+  MoonOutlined,
+  DesktopOutlined,
+  ReloadOutlined,
+  CheckOutlined,
+} from '@ant-design/icons';
+import { useThemeStore, ARR_PRIMARY_COLORS, fnGenPalette } from '../stores/useThemeStore';
+import type { TThemeMode } from '../stores/useThemeStore';
+import {
+  fnDisableWebPush,
+  fnEnableWebPush,
+  fnGetWebPushEffectiveEnabled,
+  fnGetWebPushUnsupportedReason,
+  fnIsWebPushEnabledPref,
+  fnIsWebPushSupported,
+} from '../utils/webPushManager';
+
+const { Text, Title } = Typography;
+
+interface ISettingsDrawerProps {
+  bOpen: boolean;
+  fnOnClose: () => void;
+}
+
+const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
+  const { token } = antdTheme.useToken();
+
+  const strMode = useThemeStore((s) => s.strMode);
+  const nFontSize = useThemeStore((s) => s.nFontSize);
+  const bCompact = useThemeStore((s) => s.bCompact);
+  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
+
+  const fnSetMode = useThemeStore((s) => s.fnSetMode);
+  const fnSetFontSize = useThemeStore((s) => s.fnSetFontSize);
+  const fnSetCompact = useThemeStore((s) => s.fnSetCompact);
+  const fnSetPrimaryColor = useThemeStore((s) => s.fnSetPrimaryColor);
+  const bFunMode = useThemeStore((s) => s.bFunMode);
+  const fnSetFunMode = useThemeStore((s) => s.fnSetFunMode);
+  const fnReset = useThemeStore((s) => s.fnReset);
+
+  const bIsDark = fnGetIsDark();
+  const bWebPushSupported = fnIsWebPushSupported();
+  const strWebPushUnsupportedReason = fnGetWebPushUnsupportedReason();
+  const [bWebPushEnabled, setBWebPushEnabled] = useState(() => fnIsWebPushEnabledPref());
+  const [bWebPushBusy, setBWebPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!bOpen) return;
+    let bCancelled = false;
+    void (async () => {
+      const bEffective = await fnGetWebPushEffectiveEnabled();
+      if (!bCancelled) setBWebPushEnabled(bEffective);
+    })();
+    return () => {
+      bCancelled = true;
+    };
+  }, [bOpen]);
+
+  // 섹션 제목 스타일
+  const objSectionTitleStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    color: token.colorTextSecondary,
+    marginBottom: 12,
+    display: 'block',
+  };
+
+  return (
+    <Drawer
+      title={
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Title level={5} style={{ margin: 0 }}>UI 설정</Title>
+          <Tooltip title="기본값으로 초기화">
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={fnReset}
+            >
+              초기화
+            </Button>
+          </Tooltip>
+        </div>
+      }
+      placement="right"
+      width={320}
+      open={bOpen}
+      onClose={fnOnClose}
+      closable
+      styles={{ body: { padding: '20px 24px' } }}
+    >
+      {/* ① 테마 모드 */}
+      <Text style={objSectionTitleStyle}>테마 모드</Text>
+      <Segmented<TThemeMode>
+        block
+        value={strMode}
+        onChange={fnSetMode}
+        options={[
+          { value: 'light',  icon: <SunOutlined />,     label: '라이트' },
+          { value: 'dark',   icon: <MoonOutlined />,    label: '다크' },
+          { value: 'system', icon: <DesktopOutlined />, label: '시스템' },
+        ]}
+      />
+
+      <Divider />
+
+      {/* ② 포인트 컬러 */}
+      <Text style={objSectionTitleStyle}>포인트 컬러</Text>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {ARR_PRIMARY_COLORS.map((objColor) => {
+          const bSelected = strPrimaryColor === objColor.strValue;
+          const arrPalette = fnGenPalette(objColor.strValue, bIsDark);
+          return (
+            <button
+              key={objColor.strValue}
+              onClick={() => fnSetPrimaryColor(objColor.strValue)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '7px 10px',
+                borderRadius: token.borderRadius,
+                border: bSelected
+                  ? `2px solid ${objColor.strValue}`
+                  : `1px solid ${token.colorBorderSecondary}`,
+                background: bSelected ? token.colorPrimaryBg : token.colorBgContainer,
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+                width: '100%',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%',
+                background: objColor.strValue, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {bSelected && <CheckOutlined style={{ color: '#fff', fontSize: 10 }} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: bSelected ? 600 : 400, color: token.colorText, marginBottom: 3 }}>
+                  {objColor.strLabel}
+                </div>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  {arrPalette.map((strSwatchColor, nIdx) => (
+                    <div key={nIdx} style={{
+                      flex: 1, height: 7, borderRadius: 2,
+                      background: strSwatchColor,
+                      outline: nIdx === 5 ? `1.5px solid ${strSwatchColor}` : 'none',
+                    }} />
+                  ))}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <Divider />
+
+      {/* ③ 본문 폰트 크기 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={objSectionTitleStyle}>본문 폰트 크기</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>{nFontSize}px</Text>
+      </div>
+      <Slider
+        min={12} max={25} step={1}
+        value={nFontSize}
+        onChange={fnSetFontSize}
+        marks={{ 12: '12', 14: '14', 16: '16', 18: '18', 20: '20', 25: '25' }}
+      />
+
+      <Divider />
+
+      {/* ④ 컴팩트 모드 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>컴팩트 모드</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>테이블/폼 등 여백 축소</Text>
+        </div>
+        <Switch checked={bCompact} onChange={fnSetCompact} />
+      </div>
+
+      <Divider />
+
+      {/* ⑤ 굳굳 설정 — 재미 모드 */}
+      <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>굳굳 설정</Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Text style={{ fontSize: 13 }}>재미 모드</Text>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11 }}>재요청 버튼을 롱프레스로 전환 (길게 누르면 게이지 후 재요청)</Text>
+          </div>
+        </div>
+        <Switch
+          checked={bFunMode}
+          onChange={(bChecked) => {
+            fnSetFunMode(bChecked);
+            if (bChecked) {
+              message.success('재미 모드가 켜졌습니다. 버튼을 2~3초 길게 누르면 재요청으로 전환됩니다.');
+            }
+          }}
+        />
+      </div>
+
+      <Divider />
+
+      <Text style={{ ...objSectionTitleStyle, marginBottom: 2 }}>브라우저 알림</Text>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Text style={{ fontSize: 13 }}>Web Push</Text>
+          <div>
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              탭을 닫아도 이벤트 변경 알림을 받습니다.
+            </Text>
+          </div>
+        </div>
+        <Switch
+          checked={bWebPushEnabled}
+          disabled={!bWebPushSupported || bWebPushBusy}
+          loading={bWebPushBusy}
+          onChange={async (bChecked) => {
+            setBWebPushBusy(true);
+            try {
+              if (bChecked) {
+                const objRes = await fnEnableWebPush();
+                if (!objRes.bSuccess) {
+                  message.error(objRes.strMessage ?? 'Web Push를 켤 수 없습니다.');
+                  setBWebPushEnabled(fnIsWebPushEnabledPref());
+                  return;
+                }
+                setBWebPushEnabled(true);
+                message.success('브라우저 알림이 켜졌습니다.');
+                return;
+              }
+              await fnDisableWebPush();
+              setBWebPushEnabled(false);
+              message.success('브라우저 알림이 꺼졌습니다.');
+            } catch (err: unknown) {
+              const strMessage = err instanceof Error ? err.message : 'Web Push 설정 변경에 실패했습니다.';
+              message.error(strMessage);
+              setBWebPushEnabled(fnIsWebPushEnabledPref());
+            } finally {
+              setBWebPushBusy(false);
+            }
+          }}
+        />
+      </div>
+      {!bWebPushSupported && (
+        <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+          {strWebPushUnsupportedReason ?? 'Web Push를 사용할 수 없습니다.'}
+        </Text>
+      )}
+
+      <Divider />
+
+      {/* ⑦ 사이드바 너비 안내 */}
+      <Text style={{ ...objSectionTitleStyle, marginBottom: 4 }}>사이드바 너비</Text>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        사이드바 오른쪽 경계를 좌우로 드래그하여 조절합니다.
+      </Text>
+    </Drawer>
+  );
+};
+
+export default SettingsDrawer;

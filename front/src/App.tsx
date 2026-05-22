@@ -1,0 +1,311 @@
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
+import koKR from 'antd/locale/ko_KR';
+import { useAuthStore } from './stores/useAuthStore';
+import { useThemeStore } from './stores/useThemeStore';
+import { fnBuildDesignSystem } from './styles/design-system';
+import { DesignSystemContext } from './styles/DesignSystemContext';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import ProductPage from './pages/ProductPage';
+import EventPage from './pages/EventPage';
+import QueryPage from './pages/QueryPage';
+import UserPage from './pages/UserPage';
+import MyDashboardPage from './pages/MyDashboardPage';
+import DbConnectionPage from './pages/DbConnectionPage';
+import RolePage from './pages/RolePage';
+import ActivityPage from './pages/ActivityPage';
+import MainLayout from './components/MainLayout';
+import { fnRunUiPreferencesPullForUser } from './services/userUiPreferencesSync';
+import type { TPermission } from './types';
+
+const ARR_REQ_DASHBOARD = ['dashboard.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_PRODUCT = ['product.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_EVENT = ['event_template.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_USER = ['user.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_DB = ['db_connection.view', 'db.manage'] as const satisfies readonly TPermission[];
+const ARR_REQ_ROLE = ['role.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_ACTIVITY = ['activity.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_MY_DASH = ['my_dashboard.view'] as const satisfies readonly TPermission[];
+const ARR_REQ_QUERY = ['instance.view', 'instance.create'] as const satisfies readonly TPermission[];
+
+// 인증된 사용자만 접근 가능한 라우트
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+  const bIsLoading = useAuthStore((state) => state.bIsLoading);
+  const user = useAuthStore((state) => state.user);
+  const [bUiPrefsReady, setBUiPrefsReady] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!bIsAuthenticated || !user?.nId) {
+      setBUiPrefsReady(true);
+      return undefined;
+    }
+    setBUiPrefsReady(false);
+    let bCancelled = false;
+    void fnRunUiPreferencesPullForUser(user.nId).then(() => {
+      if (!bCancelled) setBUiPrefsReady(true);
+    });
+    return () => {
+      bCancelled = true;
+    };
+  }, [bIsAuthenticated, user?.nId]);
+
+  if (bIsLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (!bIsAuthenticated) {
+    // 현재 경로를 redirect 파라미터로 보존 — 로그인 후 원래 페이지로 복귀
+    const strRedirectTo = location.pathname + location.search;
+    const strLoginPath = strRedirectTo === '/' ? '/login' : `/login?redirect=${encodeURIComponent(strRedirectTo)}`;
+    return <Navigate to={strLoginPath} replace />;
+  }
+
+  if (!bUiPrefsReady) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Spin size="large" tip="화면 설정 동기화 중…" />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+};
+
+// 권한 기반 라우트 가드 (특정 권한 필요 시 PermissionRoute 사용, 역할은 사용하지 않음)
+
+// 특정 권한 기반 라우트 가드 (하나라도 보유하면 통과)
+const PermissionRoute = ({
+  children,
+  arrRequiredPerms,
+}: {
+  children: React.ReactNode;
+  arrRequiredPerms: readonly TPermission[];
+}) => {
+  const user = useAuthStore((state) => state.user);
+  const arrPerms = user?.arrPermissions || [];
+  const bHas = arrRequiredPerms.some((p) => arrPerms.includes(p));
+
+  if (!bHas) {
+    return (
+      <Result
+        status="403"
+        title="접근 권한 없음"
+        subTitle="해당 페이지에 접근할 권한이 없습니다."
+      />
+    );
+  }
+
+  return <>{children}</>;
+};
+
+// 이미 로그인된 사용자는 적절한 페이지로 리다이렉트
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+  const user = useAuthStore((state) => state.user);
+  const [searchParams] = useSearchParams();
+
+  if (bIsAuthenticated) {
+    // 로그인 후 redirect 파라미터가 있으면 해당 경로 우선
+    const strRedirectParam = searchParams.get('redirect');
+    if (strRedirectParam) {
+      return <Navigate to={strRedirectParam} replace />;
+    }
+    const arrPermissions = user?.arrPermissions || [];
+    const bHasDashboard = arrPermissions.includes('dashboard.view');
+    const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
+    const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
+    const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));
+    return <Navigate to={strRedirect} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// 기본 리다이렉트 (권한에 따라, 역할 미사용)
+const DefaultRedirect = () => {
+  const user = useAuthStore((state) => state.user);
+  const arrPermissions = user?.arrPermissions || [];
+  const bHasDashboard = arrPermissions.includes('dashboard.view');
+  const bHasMyDashboard = arrPermissions.includes('my_dashboard.view');
+  const bHasQuery = arrPermissions.includes('instance.view') || arrPermissions.includes('instance.create');
+  const strRedirect = bHasDashboard ? '/' : (bHasMyDashboard ? '/my-dashboard' : (bHasQuery ? '/query' : '/my-dashboard'));
+  return <Navigate to={strRedirect} replace />;
+};
+
+const App = () => {
+  const fnVerifyToken = useAuthStore((state) => state.fnVerifyToken);
+  const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
+
+  // 테마 스토어
+  const fnGetIsDark = useThemeStore((state) => state.fnGetIsDark);
+  const nFontSize = useThemeStore((state) => state.nFontSize);
+  const bCompact = useThemeStore((state) => state.bCompact);
+  const strPrimaryColor = useThemeStore((state) => state.strPrimaryColor);
+  const strMode = useThemeStore((state) => state.strMode);
+
+  // system 모드일 때 OS 변경 감지하여 리렌더 유도
+  useEffect(() => {
+    if (strMode !== 'system') return;
+    const objMq = window.matchMedia('(prefers-color-scheme: dark)');
+    const fnHandler = () => {
+      // 리렌더 트리거: 스토어 액션 없이 강제 재평가를 위해 임시 상태 변경
+      useThemeStore.setState((s) => ({ ...s }));
+    };
+    objMq.addEventListener('change', fnHandler);
+    return () => objMq.removeEventListener('change', fnHandler);
+  }, [strMode]);
+
+  // 앱 시작 시 토큰 검증 (자동 로그인)
+  useEffect(() => {
+    fnVerifyToken();
+  }, [fnVerifyToken]);
+
+  // 로그인 전·로그아웃 후 테마는 guest 버킷(dbem:guest:…)에서 복원
+  useEffect(() => {
+    void useThemeStore.persist.rehydrate();
+  }, []);
+
+  useEffect(() => {
+    if (!bIsAuthenticated) {
+      void useThemeStore.persist.rehydrate();
+    }
+  }, [bIsAuthenticated]);
+
+  // 프로덕트/이벤트/DB목록은 각 페이지에서 로드(전역 prefetch 시 활동 로그·이중 GET 증가)
+
+  const bIsDark = fnGetIsDark();
+
+  // 디자인 시스템 전체 토큰 생성
+  const objDs = fnBuildDesignSystem(strPrimaryColor, bIsDark, nFontSize);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { token: dsToken, components: dsComponents } = objDs.antdThemeConfig as any;
+
+  return (
+    <DesignSystemContext.Provider value={objDs}>
+    <ConfigProvider
+      locale={koKR}
+      theme={{
+        algorithm: [
+          bIsDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+          ...(bCompact ? [antdTheme.compactAlgorithm] : []),
+        ],
+        token:      dsToken,
+        components: dsComponents,
+      }}
+    >
+      <BrowserRouter>
+        <Routes>
+          {/* 로그인 (비인증 전용) */}
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <LoginPage />
+              </PublicRoute>
+            }
+          />
+
+          {/* 메인 레이아웃 (인증 필수) */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            {/* 대시보드: dashboard.view(확장으로 admin 부여) 또는 admin 역할 */}
+            <Route
+              path="/"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_DASHBOARD}>
+                  <DashboardPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/products"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_PRODUCT}>
+                  <ProductPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/events"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_EVENT}>
+                  <EventPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_USER}>
+                  <UserPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/db-connections"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_DB}>
+                  <DbConnectionPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/roles"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_ROLE}>
+                  <RolePage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_ACTIVITY}>
+                  <ActivityPage />
+                </PermissionRoute>
+              }
+            />
+
+            {/* 나의 대시보드: my_dashboard.view 필요. 이벤트 생성: instance.view 또는 instance.create 필요 */}
+            <Route
+              path="/my-dashboard"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_MY_DASH}>
+                  <MyDashboardPage />
+                </PermissionRoute>
+              }
+            />
+            <Route
+              path="/query"
+              element={
+                <PermissionRoute arrRequiredPerms={ARR_REQ_QUERY}>
+                  <QueryPage />
+                </PermissionRoute>
+              }
+            />
+          </Route>
+
+          {/* 존재하지 않는 경로 → 역할에 맞는 페이지로 */}
+          <Route path="*" element={<DefaultRedirect />} />
+        </Routes>
+      </BrowserRouter>
+    </ConfigProvider>
+    </DesignSystemContext.Provider>
+  );
+};
+
+export default App;
