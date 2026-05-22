@@ -1,0 +1,57 @@
+---
+description: 이벤트 인스턴스 도메인 규칙 — 워크플로, 반영 날짜 조건, DBA 쿼리 수정
+globs: {backend/src/controllers/eventInstanceController.ts,backend/src/controllers/eventController.ts,front/src/pages/MyDashboardPage.tsx,front/src/pages/EventPage.tsx,front/src/stores/useEventInstanceStore.ts}
+alwaysApply: false
+---
+
+# 이벤트 인스턴스 도메인
+
+## 9단계 워크플로 (코드와 동일)
+
+```
+event_created → confirm_requested → dba_confirmed
+  → qa_requested → qa_deployed → qa_verified
+  → live_requested → live_deployed → live_verified(완료)
+```
+
+- 반영 범위 `['live']`만: `dba_confirmed` 다음 `live_requested` 직행.
+- 전이: `OBJ_STATUS_TRANSITIONS_BASE`, `fnGetTransitions(..., arrDeployScope)`.
+
+## 재요청
+
+`qa_verified`→`qa_requested`, `live_deployed`/`live_verified`→`live_requested`. Popconfirm + 재미 모드 `RequestWithLongPressButton`.
+
+## 반영 날짜 (실행 API 검증)
+
+- **QA**: `dtQaDeployDate` 있으면 `현재 >= 해당 시각` (없으면 제한 없음).
+- **LIVE**: `dtLiveDeployDate` 없으면 `dtDeployDate` — `현재 >= 해당 시각`.
+- DEV 직접 실행 차단.
+
+## DBA 쿼리 수정 가능
+
+`confirm_requested`, `qa_requested`, `live_requested`에서만 `strGeneratedQuery`(및 세트 쿼리) 수정.
+
+## 쿼리 재생성·{{items}}
+
+`event_created`만, 입력·날짜 **실제 변경** 시 `fnApplyQueryTemplate`(+`strInputFormat`). `fnReplaceItemsInTemplate` — `'{{items}}'`·`({{items}})`→쉼표 목록 / `VALUES {{items}}`→`(n), (n)`. DBA 쿼리 수정 시 `objQueryEdit` diff 저장·진행 이력 표시.
+
+## QA/LIVE 실행·접속 (`fnExecuteAndDeploy`)
+
+- 접속: **`fnResolveExecuteConnection`** — 단일·다중 세트 모두 세트별 `nDbConnectionId`(레거시는 GAME).
+- **성공**: `qa_deployed`/`live_deployed` + `objExecutionResult`(`strConnectionSummary` 선택).
+- **실패**: 상태 유지 + `arrStatusLogs`에 실패 행 — `bSuccess: false`, `strError`, `strConnectionSummary`, 부분 `arrQueryResults`. `fnSaveEventInstances` + `fnBroadcastInstanceUpdate`.
+
+## IEventInstance 핵심
+
+`nProductId`, `strGeneratedQuery`, `arrExecutionTargets`, `strStatus`, `arrStatusLogs`, `arrDeployScope`.
+
+## 쿼리 템플릿 삭제·MySQL 스텁
+
+- **삭제 차단**: 활성 인스턴스(`!bPermanentlyRemoved`)가 `nEventTemplateId` 참조 중 → 400 (`GET /api/events/:id/instances`로 확인).
+- **삭제 허용 시**: 해당 템플릿만 참조하던 **영구 삭제** 인스턴스는 메모리·`eventInstances.json`에서 제거 (`eventController.fnDeleteEvent` → `fnSaveEventInstances`).
+- **MySQL flush** (`fnRelationalWriteFullFromMemory`): `bAllowStubTemplates` 없음 → 삭제한 템플릿 **스텁 재삽입 안 함**. 스텁(`strInputFormat: raw` 등)은 `import-json-to-mysql`·`fnMysqlImportAllFromJsonDisk`(`bAllowStubTemplates: true`)만 — JSON에 템플릿 없고 인스턴스만 있을 때 FK용.
+- 템플릿 CUD 후 `fnAwaitMysqlDocFlush` 필수; 실패 시 500.
+
+## SSE·알림(1순위)
+
+`fnBroadcastInstanceUpdate` — SSE 항상. 인앱·푸시는 eligibility 동일; `bPermanentlyRemoved`·`qa_verified`·숨기기는 생략. DBA 쿼리만 수정 시 `fnBroadcastInstanceUpdate(obj, false)` — 상태 변경 알림만 생략.

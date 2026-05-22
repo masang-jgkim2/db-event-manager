@@ -1,93 +1,59 @@
-# internal-db-event-manager
+# Database Query Process Manager (DQPM)
 
+## 개요
 
+반복적인 이벤트·쿼리 프로세스를 **DEV → QA → LIVE** 단계로 관리하는 웹 애플리케이션입니다.  
+쿼리 템플릿 기반 이벤트·쿼리 생성, 반영 범위(QA/LIVE) 설정, 권한별 워크플로(컨펌·실행·확인)와 실시간 상태 반영을 지원합니다.
 
-## Getting started
+## 대상 사용자
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- **GM(게임 마스터) / 기획자**: 이벤트 생성, 반영 요청, QA/LIVE 확인
+- **DBA**: 컨펌, QA/LIVE DB 쿼리 실행, 쿼리 직접 수정
+- **관리자**: 프로덕트·쿼리 템플릿·DB 접속·사용자·역할 권한 관리
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## 핵심 기능
 
-## Add your files
+1. **프로덕트·쿼리 템플릿**
+   - 프로덕트(게임/서비스)별 쿼리 템플릿 관리
+   - 단일/다중 쿼리 세트 지원(세트별 DB 연결·쿼리 템플릿·기본 입력값)
+   - 치환자(`{{items}}`, `{{date}}`, `{{event_name}}` 등) 기반 쿼리 자동 생성
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+2. **이벤트 생성**
+   - 프로덕트·국내/해외·이벤트 선택 후 입력값 입력
+   - **반영 범위** 선택(QA/LIVE, 단일 또는 다중)
+   - 다중 세트 시 세트별 입력·생성 쿼리 탭 표시
+
+3. **나의 대시보드**
+   - 이벤트 인스턴스 목록(진행 중/완료/숨김 탭, 테이블·카드 보기)
+   - **반영** 컬럼: DEV / QA / LIVE 단계 표시
+   - 상세·수정(컨펌 요청 전)·쿼리 수정(DBA)·컨펌·QA/LIVE 실행·확인·재요청 등 권한별 액션
+   - 상세/수정/쿼리 수정 시 다중 쿼리 세트 탭 표시, 반영 범위(QA/LIVE) 표시
+
+4. **쿼리 실행**
+   - 단일·다중 쿼리 세트 모두 지원(요청 env에 맞는 DB 접속으로 실행)
+   - 반영 날짜 검증(DEV/QA: 반영일 이전, LIVE: 반영일 이후만 실행)
+   - MSSQL/MySQL 트랜잭션 실행 및 결과 모달
+
+5. **권한·실시간**
+   - 메뉴/버튼은 **보기·상세·수정·실행** 등 세분화된 권한으로 제어
+   - Server-Sent Events(SSE)로 인스턴스 상태 변경 실시간 반영
+
+## 기술 스택
+
+| 영역 | 스택 |
+|------|------|
+| **프론트엔드** | React, Vite, TypeScript, Ant Design, Zustand, Axios, React Router DOM |
+| **백엔드** | Node.js, Express, TypeScript, JWT, bcryptjs, Zod |
+| **DB 실행** | mssql, mysql2/promise (프로덕트·환경별 접속) |
+| **데이터** | 인메모리(JSON 파일) → 추후 DB 마이그레이션 예정 |
+| **실시간** | Server-Sent Events (SSE) |
+
+## 폴더 구조
 
 ```
-cd existing_repo
-git remote add origin https://web-git.masangsoft.com/groupdb/internal-db-event-manager.git
-git branch -M main
-git push -uf origin main
+/
+├── front/          # React + Vite + Ant Design
+├── backend/        # Express + TypeScript, 인메모리 데이터
+├── docs/           # 스펙, 권한, 스키마 검토 등
+└── readme.md
 ```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://web-git.masangsoft.com/groupdb/internal-db-event-manager/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.

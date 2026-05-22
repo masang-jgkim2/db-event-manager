@@ -1,0 +1,641 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+import {
+  Typography, Card, Tag, Space, Button, Modal,
+  Form, Input, Select, InputNumber, Switch, Popconfirm,
+  message, Descriptions, Alert, Spin, Tooltip,
+} from 'antd';
+import {
+  PlusOutlined, DeleteOutlined, EditOutlined,
+  CheckCircleOutlined, CloseCircleOutlined,
+  DatabaseOutlined,
+} from '@ant-design/icons';
+import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import {
+  fnApiCreateDbConnection,
+  fnApiUpdateDbConnection, fnApiDeleteDbConnection,
+  fnApiTestDbConnection,
+} from '../api/dbConnectionApi';
+import { useProductStore } from '../stores/useProductStore';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
+import { useAuthStore } from '../stores/useAuthStore';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
+import { ARR_DB_CONNECTION_KINDS } from '../types';
+
+const { Title, Text } = Typography;
+
+const OBJ_KIND_COLOR: Record<TDbConnectionKind, string> = {
+  GAME: 'blue',
+  WEB: 'geekblue',
+  LOG: 'purple',
+};
+
+// 환경 태그 색상
+const OBJ_ENV_COLOR: Record<string, string> = {
+  dev: 'green',
+  qa: 'orange',
+  live: 'red',
+};
+
+// DB 타입 태그 색상
+const OBJ_DB_COLOR: Record<string, string> = {
+  mssql: 'blue',
+  mysql: 'cyan',
+};
+
+/** 연결 열 자동 점검: 간격·요청 타임아웃(무응답 시 빨간 점) */
+const N_MONITOR_INTERVAL_MS = 10_000;
+const N_MONITOR_TIMEOUT_MS = 12_000;
+
+type TMonitorStatus = 'unknown' | 'pending' | 'ok' | 'fail';
+
+// 연결 테스트 결과 타입
+interface ITestResult {
+  bSuccess: boolean;
+  strMessage: string;
+  objDbInfo?: {
+    strDatabase: string;
+    strUser: string;
+    strServer: string;
+    strVersion: string;
+    strServerTime: string;
+  };
+  strError?: string;
+}
+
+const DbConnectionPage = () => {
+  const [arrConnections, setArrConnections] = useState<IDbConnection[]>([]);
+  const [bLoading, setBLoading] = useState(false);
+  const [bModalOpen, setBModalOpen] = useState(false);
+  const [objEditConn, setObjEditConn] = useState<IDbConnection | null>(null);
+  const [objSelectedRow, setObjSelectedRow] = useState<IDbConnection | null>(null);  // 확장된 행(선택된 행)
+  const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
+  const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
+  const [mapMonitorStatus, setMapMonitorStatus] = useState<Record<number, TMonitorStatus>>({});
+  const [form] = Form.useForm();
+  const [messageApi, contextHolder] = message.useMessage();
+  const objSelectedRowRef = useRef<IDbConnection | null>(null);
+  objSelectedRowRef.current = objSelectedRow;
+  const arrConnectionsRef = useRef<IDbConnection[]>([]);
+  arrConnectionsRef.current = arrConnections;
+
+  const arrProducts = useProductStore((s) => s.arrProducts);
+  const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
+  const fnHas = (p: TPermission) => arrPermissions.includes(p);
+  const bCanCreate = fnHas('db_connection.create') || fnHas('db.manage');
+  const bCanEdit = fnHas('db_connection.edit') || fnHas('db.manage');
+  const bCanDelete = fnHas('db_connection.delete') || fnHas('db.manage');
+  /** 「연결」열 표시 — 보기 또는 관리 */
+  const bShowConnectionColumn = fnHas('db_connection.view') || fnHas('db.manage');
+  /** 연결 테스트 API 호출(자동 점검·행 펼침 시 실행) — 테스트 또는 관리 */
+  const bCanRunConnectionTest = fnHas('db_connection.test') || fnHas('db.manage');
+
+  // 목록 조회
+  const fnLoad = useCallback(async () => {
+    setBLoading(true);
+    try {
+      await useDbConnectionStore.getState().fnFetchDbConnections();
+      const arr = useDbConnectionStore.getState().arrDbConnections;
+      setArrConnections(arr);
+    } catch {
+      messageApi.error('DB 접속 정보를 불러올 수 없습니다.');
+    } finally {
+      setBLoading(false);
+    }
+  }, [messageApi]);
+
+  useEffect(() => { fnLoad(); }, [fnLoad]);
+  useAutoRefresh(fnLoad);
+
+  // 추가/수정 모달 열기
+  const fnOpenModal = (objConn?: IDbConnection) => {
+    if (objConn) {
+      setObjEditConn(objConn);
+      form.setFieldsValue({
+        ...objConn,
+        strKind: objConn.strKind || 'GAME',
+        strPassword: '',  // 비밀번호는 재입력 요구
+      });
+    } else {
+      setObjEditConn(null);
+      form.resetFields();
+      form.setFieldsValue({ nPort: 1433, strKind: 'GAME' });
+    }
+    setBModalOpen(true);
+  };
+
+  // DB 타입 변경 시 기본 포트 자동 설정
+  const fnHandleDbTypeChange = (strDbType: string) => {
+    form.setFieldValue('nPort', strDbType === 'mssql' ? 1433 : 3306);
+  };
+
+  // 저장 — 성공/중복/오류를 구분해 표시, 성공 시에만 모달 닫힘
+  const fnHandleSave = async () => {
+    try {
+      const objValues = await form.validateFields();
+      const result = objEditConn
+        ? await fnApiUpdateDbConnection(objEditConn.nId, objValues)
+        : await fnApiCreateDbConnection(objValues);
+
+      if (result.bSuccess) {
+        messageApi.success(objEditConn ? 'DB 접속 정보가 수정되었습니다.' : 'DB 접속 정보가 등록되었습니다.');
+        setBModalOpen(false);
+        form.resetFields();
+        setObjEditConn(null);
+        fnLoad();
+      } else if ((result as any).strErrorCode === 'DUPLICATE') {
+        // 중복 등록 시 warning 아이콘으로 구분
+        messageApi.warning(result.strMessage);
+      } else {
+        messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
+      }
+    } catch {
+      // 유효성 검사 실패 — Ant Design Form 인라인 에러 표시
+    }
+  };
+
+  // 삭제
+  const fnHandleDelete = async (nId: number) => {
+    try {
+      const result = await fnApiDeleteDbConnection(nId);
+      if (result.bSuccess) {
+        messageApi.success('삭제되었습니다.');
+        fnLoad();
+      } else {
+        messageApi.error(result.strMessage);
+      }
+    } catch (error: any) {
+      messageApi.error(error?.message || '삭제에 실패했습니다.');
+    }
+  };
+
+  // 연결 테스트 — 행 선택 시·수동 호출(긴 타임아웃). 토스트 + 하단 패널
+  const fnHandleTest = useCallback(async (objConn: IDbConnection) => {
+    if (!bCanRunConnectionTest) return;
+    setObjSelectedRow(objConn);
+    setBTesting(objConn.nId);
+    setObjTestResult(null);
+    try {
+      const result: ITestResult = await fnApiTestDbConnection(objConn.nId);
+      setObjTestResult({ nId: objConn.nId, result });
+      setMapMonitorStatus((prev) => ({ ...prev, [objConn.nId]: result.bSuccess ? 'ok' : 'fail' }));
+      if (result.bSuccess) {
+        messageApi.success('연결 성공!');
+      } else {
+        messageApi.error(result.strMessage || '연결 실패');
+      }
+    } catch (error: any) {
+      setMapMonitorStatus((prev) => ({ ...prev, [objConn.nId]: 'fail' }));
+      messageApi.error(error?.message || '테스트 요청에 실패했습니다.');
+    } finally {
+      setBTesting(null);
+    }
+  }, [messageApi, bCanRunConnectionTest]);
+
+  const fnHandleTestRef = useRef(fnHandleTest);
+  fnHandleTestRef.current = fnHandleTest;
+
+  // 행 선택 시 자동 테스트 — 연결 테스트 실행 권한 있을 때만
+  useEffect(() => {
+    if (!objSelectedRow || !bCanRunConnectionTest) return;
+    void fnHandleTestRef.current(objSelectedRow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 선택 id·권한만 반응
+  }, [objSelectedRow?.nId, bCanRunConnectionTest]);
+
+  // 탭이 보일 때 주기 점검 — 파란점(정상) / 빨간점(실패·무응답). pending 일괄 갱신 없음(깜빡임 방지)
+  useEffect(() => {
+    if (!bCanRunConnectionTest) return undefined;
+
+    const fnPoll = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const arr = arrConnectionsRef.current;
+      if (arr.length === 0) return;
+
+      await Promise.all(
+        arr.map(async (c) => {
+          const result = (await fnApiTestDbConnection(c.nId, {
+            nTimeoutMs: N_MONITOR_TIMEOUT_MS,
+          })) as ITestResult;
+          const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
+          setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
+          if (objSelectedRowRef.current?.nId === c.nId) {
+            setObjTestResult({ nId: c.nId, result });
+          }
+        }),
+      );
+    };
+
+    void fnPoll();
+    const nTimerId = window.setInterval(fnPoll, N_MONITOR_INTERVAL_MS);
+    const fnVis = () => {
+      if (!document.hidden) void fnPoll();
+    };
+    document.addEventListener('visibilitychange', fnVis);
+    return () => {
+      window.clearInterval(nTimerId);
+      document.removeEventListener('visibilitychange', fnVis);
+    };
+  }, [bCanRunConnectionTest]);
+
+  // 선택된 행 아래에 표시할 연결 테스트 상태/결과 패널
+  const fnRenderTestPanel = (r: IDbConnection) => {
+    if (!bCanRunConnectionTest) {
+      return (
+        <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
+          <Text type="secondary">
+            연결 테스트를 실행하려면 db_connection.test 또는 db.manage 권한이 필요합니다. 「연결」열은 보기 권한이 있으면 표시되며, 점검·색상은 테스트 권한이 있을 때만 갱신됩니다.
+          </Text>
+        </div>
+      );
+    }
+    const bIsTesting = bTesting === r.nId;
+    const objResultForRow = objTestResult?.nId === r.nId ? objTestResult.result : null;
+
+    if (bIsTesting) {
+      return (
+        <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)' }}>
+          <Spin tip="연결 테스트 중..." />
+        </div>
+      );
+    }
+    if (objResultForRow) {
+      return (
+        <div style={{ padding: 12, background: 'var(--ant-color-fill-quaternary)' }}>
+          <Card
+            size="small"
+            style={{ margin: 0, borderColor: objResultForRow.bSuccess ? '#52c41a' : '#ff4d4f' }}
+          >
+            {objResultForRow.bSuccess ? (
+              <>
+                <Text strong style={{ color: '#52c41a' }}>
+                  <CheckCircleOutlined style={{ marginRight: 6 }} />
+                  연결 성공
+                </Text>
+                {objResultForRow.objDbInfo && (
+                  <Descriptions size="small" column={3} style={{ marginTop: 8 }}>
+                    <Descriptions.Item label="IP">{r.strHost}</Descriptions.Item>
+                    <Descriptions.Item label="PORT">{r.nPort}</Descriptions.Item>
+                    <Descriptions.Item label="DB명">{objResultForRow.objDbInfo.strDatabase}</Descriptions.Item>
+                    <Descriptions.Item label="사용자">{objResultForRow.objDbInfo.strUser}</Descriptions.Item>
+                    <Descriptions.Item label="서버">{objResultForRow.objDbInfo.strServer}</Descriptions.Item>
+                    <Descriptions.Item label="버전">{objResultForRow.objDbInfo.strVersion}</Descriptions.Item>
+                    <Descriptions.Item label="서버 시각">{objResultForRow.objDbInfo.strServerTime}</Descriptions.Item>
+                  </Descriptions>
+                )}
+              </>
+            ) : (
+              <Alert
+                type="error"
+                showIcon
+                icon={<CloseCircleOutlined />}
+                message="연결 실패"
+                description={objResultForRow.strError}
+              />
+            )}
+          </Card>
+        </div>
+      );
+    }
+    return (
+      <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
+        <Text type="secondary">
+          행을 선택하면 연결 테스트가 실행되고, 결과가 여기에 표시됩니다. 연결 열은 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 자동 점검합니다.
+        </Text>
+      </div>
+    );
+  };
+
+  const arrColumns = [
+    fnMakeIndexColumn<IDbConnection>(),
+    {
+      title: '프로덕트',
+      key: 'product',
+      width: 120,
+      render: (_: unknown, r: IDbConnection) => <Text strong>{r.strProductName}</Text>,
+    },
+    {
+      title: '환경',
+      dataIndex: 'strEnv',
+      key: 'strEnv',
+      width: 80,
+      render: (v: string) => (
+        <Tag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
+          {v.toUpperCase()}
+        </Tag>
+      ),
+    },
+    {
+      title: '종류',
+      dataIndex: 'strKind',
+      key: 'strKind',
+      width: 80,
+      render: (v: TDbConnectionKind) => (
+        <Tag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</Tag>
+      ),
+    },
+    {
+      title: 'DB 타입',
+      dataIndex: 'strDbType',
+      key: 'strDbType',
+      width: 80,
+      render: (v: string) => <Tag color={OBJ_DB_COLOR[v]}>{v.toUpperCase()}</Tag>,
+    },
+    {
+      title: '접속 정보',
+      key: 'connInfo',
+      render: (_: unknown, r: IDbConnection) => (
+        <Space direction="vertical" size={0}>
+          <Text style={{ fontSize: 12 }}>{r.strHost}:{r.nPort}</Text>
+          <Text type="secondary" style={{ fontSize: 11 }}>{r.strDatabase} / {r.strUser}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: '상태',
+      dataIndex: 'bIsActive',
+      key: 'bIsActive',
+      width: 80,
+      render: (v: boolean) => v
+        ? <Tag color="green">활성</Tag>
+        : <Tag color="default">비활성</Tag>,
+    },
+    ...(bShowConnectionColumn
+      ? [
+          {
+            title: '연결',
+            key: 'monitoring',
+            width: 100,
+            align: 'center' as const,
+            render: (_: unknown, r: IDbConnection) => {
+              const strSt = mapMonitorStatus[r.nId] ?? 'unknown';
+              const strConnAddr = `${r.strHost}:${r.nPort}`;
+              const strTip =
+                strSt === 'ok'
+                  ? `연결 정상 · ${strConnAddr} / ${r.strDatabase} (자동 점검, 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다)`
+                  : strSt === 'fail'
+                    ? `연결 실패 · ${strConnAddr} / ${r.strDatabase} · 무응답 또는 타임아웃(${N_MONITOR_TIMEOUT_MS / 1000}초)`
+                    : strSt === 'pending'
+                      ? '점검 중…'
+                      : bCanRunConnectionTest
+                        ? '점검 전'
+                        : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
+              const strColor =
+                strSt === 'ok'
+                  ? '#1677ff'
+                  : strSt === 'fail'
+                    ? '#ff4d4f'
+                    : strSt === 'pending'
+                      ? '#faad14'
+                      : '#bfbfbf';
+              const strShadow =
+                strSt === 'ok'
+                  ? '0 0 8px rgba(22, 119, 255, 0.42)'
+                  : strSt === 'fail'
+                    ? '0 0 6px rgba(255, 77, 79, 0.35)'
+                    : 'none';
+              const bBreathe = strSt === 'ok' || strSt === 'fail';
+              return (
+                <Tooltip title={strTip}>
+                  <span
+                    className={bBreathe ? 'db-conn-page-dot--breathe' : undefined}
+                    style={{
+                      display: 'inline-block',
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: strColor,
+                      boxShadow: strShadow,
+                      verticalAlign: 'middle',
+                      transition: 'background-color 0.55s ease, box-shadow 0.55s ease',
+                    }}
+                  />
+                </Tooltip>
+              );
+            },
+          },
+        ]
+      : []),
+    {
+      title: '수정일',
+      dataIndex: 'dtUpdatedAt',
+      key: 'dtUpdatedAt',
+      width: 140,
+      render: (v: string) => <Text style={{ fontSize: 11 }}>{new Date(v).toLocaleString('ko-KR')}</Text>,
+    },
+    ...(bCanEdit || bCanDelete
+      ? [
+          {
+            title: '관리',
+            key: 'actions',
+            width: 140,
+            render: (_: unknown, r: IDbConnection) => (
+              <Space onClick={(e) => e.stopPropagation()}>
+                {bCanEdit && (
+                  <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
+                    수정
+                  </Button>
+                )}
+                {bCanDelete && (
+                  <Popconfirm
+                    title="정말 삭제하시겠습니까?"
+                    onConfirm={() => fnHandleDelete(r.nId)}
+                    okText="삭제"
+                    cancelText="취소"
+                  >
+                    <Button size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                )}
+              </Space>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <>
+      <style>
+        {`
+          @keyframes dbConnPageDotBreathe {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+          }
+          .db-conn-page-dot--breathe {
+            animation: dbConnPageDotBreathe 2.6s ease-in-out infinite;
+          }
+        `}
+      </style>
+      {contextHolder}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start', gap: 12 }}>
+        <div>
+          <Title level={4} style={{ margin: 0 }}>
+            <DatabaseOutlined style={{ marginRight: 8 }} />
+            DB 접속 정보 관리
+          </Title>
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+            {bShowConnectionColumn && bCanRunConnectionTest ? (
+              <>
+                「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
+              </>
+            ) : bShowConnectionColumn ? (
+              <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
+            ) : (
+              <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
+            )}
+          </Text>
+        </div>
+        {bCanCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+            새로운 DB 접속 정보
+          </Button>
+        )}
+      </div>
+
+      <Card>
+        <AppTable
+          strTableId="db_connections"
+          dataSource={arrConnections}
+          columns={arrColumns}
+          loading={bLoading}
+          pagination={false}
+          strEmptyText="등록된 DB 접속 정보가 없습니다."
+          expandable={{
+            expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
+            onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
+            expandedRowRender: (r) => fnRenderTestPanel(r),
+            expandIcon: () => null,
+            columnWidth: 24,
+            rowExpandable: () => true,
+          }}
+          rowClassName={(r: IDbConnection) => (r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : '')}
+          onRow={(r: IDbConnection) => ({
+            onClick: () => setObjSelectedRow((prev) => (prev?.nId === r.nId ? null : r)),
+            style: { cursor: 'pointer' },
+          })}
+        />
+      </Card>
+
+      {/* 추가/수정 모달 */}
+      <Modal
+        title={objEditConn ? 'DB 접속 정보 수정' : 'DB 접속 정보 추가'}
+        open={bModalOpen}
+        onOk={fnHandleSave}
+        onCancel={() => { setBModalOpen(false); form.resetFields(); setObjEditConn(null); }}
+        okText={objEditConn ? '수정' : '등록'}
+        cancelText="취소"
+        width={520}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          {/* 프로덕트 선택 (추가 시에만) */}
+          {!objEditConn && (
+            <Form.Item
+              name="nProductId"
+              label="프로덕트"
+              rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
+            >
+              <Select placeholder="프로덕트 선택" showSearch optionFilterProp="children">
+                {arrProducts.map((p) => (
+                  <Select.Option key={p.nId} value={p.nId}>{p.strName}</Select.Option>
+                ))}
+              </Select>
+            </Form.Item>
+          )}
+
+          {/* 환경 선택 (추가 시에만) */}
+          {!objEditConn && (
+            <Form.Item
+              name="strEnv"
+              label="환경"
+              rules={[{ required: true, message: '환경을 선택해주세요.' }]}
+            >
+              <Select placeholder="환경 선택">
+                <Select.Option value="dev">
+                  <Tag color="green">DEV</Tag> 개발/테스트 환경
+                </Select.Option>
+                <Select.Option value="qa">
+                  <Tag color="orange">QA</Tag> QA 환경
+                </Select.Option>
+                <Select.Option value="live">
+                  <Tag color="red">LIVE</Tag> 운영 환경
+                </Select.Option>
+              </Select>
+            </Form.Item>
+          )}
+
+          {/* 접속 종류 (GAME/WEB/LOG) */}
+          <Form.Item
+            name="strKind"
+            label="접속 종류"
+            rules={[{ required: true, message: '종류를 선택해주세요.' }]}
+          >
+            <Select placeholder="종류 선택">
+              {ARR_DB_CONNECTION_KINDS.map((k) => (
+                <Select.Option key={k} value={k}>
+                  <Tag color={OBJ_KIND_COLOR[k]}>{k}</Tag>
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="strDbType"
+            label="DB 종류"
+            rules={[{ required: true, message: 'DB 종류를 선택해주세요.' }]}
+          >
+            <Select placeholder="DB 종류 선택" onChange={fnHandleDbTypeChange}>
+              <Select.Option value="mssql">MSSQL (기본 포트: 1433)</Select.Option>
+              <Select.Option value="mysql">MySQL (기본 포트: 3306)</Select.Option>
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="strHost"
+            label="호스트"
+            rules={[{ required: true, message: '호스트를 입력해주세요.' }]}
+          >
+            <Input placeholder="예: 192.168.1.100 또는 db.example.com" />
+          </Form.Item>
+
+          <Form.Item name="nPort" label="포트" rules={[{ required: true, message: '포트를 입력해주세요.' }]}>
+            <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+          </Form.Item>
+
+          <Form.Item
+            name="strDatabase"
+            label="데이터베이스명"
+            rules={[{ required: true, message: '데이터베이스명을 입력해주세요.' }]}
+          >
+            <Input placeholder="예: game_db" />
+          </Form.Item>
+
+          <Form.Item
+            name="strUser"
+            label="사용자 계정"
+            rules={[{ required: true, message: '사용자 계정을 입력해주세요.' }]}
+          >
+            <Input placeholder="예: dba_user" />
+          </Form.Item>
+
+          <Form.Item
+            name="strPassword"
+            label={objEditConn ? '비밀번호 (변경 시에만 입력)' : '비밀번호'}
+            rules={!objEditConn ? [{ required: true, message: '비밀번호를 입력해주세요.' }] : []}
+          >
+            <Input.Password placeholder={objEditConn ? '변경하지 않으려면 비워두세요' : '접속 비밀번호'} />
+          </Form.Item>
+
+          {objEditConn && (
+            <Form.Item name="bIsActive" label="활성화 상태" valuePropName="checked">
+              <Switch checkedChildren="활성" unCheckedChildren="비활성" />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
+    </>
+  );
+};
+
+export default DbConnectionPage;
