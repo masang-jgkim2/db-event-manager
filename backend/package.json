@@ -1,0 +1,50 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "jest --runInBand",
+    "test:api": "jest --runInBand --testPathPattern=api.test",
+    "test:permission": "jest --runInBand --testPathPattern=api.test --testNamePattern=\"권한|역할|메뉴|페이지\"",
+    "test:mysql-meta": "jest --runInBand --testPathPattern=mysqlMetaSync",
+    "reset-password": "node scripts/reset-password.js",
+    "import-json-to-mysql": "tsx src/scripts/importJsonToMysql.ts",
+    "repair-users-from-json": "tsx src/scripts/repairUsersFromJson.ts",
+    "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mssql": "^12.2.0",
+    "mysql2": "^3.19.1",
+    "web-push": "^3.6.7",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^29.5.14",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mssql": "^9.1.9",
+    "@types/node": "^25.2.2",
+    "@types/supertest": "^6.0.2",
+    "@types/web-push": "^3.6.4",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
