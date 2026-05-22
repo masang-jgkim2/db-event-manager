@@ -16,8 +16,8 @@
 # ==============================================================================
 workflow:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "qa"'
+    # qa 타겟 MR만 검증 (release/hotfix → main MR 등은 제외하여 빈 파이프라인 방지)
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qa"'
     - if: '$CI_COMMIT_BRANCH =~ /^release\// || $CI_COMMIT_BRANCH =~ /^hotfix\//'
     - if: '$CI_COMMIT_BRANCH == "main"'
 
@@ -28,7 +28,7 @@ variables:
   CodeDeploy_REGION: "ap-northeast-1"
   S3_REGION: "ap-northeast-1"
   S3_BUCKET: "prod-web-deployments-apne1"
-  PROJECT_NAME: "db-event-manager"                # zip 파일명·S3 경로용 슬러그 (소문자)
+  PROJECT_NAME: "internal-db-event-manager"        # zip 파일명·S3 경로용 슬러그 (소문자) — ctrlhub 네이밍 정렬
   APP_NAME: "Internal-db-event-manager"            # AWS CodeDeploy Application 이름 (대문자 I 주의)
   ZIP_FILE_NAME: "${PROJECT_NAME}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}.zip"
   # CodeDeploy
@@ -95,8 +95,8 @@ validate_job:
     policy: pull-push
 
   rules:
+    # qa 타겟 MR에서만 검증 — 머지 완료 후 qa push 시점엔 재실행하지 않음
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qa"'
-    - if: '$CI_COMMIT_BRANCH == "qa"'
 
 # ==============================================================================
 # 2) release/hotfix 빌드 → S3 업로드 (QA용 패키지)
