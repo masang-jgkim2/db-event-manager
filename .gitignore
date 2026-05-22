@@ -27,7 +27,8 @@ yarn-error.log*
 .claude/
 
 # 서버 셋업 참고 자료 (운영자가 수동 복사 — git 추적 제외)
-deploy/
+# 루트 anchor — scripts/deploy/ 같은 하위 폴더는 매칭하지 않게
+/deploy/
 
 # 빌드 산출물 (각 서브패키지에서도 막지만 안전망)
 **/node_modules/
