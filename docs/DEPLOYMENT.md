@@ -95,11 +95,11 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 
 ## AWS 측 1회 셋업
 
-- **S3 버킷**: 기존 `prod-web-deployments-apne1` 재사용, prefix `db-event-manager/`
+- **S3 버킷**: 기존 `prod-web-deployments-apne1` 재사용, prefix `internal-db-event-manager/`
 - **CodeDeploy Application**: `Internal-db-event-manager` (대문자 I, ctrlhub 네이밍 규칙 정렬 — compute platform: EC2/On-premises)
 - **Deployment Group**:
-  - `qa-db-event-manager-group` → QA EC2 태그 매칭
-  - `live-db-event-manager-group` → LIVE EC2 태그 매칭
+  - `qa-internal-db-event-manager-group` → QA EC2 태그 매칭
+  - `live-internal-db-event-manager-group` → LIVE EC2 태그 매칭
 - **EC2 태그** (ctrlhub과 동일 EC2 공유 — 기존 태그 재활용):
   - QA EC2: `Application=qa-internal-ctrlhub-full` (이미 부착됨)
   - LIVE EC2: `Application=live-internal-ctrlhub-full` (이미 부착됨)
