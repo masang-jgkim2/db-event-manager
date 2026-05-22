@@ -1,0 +1,229 @@
+# ==============================================================================
+# GitLab CI/CD Pipeline — DQPM (db-event-manager)
+# ==============================================================================
+# 브랜치 전략 (kr-renewal-webserver와 동일):
+# - 개발 브랜치 → qa MR: 빌드 검증
+# - qa 푸시: 빌드 검증
+# - release/*, hotfix/* 푸시: QA 서버 자동 배포
+# - main 푸시: LIVE 서버 수동 승인 배포
+#
+# 환경별 도메인:
+# - QA  : qa-db.masanggames.co.kr (front) / qa-db-api.masanggames.co.kr (api)
+# - LIVE: db.masanggames.co.kr    (front) / db-api.masanggames.co.kr    (api)
+
+# ==============================================================================
+# 워크플로우 규칙
+# ==============================================================================
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "qa"'
+    - if: '$CI_COMMIT_BRANCH =~ /^release\// || $CI_COMMIT_BRANCH =~ /^hotfix\//'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ==============================================================================
+# 전역 변수
+# ==============================================================================
+variables:
+  CodeDeploy_REGION: "ap-northeast-1"
+  S3_REGION: "ap-northeast-1"
+  S3_BUCKET: "prod-web-deployments-apne1"
+  PROJECT_NAME: "db-event-manager"                # zip 파일명·S3 경로용 슬러그 (소문자)
+  APP_NAME: "Internal-db-event-manager"            # AWS CodeDeploy Application 이름 (대문자 I 주의)
+  ZIP_FILE_NAME: "${PROJECT_NAME}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}.zip"
+  # CodeDeploy
+  QA_APP_NAME: "${APP_NAME}"
+  QA_DEPLOY_GROUP: "qa-${PROJECT_NAME}-group"
+  LIVE_APP_NAME: "${APP_NAME}"
+  LIVE_DEPLOY_GROUP: "live-${PROJECT_NAME}-group"
+  # 프론트 빌드 시 주입할 백엔드 API origin (환경별 빌드에서 덮어씀)
+  VITE_API_URL_QA:   "https://qa-db-api.masanggames.co.kr"
+  VITE_API_URL_LIVE: "https://db-api.masanggames.co.kr"
+
+# ==============================================================================
+# 스테이지
+# ==============================================================================
+stages:
+  - validate
+  - build
+  - deploy_qa
+  - deploy_live
+
+# ==============================================================================
+# 공통: Node 빌드 환경 — linux-builder 러너에 node/npm 설치되어 있다고 가정
+# ==============================================================================
+.build_template: &build_template
+  stage: build
+  tags:
+    - linux-builder
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    paths:
+      - backend/node_modules/
+      - front/node_modules/
+    policy: pull-push
+  artifacts:
+    name: "${PROJECT_NAME}-${CI_COMMIT_REF_SLUG}-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - ${ZIP_FILE_NAME}
+    expire_in: 7 days
+
+# ==============================================================================
+# 1) qa 브랜치 / MR 검증 — 빌드만 통과시키고 끝
+# ==============================================================================
+validate_job:
+  stage: validate
+  tags:
+    - linux-builder
+  script:
+    - echo "## =========================================="
+    - echo "## QA Branch Build Validation"
+    - echo "## Branch: ${CI_COMMIT_BRANCH:-MR-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}}"
+    - echo "## Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## =========================================="
+    - echo "## [backend] install + build"
+    - cd backend && npm ci && npm run build && cd ..
+    - echo "## [front] install + build (검증용, 산출물은 폐기)"
+    - cd front && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build && cd ..
+    - echo "## Build validation OK"
+
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}"
+    paths:
+      - backend/node_modules/
+      - front/node_modules/
+    policy: pull-push
+
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "qa"'
+    - if: '$CI_COMMIT_BRANCH == "qa"'
+
+# ==============================================================================
+# 2) release/hotfix 빌드 → S3 업로드 (QA용 패키지)
+# ==============================================================================
+build_qa:
+  <<: *build_template
+  script:
+    - echo "## =========================================="
+    - echo "## Build QA package — VITE_API_URL=${VITE_API_URL_QA}"
+    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## =========================================="
+    - cd backend && npm ci && npm run build && cd ..
+    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build && cd ..
+    - echo "## node_modules 운영용 정리 (devDep 제외)"
+    - cd backend && npm prune --omit=dev && cd ..
+    - echo "## Creating deployment package..."
+    - |
+      zip -r ${ZIP_FILE_NAME} \
+        backend/dist backend/node_modules backend/package.json backend/package-lock.json \
+        front/dist \
+        appspec.yml scripts/deploy
+    - ls -lh ${ZIP_FILE_NAME}
+    - echo "## Uploading to S3..."
+    - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
+    - echo "## Upload complete: s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
+    - if: '$CI_COMMIT_BRANCH =~ /^hotfix\//'
+
+# ==============================================================================
+# 3) main 빌드 → S3 업로드 (LIVE용 패키지)
+# ==============================================================================
+build_live:
+  <<: *build_template
+  script:
+    - echo "## =========================================="
+    - echo "## Build LIVE package — VITE_API_URL=${VITE_API_URL_LIVE}"
+    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## =========================================="
+    - cd backend && npm ci && npm run build && cd ..
+    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_LIVE} npm run build && cd ..
+    - cd backend && npm prune --omit=dev && cd ..
+    - |
+      zip -r ${ZIP_FILE_NAME} \
+        backend/dist backend/node_modules backend/package.json backend/package-lock.json \
+        front/dist \
+        appspec.yml scripts/deploy
+    - ls -lh ${ZIP_FILE_NAME}
+    - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
+    - echo "## Upload complete: s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+# ==============================================================================
+# 4) QA 배포 (release/* | hotfix/* 자동)
+# ==============================================================================
+deploy_to_qa:
+  stage: deploy_qa
+  tags:
+    - linux-deploy
+  script:
+    - echo "## =========================================="
+    - echo "## Deploying to QA"
+    - echo "## File:   ${ZIP_FILE_NAME}"
+    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## =========================================="
+    - |
+      DEPLOYMENT_ID=$(aws deploy create-deployment \
+        --region ${CodeDeploy_REGION} \
+        --application-name ${QA_APP_NAME} \
+        --deployment-group-name ${QA_DEPLOY_GROUP} \
+        --s3-location bucket=${S3_BUCKET},key=${PROJECT_NAME}/${ZIP_FILE_NAME},bundleType=zip \
+        --description "QA Deployment from ${CI_COMMIT_BRANCH} (${CI_COMMIT_SHORT_SHA})" \
+        --query 'deploymentId' \
+        --output text)
+    - echo "## Deployment ID: ${DEPLOYMENT_ID}"
+    - aws deploy wait deployment-successful --deployment-id ${DEPLOYMENT_ID} --region ${CodeDeploy_REGION}
+    - echo "## QA Deployment successful"
+    - echo "## https://qa-db.masanggames.co.kr"
+
+  needs:
+    - build_qa
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^release\//'
+    - if: '$CI_COMMIT_BRANCH =~ /^hotfix\//'
+
+  environment:
+    name: qa
+    url: https://qa-db.masanggames.co.kr
+
+# ==============================================================================
+# 5) LIVE 배포 (main, 수동 승인)
+# ==============================================================================
+deploy_to_live:
+  stage: deploy_live
+  tags:
+    - linux-deploy
+  when: manual
+  script:
+    - echo "## =========================================="
+    - echo "## Deploying to LIVE"
+    - echo "## File:   ${ZIP_FILE_NAME}"
+    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## =========================================="
+    - |
+      DEPLOYMENT_ID=$(aws deploy create-deployment \
+        --region ${CodeDeploy_REGION} \
+        --application-name ${LIVE_APP_NAME} \
+        --deployment-group-name ${LIVE_DEPLOY_GROUP} \
+        --s3-location bucket=${S3_BUCKET},key=${PROJECT_NAME}/${ZIP_FILE_NAME},bundleType=zip \
+        --description "LIVE Deployment from main (${CI_COMMIT_SHORT_SHA})" \
+        --query 'deploymentId' \
+        --output text)
+    - echo "## Deployment ID: ${DEPLOYMENT_ID}"
+    - aws deploy wait deployment-successful --deployment-id ${DEPLOYMENT_ID} --region ${CodeDeploy_REGION}
+    - echo "## LIVE Deployment successful"
+    - echo "## https://db.masanggames.co.kr"
+
+  needs:
+    - build_live
+
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+
+  environment:
+    name: live
+    url: https://db.masanggames.co.kr
