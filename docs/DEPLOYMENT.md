@@ -35,12 +35,28 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
    sudo chown -R masang:masang /masang/masanggames.co.kr/db-manager
    ```
 
-2. **Node.js 설치** (LTS 20+ 권장)
+2. **Node.js 설치 — nvm 사용 + /usr/local/bin symlink** (ctrlhub EC2 표준)
+
+   서버는 masang 유저의 nvm으로 Node를 관리합니다. systemd가 절대경로로 찾을 수 있도록 `/usr/local/bin/node`에 symlink를 만듭니다.
+
    ```bash
-   # ubuntu 예시
-   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-   sudo apt-get install -y nodejs
+   # 1) masang 으로 — nvm 기본 버전 고정 (이미 설치되어 있다는 전제)
+   nvm use 20.15.0
+   nvm alias default 20.15.0
+
+   # 2) root 로 — 시스템 경로에 symlink
+   sudo ln -sf /home/masang/.nvm/versions/node/v20.15.0/bin/node /usr/local/bin/node
+   sudo ln -sf /home/masang/.nvm/versions/node/v20.15.0/bin/npm  /usr/local/bin/npm
+
+   # 3) 확인
+   /usr/local/bin/node -v   # v20.15.0
+
+   # 4) masang 홈 권한 — systemd가 읽을 수 있게 0755 이상
+   ls -ld /home/masang
+   sudo chmod 755 /home/masang   # 700 이면 풀어야 함
    ```
+
+   ⚠️ apt 로 nodejs 별도 설치 금지 — nvm 과 충돌 가능. nvm 버전을 올릴 땐 위 symlink 도 같이 갱신.
 
 3. **shared/backend.env 작성**
    ```bash
@@ -106,6 +122,57 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
   - 한 EC2에 `Application` 키는 1개만 둘 수 있어 별도 태그 추가 불가. Deployment Group 매칭은 기존 값 그대로 사용.
 - **GitLab CI/CD Variables**: 그룹 또는 프로젝트 레벨에 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (S3 PutObject + CodeDeploy CreateDeployment 권한 IAM)
 
+## LIVE 셋업 시 QA와 다른 점 (체크리스트)
+
+QA에서 한 동일 절차를 LIVE EC2에서 반복하되, 아래 항목은 **QA와 값이 다름** — 절대 QA 값 복사하지 말 것.
+
+| 항목 | QA | LIVE |
+|------|-----|------|
+| 프론트 도메인 | `qa-db.masanggames.co.kr` | `db.masanggames.co.kr` |
+| API 도메인 | `qa-db-api.masanggames.co.kr` | `db-api.masanggames.co.kr` |
+| nginx 파일 2개 | `qa-db.*.conf`, `qa-db-api.*.conf` | `db.*.conf`, `db-api.*.conf` |
+| EC2 태그 | `Application=qa-internal-ctrlhub-full` | `Application=live-internal-ctrlhub-full` |
+| Deployment Group | `qa-internal-db-event-manager-group` | `live-internal-db-event-manager-group` |
+| LB | `qa-ctrl` | `ctrl` |
+| 배포 트리거 | `release/*`·`hotfix/*` push (자동) | `main` push → **수동 승인 버튼 클릭** |
+
+### shared/backend.env의 LIVE 값 (QA와 반드시 다른 키 사용)
+
+```bash
+PORT=4000
+NODE_ENV=production
+
+# LIVE 전용 — QA와 절대 같으면 안 됨
+JWT_SECRET=3NaB3oduBzKQELGnx4fKKADjV8kmLDGgY4WQol/QzU03Ad4VdZBaYZwA1+cHtu6T
+JWT_EXPIRES_IN=24h
+DB_CONNECTION_PASSWORD_SECRET=AyEzbWCN3vMWhwU43GQk7bq6a8EvZ6kyTcN1f6+Rp6o=
+
+# CORS — LIVE 프론트 도메인 (qa- 빠짐)
+CORS_ALLOWED_ORIGINS=https://db.masanggames.co.kr
+
+ACTIVITY_LOG_ENABLED=1
+```
+
+> ⚠️ `DB_CONNECTION_PASSWORD_SECRET`은 한 번 정하면 변경 금지 (변경 시 등록된 DB 비밀번호 전부 복호화 불가).
+
+### LIVE 배포 진행 순서
+
+1. EC2 초기 셋업 1~9번 — QA와 동일 절차, 위 표의 LIVE 값으로 치환
+2. AWS CodeDeploy 콘솔 → Applications → `Internal-db-event-manager` → **Create deployment group**:
+   - Name: `live-internal-db-event-manager-group`
+   - Tag: `Application=live-internal-ctrlhub-full`
+   - 나머지 설정 QA와 동일
+3. `main` 브랜치에 머지 → GitLab 파이프라인에서 `deploy_to_live` 가 **수동 대기 상태(▶)**
+4. GitLab UI에서 `deploy_to_live` 버튼 클릭 → CodeDeploy 실행
+5. 첫 배포 후 admin/admin123 로그인 → **즉시 비밀번호 변경**
+
+### LIVE에서 자주 빠뜨리는 것
+
+- ❌ LIVE EC2에 QA용 nginx conf 잘못 올림 → `nginx -t` 통과해도 `db.*` 도메인 매칭 실패
+- ❌ `CORS_ALLOWED_ORIGINS`에 `qa-db` 그대로 → 프론트 호출 다 막힘
+- ❌ LIVE EC2에 IAM Instance Profile 미부착 → CodeDeploy agent에 `Missing credentials` 에러
+- ❌ AWS Deployment Group 이름 오타 → `DeploymentGroupDoesNotExistException`
+
 ## 배포 흐름
 
 ```
@@ -161,6 +228,7 @@ readlink -f /masang/masanggames.co.kr/db-manager/current
 ## 트러블슈팅
 
 - **502 Bad Gateway**: `systemctl status dqpm-backend` / `journalctl -u dqpm-backend -n 100`
+- **`status=203/EXEC` / `Failed to locate executable /usr/bin/node`**: nvm 으로 깐 node 가 systemd 가 찾는 경로에 없음. 위 "EC2 초기 셋업 2번"의 symlink 단계 누락. `sudo ln -sf /home/masang/.nvm/versions/node/v20.15.0/bin/node /usr/local/bin/node` 후 `sudo systemctl restart dqpm-backend`.
 - **CORS 오류**: `shared/backend.env`의 `CORS_ALLOWED_ORIGINS`에 정확한 origin(스킴 포함, 슬래시 없이) 등록 확인
 - **SSE 끊김**: nginx server block의 `proxy_buffering off` 누락 확인
 - **빌드 실패 (CI)**: GitLab Runner의 node/aws cli 설치, `linux-builder`/`linux-deploy` 태그 부여 확인
