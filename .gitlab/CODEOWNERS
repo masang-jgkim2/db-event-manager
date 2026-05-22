@@ -1,0 +1,14 @@
+/.gitlab-ci.yml @ijkim
+/appspec.yml @ijkim
+/scripts/ @ijkim
+/prisma/schema.prisma @ijkim
+
+
+# CI/CD 설정 파일
+/.gitlab-ci.yml @ijkim
+/appspec.yml @ijkim
+/scripts/ @ijkim
+
+
+# 배포 스크립트
+/scripts/*.sh @ijkim

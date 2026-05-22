@@ -78,8 +78,8 @@ validate_job:
   script:
     - echo "## =========================================="
     - echo "## QA Branch Build Validation"
-    - echo "## Branch: ${CI_COMMIT_BRANCH:-MR-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}}"
-    - echo "## Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## Branch:" "${CI_COMMIT_BRANCH:-MR-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}}"
+    - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - echo "## [backend] install + build"
     - cd backend && npm ci && npm run build && cd ..
@@ -106,7 +106,8 @@ build_qa:
   script:
     - echo "## =========================================="
     - echo "## Build QA package — VITE_API_URL=${VITE_API_URL_QA}"
-    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## Branch:" "${CI_COMMIT_BRANCH}"
+    - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - cd backend && npm ci && npm run build && cd ..
     - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build && cd ..
@@ -121,7 +122,7 @@ build_qa:
     - ls -lh ${ZIP_FILE_NAME}
     - echo "## Uploading to S3..."
     - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
-    - echo "## Upload complete: s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
+    - echo "## Upload complete:" "s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
 
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /^release\//'
@@ -135,7 +136,8 @@ build_live:
   script:
     - echo "## =========================================="
     - echo "## Build LIVE package — VITE_API_URL=${VITE_API_URL_LIVE}"
-    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## Branch:" "${CI_COMMIT_BRANCH}"
+    - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - cd backend && npm ci && npm run build && cd ..
     - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_LIVE} npm run build && cd ..
@@ -147,7 +149,7 @@ build_live:
         appspec.yml scripts/deploy
     - ls -lh ${ZIP_FILE_NAME}
     - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
-    - echo "## Upload complete: s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
+    - echo "## Upload complete:" "s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
 
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
@@ -162,8 +164,9 @@ deploy_to_qa:
   script:
     - echo "## =========================================="
     - echo "## Deploying to QA"
-    - echo "## File:   ${ZIP_FILE_NAME}"
-    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## File:"   "${ZIP_FILE_NAME}"
+    - echo "## Branch:" "${CI_COMMIT_BRANCH}"
+    - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - |
       DEPLOYMENT_ID=$(aws deploy create-deployment \
@@ -174,7 +177,7 @@ deploy_to_qa:
         --description "QA Deployment from ${CI_COMMIT_BRANCH} (${CI_COMMIT_SHORT_SHA})" \
         --query 'deploymentId' \
         --output text)
-    - echo "## Deployment ID: ${DEPLOYMENT_ID}"
+    - echo "## Deployment ID:" "${DEPLOYMENT_ID}"
     - aws deploy wait deployment-successful --deployment-id ${DEPLOYMENT_ID} --region ${CodeDeploy_REGION}
     - echo "## QA Deployment successful"
     - echo "## https://qa-db.masanggames.co.kr"
@@ -201,8 +204,9 @@ deploy_to_live:
   script:
     - echo "## =========================================="
     - echo "## Deploying to LIVE"
-    - echo "## File:   ${ZIP_FILE_NAME}"
-    - echo "## Branch: ${CI_COMMIT_BRANCH} | Commit: ${CI_COMMIT_SHORT_SHA}"
+    - echo "## File:"   "${ZIP_FILE_NAME}"
+    - echo "## Branch:" "${CI_COMMIT_BRANCH}"
+    - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - |
       DEPLOYMENT_ID=$(aws deploy create-deployment \
@@ -213,7 +217,7 @@ deploy_to_live:
         --description "LIVE Deployment from main (${CI_COMMIT_SHORT_SHA})" \
         --query 'deploymentId' \
         --output text)
-    - echo "## Deployment ID: ${DEPLOYMENT_ID}"
+    - echo "## Deployment ID:" "${DEPLOYMENT_ID}"
     - aws deploy wait deployment-successful --deployment-id ${DEPLOYMENT_ID} --region ${CodeDeploy_REGION}
     - echo "## LIVE Deployment successful"
     - echo "## https://db.masanggames.co.kr"
