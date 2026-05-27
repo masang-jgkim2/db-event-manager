@@ -1,7 +1,8 @@
 import * as mssql from 'mssql';
-import mysql from 'mysql2/promise';
+import type { ResultSetHeader } from 'mysql2';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
+import type { IMysqlGameConnection } from '../db/mysqlGameConnection';
 
 /** MySQL(mysql2) 서버 메시지 — message보다 sqlMessage가 MSSQL 메시지에 가깝다 */
 const fnGetMysqlServerMessage = (error: any): string => {
@@ -201,7 +202,7 @@ const fnExecuteMssql = async (
 // MySQL 트랜잭션 실행
 // =============================================
 const fnExecuteMysql = async (
-  objDbConn: mysql.PoolConnection,
+  objDbConn: IMysqlGameConnection,
   arrQueries: string[],
   arrNLineStart: number[],
 ): Promise<IQueryPartResult[]> => {
@@ -212,8 +213,7 @@ const fnExecuteMysql = async (
     for (let i = 0; i < arrQueries.length; i++) {
       const strQuery = arrQueries[i];
       try {
-        // execute()는 prepared statement 프로토콜 — USE/SET SESSION 등은 지원되지 않거나 HeidiSQL(텍스트)과 달리 실패할 수 있음
-        const [objPacket] = await objDbConn.query<mysql.ResultSetHeader>(strQuery);
+        const [objPacket] = await objDbConn.query<ResultSetHeader>(strQuery);
 
         arrResults.push({
           nIndex: i,

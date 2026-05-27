@@ -7,7 +7,7 @@ import path from 'path';
 import type { RowDataPacket } from 'mysql2/promise';
 import { STR_DATA_DIR } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
-import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnGetMysqlAppPool, fnVerifyMysqlAppPoolConnection } from '../db/mysqlAppPool';
 import {
   fnEnsureMysqlAppSchema,
   fnMysqlCountProducts,
@@ -166,6 +166,17 @@ export const fnBootstrapDataStore = async (): Promise<void> => {
   }
   console.log('[DataStore] DATA_STORE=mysql | 메타 MySQL');
   const pool = fnGetMysqlAppPool();
+  try {
+    await fnVerifyMysqlAppPoolConnection();
+    console.log('[DataStore] 메타 MySQL 연결 확인 | OK');
+  } catch (err: unknown) {
+    const strMsg = err instanceof Error ? err.message : String(err);
+    console.error(
+      '[DataStore] 메타 MySQL 연결 실패 — backend/.env 의 DATA_MYSQL_* 를 확인하세요. ' +
+        'DB 접속 정보 화면 추가와 별개로, 앱 저장용 dqpm DB 계정이 필요합니다.',
+    );
+    throw new Error(strMsg);
+  }
   await fnEnsureMysqlAppSchema(pool);
   const nProducts = await fnMysqlCountProducts(pool);
   if (nProducts === 0 && !B_SKIP_JSON_IMPORT) {

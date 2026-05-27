@@ -23,12 +23,17 @@ import { arrUserRoles, STR_USER_ROLES_FILE } from './userRoles';
 import { arrRoles, fnGetRoleIdsByRoleCodes } from './roles';
 import { fnGetRoleIdsByUserId, fnSaveUserRoles, fnSetRolesForUser } from './userRoles';
 
+import type { TUserStatus } from '../types/userStatus';
+import { STR_USER_STATUS_ACTIVE } from '../types/userStatus';
+
 /** 저장용 사용자 행 (arrRoles 없음) */
-interface IUserRow {
+export interface IUserRow {
   nId: number;
   strUserId: string;
   strPassword: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: TUserStatus;
   dtCreatedAt: string;
 }
 
@@ -109,7 +114,7 @@ export const fnReloadUsersFromMysql = async (): Promise<void> => {
   const arrFromDb = await fnRelationalLoadUsers(pool);
   const arrUrFromDb = await fnRelationalLoadUserRoles(pool);
   arrUsers.length = 0;
-  arrUsers.push(...arrFromDb);
+  arrUsers.push(...arrFromDb.map(fnUserRowFromDbLoad));
   arrUserRoles.length = 0;
   arrUserRoles.push(...arrUrFromDb);
 };
@@ -122,7 +127,7 @@ export const fnCommitUserDataStore = async (): Promise<void> => {
   await fnSyncUsersOnlyToMysql([...arrUsers], [...arrUserRoles]);
   const arrFromDb = await fnRelationalLoadUsers(fnGetMysqlAppPool());
   arrUsers.length = 0;
-  arrUsers.push(...arrFromDb);
+  arrUsers.push(...arrFromDb.map(fnUserRowFromDbLoad));
   fnMirrorJsonToDisk(STR_FILE, arrUsers);
   fnMirrorJsonToDisk(STR_USER_ROLES_FILE, arrUserRoles);
 };
@@ -145,14 +150,24 @@ const fnSyncUsersOnlyToMysql = async (
     for (const row of arrRows) {
       const strDt = fnToMysqlDatetime6(row.dtCreatedAt || new Date().toISOString());
       await conn.execute(
-        `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, dt_created_at)
-         VALUES (?,?,?,?,?)
+        `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at)
+         VALUES (?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
            str_user_id = VALUES(str_user_id),
            str_password = VALUES(str_password),
            str_display_name = VALUES(str_display_name),
+           str_email = VALUES(str_email),
+           str_status = VALUES(str_status),
            dt_created_at = VALUES(dt_created_at)`,
-        [row.nId, row.strUserId, row.strPassword, row.strDisplayName, strDt],
+        [
+          row.nId,
+          row.strUserId,
+          row.strPassword,
+          row.strDisplayName,
+          row.strEmail ?? null,
+          row.strStatus ?? STR_USER_STATUS_ACTIVE,
+          strDt,
+        ],
       );
     }
     for (const nUserId of setKeepIds) {
@@ -183,6 +198,26 @@ const fnSyncUsersOnlyToMysql = async (
   }
 };
 
+/** MySQL 로드 행 → IUserRow (str_status 타입 정규화) */
+const fnUserRowFromDbLoad = (row: {
+  nId: number;
+  strUserId: string;
+  strPassword: string;
+  strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: string;
+  dtCreatedAt: string;
+}): IUserRow => ({
+  nId: row.nId,
+  strUserId: row.strUserId,
+  strPassword: row.strPassword,
+  strDisplayName: row.strDisplayName,
+  strEmail: row.strEmail ?? null,
+  strStatus:
+    typeof row.strStatus === 'string' ? (row.strStatus as TUserStatus) : STR_USER_STATUS_ACTIVE,
+  dtCreatedAt: row.dtCreatedAt,
+});
+
 const fnUserRowFromJsonRecord = (raw: Record<string, unknown>): IUserRow | null => {
   const nId = Number(raw.nId);
   const strUserId = typeof raw.strUserId === 'string' ? raw.strUserId.trim() : '';
@@ -191,7 +226,10 @@ const fnUserRowFromJsonRecord = (raw: Record<string, unknown>): IUserRow | null 
   const strDisplayName = typeof raw.strDisplayName === 'string' ? raw.strDisplayName : strUserId;
   const dtCreatedAt =
     typeof raw.dtCreatedAt === 'string' ? raw.dtCreatedAt : new Date().toISOString();
-  return { nId, strUserId, strPassword, strDisplayName, dtCreatedAt };
+  const strEmail = typeof raw.strEmail === 'string' ? raw.strEmail : null;
+  const strStatus =
+    typeof raw.strStatus === 'string' ? (raw.strStatus as TUserStatus) : STR_USER_STATUS_ACTIVE;
+  return { nId, strUserId, strPassword, strDisplayName, strEmail, strStatus, dtCreatedAt };
 };
 
 /**
@@ -245,12 +283,16 @@ const fnGetRoleCodesByRoleIds = (arrRoleIds: number[]): string[] =>
     .filter((s): s is string => Boolean(s));
 
 /** API용 IUser[] (arrRoles는 user_roles + roles에서 조립) */
-export const fnGetUsersWithRoles = (): IUser[] =>
-  arrUsers.map((u) => ({
-    ...u,
-    dtCreatedAt: new Date(u.dtCreatedAt),
-    arrRoles: fnGetRoleCodesByRoleIds(fnGetRoleIdsByUserId(u.nId)),
-  }));
+export const fnGetUsersWithRoles = (strStatusFilter?: TUserStatus): IUser[] =>
+  arrUsers
+    .filter((u) => !strStatusFilter || (u.strStatus ?? STR_USER_STATUS_ACTIVE) === strStatusFilter)
+    .map((u) => ({
+      ...u,
+      strEmail: u.strEmail ?? null,
+      strStatus: u.strStatus ?? STR_USER_STATUS_ACTIVE,
+      dtCreatedAt: new Date(u.dtCreatedAt),
+      arrRoles: fnGetRoleCodesByRoleIds(fnGetRoleIdsByUserId(u.nId)),
+    }));
 
 /** strUserId로 조립된 사용자 1명 반환 (로그인/검증용) */
 /** 파일에서 사용자 목록 다시 로드 (서버 재시작 없이 수동 추가 사용자 반영) */
@@ -271,6 +313,8 @@ export const fnFindUserByStrUserId = (strUserId: string): IUser | undefined => {
   if (!row) return undefined;
   return {
     ...row,
+    strEmail: row.strEmail ?? null,
+    strStatus: row.strStatus ?? STR_USER_STATUS_ACTIVE,
     dtCreatedAt: new Date(row.dtCreatedAt),
     arrRoles: fnGetRoleCodesByRoleIds(fnGetRoleIdsByUserId(row.nId)),
   };
@@ -307,12 +351,21 @@ export const fnInitUsers = async () => {
   if (bChanged) fnSaveJson(STR_FILE, arrUsers);
 };
 
-/** 특정 사용자 비밀번호 초기화 (설정용 API에서 사용, 파일·메모리 모두 반영) */
+/** 특정 사용자 비밀번호 초기화 (설정용 API·복구 스크립트) */
 export const fnResetPasswordByUserId = async (strUserId: string, strNewPassword: string): Promise<boolean> => {
-  fnReloadUsersFromFile();
+  if (fnIsMysqlStore()) {
+    await fnReloadUsersFromMysql();
+  } else {
+    fnReloadUsersFromFile();
+  }
   const row = arrUsers.find((u) => u.strUserId === strUserId);
   if (!row) return false;
   row.strPassword = await bcrypt.hash(strNewPassword, 10);
-  fnSaveUsers();
+  if (fnIsMysqlStore()) {
+    await fnCommitUserDataStore();
+  } else {
+    fnSaveUsers();
+  }
+  console.log(`[users] 비밀번호 초기화 | ${strUserId}`);
   return true;
 };

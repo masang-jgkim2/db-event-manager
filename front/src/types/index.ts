@@ -5,7 +5,7 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
-  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
@@ -38,6 +38,7 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'user.edit': '사용자 수정',
   'user.delete': '사용자 삭제',
   'user.reset_password': '비밀번호 초기화',
+  'user.approve': '가입 승인',
   'user.manage': '사용자 관리',
   'role.view': '역할 조회',
   'role.create': '역할 생성',
@@ -120,6 +121,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'user.edit', label: '수정' },
     { value: 'user.delete', label: '삭제' },
     { value: 'user.reset_password', label: '비밀번호 초기화' },
+    { value: 'user.approve', label: '가입 승인' },
   ]},
   { groupLabel: '역할 권한', permissions: [
     { value: 'role.view', label: '보기' },
@@ -188,7 +190,7 @@ export function fnFormatPermissionErrorMessage(strMessage: string): string {
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
-  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
@@ -230,6 +232,8 @@ export interface IUser {
   nId: number;
   strUserId: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: string;
   arrRoles: string[];           // 역할 코드 배열 (멀티 역할)
   arrPermissions: TPermission[];
 }
@@ -244,6 +248,7 @@ export interface ILoginResponse {
   strToken?: string;
   user?: IUser;
   strMessage?: string;
+  strErrorCode?: string;
 }
 
 export interface IAuthStore {

@@ -6,7 +6,7 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
-  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
@@ -44,6 +44,8 @@ export interface IUser {
   strUserId: string;              // 로그인 아이디 (unique, 변경 불가)
   strPassword: string;
   strDisplayName: string;         // 표시 이름 (수정 가능)
+  strEmail?: string | null;
+  strStatus?: import('./userStatus').TUserStatus;
   arrRoles: string[];             // 역할 코드 배열 (멀티 역할 지원, 예: ['admin', 'dba'])
   dtCreatedAt: Date;
 }
@@ -71,6 +73,8 @@ export interface ILoginResponse {
     nId: number;
     strUserId: string;
     strDisplayName: string;
+    strEmail?: string | null;
+    strStatus?: string;
     arrRoles: string[];
     arrPermissions: TPermission[];
   };

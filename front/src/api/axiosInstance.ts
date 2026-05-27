@@ -133,6 +133,12 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('strToken');
     }
+    if (
+      error.response?.status === 403
+      && ['rejected', 'disabled', 'pending_approval', 'no_roles'].includes(error.response?.data?.strErrorCode)
+    ) {
+      localStorage.removeItem('strToken');
+    }
     const strServerMsg = error.response?.data?.strMessage;
     if (strServerMsg) {
       error.message = strServerMsg;

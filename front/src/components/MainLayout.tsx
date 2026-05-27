@@ -36,6 +36,7 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
   game_manager: { strText: 'GM', strColor: '#2db7f5' },
   game_designer: { strText: '기획자', strColor: '#87d068' },
   dba: { strText: 'DBA', strColor: '#722ed1' },
+  guest: { strText: 'GUEST', strColor: '#faad14' },
 };
 
 /** 사이드바 메뉴 그룹 라벨 (커스텀 ReactNode일 때도 디자인 토큰 색·타이포 적용) */
