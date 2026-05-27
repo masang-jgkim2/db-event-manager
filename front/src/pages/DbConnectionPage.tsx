@@ -143,15 +143,41 @@ const DbConnectionPage = () => {
         setBModalOpen(false);
         form.resetFields();
         setObjEditConn(null);
-        fnLoad();
+        const objSaved = (result as { objDbConnection?: IDbConnection }).objDbConnection;
+        if (objSaved?.nId) {
+          setArrConnections((prev) => {
+            const nIdx = prev.findIndex((c) => c.nId === objSaved.nId);
+            const objRow = { ...objSaved, strPassword: '••••••••' };
+            if (nIdx >= 0) {
+              const arrNext = [...prev];
+              arrNext[nIdx] = objRow;
+              return arrNext;
+            }
+            return [...prev, objRow];
+          });
+          useDbConnectionStore.setState((s) => {
+            const arr = [...s.arrDbConnections];
+            const nIdx = arr.findIndex((c) => c.nId === objSaved.nId);
+            const objRow = { ...objSaved, strPassword: '••••••••' };
+            if (nIdx >= 0) arr[nIdx] = objRow;
+            else arr.push(objRow);
+            return { arrDbConnections: arr };
+          });
+        } else {
+          void fnLoad();
+        }
       } else if ((result as any).strErrorCode === 'DUPLICATE') {
         // 중복 등록 시 warning 아이콘으로 구분
         messageApi.warning(result.strMessage);
       } else {
         messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
       }
-    } catch {
-      // 유효성 검사 실패 — Ant Design Form 인라인 에러 표시
+    } catch (err: unknown) {
+      const strMsg =
+        err && typeof err === 'object' && 'errorFields' in err
+          ? ''
+          : (err as Error)?.message;
+      if (strMsg) messageApi.error(strMsg);
     }
   };
 

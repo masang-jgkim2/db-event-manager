@@ -1,32 +1,64 @@
 import * as mssql from 'mssql';
-import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2';
 import { IDbConnection } from '../types';
+import { fnIsDbConnPasswordEncrypted } from '../services/dbConnectionPasswordCrypto';
+import {
+  fnEndMysqlGamePool,
+  fnGetMysqlGameConnection,
+  fnNormalizeGameConn,
+} from './mysqlGameConnection';
+import { fnGetMysqlServerVersionCached, fnIsLegacyMysqlServerVersion } from './mysqlServerProbe';
 
-// 커넥션 풀 캐시 (접속 정보 ID → 풀 인스턴스)
+// 커넥션 풀 캐시 (MSSQL)
 const objMssqlPools = new Map<number, mssql.ConnectionPool>();
-const objMysqlPools = new Map<number, mysql.Pool>();
+const mapMssqlPoolFingerprint = new Map<number, string>();
+
+const fnConnectionPoolFingerprint = (objConn: IDbConnection): string =>
+  [
+    objConn.strDbType,
+    objConn.strHost,
+    String(objConn.nPort),
+    objConn.strDatabase,
+    (objConn.strUser ?? '').trim(),
+    objConn.strPassword ?? '',
+  ].join('\0');
+
+const fnNormalizeConnForPool = (objConn: IDbConnection): IDbConnection =>
+  fnNormalizeGameConn(objConn);
 
 // =============================================
 // MSSQL 풀 관리
 // =============================================
 
-/** tedious/mssql 기본 encrypt:true — 비TLS 구 SQL Server는 MSSQL_ENCRYPT=false 필요 */
 const fnGetMssqlEncryptOption = (): boolean => process.env.MSSQL_ENCRYPT !== 'false';
 
 const fnGetMssqlPool = async (objConn: IDbConnection): Promise<mssql.ConnectionPool> => {
-  const objCached = objMssqlPools.get(objConn.nId);
-  if (objCached && objCached.connected) return objCached;
+  const objNorm = fnNormalizeConnForPool(objConn);
+  const strFp = fnConnectionPoolFingerprint(objNorm);
+  const objCached = objMssqlPools.get(objNorm.nId);
+  if (objCached && objCached.connected && mapMssqlPoolFingerprint.get(objNorm.nId) === strFp) {
+    return objCached;
+  }
+  if (objCached) {
+    try {
+      await objCached.close();
+    } catch {
+      /* 무시 */
+    }
+    objMssqlPools.delete(objNorm.nId);
+    mapMssqlPoolFingerprint.delete(objNorm.nId);
+  }
 
   const bEncrypt = fnGetMssqlEncryptOption();
   const objConfig: mssql.config = {
-    server: objConn.strHost,
-    port: objConn.nPort,
-    database: objConn.strDatabase,
-    user: objConn.strUser,
-    password: objConn.strPassword,
+    server: objNorm.strHost,
+    port: objNorm.nPort,
+    database: objNorm.strDatabase,
+    user: objNorm.strUser,
+    password: objNorm.strPassword,
     options: {
       encrypt: bEncrypt,
-      trustServerCertificate: true,   // 내부망 환경 기본 허용
+      trustServerCertificate: true,
       enableArithAbort: true,
     },
     connectionTimeout: 10000,
@@ -35,55 +67,31 @@ const fnGetMssqlPool = async (objConn: IDbConnection): Promise<mssql.ConnectionP
 
   const objPool = new mssql.ConnectionPool(objConfig);
   await objPool.connect();
-  objMssqlPools.set(objConn.nId, objPool);
+  objMssqlPools.set(objNorm.nId, objPool);
+  mapMssqlPoolFingerprint.set(objNorm.nId, strFp);
   return objPool;
 };
 
 // =============================================
-// MySQL 풀 관리
-// =============================================
-
-const fnGetMysqlPool = (objConn: IDbConnection): mysql.Pool => {
-  const objCached = objMysqlPools.get(objConn.nId);
-  if (objCached) return objCached;
-
-  const objPool = mysql.createPool({
-    host: objConn.strHost,
-    port: objConn.nPort,
-    database: objConn.strDatabase,
-    user: objConn.strUser,
-    password: objConn.strPassword,
-    waitForConnections: true,
-    connectionLimit: 5,
-    connectTimeout: 10000,
-    multipleStatements: false,  // 보안: 멀티 스테이트먼트 비활성 (개별 실행으로 처리)
-  });
-
-  objMysqlPools.set(objConn.nId, objPool);
-  return objPool;
-};
-
-// =============================================
-// 풀 캐시 무효화 (접속 정보 변경 시 호출)
+// 풀 캐시 무효화
 // =============================================
 
 export const fnInvalidatePool = async (nConnectionId: number): Promise<void> => {
   const objMssqlPool = objMssqlPools.get(nConnectionId);
   if (objMssqlPool) {
-    try { await objMssqlPool.close(); } catch { /* 무시 */ }
+    try {
+      await objMssqlPool.close();
+    } catch {
+      /* 무시 */
+    }
     objMssqlPools.delete(nConnectionId);
+    mapMssqlPoolFingerprint.delete(nConnectionId);
   }
-
-  const objMysqlPool = objMysqlPools.get(nConnectionId);
-  if (objMysqlPool) {
-    try { await objMysqlPool.end(); } catch { /* 무시 */ }
-    objMysqlPools.delete(nConnectionId);
-  }
+  await fnEndMysqlGamePool(nConnectionId);
 };
 
 // =============================================
 // 연결 테스트
-// DB명/사용자/서버/버전/서버시각을 한 번에 확인
 // =============================================
 
 export interface ITestResult {
@@ -100,9 +108,31 @@ export interface ITestResult {
 }
 
 export const fnTestDbConnection = async (objConn: IDbConnection): Promise<ITestResult> => {
+  const objNorm = fnNormalizeConnForPool(objConn);
+  const strUser = objNorm.strUser;
+  const strPass = objNorm.strPassword;
+  if (!strUser) {
+    return {
+      bSuccess: false,
+      strMessage: '연결 실패',
+      strError:
+        'DB 접속 정보에 사용자 계정이 없습니다. 수정 화면에서 사용자·비밀번호를 입력한 뒤 저장하세요. ' +
+        `(호스트 ${objConn.strHost})`,
+    };
+  }
+  if (!strPass || fnIsDbConnPasswordEncrypted(strPass)) {
+    return {
+      bSuccess: false,
+      strMessage: '연결 실패',
+      strError:
+        `비밀번호가 없거나 복호화되지 않았습니다(${objConn.strDbType}·${objConn.strHost}). ` +
+        '수정 화면에서 비밀번호를 다시 입력·저장하세요.',
+    };
+  }
+  await fnInvalidatePool(objNorm.nId);
   try {
-    if (objConn.strDbType === 'mssql') {
-      const objPool = await fnGetMssqlPool(objConn);
+    if (objNorm.strDbType === 'mssql') {
+      const objPool = await fnGetMssqlPool(objNorm);
       const objResult = await objPool.request().query(`
         SELECT
           DB_NAME()    AS strDatabase,
@@ -119,33 +149,31 @@ export const fnTestDbConnection = async (objConn: IDbConnection): Promise<ITestR
           strDatabase: objRow.strDatabase,
           strUser: objRow.strUser,
           strServer: objRow.strServer,
-          strVersion: String(objRow.strVersion).split('\n')[0].trim(),  // 첫 줄만
+          strVersion: String(objRow.strVersion).split('\n')[0].trim(),
           strServerTime: objRow.strServerTime,
         },
       };
     }
 
-    if (objConn.strDbType === 'mysql') {
-      const objPool = fnGetMysqlPool(objConn);
-      const objDbConn = await objPool.getConnection();
+    if (objNorm.strDbType === 'mysql') {
+      const strVer = await fnGetMysqlServerVersionCached(objNorm.strHost, objNorm.nPort);
+      const bLegacy = fnIsLegacyMysqlServerVersion(strVer);
+      const objDbConn = await fnGetMysqlGameConnection(objNorm);
       try {
-        const [arrRows] = await objDbConn.execute<mysql.RowDataPacket[]>(`
-          SELECT
-            DATABASE()   AS strDatabase,
-            USER()       AS strUser,
-            @@hostname   AS strServer,
-            VERSION()    AS strVersion,
-            NOW()        AS strServerTime
-        `);
-        const objRow = arrRows[0];
+        // MySQL 4.x — @@hostname 없음(Heidi와 동일 서버, mysql2 대신 레거시 드라이버 사용)
+        const strSql = bLegacy
+          ? `SELECT DATABASE() AS strDatabase, USER() AS strUser, VERSION() AS strVersion, NOW() AS strServerTime`
+          : `SELECT DATABASE() AS strDatabase, USER() AS strUser, @@hostname AS strServer, VERSION() AS strVersion, NOW() AS strServerTime`;
+        const [arrRows] = await objDbConn.query<RowDataPacket[]>(strSql);
+        const objRow = (arrRows as RowDataPacket[])[0];
         return {
           bSuccess: true,
           strMessage: '연결 성공',
           objDbInfo: {
-            strDatabase: objRow.strDatabase,
-            strUser: objRow.strUser,
-            strServer: objRow.strServer,
-            strVersion: objRow.strVersion,
+            strDatabase: String(objRow.strDatabase),
+            strUser: String(objRow.strUser),
+            strServer: bLegacy ? objNorm.strHost : String(objRow.strServer ?? objNorm.strHost),
+            strVersion: String(objRow.strVersion),
             strServerTime: String(objRow.strServerTime),
           },
         };
@@ -155,13 +183,25 @@ export const fnTestDbConnection = async (objConn: IDbConnection): Promise<ITestR
     }
 
     return { bSuccess: false, strMessage: '지원하지 않는 DB 타입입니다.', strError: 'UNSUPPORTED_DB_TYPE' };
-  } catch (error: any) {
-    // 실패 시 캐시된 풀 제거 (다음 요청 시 재연결)
-    await fnInvalidatePool(objConn.nId);
+  } catch (error: unknown) {
+    await fnInvalidatePool(objNorm.nId);
+    const strErr = error instanceof Error ? error.message : String(error);
+    if (/''@|using password: no/i.test(strErr)) {
+      const strVer = await fnGetMysqlServerVersionCached(objNorm.strHost, objNorm.nPort);
+      if (fnIsLegacyMysqlServerVersion(strVer)) {
+        return {
+          bSuccess: false,
+          strMessage: '연결 실패',
+          strError:
+            `대상 MySQL이 구버전(${strVer})입니다. 백엔드를 최신으로 재시작했는지 확인하세요. ` +
+            '(Heidi는 되고 DQPM만 실패하면 이 경우입니다)',
+        };
+      }
+    }
     return {
       bSuccess: false,
       strMessage: '연결 실패',
-      strError: error?.message || String(error),
+      strError: strErr,
     };
   }
 };
@@ -170,11 +210,8 @@ export const fnTestDbConnection = async (objConn: IDbConnection): Promise<ITestR
 // 쿼리 실행용 커넥션 획득
 // =============================================
 
-export const fnGetMssqlConnection = async (objConn: IDbConnection): Promise<mssql.ConnectionPool> => {
-  return fnGetMssqlPool(objConn);
-};
+export const fnGetMssqlConnection = async (objConn: IDbConnection): Promise<mssql.ConnectionPool> =>
+  fnGetMssqlPool(objConn);
 
-export const fnGetMysqlConnection = async (objConn: IDbConnection): Promise<mysql.PoolConnection> => {
-  const objPool = fnGetMysqlPool(objConn);
-  return objPool.getConnection();
-};
+export { fnGetMysqlGameConnection as fnGetMysqlConnection } from './mysqlGameConnection';
+export type { IMysqlGameConnection } from './mysqlGameConnection';
