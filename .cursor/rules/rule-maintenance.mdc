@@ -8,6 +8,8 @@ alwaysApply: true
 아래 상황이 발생하면 대화 마지막에 반드시 업데이트 필요 여부를 제안한다:
 
 ### 즉시 업데이트 대상
+- DB 접속(메타/게임 혼동, mysql 4.x, `db_connection` 저장·FK·연결테스트) → `domain-db-connection.mdc`, `SKILL.md` «DB 접속 정보 — 에이전트 조사» 절
+- 회원 가입·승인·`guest`·`user.approve`·로그인 차단 상태 → `domain-user-registration.mdc`, `backend-patterns.mdc`, `frontend-patterns.mdc`, `SKILL.md`
 - 새 `TPermission` 추가 → `backend-patterns.mdc` 권한 목록, `SKILL.md` 권한 종류
 - API 라우트 권한 변경(메서드별 세분화 등) → `backend-patterns.mdc`
 - 메뉴/페이지 보기 권한·버튼 권한 규칙 변경 → `frontend-patterns.mdc`, `SKILL.md`

@@ -1,19 +1,28 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Button, Modal, Form, Input, Select, Space, Tag,
-  Popconfirm, message, Card, Tooltip,
+  Popconfirm, message, Card, Tooltip, Tabs, Badge,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, MailOutlined,
+} from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import ApproveUserModal, { type IPendingUserRow } from '../components/ApproveUserModal';
 import {
   fnApiGetUsers, fnApiCreateUser, fnApiUpdateUser,
-  fnApiDeleteUser, fnApiResetPassword,
+  fnApiDeleteUser, fnApiResetPassword, fnApiApproveUser, fnApiRejectUser,
 } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserPresenceStream } from '../hooks/useUserPresenceStream';
+import {
+  OBJ_USER_STATUS_LABEL, OBJ_USER_STATUS_COLOR,
+  STR_EMAIL_DOMAIN, fnIsMasangsoftEmail, type TUserStatus,
+} from '../constants/userStatus';
 import type { IRole, TPermission } from '../types';
+import { REG_USER_ID, ruleUserIdCharsOnly } from '../utils/userIdInput';
 
 const { Title, Text } = Typography;
 
@@ -26,6 +35,8 @@ interface IUserRow {
   nId: number;
   strUserId: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: TUserStatus | string;
   arrRoles: string[];
   arrPermissions: string[];
   dtCreatedAt: string;
@@ -33,15 +44,20 @@ interface IUserRow {
   strLastSeenAt?: string | null;
 }
 
+type TUserListTab = 'all' | 'pending_approval';
+
 const UserPage = () => {
   const [arrUsers, setArrUsers] = useState<IUserRow[]>([]);
-  /** 목록이 비어 있을 때 스냅샷만 오면 병합이 무시되므로, 1차 로드 후에만 SSE 연결 */
   const [bUsersListReady, setBUsersListReady] = useState(false);
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
   const [bLoading, setBLoading] = useState(false);
+  const [strListTab, setStrListTab] = useState<TUserListTab>('all');
   const [bModalOpen, setBModalOpen] = useState(false);
   const [bEditModalOpen, setBEditModalOpen] = useState(false);
   const [bResetModalOpen, setBResetModalOpen] = useState(false);
+  const [bApproveModalOpen, setBApproveModalOpen] = useState(false);
+  const [bApproveLoading, setBApproveLoading] = useState(false);
+  const [objApproveUser, setObjApproveUser] = useState<IPendingUserRow | null>(null);
   const [objEditUser, setObjEditUser] = useState<IUserRow | null>(null);
   const [nResetUserId, setNResetUserId] = useState<number | null>(null);
   const [form] = Form.useForm();
@@ -49,11 +65,9 @@ const UserPage = () => {
   const [resetForm] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
-  // 역할명 매핑 객체
   const objRoleMap: Record<string, string> = {};
   arrRoles.forEach((r) => { objRoleMap[r.strCode] = r.strDisplayName; });
 
-  // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
   const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('user.create') || fnHas('user.manage');
@@ -61,6 +75,7 @@ const UserPage = () => {
   const bCanDelete = fnHas('user.delete') || fnHas('user.manage');
   const bCanResetPassword = fnHas('user.reset_password') || fnHas('user.manage');
   const bCanViewUsers = fnHas('user.view') || fnHas('user.manage');
+  const bCanApprove = fnHas('user.approve') || fnHas('user.manage');
 
   const fnOnPresenceSnapshot = useCallback((arrRows: { nUserId: number; bOnline: boolean; strLastSeenAt: string | null }[]) => {
     setArrUsers((prev) => {
@@ -89,11 +104,11 @@ const UserPage = () => {
     fnOnPresence: fnOnPresenceDelta,
   });
 
-  // 사용자 목록 조회
   const fnLoadUsers = useCallback(async (bShowLoading = true) => {
     if (bShowLoading) setBLoading(true);
     try {
-      const objResult = await fnApiGetUsers();
+      const strStatusFilter = strListTab === 'pending_approval' ? 'pending_approval' : undefined;
+      const objResult = await fnApiGetUsers(strStatusFilter);
       if (objResult.bSuccess) {
         setArrUsers(objResult.arrUsers);
         setBUsersListReady(true);
@@ -103,9 +118,8 @@ const UserPage = () => {
     } finally {
       if (bShowLoading) setBLoading(false);
     }
-  }, [messageApi]);
+  }, [messageApi, strListTab]);
 
-  // 역할 목록 조회
   const fnLoadRoles = useCallback(async () => {
     try {
       const result = await fnApiGetRoles();
@@ -120,13 +134,11 @@ const UserPage = () => {
     void fnLoadRoles();
   }, [fnLoadUsers, fnLoadRoles]);
 
-  // 오프라인 전환 등 SSE로 안 잡힐 때 보정(백업)
   useEffect(() => {
     const nTimer = window.setInterval(() => void fnLoadUsers(false), 120_000);
     return () => window.clearInterval(nTimer);
   }, [fnLoadUsers]);
 
-  // 사용자 추가
   const fnHandleCreate = async () => {
     try {
       const objValues = await form.validateFields();
@@ -145,7 +157,6 @@ const UserPage = () => {
     }
   };
 
-  // 수정 모달 열기
   const fnOpenEdit = (objUser: IUserRow) => {
     setObjEditUser(objUser);
     editForm.setFieldsValue({
@@ -155,7 +166,48 @@ const UserPage = () => {
     setBEditModalOpen(true);
   };
 
-  // 사용자 수정 (이름, 역할)
+  const fnOpenApprove = (objUser: IUserRow) => {
+    setObjApproveUser({
+      nId: objUser.nId,
+      strUserId: objUser.strUserId,
+      strDisplayName: objUser.strDisplayName,
+      strEmail: objUser.strEmail,
+      dtCreatedAt: objUser.dtCreatedAt,
+    });
+    setBApproveModalOpen(true);
+  };
+
+  const fnHandleApprove = async (arrRoles: string[]) => {
+    if (!objApproveUser) return;
+    setBApproveLoading(true);
+    try {
+      const objResult = await fnApiApproveUser(objApproveUser.nId, arrRoles);
+      if (objResult.bSuccess) {
+        messageApi.success('가입이 승인되었습니다.');
+        setBApproveModalOpen(false);
+        setObjApproveUser(null);
+        fnLoadUsers();
+      } else {
+        messageApi.error(objResult.strMessage);
+      }
+    } finally {
+      setBApproveLoading(false);
+    }
+  };
+
+  const fnHandleReject = async (nId: number) => {
+    const objResult = await fnApiRejectUser(nId);
+    if (objResult.bSuccess) {
+      messageApi.success(
+        objResult.strMessage
+          ?? '가입이 거절되었습니다. 해당 계정은 로그인할 수 없으며, 전체 목록에 «거절»로 표시됩니다.',
+      );
+      fnLoadUsers();
+    } else {
+      messageApi.error(objResult.strMessage);
+    }
+  };
+
   const fnHandleUpdate = async () => {
     if (!objEditUser) return;
     try {
@@ -176,7 +228,6 @@ const UserPage = () => {
     }
   };
 
-  // 사용자 삭제
   const fnHandleDelete = async (nId: number) => {
     try {
       const objResult = await fnApiDeleteUser(nId);
@@ -186,12 +237,12 @@ const UserPage = () => {
       } else {
         messageApi.error(objResult.strMessage);
       }
-    } catch (error: any) {
-      messageApi.error(error?.message || '삭제에 실패했습니다.');
+    } catch (error: unknown) {
+      const strMsg = error instanceof Error ? error.message : '삭제에 실패했습니다.';
+      messageApi.error(strMsg);
     }
   };
 
-  // 비밀번호 초기화
   const fnHandleResetPassword = async () => {
     try {
       const objValues = await resetForm.validateFields();
@@ -210,7 +261,15 @@ const UserPage = () => {
     }
   };
 
-  // 테이블 컬럼
+  const fnRenderStatusTag = (strStatus?: string) => {
+    const s = (strStatus ?? 'active') as TUserStatus;
+    const strLabel = OBJ_USER_STATUS_LABEL[s] ?? s;
+    const strColor = OBJ_USER_STATUS_COLOR[s] ?? 'default';
+    return <Tag color={strColor}>{strLabel}</Tag>;
+  };
+
+  const bShowPresenceCols = strListTab !== 'pending_approval';
+
   const arrColumns: ColumnsType<IUserRow> = [
     fnMakeIndexColumn<IUserRow>(),
     {
@@ -226,51 +285,68 @@ const UserPage = () => {
       key: 'strDisplayName',
     },
     {
-      title: '연결',
-      key: 'presence',
-      width: 72,
-      align: 'center' as const,
-      render: (_: unknown, r: IUserRow) => {
-        const bOn = Boolean(r.bOnline);
-        const strTip = bOn
-          ? '온라인 (최근 API 활동 기준)'
-          : '오프라인';
-        const strColor = bOn ? '#52c41a' : '#bfbfbf';
-        const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
-        return (
-          <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{strTip}</span>}>
-            <span
-              className={bOn ? 'user-page-presence-dot--breathe' : undefined}
-              style={{
-                display: 'inline-block',
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: strColor,
-                boxShadow: strShadow,
-                verticalAlign: 'middle',
-                transition: 'background-color 0.55s ease, box-shadow 0.55s ease',
-              }}
-            />
-          </Tooltip>
-        );
-      },
+      title: '이메일',
+      dataIndex: 'strEmail',
+      key: 'strEmail',
+      width: 200,
+      render: (v: string | null | undefined) =>
+        v ? <Text style={{ fontSize: 12 }}>{v}</Text> : <Text type="secondary">-</Text>,
     },
     {
-      title: '최근 접속일',
-      key: 'strLastSeenAt',
-      width: 150,
-      render: (_: unknown, r: IUserRow) => (
-        <Text type={r.strLastSeenAt ? undefined : 'secondary'} style={{ fontSize: 12 }}>
-          {fnFormatLastAccess(r.strLastSeenAt)}
-        </Text>
-      ),
-      sorter: (a, b) => {
-        const nA = a.strLastSeenAt ? new Date(a.strLastSeenAt).getTime() : 0;
-        const nB = b.strLastSeenAt ? new Date(b.strLastSeenAt).getTime() : 0;
-        return nA - nB;
-      },
+      title: '상태',
+      dataIndex: 'strStatus',
+      key: 'strStatus',
+      width: 110,
+      render: (v: string | undefined) => fnRenderStatusTag(v),
     },
+    ...(bShowPresenceCols
+      ? [
+          {
+            title: '연결',
+            key: 'presence',
+            width: 72,
+            align: 'center' as const,
+            render: (_: unknown, r: IUserRow) => {
+              const bOn = Boolean(r.bOnline);
+              const strTip = bOn ? '온라인 (최근 API 활동 기준)' : '오프라인';
+              const strColor = bOn ? '#52c41a' : '#bfbfbf';
+              const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
+              return (
+                <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{strTip}</span>}>
+                  <span
+                    className={bOn ? 'user-page-presence-dot--breathe' : undefined}
+                    style={{
+                      display: 'inline-block',
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      background: strColor,
+                      boxShadow: strShadow,
+                      verticalAlign: 'middle',
+                      transition: 'background-color 0.55s ease, box-shadow 0.55s ease',
+                    }}
+                  />
+                </Tooltip>
+              );
+            },
+          },
+          {
+            title: '최근 접속일',
+            key: 'strLastSeenAt',
+            width: 150,
+            render: (_: unknown, r: IUserRow) => (
+              <Text type={r.strLastSeenAt ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+                {fnFormatLastAccess(r.strLastSeenAt)}
+              </Text>
+            ),
+            sorter: (a: IUserRow, b: IUserRow) => {
+              const nA = a.strLastSeenAt ? new Date(a.strLastSeenAt).getTime() : 0;
+              const nB = b.strLastSeenAt ? new Date(b.strLastSeenAt).getTime() : 0;
+              return nA - nB;
+            },
+          },
+        ]
+      : []),
     {
       title: '역할',
       dataIndex: 'arrRoles',
@@ -284,12 +360,14 @@ const UserPage = () => {
         </Space>
       ),
     },
-    {
-      title: '권한 수',
-      key: 'permCount',
-      width: 80,
-      render: (_: unknown, r: IUserRow) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
-    },
+    ...(strListTab === 'all'
+      ? [{
+          title: '권한 수',
+          key: 'permCount',
+          width: 80,
+          render: (_: unknown, r: IUserRow) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
+        }]
+      : []),
     {
       title: '생성일',
       dataIndex: 'dtCreatedAt',
@@ -297,51 +375,80 @@ const UserPage = () => {
       width: 160,
       render: (strDate: string) => <Text style={{ fontSize: 12 }}>{new Date(strDate).toLocaleString('ko-KR')}</Text>,
     },
-    ...(bCanEdit || bCanResetPassword || bCanDelete
+    ...(bCanEdit || bCanResetPassword || bCanDelete || bCanApprove
       ? [{
           title: '관리',
           key: 'actions',
-          width: 180,
-          render: (_: unknown, objRecord: IUserRow) => (
-            <Space>
-              {bCanEdit && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  onClick={() => fnOpenEdit(objRecord)}
-                  title="사용자 수정"
-                >
-                  수정
-                </Button>
-              )}
-              {bCanResetPassword && (
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<KeyOutlined />}
-                  onClick={() => {
-                    setNResetUserId(objRecord.nId);
-                    setBResetModalOpen(true);
-                  }}
-                  title="비밀번호 초기화"
-                />
-              )}
-              {bCanDelete && (
-                <Popconfirm
-                  title="정말 삭제하시겠습니까?"
-                  onConfirm={() => fnHandleDelete(objRecord.nId)}
-                  okText="삭제"
-                  cancelText="취소"
-                >
-                  <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              )}
-            </Space>
-          ),
+          width: strListTab === 'pending_approval' ? 200 : 180,
+          render: (_: unknown, objRecord: IUserRow) => {
+            const bPending = objRecord.strStatus === 'pending_approval';
+            return (
+              <Space wrap size={4}>
+                {bCanApprove && bPending && (
+                  <>
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<CheckCircleOutlined />}
+                      onClick={() => fnOpenApprove(objRecord)}
+                    >
+                      승인
+                    </Button>
+                    <Popconfirm
+                      title="가입 신청을 거절하시겠습니까?"
+                      description="거절해도 계정 행은 «거절» 상태로 남습니다. 이미 로그인한 경우 즉시 차단됩니다."
+                      onConfirm={() => fnHandleReject(objRecord.nId)}
+                      okText="거절"
+                      cancelText="취소"
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button size="small" danger icon={<CloseCircleOutlined />}>
+                        거절
+                      </Button>
+                    </Popconfirm>
+                  </>
+                )}
+                {bCanEdit && !bPending && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => fnOpenEdit(objRecord)}
+                    title="사용자 수정"
+                  >
+                    수정
+                  </Button>
+                )}
+                {bCanResetPassword && !bPending && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<KeyOutlined />}
+                    onClick={() => {
+                      setNResetUserId(objRecord.nId);
+                      setBResetModalOpen(true);
+                    }}
+                    title="비밀번호 초기화"
+                  />
+                )}
+                {bCanDelete && !bPending && (
+                  <Popconfirm
+                    title="정말 삭제하시겠습니까?"
+                    onConfirm={() => fnHandleDelete(objRecord.nId)}
+                    okText="삭제"
+                    cancelText="취소"
+                  >
+                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                )}
+              </Space>
+            );
+          },
         }]
       : []),
   ];
+
+  const nPendingCount = arrUsers.filter((u) => u.strStatus === 'pending_approval').length;
 
   return (
     <>
@@ -361,7 +468,7 @@ const UserPage = () => {
         <div>
           <Title level={4} style={{ margin: 0 }}>사용자</Title>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            연결 점은 최근 인증된 API 요청 기준(기본 약 30초)이며, 온라인은 SSE로 즉시 반영됩니다. 로그아웃 시에는 즉시 오프라인으로 표시됩니다. 그 외 오프라인은 서버 주기 점검(수 초 내)으로 반영됩니다. 백업으로 약 2분마다 목록을 다시 불러옵니다. 서버 재시작 시 기록이 비어 오프라인으로 보일 수 있습니다.
+            관리자 직접 추가는 즉시 활성(active)이며, 회원 가입은 승인 대기(pending_approval) 후 역할을 부여합니다.
           </Text>
         </div>
         {bCanCreate && (
@@ -378,17 +485,33 @@ const UserPage = () => {
         )}
       </div>
 
+      <Tabs
+        activeKey={strListTab}
+        onChange={(k) => setStrListTab(k as TUserListTab)}
+        style={{ marginBottom: 12 }}
+        items={[
+          { key: 'all', label: '전체' },
+          {
+            key: 'pending_approval',
+            label: (
+              <Badge count={strListTab === 'pending_approval' ? arrUsers.length : nPendingCount} size="small" offset={[8, 0]}>
+                승인 대기
+              </Badge>
+            ),
+          },
+        ]}
+      />
+
       <Card>
         <AppTable
-          strTableId="users"
+          strTableId={`users-${strListTab}`}
           dataSource={arrUsers}
           columns={arrColumns}
           loading={bLoading}
-          strEmptyText="등록된 사용자가 없습니다."
+          strEmptyText={strListTab === 'pending_approval' ? '승인 대기 중인 사용자가 없습니다.' : '등록된 사용자가 없습니다.'}
         />
       </Card>
 
-      {/* 사용자 추가 모달 */}
       <Modal
         title="새로운 사용자 추가"
         open={bModalOpen}
@@ -405,10 +528,27 @@ const UserPage = () => {
             label="아이디 (로그인 시 사용, 변경 불가)"
             rules={[
               { required: true, message: '아이디를 입력해주세요.' },
-              { pattern: /^[a-z0-9_]+$/, message: '소문자, 숫자, 밑줄(_)만 사용 가능합니다.' },
+              ruleUserIdCharsOnly,
+              { pattern: REG_USER_ID, message: '영문·숫자 4~32자로 입력해주세요.' },
+            ]}
+            validateTrigger={['onChange', 'onBlur']}
+          >
+            <Input placeholder="로그인에 사용할 아이디 (영문·숫자)" />
+          </Form.Item>
+          <Form.Item
+            name="strEmail"
+            label={`이메일 (선택, ${STR_EMAIL_DOMAIN})`}
+            rules={[
+              { type: 'email', message: '올바른 이메일 형식이 아닙니다.' },
+              {
+                validator: (_, strVal) =>
+                  !strVal || fnIsMasangsoftEmail(String(strVal))
+                    ? Promise.resolve()
+                    : Promise.reject(new Error(`사내 이메일(${STR_EMAIL_DOMAIN})만 등록할 수 있습니다.`)),
+              },
             ]}
           >
-            <Input placeholder="로그인에 사용할 아이디" />
+            <Input prefix={<MailOutlined />} placeholder={`name${STR_EMAIL_DOMAIN}`} />
           </Form.Item>
           <Form.Item
             name="strPassword"
@@ -430,18 +570,19 @@ const UserPage = () => {
             rules={[{ required: true, message: '역할을 최소 1개 이상 선택해주세요.' }]}
           >
             <Select mode="multiple" placeholder="역할 선택 (여러 개 가능)">
-              {arrRoles.map((r) => (
-                <Select.Option key={r.strCode} value={r.strCode}>
-                  {r.strDisplayName}
-                  {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
-                </Select.Option>
-              ))}
+              {arrRoles
+                .filter((r) => r.strCode !== 'guest')
+                .map((r) => (
+                  <Select.Option key={r.strCode} value={r.strCode}>
+                    {r.strDisplayName}
+                    {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
+                  </Select.Option>
+                ))}
             </Select>
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* 사용자 수정 모달 (이름, 역할) */}
       <Modal
         title="사용자 수정"
         open={bEditModalOpen}
@@ -474,19 +615,20 @@ const UserPage = () => {
               rules={[{ required: true, message: '역할을 최소 1개 이상 선택해주세요.' }]}
             >
               <Select mode="multiple" placeholder="역할 선택 (여러 개 가능)">
-                {arrRoles.map((r) => (
-                  <Select.Option key={r.strCode} value={r.strCode}>
-                    {r.strDisplayName}
-                    {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
-                  </Select.Option>
-                ))}
+                {arrRoles
+                  .filter((r) => r.strCode !== 'guest')
+                  .map((r) => (
+                    <Select.Option key={r.strCode} value={r.strCode}>
+                      {r.strDisplayName}
+                      {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
+                    </Select.Option>
+                  ))}
               </Select>
             </Form.Item>
           </Form>
         )}
       </Modal>
 
-      {/* 비밀번호 초기화 모달 */}
       <Modal
         title="비밀번호 초기화"
         open={bResetModalOpen}
@@ -510,6 +652,18 @@ const UserPage = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      <ApproveUserModal
+        bOpen={bApproveModalOpen}
+        objUser={objApproveUser}
+        arrRoles={arrRoles}
+        bLoading={bApproveLoading}
+        fnOnCancel={() => {
+          setBApproveModalOpen(false);
+          setObjApproveUser(null);
+        }}
+        fnOnApprove={(arrRoleCodes) => void fnHandleApprove(arrRoleCodes)}
+      />
     </>
   );
 };

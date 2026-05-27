@@ -7,6 +7,8 @@ import { useThemeStore } from './stores/useThemeStore';
 import { fnBuildDesignSystem } from './styles/design-system';
 import { DesignSystemContext } from './styles/DesignSystemContext';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import RegisterSentPage from './pages/RegisterSentPage';
 import DashboardPage from './pages/DashboardPage';
 import ProductPage from './pages/ProductPage';
 import EventPage from './pages/EventPage';
@@ -210,6 +212,22 @@ const App = () => {
             element={
               <PublicRoute>
                 <LoginPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <RegisterPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register/sent"
+            element={
+              <PublicRoute>
+                <RegisterSentPage />
               </PublicRoute>
             }
           />

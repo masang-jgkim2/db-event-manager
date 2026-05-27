@@ -38,6 +38,12 @@ const fnStartServer = async (): Promise<void> => {
 
   const { fnInitUsers } = await import('./data/users');
   await fnInitUsers();
+  try {
+    const { fnEnsureOnboardingPrerequisites } = await import('./services/onboardingBootstrap');
+    await fnEnsureOnboardingPrerequisites();
+  } catch (err: unknown) {
+    console.error('[온보딩] 보정 실패 — 서버는 계속 기동 |', err);
+  }
   await fnLogMemoryCounts();
 
   const { default: app } = await import('./app');

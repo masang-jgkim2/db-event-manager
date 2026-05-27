@@ -1,6 +1,12 @@
 import { Request, Response, Router } from 'express';
 import {
-  fnGetUsers, fnCreateUser, fnUpdateUser, fnDeleteUser, fnResetPassword,
+  fnGetUsers,
+  fnCreateUser,
+  fnUpdateUser,
+  fnDeleteUser,
+  fnResetPassword,
+  fnApproveUser,
+  fnRejectUser,
 } from '../controllers/userController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
@@ -58,5 +64,15 @@ router.post('/', fnRequireAnyPermission('user.create'), fnCreateUser);
 router.put('/:id', fnRequireAnyPermission('user.edit'), fnUpdateUser);
 router.delete('/:id', fnRequireAnyPermission('user.delete'), fnDeleteUser);
 router.patch('/:id/password', fnRequireAnyPermission('user.reset_password'), fnResetPassword);
+router.patch(
+  '/:id/approve',
+  fnRequireAnyPermission('user.approve', 'user.manage'),
+  fnApproveUser,
+);
+router.patch(
+  '/:id/reject',
+  fnRequireAnyPermission('user.approve', 'user.manage'),
+  fnRejectUser,
+);
 
 export default router;
