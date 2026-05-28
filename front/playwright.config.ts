@@ -20,6 +20,17 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'smoke',
+      use: { ...devices['Desktop Chrome'] },
+      grep: /@smoke/,
+    },
+    {
+      name: 'workflow',
+      use: { ...devices['Desktop Chrome'] },
+      grep: /@workflow/,
+      timeout: 120000,
+    },
   ],
   timeout: 30000,
   expect: { timeout: 10000 },

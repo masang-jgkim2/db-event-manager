@@ -3,6 +3,7 @@ import type { ResultSetHeader } from 'mysql2';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
 import type { IMysqlGameConnection } from '../db/mysqlGameConnection';
+import { fnIsLikelyRowReturningSql, fnPackResultRows } from '../utils/queryResultRows';
 
 /** MySQL(mysql2) 서버 메시지 — message보다 sqlMessage가 MSSQL 메시지에 가깝다 */
 const fnGetMysqlServerMessage = (error: any): string => {
@@ -153,6 +154,30 @@ export const fnParseQueriesWithLineStarts = (strRawQuery: string): IParsedQueryP
 export const fnParseQueries = (strRawQuery: string): string[] =>
   fnParseQueriesWithLineStarts(strRawQuery).map((p) => p.strQuery);
 
+const fnBuildPartFromMysqlPacket = (
+  nIndex: number,
+  strQuery: string,
+  objPacket: unknown,
+): IQueryPartResult => {
+  if (Array.isArray(objPacket)) {
+    const objPacked = fnPackResultRows(objPacket as Record<string, unknown>[]);
+    return {
+      nIndex,
+      strQuery,
+      nAffectedRows: objPacked.arrResultRows.length,
+      arrResultRows: objPacked.arrResultRows,
+      arrResultColumns: objPacked.arrResultColumns,
+      bResultTruncated: objPacked.bResultTruncated,
+    };
+  }
+  const objHeader = objPacket as ResultSetHeader;
+  return {
+    nIndex,
+    strQuery,
+    nAffectedRows: objHeader.affectedRows ?? 0,
+  };
+};
+
 // =============================================
 // MSSQL 트랜잭션 실행
 // 여러 쿼리를 BEGIN TRAN...COMMIT 블록으로 래핑해 단일 배치로 전송.
@@ -178,14 +203,29 @@ const fnExecuteMssql = async (
     // rowsAffected: 각 구문별 영향 행 수 배열 (e.g. [3, 5])
     // BEGIN TRAN / COMMIT 자체도 0으로 포함될 수 있으므로 arrQueries 길이 기준으로 매핑
     const arrRowsAffected = objResult.rowsAffected ?? [];
+    const arrRecordsets = (objResult.recordsets ?? []) as unknown[];
+    let nRecordsetCursor = 0;
 
-    return arrQueries.map((strQuery, i) => ({
-      nIndex: i,
-      strQuery,
-      // BEGIN TRAN(0), 쿼리1(1), ..., COMMIT(마지막) 순서로 오므로
-      // 트랜잭션 래퍼가 있으면 인덱스를 1씩 밀어서 읽음
-      nAffectedRows: arrRowsAffected[bNeedsTransaction ? i + 1 : i] ?? 0,
-    }));
+    return arrQueries.map((strQuery, i) => {
+      const nAffectedRows = arrRowsAffected[bNeedsTransaction ? i + 1 : i] ?? 0;
+      const objPart: IQueryPartResult = { nIndex: i, strQuery, nAffectedRows };
+      if (fnIsLikelyRowReturningSql(strQuery)) {
+        while (nRecordsetCursor < arrRecordsets.length) {
+          const rs = arrRecordsets[nRecordsetCursor++];
+          if (Array.isArray(rs) && rs.length > 0) {
+            const objPacked = fnPackResultRows(rs as Record<string, unknown>[]);
+            objPart.arrResultRows = objPacked.arrResultRows;
+            objPart.arrResultColumns = objPacked.arrResultColumns;
+            objPart.bResultTruncated = objPacked.bResultTruncated;
+            if (objPart.nAffectedRows === 0) {
+              objPart.nAffectedRows = objPacked.arrResultRows.length;
+            }
+            break;
+          }
+        }
+      }
+      return objPart;
+    });
   } catch (error) {
     // 단일 배치이므로 오류 발생 시 MSSQL이 자동 롤백(또는 명시적 ROLLBACK 전송)
     // BEGIN TRAN을 직접 붙인 경우 ROLLBACK으로 명시적 정리
@@ -215,11 +255,7 @@ const fnExecuteMysql = async (
       try {
         const [objPacket] = await objDbConn.query<ResultSetHeader>(strQuery);
 
-        arrResults.push({
-          nIndex: i,
-          strQuery,
-          nAffectedRows: objPacket.affectedRows ?? 0,
-        });
+        arrResults.push(fnBuildPartFromMysqlPacket(i, strQuery, objPacket));
       } catch (err: any) {
         err.nErrorLineInSet = arrNLineStart[i] ?? 1;
         throw err;

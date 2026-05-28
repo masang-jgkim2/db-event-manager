@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import QueryEditDiffView from '../components/QueryEditDiffView';
+import QueryResultSetTable from '../components/QueryResultSetTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
@@ -251,12 +252,17 @@ const fnBuildQueryResultCollapseItems = (
 ): NonNullable<CollapseProps['items']> => {
   const bGroupBySet = arr.some((r) => r.nSetIndex != null && r.nSetTotal != null);
 
-  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => ({
+  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => {
+    const nResultRows = r.arrResultRows?.length ?? 0;
+    const bHasResultSet = nResultRows > 0;
+    return {
     key: `${strKeyPrefix}-q${r.nIndex}`,
     label: (
       <Space>
         <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-        <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+        <Tag color="green">
+          {bHasResultSet ? `${nResultRows}행 조회` : `${r.nAffectedRows}건 처리`}
+        </Tag>
       </Space>
     ),
     children: (
@@ -276,9 +282,11 @@ const fnBuildQueryResultCollapseItems = (
           </Button>
         </div>
         <div style={strQueryBlockStyle}>{r.strQuery}</div>
+        <QueryResultSetTable objPart={r} />
       </Space>
     ),
-  });
+  };
+  };
 
   if (!bGroupBySet) {
     return arr.map((r) => fnOneQueryPanel(r, 'flat'));
@@ -2101,6 +2109,29 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 )}
                                 {bExecFail && objEx.strError && (
                                   <Text type="danger" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{objEx.strError}</Text>
+                                )}
+                                {!bExecFail && objEx.arrQueryResults && objEx.arrQueryResults.length > 0 && (
+                                  <Collapse
+                                    size="small"
+                                    bordered={false}
+                                    style={{ background: 'transparent', width: '100%' }}
+                                    items={fnBuildQueryResultCollapseItems(
+                                      objEx.arrQueryResults,
+                                      {
+                                        padding: '6px 10px',
+                                        background: token.colorFillTertiary,
+                                        borderRadius: token.borderRadiusSM,
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: token.colorText,
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-all',
+                                        maxHeight: 180,
+                                        overflow: 'auto',
+                                      },
+                                      fnCopy,
+                                    )}
+                                  />
                                 )}
                               </Space>
                             </div>

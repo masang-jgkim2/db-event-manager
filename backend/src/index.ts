@@ -5,6 +5,20 @@ import { fnIsMysqlStore } from './data/dataStore';
 
 const nPort = Number(process.env.PORT) || 4000;
 
+const fnAssertJwtSecretForProduction = (): void => {
+  const strSecret = (process.env.JWT_SECRET ?? '').trim();
+  const bWeak =
+    !strSecret || strSecret === 'default-secret' || strSecret === 'event-manager-secret-key-change-in-production';
+  if (process.env.NODE_ENV === 'production' && bWeak) {
+    console.error(
+      '[기동] NODE_ENV=production 에서 JWT_SECRET 이 비어 있거나 기본값입니다. backend/.env 를 설정하세요.',
+    );
+    process.exit(1);
+  }
+};
+
+fnAssertJwtSecretForProduction();
+
 const fnLogMemoryCounts = async (): Promise<void> => {
   const { arrProducts } = await import('./data/products');
   const { arrEvents } = await import('./data/events');

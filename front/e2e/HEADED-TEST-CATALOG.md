@@ -1,0 +1,307 @@
+# DQPM Headed E2E 테스트 카탈로그
+
+**하이브리드 운영**: Playwright **자동 검증** + 본 문서 **수동 체크리스트**를 함께 씁니다.
+
+| 모드 | 표기 | 의미 |
+|------|------|------|
+| 자동 | 🤖 `@automate` | `npm run test:e2e` / `test:e2e:smoke` — CI·배포 전 |
+| 수동 | 📋 `@manual` | 카탈로그만 — UI 모드로 눈으로 확인 (`test:e2e:ui` + 아래 §I) |
+| 둘 다 | 🔀 | 자동 smoke + 배포 전 사람이 풀 플로우 한 번 |
+
+레거시 표기: ✅ Playwright · 🔶 probe · ⬜ 미구현
+
+**기능 추가/수정 시**: Cursor 규칙 `browser-e2e-smoke` — 에이전트가 작업 마무리 전 **헤드리스 smoke** 자동 실행. headed는 사용자가 «브라우저 띄워» 등으로 요청할 때만.
+
+### 빠른 실행
+
+```powershell
+cd front
+npm run test:e2e:smoke              # @smoke만 (~1분)
+npm run test:e2e:smoke:headed       # smoke + 브라우저 창
+npm run test:e2e:workflow           # QA 실행 모달 등 (@workflow)
+npm run test:e2e:ui                 # 전체 — 수동 체크리스트 따라가기
+```
+
+| spec 파일 | 담당 ID |
+|-----------|---------|
+| `auth.spec.ts`, `navigation.spec.ts`, `products.spec.ts` | A-01~04, B-01~07, C-01 |
+| `register-page.spec.ts` | A-05 |
+| `register-approve.spec.ts` | A-05~09 🤖 |
+| `my-dashboard-dba.spec.ts` | B-07, E-X1, F-04 🔀 |
+| `scripts/probe-*.mjs` | F-04 headed 데모 |
+
+---
+
+## 공통 실행 방법
+
+### 서버
+
+```powershell
+# 프로젝트 루트 — 서버 자동 기동 후 e2e
+.\scripts\run-e2e-with-servers.ps1
+
+# 또는 수동
+cd backend; npm run dev    # :4000
+cd front; npm run dev      # :5173
+```
+
+### Headed (창 보기)
+
+```powershell
+cd front
+npx playwright test e2e/auth.spec.ts --headed
+npm run test:e2e:ui          # UI 모드 — 단계별 재생·일시정지
+```
+
+### Probe 스크립트 (나의 대시보드 QA 실행 등)
+
+```powershell
+cd front
+$env:DQPM_HEADED = '1'
+$env:DQPM_SLOW_MO = '400'
+$env:DQPM_BASE = 'http://112.185.196.8:5173'   # 원격이면 설정
+$env:DQPM_USER = 'dba01'
+$env:DQPM_PASS = 'dba01'
+node scripts/probe-select-result-ui.mjs
+```
+
+### 환경 변수 (계정)
+
+| 변수 | 용도 |
+|------|------|
+| `E2E_USER_ID` / `E2E_PASSWORD` | Playwright **관리자** (승인·메뉴) |
+| `E2E_DBA_USER_ID` / `E2E_DBA_PASSWORD` | Playwright **DBA** (기본 `dba01`) |
+| `DQPM_USER` / `DQPM_PASS` | probe 스크립트 |
+| `PLAYWRIGHT_BASE_URL` | 기본 `http://127.0.0.1:5173` |
+
+---
+
+## 권장 테스트 계정 (역할별)
+
+| 역할 | 용도 | 예시 (환경에 맞게 교체) |
+|------|------|-------------------------|
+| **신규 가입용** | 회원가입·승인 대기 | 매번 새 `testuser001` |
+| **admin** | 승인·사용자·역할·전체 메뉴 | `admin` / 시드 비밀번호 |
+| **dba01** | 컨펌·QA/LIVE 실행·쿼리 수정 | `dba01` |
+| **GM/기획** | 이벤트 생성·수정·확인 요청 | 제품별 담당 계정 |
+| **guest** | 승인 전 — 로그인 불가 확인 | 가입 직후 |
+
+> 한 번에 **회원가입 → LIVE 확인**까지 보려면 계정을 바꿔 가며 2~4명이 필요합니다.
+
+---
+
+## A. 인증·회원가입
+
+| ID | 시나리오 | 페이지 | 계정 | 기대 결과 | 자동화 |
+|----|----------|--------|------|-----------|--------|
+| A-01 | 로그인 화면 요소 표시 | `/login` | — | 아이디·비밀번호·로그인·회원가입 링크 | ✅ `auth.spec` |
+| A-02 | 올바른 계정 로그인 | `/login` | admin 또는 dba01 | `/login` 이탈, 레이아웃 표시 | ✅ `auth.spec` |
+| A-03 | 잘못된 비밀번호 | `/login` | dba01 + 틀린 PW | 오류 토스트 | ✅ `auth.spec` |
+| A-04 | 로그아웃 | 헤더 | 로그인 후 | `/login` 복귀 | ✅ `auth.spec` |
+| A-05 | 회원가입 폼 표시 | `/register` | — | 사내 이메일·약관·중복검사 UI | 🤖 `register-page` |
+| A-06 | 아이디 중복 검사 | `/register` | — | 사용 가능/불가 표시 | 🤖 `register-approve` |
+| A-07 | 가입 제출 성공 | `/register` | 신규 ID | 완료 안내, 로그인 이동 링크 | 🤖 `register-approve` |
+| A-08 | 승인 대기 로그인 차단 | `/login` | 방금 가입 계정 | 403·승인 대기 메시지 | 🤖 `register-approve` |
+| A-09 | 관리자 승인 | `/users` 승인 대기 탭 | admin | `active`, 역할 부여 | 🤖 `register-approve` |
+| A-10 | 관리자 거절 | `/users` | admin | `rejected`, 재로그인 차단 | ⬜ |
+| A-11 | 거절 후 재가입 | `/register` | 동일 ID | `pending_approval` 복구 | ⬜ |
+
+---
+
+## B. 메뉴·페이지 진입 (권한별 노출)
+
+| ID | 메뉴 | 경로 | 권한(요약) | 자동화 |
+|----|------|------|------------|--------|
+| B-01 | 대시보드 | `/` | `dashboard.view` | ✅ `navigation.spec` |
+| B-02 | 프로덕트 | `/products` | `product.view` | ✅ |
+| B-03 | 쿼리 템플릿 | `/events` | `event_template.view` | ✅ |
+| B-04 | DB 접속 정보 | `/db-connections` | `db_connection.view` | ✅ |
+| B-05 | 사용자 | `/users` | `user.view` | ✅ |
+| B-06 | 역할 권한 | `/roles` | `role.view` | ✅ |
+| B-07 | 나의 대시보드 | `/my-dashboard` | `my_dashboard.view` | ✅ |
+| B-08 | 이벤트 생성 | `/query` | `query.create` 등 | ⬜ |
+| B-09 | 활동 | `/activity` | `activity.view` | ⬜ |
+| B-10 | 권한 없는 메뉴 숨김 | 사이드바 | guest/제한 역할 | 해당 항목 미노출 | ⬜ |
+
+---
+
+## C. 마스터 데이터 (관리 화면)
+
+| ID | 시나리오 | 페이지 | 계정 | Headed 포인트 | 자동화 |
+|----|----------|--------|------|---------------|--------|
+| C-01 | 프로덕트 목록·추가 모달 | `/products` | admin | 추가 → 등록 모달 → 취소 | ✅ `products.spec` |
+| C-02 | 프로덕트 등록 저장 | `/products` | admin | MSSQL/MySQL 타입 선택 | ⬜ |
+| C-03 | DB 접속 목록 | `/db-connections` | dba/admin | QA/LIVE 탭·종류 필터 | ⬜ |
+| C-04 | DB 접속 등록 | `/db-connections` | dba | 연결 테스트 → 저장 | ⬜ |
+| C-05 | DB 접속 연결 테스트 실패/성공 | 모달 | dba | 토스트·메시지 | ⬜ |
+| C-06 | 쿼리 템플릿 목록 | `/events` | GM/admin | 필터·상세 링크 | ⬜ |
+| C-07 | 쿼리 템플릿 CRUD | `/events` | `event_template.manage` | 생성·수정·삭제(참조 시 차단) | ⬜ |
+| C-08 | 역할 권한 편집 | `/roles` | admin | raw 권한 체크박스 | ⬜ |
+| C-09 | 사용자 목록·접속 표시 | `/users` | admin | 온라인 점·presence | ⬜ |
+| C-10 | 대시보드 카드 DnD/리사이즈 | `/` | admin | 위젯 이동·저장 | ⬜ |
+
+---
+
+## D. 이벤트 생성 (`/query`)
+
+| ID | 시나리오 | 담당 | 기대 | 자동화 |
+|----|----------|------|------|--------|
+| D-01 | 템플릿 선택·입력값·미리보기 | GM | 쿼리 미리보기 갱신 | ⬜ |
+| D-02 | 반영 범위 QA+LIVE | GM | `arrDeployScope` both | ⬜ |
+| D-03 | 반영 범위 LIVE만 | GM | QA 단계 스킵 워크플로 | ⬜ |
+| D-04 | 다중 쿼리 세트 생성 | GM | `arrExecutionTargets` N개 | ⬜ |
+| D-05 | 제출 → `event_created` | GM | 나의 대시보드에 행 생성 | ⬜ |
+| D-06 | DEV 환경 이벤트 생성 | GM | DEV 태그·컨펌 요청 플로우 | ⬜ |
+
+---
+
+## E. 9단계 워크플로 (핵심 — QA+LIVE 경로)
+
+상태 전이:  
+`event_created` → `confirm_requested` → `dba_confirmed` → `qa_requested` → `qa_deployed` → `qa_verified` → `live_requested` → `live_deployed` → `live_verified`
+
+### E2E 시나리오 (계정 바꿔 가며 1건 끝까지)
+
+| ID | 단계 | 상태 전이 | 화면 | 버튼/액션 | 담당 | 자동화 |
+|----|------|-----------|------|-----------|------|--------|
+| E-01 | 생성 완료 | `event_created` | 나의 대시보드 | (자동) | GM | ⬜ |
+| E-02 | 수정 | `event_created` | 나의 대시보드 | **수정** | GM `my_dashboard.edit` | ⬜ |
+| E-03 | 컨펌 요청 | `confirm_requested` | | **컨펌 요청** | GM `request_confirm` | ⬜ |
+| E-04 | DBA 컨펌 | `dba_confirmed` | | **컨펌** (초록) | DBA `confirm` | ⬜ |
+| E-05 | QA 실행 요청 | `qa_requested` | | **QA 쿼리 실행 요청** | GM `request_qa` | ⬜ |
+| E-06 | QA DB 실행 | `qa_deployed` | 실행 결과 모달 | **QA 쿼리 실행** → 성공 | DBA `execute_qa` | 🔀 🤖 `my-dashboard-dba` + 📋 §I·probe |
+| E-07 | QA 확인 | `qa_verified` | Popconfirm | **QA 확인** | GM `verify_qa` | ⬜ |
+| E-08 | LIVE 실행 요청 | `live_requested` | | **LIVE 쿼리 실행 요청** | GM `request_live` | ⬜ |
+| E-09 | LIVE DB 실행 | `live_deployed` | 실행 결과 모달 | **LIVE 쿼리 실행** → 성공 | DBA `execute_live` | ⬜ |
+| E-10 | LIVE 확인(완료) | `live_verified` | | **LIVE 확인** | GM `verify_live` | ⬜ |
+
+### LIVE 전용 경로 (`arrDeployScope: ['live']` 만)
+
+| ID | 단계 | 비고 |
+|----|------|------|
+| E-L1 | `dba_confirmed` 후 | **LIVE 쿼리 실행 요청** (QA 스킵 안내 문구) |
+| E-L2~L4 | `live_requested` → `live_deployed` → `live_verified` | E-09, E-10과 동일 |
+
+### 재요청
+
+| ID | 전이 | 버튼 | 자동화 |
+|----|------|------|--------|
+| E-R1 | `qa_verified` → `qa_requested` | QA 확인 팝업 내 **재요청** | ⬜ |
+| E-R2 | `live_verified` → `live_requested` | LIVE 확인 팝업 내 **재요청** | ⬜ |
+| E-R3 | 재미 모드 | 롱프레스 재요청 | ⬜ |
+
+### DBA 전용
+
+| ID | 시나리오 | 상태 | 자동화 |
+|----|----------|------|--------|
+| E-D1 | **쿼리 수정** | `confirm_requested` / `qa_requested` / `live_requested` | ⬜ |
+| E-D2 | 쿼리 수정 diff | 진행 이력 | `QueryEditDiffView` | ⬜ |
+
+### 기타 워크플로
+
+| ID | 시나리오 | 자동화 |
+|----|----------|--------|
+| E-X1 | **상세** 모달 — 기본정보·처리자·진행 이력 | 🤖 `my-dashboard-dba` · 🔶 probe |
+| E-X2 | **숨기기** / 완료·숨김 탭 | ⬜ |
+| E-X3 | **삭제(복원 불가)** 권한별 | ⬜ |
+| E-X4 | 반영 일시 전 실행 차단 | QA/LIVE 실행 시 검증 메시지 | ⬜ |
+| E-X5 | 영구 삭제된 인스턴스 | 상세만, 실행 버튼 없음 | ⬜ |
+
+---
+
+## F. 쿼리 실행·결과 UI (나의 대시보드 / 상세)
+
+| ID | 시나리오 | 전제 | Headed에서 볼 것 | 자동화 |
+|----|----------|------|------------------|--------|
+| F-01 | QA 실행 **성공** 모달 | SELECT 포함·DB 정상·반영일시 경과 | 실행 요약·**쿼리별 결과** Collapse | ⬜ |
+| F-02 | SELECT **결과 테이블** | 성공 + `arrResultRows` | **N행 조회** 태그·Ant Table | ⬜ (배포 후 신규 실행만) |
+| F-03 | DML **N건 처리** | INSERT/UPDATE/DELETE | 건수 태그, 테이블 없음 | ⬜ |
+| F-04 | QA 실행 **실패** 모달 | #41 DK 삭제 등 | 오류 내용·롤백 안내·시도 쿼리 | 🔶 probe |
+| F-05 | 실행 Progress 0→99% | 이전 성공 이력 있음 | 진행 오버레이 | ⬜ |
+| F-06 | 다중 세트 스트리밍 | 세트 2개 이상 | 세트별 진행·결과 그룹 | ⬜ |
+| F-07 | 진행 이력 실행 블록 | 과거 성공 로그 | 초록 박스·쿼리별 결과 | ⬜ |
+| F-08 | DEV 직접 실행 차단 | DEV 행 | QA/LIVE 실행 버튼 없음/차단 | ⬜ |
+
+---
+
+## G. 쿼리 템플릿·이벤트 페이지 (`/events`)
+
+| ID | 시나리오 | 자동화 |
+|----|----------|--------|
+| G-01 | 템플릿 목록·필터 | ⬜ |
+| G-02 | 인스턴스 링크 → QueryPage deep link | ⬜ |
+| G-03 | 템플릿 삭제 — 활성 인스턴스 참조 시 400 | ⬜ |
+
+---
+
+## H. 실시간·알림·설정
+
+| ID | 시나리오 | Headed 포인트 | 자동화 |
+|----|----------|---------------|--------|
+| H-01 | SSE — 다른 탭/계정으로 상태 변경 | 목록 자동 갱신 | ⬜ |
+| H-02 | 알림 벨 — 인앱 목록 | 배지·읽음 처리 | ⬜ |
+| H-03 | Web Push ON/OFF | 설정 서랍 | ⬜ |
+| H-04 | 사용자 presence | `/users` 온라인 점 | ⬜ |
+| H-05 | UI 설정 동기화 | 테마·재미 모드 재로그인 후 유지 | ⬜ |
+
+---
+
+## I. 권장 Headed 실행 순서 (풀 시나리오 1회)
+
+한 이벤트를 끝까지 보려면 **아래 순서**로 계정을 바꿔 실행합니다.  
+(테스트 전용 **SELECT만** 템플릿·인스턴스를 만들어 두면 F-02 확인이 쉽습니다.)
+
+```
+1. [A-07] 신규 가입 (또는 GM 계정 사용)
+2. [A-09] admin 승인 — 생략 가능 시 GM/DBA 기존 계정
+3. [D-05] GM — 이벤트 생성 (QA+LIVE, SELECT 1줄 포함 권장)
+4. [E-03] GM — 컨펌 요청
+5. [E-04] dba01 — 컨펌
+6. [E-05] GM — QA 쿼리 실행 요청
+7. [E-06] dba01 — QA 쿼리 실행 (headed: DQPM_HEADED=1 probe 또는 수동)
+8. [E-07] GM — QA 확인
+9. [E-08] GM — LIVE 쿼리 실행 요청
+10. [E-09] dba01 — LIVE 쿼리 실행
+11. [E-10] GM — LIVE 확인 → live_verified
+```
+
+**LIVE-only 템플릿**이면 6~8 생략 → E-L1부터.
+
+---
+
+## J. Playwright 구현 우선순위 (추가 spec 제안)
+
+| 우선순위 | 파일 제안 | 포함 ID |
+|----------|-----------|---------|
+| P0 | `e2e/workflow-qa-live.spec.ts` | E-01~E-10 (스텁 DB 또는 mock — 어려우면 @skip) |
+| P0 | `e2e/register-approve.spec.ts` | A-05~A-09 |
+| P1 | `e2e/my-dashboard-actions.spec.ts` | F-01~F-04, E-X1 |
+| P1 | `e2e/db-connection.spec.ts` | C-03~C-05 |
+| P2 | `e2e/query-create.spec.ts` | D-01~D-05 |
+| P2 | `e2e/events-template.spec.ts` | G-01~G-03 |
+
+태그 예: `@headed`, `@workflow`, `@smoke`
+
+```powershell
+npx playwright test --grep @smoke --headed
+```
+
+---
+
+## K. 현재 자동화 요약
+
+| 구분 | 개수 |
+|------|------|
+| 🤖 `@smoke` Playwright | ~22 케이스 (로그인·메뉴·가입·승인·DBA 대시보드) |
+| 🔀 `@workflow` | QA 실행 모달 (DB 결과 환경 의존) |
+| 🔶 Probe | headed 데모·스크린샷 |
+| 📋 `@manual` | 카탈로그 §I 풀 플로우·E-02~E-05·E-07~E-10 등 |
+
+---
+
+## 관련 파일
+
+- `front/e2e/README.md` — 실행 방법
+- `front/scripts/probe-select-result-ui.mjs` — `DQPM_HEADED=1`
+- `.cursor/rules/domain-event-instance.mdc` — 워크플로 규칙
+- `.cursor/rules/domain-user-registration.mdc` — 가입·승인

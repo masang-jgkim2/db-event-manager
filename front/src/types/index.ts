@@ -386,6 +386,9 @@ export interface IQueryPartResult {
   nIndex: number;
   strQuery: string;
   nAffectedRows: number;
+  arrResultColumns?: string[];
+  arrResultRows?: Record<string, string | number | boolean | null>[];
+  bResultTruncated?: boolean;
   /** 다중 실행 세트일 때만 */
   nSetIndex?: number;
   nSetTotal?: number;

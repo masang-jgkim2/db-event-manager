@@ -3,7 +3,8 @@ import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
 import { STR_ROLE_GUEST } from '../types/userStatus';
 
-const N_GUEST_ROLE_ID = 6;
+/** 레거시 시드와 맞춘 기본값 — n_id=6이 이미 다른 역할이면 MAX+1 사용 */
+const N_GUEST_ROLE_ID_PREFERRED = 6;
 
 const fnToMysqlDatetime6 = (v: string | Date): string => {
   const d = v instanceof Date ? v : new Date(v);
@@ -14,7 +15,8 @@ const fnToMysqlDatetime6 = (v: string | Date): string => {
 
 /** 가입·승인에 필요한 guest 역할·admin 승인 권한 보장 (MySQL·JSON) */
 export const fnEnsureOnboardingPrerequisites = async (): Promise<void> => {
-  const { arrRoles, fnFindRoleByCode, fnSaveRoles } = await import('../data/roles');
+  const { arrRoles, fnFindRoleByCode, fnFindRoleRowById, fnGetNextRoleId, fnSaveRoles } =
+    await import('../data/roles');
   const {
     fnSetPermissionsForRole,
     fnGetPermissionsByRoleId,
@@ -26,8 +28,12 @@ export const fnEnsureOnboardingPrerequisites = async (): Promise<void> => {
   let bChanged = false;
 
   if (!fnFindRoleByCode(STR_ROLE_GUEST)) {
+    let nGuestMemId = N_GUEST_ROLE_ID_PREFERRED;
+    if (fnFindRoleRowById(nGuestMemId)) {
+      nGuestMemId = fnGetNextRoleId();
+    }
     arrRoles.push({
-      nId: N_GUEST_ROLE_ID,
+      nId: nGuestMemId,
       strCode: STR_ROLE_GUEST,
       strDisplayName: '승인 대기(GUEST)',
       strDescription: '가입 시 부여(로그인은 승인 후)',
@@ -35,7 +41,7 @@ export const fnEnsureOnboardingPrerequisites = async (): Promise<void> => {
       dtCreatedAt: dtNow,
       dtUpdatedAt: dtNow,
     });
-    fnSetPermissionsForRole(N_GUEST_ROLE_ID, ['my_dashboard.view']);
+    fnSetPermissionsForRole(nGuestMemId, ['my_dashboard.view']);
     fnSaveRolePermissions();
     fnSaveRoles();
     bChanged = true;
@@ -60,13 +66,26 @@ export const fnEnsureOnboardingPrerequisites = async (): Promise<void> => {
     'SELECT n_id FROM roles WHERE str_code = ?',
     [STR_ROLE_GUEST],
   );
-  let nGuestRoleId = N_GUEST_ROLE_ID;
+  let nGuestRoleId = N_GUEST_ROLE_ID_PREFERRED;
   if (arrGuestRows.length === 0) {
+    const [arrId6] = await pool.query<RowDataPacket[]>(
+      'SELECT str_code FROM roles WHERE n_id = ?',
+      [N_GUEST_ROLE_ID_PREFERRED],
+    );
+    if (arrId6.length === 0) {
+      nGuestRoleId = N_GUEST_ROLE_ID_PREFERRED;
+    } else {
+      const [arrMax] = await pool.query<RowDataPacket[]>(
+        'SELECT COALESCE(MAX(n_id), 0) + 1 AS n_next FROM roles',
+      );
+      nGuestRoleId = Number(arrMax[0]?.n_next) || N_GUEST_ROLE_ID_PREFERRED + 1;
+      console.log(`[온보딩] guest n_id=${N_GUEST_ROLE_ID_PREFERRED} 점유 → ${nGuestRoleId} 사용`);
+    }
     await pool.execute(
       `INSERT INTO roles (n_id, str_code, str_display_name, str_description, b_is_system, dt_created_at, dt_updated_at)
        VALUES (?,?,?,?,?,?,?)`,
       [
-        N_GUEST_ROLE_ID,
+        nGuestRoleId,
         STR_ROLE_GUEST,
         '승인 대기(GUEST)',
         '가입 시 부여(로그인은 승인 후)',
@@ -76,9 +95,9 @@ export const fnEnsureOnboardingPrerequisites = async (): Promise<void> => {
       ],
     );
     bChanged = true;
-    console.log('[온보딩] guest 역할 MySQL INSERT');
+    console.log(`[온보딩] guest 역할 MySQL INSERT | n_id=${nGuestRoleId}`);
   } else {
-    nGuestRoleId = Number(arrGuestRows[0]?.n_id) || N_GUEST_ROLE_ID;
+    nGuestRoleId = Number(arrGuestRows[0]?.n_id) || N_GUEST_ROLE_ID_PREFERRED;
   }
   const [arrPermRows] = await pool.query<RowDataPacket[]>(
     'SELECT 1 FROM role_permissions WHERE n_role_id = ? AND str_permission = ?',
