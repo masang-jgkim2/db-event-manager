@@ -60,6 +60,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 ## 주요 파일 위치
 
+- **브라우저 E2E·headed 테스트 (에이전트)**: `.cursor/skills/browser-e2e/SKILL.md` — smoke·dba01·가입승인·QA 모달 등 채팅 지시 → Playwright 실행
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
 - **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`

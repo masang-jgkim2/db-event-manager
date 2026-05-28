@@ -33,8 +33,37 @@
 - `E2E_USER_ID` — 아이디
 - `E2E_PASSWORD` — 비밀번호
 
-## 포함된 시나리오
+## 자동 smoke (기능 수정 시 — 에이전트·로컬)
 
-- **auth.spec.ts**: 로그인 페이지 표시, 로그인 성공/실패, 로그아웃 클릭
-- **navigation.spec.ts**: 사이드 메뉴 클릭 → 대시보드/프로덕트/쿼리 템플릿/나의 대시보드/DB 접속/사용자/역할 권한 페이지 이동
-- **products.spec.ts**: 프로덕트 페이지에서 «추가» 버튼 클릭 → 모달 열기, «취소» 클릭 → 모달 닫기
+- **Cursor**: `browser-e2e-smoke` 규칙 — `front`·관련 API 수정 후 에이전트가 **헤드리스 smoke** 자동 실행.
+- **로컬 계정**: `front/.env.e2e.local` (`.env.e2e.local.example` 복사, gitignore 권장) — admin 비밀번호 등.
+- **한 줄 실행**: `npm run test:smoke` (`run-smoke.ps1` — health 확인 후 smoke).
+
+## 하이브리드 (자동 + 수동 체크리스트)
+
+| 용도 | 명령 |
+|------|------|
+| CI·배포 전 smoke | `npm run test:e2e:smoke` 또는 `npm run test:smoke` |
+| smoke + 창 보기 | `npm run test:e2e:smoke:headed` |
+| QA 실행 모달 등 | `npm run test:e2e:workflow` |
+| 전체 자동 | `npm run test:e2e` |
+| **수동** 풀 플로우 | `npm run test:e2e:ui` + [MANUAL-FULL-WORKFLOW.md](./MANUAL-FULL-WORKFLOW.md) |
+
+- **카탈로그(전체 ID)**: [HEADED-TEST-CATALOG.md](./HEADED-TEST-CATALOG.md)
+- **수동만**: [MANUAL-FULL-WORKFLOW.md](./MANUAL-FULL-WORKFLOW.md)
+
+### 계정 env
+
+- `E2E_USER_ID` / `E2E_PASSWORD` — admin (승인·메뉴)
+- `E2E_DBA_USER_ID` / `E2E_DBA_PASSWORD` — dba01 (나의 대시보드)
+
+## 포함된 시나리오 (Playwright)
+
+- **auth.spec.ts** — 로그인·로그아웃 (`@smoke`)
+- **navigation.spec.ts** — 메뉴 이동 (`@smoke`)
+- **products.spec.ts** — 프로덕트 모달 (`@smoke`)
+- **register-page.spec.ts** — 가입 화면 (`@smoke`)
+- **register-approve.spec.ts** — 가입→승인대기→admin 승인→로그인 (`@smoke`, serial)
+- **my-dashboard-dba.spec.ts** — DBA 대시보드·상세·QA 실행 모달 (`@smoke` / `@workflow`)
+- **navigation-dba01-non-ops.spec.ts** — dba01 이벤트·사용자 메뉴 (`@smoke`, 운영 제외)
+- **helpers/auth.ts** — 공통 로그인

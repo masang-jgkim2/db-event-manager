@@ -1,0 +1,40 @@
+---
+description: UI·API 라우트 변경 후 Playwright smoke 자동 실행(헤드리스). headed는 사용자가 명시할 때만.
+globs: front/src/**/*.{ts,tsx},front/e2e/**/*,backend/src/routes/**/*.ts,backend/src/controllers/**/*.ts
+alwaysApply: false
+---
+
+# 브라우저 smoke 자동 실행
+
+## 기본 정책
+
+| 상황 | 동작 |
+|------|------|
+| 프론트·관련 API **기능 추가/수정** 작업 **완료 직전** | 사용자 지시 없이 **`npm run test:e2e:smoke`** (헤드리스) 실행 |
+| 사용자가 **headed·브라우저 띄워** 등 명시 | `browser-e2e` Skill — `--headed` / probe `DQPM_HEADED=1` |
+| 질문만·문서만·주석만 | smoke 생략 |
+
+## 실행 절차
+
+1. `GET http://localhost:4000/api/health` — 실패 시 smoke 생략, «백엔드·프론트 기동 후 smoke 가능» 한 줄 안내.
+2. `cd front` 후 smoke:
+
+```powershell
+cd front
+# 선택: front/.env.e2e.local 에 E2E_USER_ID, E2E_PASSWORD 등 (gitignore)
+npm run test:e2e:smoke
+```
+
+3. 결과를 작업 마무리 메시지에 **3줄 이내** 포함: `통과 N/M`, 실패 시 spec 이름·`test-results` 경로.
+4. **새 화면·메뉴·주요 버튼**을 추가했으면 같은 PR/작업에서:
+   - `front/e2e/HEADED-TEST-CATALOG.md` ID 1줄 추가(🤖/📋)
+   - 재현 가능하면 `e2e/*.spec.ts`에 `@smoke` assert 추가
+
+## 계정
+
+- admin smoke: `E2E_USER_ID` / `E2E_PASSWORD` (미설정 시 `admin` / `admin123` — 실패 시 `.env.e2e.local` 안내)
+- dba: `E2E_DBA_USER_ID` / `E2E_DBA_PASSWORD` (기본 `dba01`)
+
+## smoke에 포함 (`@smoke`)
+
+`auth`, `navigation`, `products`, `register-*`, `my-dashboard-dba`, `navigation-dba01-non-ops` — `front/e2e/README.md` 참고.
