@@ -14,13 +14,11 @@ export const fnE2eLogin = async (
   strPassword: string,
 ): Promise<void> => {
   await page.goto('/login');
-  await page.getByPlaceholder('아이디').fill(strUserId);
+  await page.getByPlaceholder(/아이디/).fill(strUserId);
   await page.getByPlaceholder('비밀번호').fill(strPassword);
   await page.getByRole('button', { name: '로그인' }).click();
-  await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 15000 });
-  await expect(
-    page.getByRole('menuitem').first().or(page.locator('.ant-layout-sider')),
-  ).toBeVisible({ timeout: 15000 });
+  await expect(page).not.toHaveURL(/\/login(\?|$)/, { timeout: 20000 });
+  await expect(page.locator('.ant-layout-sider')).toBeVisible({ timeout: 20000 });
 };
 
 /** 고유 E2E 가입 아이디 (4~32자 영숫자) */

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { STR_DBA_PASS, STR_DBA_USER, fnE2eLogin } from './helpers/auth';
+import { fnClickSidebarMenu } from './helpers/menu';
 
 /** dba01 — 이벤트·사용자 메뉴 (운영 그룹 제외) */
 const arrMenus = [
@@ -19,10 +20,9 @@ test.describe('dba01 메뉴 (운영 제외)', { tag: '@smoke' }, () => {
 
   for (const item of arrMenus) {
     test(`B-dba ${item.strLabel} 페이지`, async ({ page }) => {
-      const menu = page.getByRole('menuitem', { name: item.strLabel, exact: true });
-      if (await menu.count()) {
-        await menu.first().click();
-      } else {
+      try {
+        await fnClickSidebarMenu(page, item.strLabel);
+      } catch {
         await page.goto(item.strPath);
       }
       await expect(item.fnCheck(page)).toBeVisible({ timeout: 10000 });

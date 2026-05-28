@@ -22,6 +22,16 @@ try {
   exit 2
 }
 
+if ($env:E2E_INIT_SECRET) {
+  try {
+    $body = @{ secret = $env:E2E_INIT_SECRET } | ConvertTo-Json
+    $null = Invoke-RestMethod -Uri 'http://localhost:4000/api/admin/init-e2e-passwords' -Method POST -Body $body -ContentType 'application/json'
+    Write-Host '[smoke] init-e2e-passwords 완료'
+  } catch {
+    Write-Host "[smoke] init-e2e-passwords 실패 (backend ALLOW_INIT_ADMIN=true, INIT_ADMIN_SECRET 일치 필요): $($_.Exception.Message)"
+  }
+}
+
 Push-Location $FrontDir
 npm run test:e2e:smoke
 $code = $LASTEXITCODE

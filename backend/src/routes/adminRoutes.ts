@@ -25,6 +25,33 @@ router.post('/init-admin-password', async (req: Request, res: Response) => {
   res.json({ bSuccess: true, strMessage: 'admin 비밀번호가 admin123으로 초기화되었습니다. 로그인 후 ALLOW_INIT_ADMIN을 해제하고 서버를 재시작하세요.' });
 });
 
+/** Playwright smoke용 — admin·dba01 비밀번호를 E2E 기본값으로 맞춤 (CI·로컬, ALLOW_INIT_ADMIN + INIT_ADMIN_SECRET) */
+router.post('/init-e2e-passwords', async (req: Request, res: Response) => {
+  const bAllow = process.env.ALLOW_INIT_ADMIN === 'true';
+  const strSecret = process.env.INIT_ADMIN_SECRET || '';
+  const strBodySecret = req.body?.secret;
+  if (!bAllow || !strSecret || strBodySecret !== strSecret) {
+    res.status(403).json({ bSuccess: false, strMessage: '비활성화되었거나 시크릿이 일치하지 않습니다.' });
+    return;
+  }
+  const arrTargets: { strUserId: string; strPassword: string }[] = [
+    { strUserId: 'admin', strPassword: 'admin123' },
+    { strUserId: 'dba01', strPassword: process.env.E2E_DBA_PASSWORD || 'dba01' },
+  ];
+  for (const { strUserId, strPassword } of arrTargets) {
+    const bDone = await fnResetPasswordByUserId(strUserId, strPassword);
+    if (!bDone) {
+      res.status(500).json({ bSuccess: false, strMessage: `${strUserId} 사용자를 찾을 수 없습니다.` });
+      return;
+    }
+  }
+  console.log('[admin] init-e2e-passwords | admin·dba01 E2E 비밀번호 동기화');
+  res.json({
+    bSuccess: true,
+    strMessage: 'E2E 계정 비밀번호가 초기화되었습니다. (admin→admin123, dba01→E2E_DBA_PASSWORD 또는 dba01)',
+  });
+});
+
 // 현재 메모리 데이터를 테스트 초기화 데이터(seed_test.json)로 저장 — system.save_test_seed 권한 필요
 router.post('/save-test-seed', fnAuthMiddleware, fnRequireAnyPermission('system.save_test_seed'), (_req: Request, res: Response) => {
   try {
