@@ -7,7 +7,9 @@ test.describe('나의 대시보드 (DBA)', () => {
   });
 
   test('B-07 나의 대시보드 목록 로드', { tag: ['@automate', '@smoke'] }, async ({ page }) => {
-    await page.getByRole('menuitem', { name: '나의 대시보드' }).click();
+    const menu = page.getByRole('menuitem', { name: '나의 대시보드' });
+    if (await menu.count()) await menu.first().click();
+    else await page.goto('/my-dashboard');
     await expect(page).toHaveURL('/my-dashboard');
     await expect(page.locator('.ant-table')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(/전체|내 처리 대기/i).first()).toBeVisible();

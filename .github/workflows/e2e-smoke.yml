@@ -1,0 +1,84 @@
+# PR·push 시 Playwright @smoke (JSON 메타 저장소, E2E 계정 자동 동기화)
+name: E2E smoke
+
+on:
+  pull_request:
+    paths:
+      - 'front/**'
+      - 'backend/**'
+      - '.github/workflows/e2e-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'front/**'
+      - 'backend/**'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      JWT_SECRET: ci-e2e-jwt-secret-min-32-chars-long
+      ALLOW_INIT_ADMIN: 'true'
+      INIT_ADMIN_SECRET: ci-e2e-init-secret
+      E2E_DBA_PASSWORD: dba01
+      # CI는 JSON 메타만 사용 (시크릿 DB 불필요)
+      DATA_STORE: json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            front/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix front
+          npx --prefix front playwright install chromium --with-deps
+
+      - name: Start backend
+        run: |
+          npm run dev --prefix backend &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4000/api/health && break
+            sleep 2
+          done
+          curl -sf http://localhost:4000/api/health
+
+      - name: Init E2E passwords
+        run: |
+          curl -sf -X POST http://localhost:4000/api/admin/init-e2e-passwords \
+            -H 'Content-Type: application/json' \
+            -d '{"secret":"ci-e2e-init-secret"}'
+
+      - name: Start frontend
+        run: |
+          npm run dev --prefix front -- --port 5173 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173/ && break
+            sleep 2
+          done
+          curl -sf http://localhost:5173/
+
+      - name: Run Playwright smoke
+        working-directory: front
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          E2E_USER_ID: admin
+          E2E_PASSWORD: admin123
+          E2E_DBA_USER_ID: dba01
+          E2E_DBA_PASSWORD: dba01
+        run: npm run test:e2e:smoke
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: front/playwright-report/
+          retention-days: 7

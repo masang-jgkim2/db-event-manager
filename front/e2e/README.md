@@ -27,7 +27,7 @@
 
 ## 테스트 계정
 
-기본값: `admin` / `admin123` (백엔드 시드와 동일)  
+기본값: `admin` / `admin123`, `dba01` / `dba01` (`users.json`·init-e2e-passwords와 맞출 것)  
 다른 계정으로 돌리려면 환경 변수로 지정:
 
 - `E2E_USER_ID` — 아이디
