@@ -2,7 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
-import { fnFindUserByStrUserId } from '../data/users';
+import { fnFindUserByStrUserId, fnReloadUsersFromMysql } from '../data/users';
+import { fnIsMysqlStore } from '../data/dataStore';
 import { fnPushActivityLog } from '../data/activityLogs';
 import { fnMarkUserOffline, fnTouchUserPresence } from '../services/userPresence';
 import { fnBuildAuthUserPayload } from '../services/authUserResponse';
@@ -29,6 +30,8 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ bSuccess: false, strMessage: '아이디와 비밀번호를 입력해주세요.' });
       return;
     }
+    // MySQL 저장소: 비밀번호 초기화·외부 스크립트 반영을 위해 로그인마다 사용자 재적재
+    if (fnIsMysqlStore()) await fnReloadUsersFromMysql();
     const objUser = fnFindUserByStrUserId(strUserIdTrim);
     if (!objUser) {
       console.log(`[로그인] 사용자 없음 | strUserId=${JSON.stringify(strUserIdTrim)}`);

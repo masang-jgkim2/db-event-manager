@@ -1,7 +1,7 @@
 /** 일회성: DQPM 로그인 → 나의 대시보드 → QA 실행 → SELECT 결과 캡처 */
 import { chromium } from '@playwright/test';
 
-const strBase = process.env.DQPM_BASE || 'http://112.185.196.8:5173';
+const strBase = process.env.DQPM_BASE || process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:5173';
 const strUser = process.env.DQPM_USER || 'dba01';
 const strPass = process.env.DQPM_PASS || 'dba01';
 

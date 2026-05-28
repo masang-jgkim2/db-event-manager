@@ -62,7 +62,9 @@ test.describe('회원가입 → 승인 대기 로그인 차단 → 관리자 승
     await modal.locator('.ant-select').click();
     await page
       .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-      .getByText('GM', { exact: true })
+      .locator('.ant-select-item-option')
+      .filter({ hasText: /^GM\b/ })
+      .first()
       .click();
     await modal.getByRole('button', { name: '승인', exact: true }).click();
     await expect(modal).toBeHidden({ timeout: 15000 });

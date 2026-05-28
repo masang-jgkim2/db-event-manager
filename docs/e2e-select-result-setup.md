@@ -10,6 +10,15 @@ QA 실행 성공 시 `arrResultRows`·`N행 조회` 태그를 headed/probe로 �
 | 쿼리 | 대상 DB에서 트랜잭션 없이 실행 가능한 단순 SELECT (예: `SELECT 1 AS n`) |
 | 담당 DBA | `dba01` (또는 E2E DBA 계정) |
 
+## 로컬 smoke 계정
+
+```powershell
+cd backend
+npm run reset-e2e-passwords   # admin→admin123, dba01→dba01 (MySQL)
+```
+
+MySQL 사용 시 로그인 API가 사용자를 재적재하므로 **서버 재시작 없이** 반영됩니다.
+
 ## 수동 준비 (로컬·QA)
 
 1. **쿼리 템플릿** — 프로덕트·DB 접속에 맞는 QA용 SELECT 1문만 등록.
