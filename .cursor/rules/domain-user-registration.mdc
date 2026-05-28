@@ -20,9 +20,9 @@ alwaysApply: false
 
 `index.ts` → `fnEnsureOnboardingPrerequisites`: `guest` 역할·`my_dashboard.view`, admin에 `user.approve`. MySQL에 guest 없으면 `n_id=6` INSERT — **이미 n_id=6이 다른 역할이면 FK/중복 오류** 가능(수동 정리).
 
-## 알려진 제한 (치명 아님)
+## 재가입
 
-- **거절 후 동일 아이디 재가입 불가** — `fnIsUserIdTaken`이 `rejected` 행도 점유.
+- **거절(rejected)** 계정은 동일 아이디·이메일로 재가입 가능 — 기존 행을 `pending_approval`로 갱신.
 - **이메일 인증 링크** 미구현 — UI는 «가입 완료» 안내만.
 - 승인 전 **JWT 발급 없음** — guest 임시 세션·`/pending-approval` 페이지 없음.
 

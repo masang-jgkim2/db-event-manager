@@ -55,3 +55,8 @@ export const fnIsLegacyMysqlServerVersion = (strVersion: string | null | undefin
 export const fnClearMysqlServerVersionCache = (): void => {
   mapVersionByHostPort.clear();
 };
+
+/** 접속 정보 변경·풀 무효화 시 해당 host:port 핸드셰이크 캐시 제거 */
+export const fnClearMysqlServerVersionCacheForHost = (strHost: string, nPort: number): void => {
+  mapVersionByHostPort.delete(`${strHost.trim()}:${nPort}`);
+};

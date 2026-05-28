@@ -17,17 +17,25 @@ import {
   REG_USER_ID,
   STR_EMAIL_DOMAIN,
   STR_ROLE_GUEST,
+  STR_USER_STATUS_ACTIVE,
   STR_USER_STATUS_PENDING_APPROVAL,
+  STR_USER_STATUS_REJECTED,
 } from '../types/userStatus';
 
+/** 거절(rejected) 계정은 동일 아이디·이메일로 재가입 가능 */
 const fnIsUserIdTaken = (strUserId: string): boolean => {
-  const strNorm = strUserId.trim().toLowerCase();
-  return Boolean(fnFindUserByStrUserId(strNorm) || fnFindUserByStrUserId(strUserId.trim()));
+  const strNorm = fnNormalizeUserId(strUserId);
+  const objRow = arrUsers.find((u) => u.strUserId === strNorm);
+  if (!objRow) return false;
+  return (objRow.strStatus ?? STR_USER_STATUS_ACTIVE) !== STR_USER_STATUS_REJECTED;
 };
 
 const fnIsEmailTaken = (strEmail: string): boolean => {
   const strNorm = strEmail.trim().toLowerCase();
-  return arrUsers.some((u) => (u.strEmail ?? '').toLowerCase() === strNorm);
+  return arrUsers.some((u) => {
+    if ((u.strEmail ?? '').toLowerCase() !== strNorm) return false;
+    return (u.strStatus ?? STR_USER_STATUS_ACTIVE) !== STR_USER_STATUS_REJECTED;
+  });
 };
 
 // GET /api/auth/check-register?strUserId=&strEmailLocal= — 가입 전 아이디·이메일 사용 가능 여부
@@ -108,17 +116,29 @@ export const fnRegister = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const nId = fnGetNextId();
     const strHash = await bcrypt.hash(strPassword, 10);
-    arrUsers.push({
-      nId,
-      strUserId: strUserIdNorm,
-      strPassword: strHash,
-      strDisplayName,
-      strEmail: strEmail.trim().toLowerCase(),
-      strStatus: STR_USER_STATUS_PENDING_APPROVAL,
-      dtCreatedAt: new Date().toISOString(),
-    });
+    const strEmailNorm = strEmail.trim().toLowerCase();
+    const objRejected = arrUsers.find(
+      (u) => u.strUserId === strUserIdNorm && (u.strStatus ?? '') === STR_USER_STATUS_REJECTED,
+    );
+    const nId = objRejected ? objRejected.nId : fnGetNextId();
+    if (objRejected) {
+      objRejected.strPassword = strHash;
+      objRejected.strDisplayName = strDisplayName;
+      objRejected.strEmail = strEmailNorm;
+      objRejected.strStatus = STR_USER_STATUS_PENDING_APPROVAL;
+      console.log(`[가입] rejected 재신청 | ${strUserIdNorm}`);
+    } else {
+      arrUsers.push({
+        nId,
+        strUserId: strUserIdNorm,
+        strPassword: strHash,
+        strDisplayName,
+        strEmail: strEmailNorm,
+        strStatus: STR_USER_STATUS_PENDING_APPROVAL,
+        dtCreatedAt: new Date().toISOString(),
+      });
+    }
     const arrRoleIds = fnGetRoleIdsByRoleCodes([STR_ROLE_GUEST]);
     if (arrRoleIds.length === 0) {
       console.error('[가입] guest 역할 없음 — 서버 온보딩 설정 필요');

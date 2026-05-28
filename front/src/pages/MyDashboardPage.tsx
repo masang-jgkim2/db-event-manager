@@ -2102,6 +2102,29 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 {bExecFail && objEx.strError && (
                                   <Text type="danger" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{objEx.strError}</Text>
                                 )}
+                                {!bExecFail && objEx.arrQueryResults && objEx.arrQueryResults.length > 0 && (
+                                  <Collapse
+                                    size="small"
+                                    bordered={false}
+                                    style={{ background: 'transparent', width: '100%' }}
+                                    items={fnBuildQueryResultCollapseItems(
+                                      objEx.arrQueryResults,
+                                      {
+                                        padding: '6px 10px',
+                                        background: token.colorFillTertiary,
+                                        borderRadius: token.borderRadiusSM,
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        color: token.colorText,
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-all',
+                                        maxHeight: 180,
+                                        overflow: 'auto',
+                                      },
+                                      fnCopy,
+                                    )}
+                                  />
+                                )}
                               </Space>
                             </div>
                             );

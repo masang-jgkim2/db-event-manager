@@ -7,7 +7,12 @@ import {
   fnGetMysqlGameConnection,
   fnNormalizeGameConn,
 } from './mysqlGameConnection';
-import { fnGetMysqlServerVersionCached, fnIsLegacyMysqlServerVersion } from './mysqlServerProbe';
+import { fnFindConnectionById } from '../data/dbConnections';
+import {
+  fnClearMysqlServerVersionCacheForHost,
+  fnGetMysqlServerVersionCached,
+  fnIsLegacyMysqlServerVersion,
+} from './mysqlServerProbe';
 
 // 커넥션 풀 캐시 (MSSQL)
 const objMssqlPools = new Map<number, mssql.ConnectionPool>();
@@ -77,6 +82,10 @@ const fnGetMssqlPool = async (objConn: IDbConnection): Promise<mssql.ConnectionP
 // =============================================
 
 export const fnInvalidatePool = async (nConnectionId: number): Promise<void> => {
+  const objConn = fnFindConnectionById(nConnectionId);
+  if (objConn) {
+    fnClearMysqlServerVersionCacheForHost(objConn.strHost, objConn.nPort);
+  }
   const objMssqlPool = objMssqlPools.get(nConnectionId);
   if (objMssqlPool) {
     try {

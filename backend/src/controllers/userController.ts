@@ -11,7 +11,7 @@ import {
   fnSaveUsers,
 } from '../data/users';
 import { fnGetMergedPermissions, fnGetRoleIdsByRoleCodes } from '../data/roles';
-import { fnRemoveUserRolesAndSave } from '../data/userRoles';
+import { fnGetRoleIdsByUserId, fnRemoveUserRolesAndSave } from '../data/userRoles';
 import { fnReassignUserReferencesInEventInstances } from '../services/userEventReassign';
 import { fnAwaitInFlightMysqlDocFlush, fnCancelAllPendingMysqlDocFlush } from '../db/mysqlDocPersist';
 import { fnGetUserLastSeenIso, fnIsUserOnlineByPresence, fnMarkUserOffline } from '../services/userPresence';
@@ -255,10 +255,20 @@ export const fnApproveUser = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ bSuccess: false, strMessage: '승인 대기 상태의 사용자만 승인할 수 있습니다.' });
       return;
     }
+    const strStatusBefore = objRow.strStatus ?? STR_USER_STATUS_ACTIVE;
+    const arrRoleIdsBefore = [...fnGetRoleIdsByUserId(nId)];
     objRow.strStatus = STR_USER_STATUS_ACTIVE;
     const arrRoleIds = fnGetRoleIdsByRoleCodes(arrRoleCodes);
     fnSaveUserAndRoles(nId, arrRoleIds);
-    await fnCommitUserDataStore();
+    try {
+      await fnCommitUserDataStore();
+    } catch (errPersist: unknown) {
+      objRow.strStatus = strStatusBefore;
+      fnSaveUserAndRoles(nId, arrRoleIdsBefore);
+      console.error('[사용자 승인] MySQL 반영 실패 |', errPersist);
+      res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+      return;
+    }
     console.log(`[사용자 승인] nId=${nId} | roles=${arrRoleCodes.join(',')}`);
     res.json({ bSuccess: true, strMessage: '가입이 승인되었습니다.' });
   } catch (error) {
@@ -280,9 +290,18 @@ export const fnRejectUser = async (req: Request, res: Response): Promise<void> =
       res.status(400).json({ bSuccess: false, strMessage: '승인 대기 상태의 사용자만 거절할 수 있습니다.' });
       return;
     }
+    const strStatusBefore = objRow.strStatus ?? STR_USER_STATUS_ACTIVE;
     objRow.strStatus = STR_USER_STATUS_REJECTED;
     fnSaveUsers();
-    await fnCommitUserDataStore();
+    try {
+      await fnCommitUserDataStore();
+    } catch (errPersist: unknown) {
+      objRow.strStatus = strStatusBefore;
+      fnSaveUsers();
+      console.error('[사용자 거절] MySQL 반영 실패 |', errPersist);
+      res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+      return;
+    }
     fnMarkUserOffline(nId);
     console.log(`[사용자 거절] nId=${nId}`);
     res.json({

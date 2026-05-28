@@ -9,6 +9,10 @@ node_modules/
 # Build
 dist/
 
+# Playwright E2E
+playwright-report/
+test-results/
+
 # mkcert dev TLS (front/.env VITE_DEV_SSL_*)
 certs/
 
