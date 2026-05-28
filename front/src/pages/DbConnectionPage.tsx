@@ -45,8 +45,9 @@ const OBJ_DB_COLOR: Record<string, string> = {
 };
 
 /** 연결 열 자동 점검: 간격·요청 타임아웃(무응답 시 빨간 점) */
-const N_MONITOR_INTERVAL_MS = 10_000;
+const N_MONITOR_INTERVAL_MS = 30_000;
 const N_MONITOR_TIMEOUT_MS = 12_000;
+const N_MONITOR_CHUNK_SIZE = 3;
 
 type TMonitorStatus = 'unknown' | 'pending' | 'ok' | 'fail';
 
@@ -235,21 +236,26 @@ const DbConnectionPage = () => {
 
     const fnPoll = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      const arr = arrConnectionsRef.current;
-      if (arr.length === 0) return;
+      const arrAll = arrConnectionsRef.current;
+      if (arrAll.length === 0) return;
+      const arrActive = arrAll.filter((c) => c.bIsActive);
+      const arrTargets = arrActive.length > 0 ? arrActive : arrAll;
 
-      await Promise.all(
-        arr.map(async (c) => {
-          const result = (await fnApiTestDbConnection(c.nId, {
-            nTimeoutMs: N_MONITOR_TIMEOUT_MS,
-          })) as ITestResult;
-          const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
-          setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
-          if (objSelectedRowRef.current?.nId === c.nId) {
-            setObjTestResult({ nId: c.nId, result });
-          }
-        }),
-      );
+      for (let nOff = 0; nOff < arrTargets.length; nOff += N_MONITOR_CHUNK_SIZE) {
+        const arrChunk = arrTargets.slice(nOff, nOff + N_MONITOR_CHUNK_SIZE);
+        await Promise.all(
+          arrChunk.map(async (c) => {
+            const result = (await fnApiTestDbConnection(c.nId, {
+              nTimeoutMs: N_MONITOR_TIMEOUT_MS,
+            })) as ITestResult;
+            const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
+            setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
+            if (objSelectedRowRef.current?.nId === c.nId) {
+              setObjTestResult({ nId: c.nId, result });
+            }
+          }),
+        );
+      }
     };
 
     void fnPoll();

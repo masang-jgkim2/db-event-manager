@@ -114,6 +114,10 @@ export interface IQueryPartResult {
   nIndex: number;       // 해당 세트 안에서 몇 번째 쿼리 (0부터)
   strQuery: string;     // 실행된 개별 쿼리
   nAffectedRows: number;
+  /** SELECT 등 결과셋(최대 100행) */
+  arrResultColumns?: string[];
+  arrResultRows?: Record<string, string | number | boolean | null>[];
+  bResultTruncated?: boolean;
   /** 다중 실행 세트(arrExecutionTargets 2개 이상)일 때만 — 세트 순번(1-based) */
   nSetIndex?: number;
   nSetTotal?: number;
