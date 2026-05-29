@@ -10,7 +10,7 @@ alwaysApply: false
 
 - **토큰**: `front/src/styles/design-system.ts` — `OBJ_CURSOR_NEUTRAL`, `fnBuildDesignSystem`, Ant `ConfigProvider` (`App.tsx`)
 - **셸**: `MainLayout.tsx` + `objShell` (사이드바·헤더 동일 톤, 44px 헤더, 흰 `dqpm-layout-content-panel`, `data-dqpm-theme` 스크롤바)
-- **primary 기본**: `#5B6ADF` (`useThemeStore` «Cursor»). 페이지 색은 **`theme.useToken()` / `useDesignSystem().objColor`** — hex 하드코드 지양
+- **primary 기본**: `#434343` (`STR_PRIMARY_CURSOR_NEUTRAL`, UI «Cursor»). 브랜드 오렌지 `#f54e00`는 «브랜드 오렌지» 프리셋. 페이지 색은 **`theme.useToken()`** — hex 하드코드 지양
 - **검토표**: `docs/CURSOR-UI-AUDIT.md` (컴포넌트별 ✅/🟡/🔴, 3단계 우선순위)
 - **CRUD 목록 골격**: `CrudPageShell` — 헤더 DbConnection, `Card`+테이블 User (`nodeToolbar`+`CrudListToolbar`)
 - **목록 툴바**: `CrudListToolbar` — `nodeLeft` **Segmented**(사용자·나의 대시보드), `nodeRight`(Select·버튼). 활동은 `Form` 필터(별 패턴)

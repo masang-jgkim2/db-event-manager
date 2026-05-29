@@ -91,6 +91,25 @@ html[data-dqpm-theme='light'] {
 
 .dqpm-crud-page-card > .ant-card-body {
   padding: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* flex 레이아웃 안에서 테이블이 패널 밖으로 밀리지 않게 */
+.dqpm-layout-content-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* AppTable — 좁은 브라우저에서 카드 안 가로 스크롤 */
+.dqpm-app-table-root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dqpm-app-table-root .ant-table-wrapper {
+  max-width: 100%;
 }
 
 /* 목록 툴바 — Segmented (사용자·나의 대시보드) */

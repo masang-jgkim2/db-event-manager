@@ -1026,7 +1026,7 @@ const MyDashboardPage = () => {
   };
 
   // 클립보드 복사
-  const fnCopy = (str: string) => {
+  const fnCopy = (str: string | undefined) => {
     fnCopyTextToClipboard(str, messageApi);
   };
 

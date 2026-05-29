@@ -3,7 +3,6 @@ import { Drawer, Segmented, Slider, Switch, Typography, Divider, Button, Tooltip
 import {
   SunOutlined,
   MoonOutlined,
-  DesktopOutlined,
   ReloadOutlined,
   CheckOutlined,
 } from '@ant-design/icons';
@@ -33,8 +32,6 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const nFontSize = useThemeStore((s) => s.nFontSize);
   const bCompact = useThemeStore((s) => s.bCompact);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
-
   const fnSetMode = useThemeStore((s) => s.fnSetMode);
   const fnSetFontSize = useThemeStore((s) => s.fnSetFontSize);
   const fnSetCompact = useThemeStore((s) => s.fnSetCompact);
@@ -43,7 +40,7 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const fnSetFunMode = useThemeStore((s) => s.fnSetFunMode);
   const fnReset = useThemeStore((s) => s.fnReset);
 
-  const bIsDark = fnGetIsDark();
+  const bIsDark = strMode === 'dark';
   const bWebPushSupported = fnIsWebPushSupported();
   const strWebPushUnsupportedReason = fnGetWebPushUnsupportedReason();
   const [bWebPushEnabled, setBWebPushEnabled] = useState(() => fnIsWebPushEnabledPref());
@@ -119,9 +116,8 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
         value={strMode}
         onChange={fnSetMode}
         options={[
-          { value: 'light',  icon: <SunOutlined />,     label: '라이트' },
-          { value: 'dark',   icon: <MoonOutlined />,    label: '다크' },
-          { value: 'system', icon: <DesktopOutlined />, label: '시스템' },
+          { value: 'light', icon: <SunOutlined />, label: '라이트' },
+          { value: 'dark', icon: <MoonOutlined />, label: '다크' },
         ]}
       />
 

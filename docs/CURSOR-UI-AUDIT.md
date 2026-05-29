@@ -11,7 +11,7 @@
 | Container | `#FFFFFF` | `#252526` |
 | Sider | `#F7F7F7` | `#252526` |
 | Border | `#E5E5E5` / `#E8E8E8` | `rgba(255,255,255,0.08–0.10)` |
-| Primary 기본 | `#5B6ADF` (UI 설정 «Cursor») | 동일 |
+| Primary 기본 | `#434343` (Cursor 앱 중성, UI «Cursor») | `#f54e00`는 «브랜드 오렌지» 선택 |
 
 ## 컴포넌트·페이지 매트릭스
 
@@ -83,3 +83,7 @@
 cd front; npm run dev
 # UI 설정 → Cursor primary / 다크 모드 / 기본값 초기화
 ```
+
+## 일지
+
+- **2026-05-29** 상세 목록·보류 항목: [`WORKLOG-2026-05-29.md`](./WORKLOG-2026-05-29.md)
