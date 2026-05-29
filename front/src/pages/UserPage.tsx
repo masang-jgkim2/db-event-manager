@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Button, Modal, Form, Input, Select, Space, Tag,
-  Popconfirm, message, Card, Tooltip, Tabs, Badge,
+  Popconfirm, message, Tooltip, Segmented,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -9,6 +9,8 @@ import {
   CheckCircleOutlined, CloseCircleOutlined, MailOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
+import CrudListToolbar from '../components/CrudListToolbar';
 import ApproveUserModal, { type IPendingUserRow } from '../components/ApproveUserModal';
 import {
   fnApiGetUsers, fnApiCreateUser, fnApiUpdateUser,
@@ -24,7 +26,7 @@ import {
 import type { IRole, TPermission } from '../types';
 import { REG_USER_ID, ruleUserIdCharsOnly } from '../utils/userIdInput';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const fnFormatLastAccess = (strIso?: string | null): string => {
   if (!strIso) return '-';
@@ -464,45 +466,41 @@ const UserPage = () => {
         `}
       </style>
       {contextHolder}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-start', gap: 12 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>사용자</Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            관리자 직접 추가는 즉시 활성(active)이며, 회원 가입은 승인 대기(pending_approval) 후 역할을 부여합니다.
-          </Text>
-        </div>
-        {bCanCreate && (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              form.resetFields();
-              setBModalOpen(true);
-            }}
-          >
-            새로운 사용자
-          </Button>
+      <CrudPageShell
+        strTitle="사용자"
+        nodeDescription="관리자 직접 추가는 즉시 활성(active)이며, 회원 가입은 승인 대기(pending_approval) 후 역할을 부여합니다."
+        nodeExtra={
+          bCanCreate ? (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                form.resetFields();
+                setBModalOpen(true);
+              }}
+            >
+              새로운 사용자
+            </Button>
+          ) : undefined
+        }
+        nodeToolbar={(
+          <CrudListToolbar
+            nodeLeft={(
+              <Segmented
+                value={strListTab}
+                onChange={(v) => setStrListTab(v as TUserListTab)}
+                options={[
+                  { label: '전체', value: 'all' },
+                  {
+                    label: `승인 대기 (${strListTab === 'pending_approval' ? arrUsers.length : nPendingCount})`,
+                    value: 'pending_approval',
+                  },
+                ]}
+              />
+            )}
+          />
         )}
-      </div>
-
-      <Tabs
-        activeKey={strListTab}
-        onChange={(k) => setStrListTab(k as TUserListTab)}
-        style={{ marginBottom: 12 }}
-        items={[
-          { key: 'all', label: '전체' },
-          {
-            key: 'pending_approval',
-            label: (
-              <Badge count={strListTab === 'pending_approval' ? arrUsers.length : nPendingCount} size="small" offset={[8, 0]}>
-                승인 대기
-              </Badge>
-            ),
-          },
-        ]}
-      />
-
-      <Card>
+      >
         <AppTable
           strTableId={`users-${strListTab}`}
           dataSource={arrUsers}
@@ -510,7 +508,7 @@ const UserPage = () => {
           loading={bLoading}
           strEmptyText={strListTab === 'pending_approval' ? '승인 대기 중인 사용자가 없습니다.' : '등록된 사용자가 없습니다.'}
         />
-      </Card>
+      </CrudPageShell>
 
       <Modal
         title="새로운 사용자 추가"

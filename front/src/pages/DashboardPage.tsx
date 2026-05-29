@@ -18,6 +18,7 @@ import {
 import type { DragEndEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import AppTable from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
 import {
   DashboardCardContent,
   DashboardCardTitleDragProvider,
@@ -49,7 +50,7 @@ import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const ARR_EVENT_STATUSES: TEventStatus[] = [
   'event_created', 'confirm_requested', 'dba_confirmed',
@@ -1448,22 +1449,6 @@ const DashboardPage = () => {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>대시보드</Title>
-          <Text type="secondary" style={{ display: 'block', marginTop: 4 }}>
-            카드는 <b>고정 좌표</b>에 배치됩니다. 추가 시 먼저 영역(위치·크기)을 정한 뒤 속성을 채웁니다.
-            일반 카드는 호버 후 아무 곳이나 드래그로 이동, <b>맞춤 카드는 제목 줄만</b> 드래그해 이동합니다.
-            가로로 가까운 카드가 있으면 놓을 때 <b>위·아래 줄이 스냅</b>되어 맞춰 붙습니다(약 {N_SNAP_Y_TOLERANCE}px).
-            모서리로 크기 조절, (−)로 제외. 맞춤 카드는 테이블·접기 펼침에 맞춰 높이가 맞춰지며, <b>가로로 겹치고 앵커 하단 아래에 이어지는 카드</b>는 펼치면 밀리고 접으면 다시 위로 쌓입니다.
-            카드 영역은 서로 <b>겹치지 않게</b> 자동으로 밀려 납니다(최소 여백 {N_CARD_MIN_GAP}px).
-          </Text>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={fnOpenAddCard}>
-          카드 추가
-        </Button>
-      </div>
-
       <Modal
         title="카드 추가"
         open={bAddCardOpen}
@@ -2062,6 +2047,17 @@ const DashboardPage = () => {
         )}
       </Modal>
 
+      <CrudPageShell
+        strTitle="대시보드"
+        nodeIcon={<DashboardOutlined />}
+        nodeDescription={`고정 좌표 캔버스에 카드를 배치합니다. 「카드 추가」는 영역(위치·크기)을 먼저 정한 뒤 속성을 채우고, 일반 카드는 호버·드래그·모서리 크기 조절·(−) 제외, 맞춤 카드는 제목 줄만 이동·펼침·테이블에 맞춘 높이·앵커 아래 밀림/쌓임을 지원합니다. 가까운 카드는 놓을 때 위·아래로 스냅(약 ${N_SNAP_Y_TOLERANCE}px)되며, 겹치는 영역은 최소 ${N_CARD_MIN_GAP}px 간격으로 자동 정리됩니다.`}
+        nodeExtra={(
+          <Button type="primary" icon={<PlusOutlined />} onClick={fnOpenAddCard}>
+            카드 추가
+          </Button>
+        )}
+        bWrapChildrenInCard={false}
+      >
       <DndContext sensors={sensors} onDragEnd={fnHandleDragEnd}>
         <div
           style={{
@@ -2379,6 +2375,7 @@ const DashboardPage = () => {
           })}
         </div>
       </DndContext>
+      </CrudPageShell>
     </>
   );
 };

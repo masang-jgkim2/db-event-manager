@@ -10,7 +10,6 @@ body {
     Arial, 'Noto Sans KR', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* 테마 전환 시 배경/글자색 부드럽게 */
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -18,7 +17,7 @@ body {
   min-height: 100vh;
 }
 
-/* Ant Design Layout 전환 애니메이션 보조 */
+/* Ant Design Layout 전환 */
 .ant-layout,
 .ant-layout-sider,
 .ant-layout-header,
@@ -27,7 +26,101 @@ body {
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-/* 완료·숨김 이벤트 행 — 눈에 잘 안 띄도록 흐리게 */
+/* ── Cursor 스타일 셸 ───────────────────────────────────── */
+
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item,
+.dqpm-layout-sider .ant-menu-inline .ant-menu-submenu-title {
+  margin-inline: 0;
+  width: 100%;
+  border-radius: 6px;
+}
+
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected {
+  font-weight: 500;
+}
+
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title {
+  padding-inline: 10px;
+  font-weight: 600;
+}
+
+.dqpm-layout-header .ant-btn,
+.dqpm-header-icon-btn {
+  border-radius: 6px;
+}
+
+.dqpm-header-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
+html[data-dqpm-theme='dark'] .dqpm-header-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* 메인 패널 안 카드·테이블 — 그림자 제거, 보더만 */
+.dqpm-layout-content-panel .ant-card {
+  box-shadow: none !important;
+  border: 1px solid var(--dqpm-border, #e5e5e5);
+}
+
+html[data-dqpm-theme='dark'] {
+  --dqpm-border: rgba(255, 255, 255, 0.1);
+  --dqpm-scrollbar-thumb: rgba(255, 255, 255, 0.28);
+  --dqpm-scrollbar-track: transparent;
+}
+
+html[data-dqpm-theme='light'] {
+  --dqpm-border: #e5e5e5;
+  --dqpm-scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --dqpm-scrollbar-track: transparent;
+}
+
+.dqpm-layout-content-panel .ant-card-bordered {
+  border-color: var(--dqpm-border);
+}
+
+/* primary 버튼 플랫 */
+.dqpm-layout-content-panel .ant-btn-primary {
+  box-shadow: none;
+}
+
+/* CRUD 목록 — DbConnection 헤더 + User Card */
+.dqpm-crud-page-card.ant-card {
+  box-shadow: none !important;
+}
+
+.dqpm-crud-page-card > .ant-card-body {
+  padding: 16px;
+}
+
+/* 목록 툴바 — Segmented (사용자·나의 대시보드) */
+.dqpm-crud-list-toolbar .ant-segmented {
+  flex-shrink: 0;
+}
+
+/* 스크롤바 — Cursor 얇은 스타일 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dqpm-scrollbar-thumb) var(--dqpm-scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--dqpm-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--dqpm-scrollbar-thumb);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* 완료·숨김 이벤트 행 */
 .row-completed-dim td {
   opacity: 0.45;
 }

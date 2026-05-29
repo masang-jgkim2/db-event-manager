@@ -185,6 +185,14 @@ const App = () => {
 
   const bIsDark = fnGetIsDark();
 
+  // CSS 변수·스크롤바 등 전역 테마 동기화
+  useEffect(() => {
+    document.documentElement.setAttribute('data-dqpm-theme', bIsDark ? 'dark' : 'light');
+    return () => {
+      document.documentElement.removeAttribute('data-dqpm-theme');
+    };
+  }, [bIsDark]);
+
   // 디자인 시스템 전체 토큰 생성
   const objDs = fnBuildDesignSystem(strPrimaryColor, bIsDark, nFontSize);
 

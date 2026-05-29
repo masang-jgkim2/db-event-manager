@@ -10,20 +10,19 @@ import {
   Tag,
   Popconfirm,
   message,
-  Card,
   Row,
   Col,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
-import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import CrudPageShell from '../components/CrudPageShell';
+import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IProduct, IService, TPermission } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
 
-const { Title } = Typography;
 const { TextArea } = Input;
 
 const ProductPage = () => {
@@ -164,23 +163,25 @@ const ProductPage = () => {
   return (
     <>
       {contextHolder}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>프로덕트 관리</Title>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 프로덕트
-          </Button>
-        )}
-      </div>
-
-      <Card>
+      <CrudPageShell
+        strTitle="프로덕트 관리"
+        nodeIcon={<AppstoreOutlined />}
+        nodeDescription="게임·서비스 단위 프로덕트와 국내/해외 서비스 약어를 등록합니다. DB 종류(MSSQL/MySQL)는 프로덕트 단위로 고정됩니다."
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 프로덕트
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="products"
           dataSource={arrProducts}
           columns={arrColumns}
           strEmptyText="등록된 프로덕트가 없습니다."
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 프로덕트 추가/수정 모달 */}
       <Modal

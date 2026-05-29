@@ -255,10 +255,13 @@ const MainLayout = () => {
     ? 'none'
     : 'width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1)';
 
+  const { objShell } = ds;
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      {/* 사이드바 */}
+    <Layout style={{ minHeight: '100vh', background: objShell.strContentBg }}>
+      {/* 사이드바 — Cursor 스타일 밝은/다크 네비 */}
       <Sider
+        className="dqpm-layout-sider"
         trigger={null}
         collapsible
         collapsed={bCollapsed}
@@ -272,18 +275,21 @@ const MainLayout = () => {
           bottom: 0,
           zIndex: 10,
           background: ds.objSider.strBackground,
+          borderRight: `1px solid ${objShell.strSiderBorder}`,
           transition: strSiderTransition,
         }}
       >
         {/* 로고 영역 */}
         <div
+          className="dqpm-layout-sider-logo"
           style={{
-            height: 64,
+            height: objShell.nLogoHeight,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             background: ds.objSider.strLogoBackground,
             borderBottom: `1px solid ${ds.objSider.strLogoBorder}`,
+            flexShrink: 0,
           }}
         >
           <DatabaseOutlined style={{ fontSize: ds.objTypo.nLg + 8, color: token.colorPrimary }} />
@@ -307,12 +313,19 @@ const MainLayout = () => {
 
         {/* 네비게이션 메뉴 */}
         <Menu
-          theme="dark"
+          theme={objShell.strMenuTheme}
           mode="inline"
           selectedKeys={[location.pathname]}
           items={arrMenuItems}
           onClick={fnHandleMenuClick}
-          style={{ borderRight: 0, marginTop: 8 }}
+          style={{
+            borderRight: 0,
+            marginTop: 4,
+            marginBottom: 8,
+            paddingLeft: 6,
+            paddingRight: 6,
+            background: 'transparent',
+          }}
         />
 
         {/* 드래그 리사이즈 핸들 — collapsed 시 숨김 */}
@@ -341,6 +354,7 @@ const MainLayout = () => {
       <Layout
         style={{
           marginLeft: bCollapsed ? 80 : nSiderWidth,
+          background: objShell.strContentBg,
           transition: bIsResizingSider
             ? 'none'
             : 'margin-left 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -348,8 +362,11 @@ const MainLayout = () => {
       >
         {/* 상단 헤더 */}
         <Header
+          className="dqpm-layout-header"
           style={{
-            padding: `0 ${ds.objSpacing.nXl}px`,
+            height: objShell.nHeaderHeight,
+            lineHeight: `${objShell.nHeaderHeight}px`,
+            padding: `0 ${ds.objSpacing.nLg}px`,
             background: ds.objHeader.strBackground,
             display: 'flex',
             alignItems: 'center',
@@ -363,9 +380,10 @@ const MainLayout = () => {
           {/* 사이드바 접기/펼치기 버튼 */}
           <Button
             type="text"
+            className="dqpm-header-icon-btn"
             icon={bCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setBCollapsed(!bCollapsed)}
-            style={{ fontSize: 18 }}
+            style={{ fontSize: 16, color: token.colorTextSecondary }}
           />
 
           {/* 실시간 연결 상태 + 사용자 정보 + 설정 버튼 */}
@@ -376,8 +394,8 @@ const MainLayout = () => {
             >
               <WifiOutlined
                 style={{
-                  fontSize: 16,
-                  color: bConnected ? '#52c41a' : token.colorTextDisabled,
+                  fontSize: 15,
+                  color: bConnected ? token.colorSuccess : token.colorTextDisabled,
                 }}
               />
             </Badge>
@@ -395,17 +413,37 @@ const MainLayout = () => {
             {/* UI 설정 버튼 */}
             <Button
               type="text"
+              className="dqpm-header-icon-btn"
               icon={<SettingOutlined />}
               onClick={() => setBSettingsOpen(true)}
               title="UI 설정"
-              style={{ fontSize: 16 }}
+              style={{ fontSize: 16, color: token.colorTextSecondary }}
             />
           </Space>
         </Header>
 
-        {/* 콘텐츠 영역 */}
-        <Content style={{ margin: ds.objSpacing.nXl, minHeight: 280 }}>
-          <Outlet />
+        {/* 콘텐츠 영역 — 회색 레이아웃 위 흰 패널(Cursor 에디터 영역 톤) */}
+        <Content
+          className="dqpm-layout-content"
+          style={{
+            margin: ds.objSpacing.nMd,
+            padding: 0,
+            minHeight: 280,
+            background: 'transparent',
+          }}
+        >
+          <div
+            className="dqpm-layout-content-panel"
+            style={{
+              minHeight: `calc(100vh - ${objShell.nHeaderHeight}px - ${ds.objSpacing.nMd * 2}px)`,
+              padding: ds.objSpacing.nLg,
+              background: objShell.strContentPanelBg,
+              border: `1px solid ${objShell.strContentPanelBorder}`,
+              borderRadius: objShell.nContentPanelRadius,
+            }}
+          >
+            <Outlet />
+          </div>
         </Content>
       </Layout>
 
