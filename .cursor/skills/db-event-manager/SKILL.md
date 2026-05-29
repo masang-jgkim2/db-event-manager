@@ -70,7 +70,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
 - **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
-- **Cursor 스타일 UI**: `front/src/styles/design-system.ts` (`OBJ_CURSOR_NEUTRAL`, `objShell`), `MainLayout.tsx`, `useThemeStore` (primary «Cursor» `#5B6ADF`) · 컴포넌트 검토 `docs/CURSOR-UI-AUDIT.md`
+- **Cursor 스타일 UI**: `design-system.ts` (`OBJ_CURSOR_NEUTRAL`, `objShell`), `MainLayout.tsx` · primary 기본 `STR_PRIMARY_CURSOR_NEUTRAL` `#434343` («Cursor»), 브랜드 `#f54e00` («브랜드 오렌지») · `docs/CURSOR-UI-AUDIT.md`
 
 ```
 backend/src/

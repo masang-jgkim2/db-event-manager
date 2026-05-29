@@ -371,6 +371,29 @@ function fnGetColKey<T>(col: TableColumnType<T>, nIdx: number): string {
   return String(col.key ?? (col.dataIndex as string) ?? `__col_${nIdx}`);
 }
 
+/** width 미지정 컬럼 추정 너비 — 좁은 뷰포트에서 가로 스크롤 합산용 */
+const N_DEFAULT_COL_WIDTH = 140;
+const N_MIN_TABLE_SCROLL_X = 480;
+
+function fnComputeScrollX<T>(
+  arrCols: TableColumnType<T>[] | undefined,
+  objWidths: Record<string, number>,
+  expandable?: TableProps<T>['expandable'],
+): number {
+  if (!arrCols?.length) return N_MIN_TABLE_SCROLL_X;
+  let nSum = 0;
+  if (expandable) {
+    const nExpandW = expandable.columnWidth;
+    nSum += typeof nExpandW === 'number' ? nExpandW : 48;
+  }
+  arrCols.forEach((col, nIdx) => {
+    const strKey = fnGetColKey(col, nIdx);
+    const w = objWidths[strKey] ?? col.width;
+    nSum += typeof w === 'number' ? w : N_DEFAULT_COL_WIDTH;
+  });
+  return Math.max(nSum, N_MIN_TABLE_SCROLL_X);
+}
+
 // ─── AppTable Props ──────────────────────────────────────────
 interface IAppTableProps<T> extends TableProps<T> {
   strEmptyText?: string;
@@ -391,6 +414,8 @@ function AppTable<T extends object>({
   columns,
   bDraggableColumns = true,
   strTableId,
+  scroll: scrollProp,
+  expandable,
   ...restProps
 }: IAppTableProps<T>) {
   const { token } = antdTheme.useToken();
@@ -488,6 +513,18 @@ function AppTable<T extends object>({
           .filter(Boolean) as TableColumnType<T>[]
       : (columns as TableColumnType<T>[] | undefined);
 
+  const arrColsForLayout = arrSortedColumns ?? (columns as TableColumnType<T>[] | undefined);
+
+  const nScrollX = useMemo(
+    () => fnComputeScrollX(arrColsForLayout, objWidths, expandable),
+    [arrColsForLayout, objWidths, expandable],
+  );
+
+  const objScroll = useMemo((): TableProps<T>['scroll'] => {
+    const mixX = scrollProp?.x ?? nScrollX;
+    return { ...scrollProp, x: mixX };
+  }, [scrollProp, nScrollX]);
+
   const objPagination =
     pagination === false
       ? false
@@ -508,9 +545,11 @@ function AppTable<T extends object>({
     <Table<T>
       size={size}
       rowKey={rowKey}
-      columns={arrSortedColumns}
+      columns={arrColsForLayout}
       pagination={objPagination}
       locale={{ emptyText: strEmptyText, ...locale }}
+      scroll={objScroll}
+      tableLayout={objScroll?.x ? 'fixed' : undefined}
       style={{
         transition: 'background-color 0.2s ease',
         borderRadius: token.borderRadius,
@@ -525,13 +564,14 @@ function AppTable<T extends object>({
             }
           : undefined
       }
+      expandable={expandable}
       {...restProps}
     />
   );
 
-  if (!bDraggableColumns) return objTable;
-
-  const tableContent = (
+  const nodeTableInner = !bDraggableColumns ? (
+    objTable
+  ) : (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={fnOnDragEnd}>
       <SortableContext items={arrOrder} strategy={horizontalListSortingStrategy}>
         {objTable}
@@ -539,11 +579,13 @@ function AppTable<T extends object>({
     </DndContext>
   );
 
-  return (
+  const nodeTable = (
     <ResizeContext.Provider value={ctxResizeValue!}>
-      {tableContent}
+      {nodeTableInner}
     </ResizeContext.Provider>
   );
+
+  return <div className="dqpm-app-table-root">{nodeTable}</div>;
 }
 
 export default AppTable;

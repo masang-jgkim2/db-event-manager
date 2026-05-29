@@ -31,6 +31,7 @@ import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
@@ -78,6 +79,12 @@ const QueryPage = () => {
   const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
   const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
   const user = useAuthStore((s) => s.user);
+  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const bIsDark = useThemeStore((s) => s.strMode === 'dark');
+  const strSubmitGradient = useMemo(() => {
+    const arrP = fnGenPalette(strPrimaryColor, bIsDark);
+    return `linear-gradient(135deg, ${strPrimaryColor} 0%, ${arrP[7]} 100%)`;
+  }, [strPrimaryColor, bIsDark]);
 
   // 페이지 진입 시 한 effect에서 목록 로드(StrictMode 이중 effect 시에도 스토어 dedupe로 GET 완화)
   useEffect(() => {
@@ -745,7 +752,7 @@ const QueryPage = () => {
                   block
                   size="large"
                   style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: strSubmitGradient,
                     border: 'none',
                     height: 48,
                     fontWeight: 600,

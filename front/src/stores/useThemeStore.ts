@@ -4,11 +4,19 @@ import { generate } from '@ant-design/colors';
 import { useAuthStore } from './useAuthStore';
 
 // 테마 모드 타입
-export type TThemeMode = 'light' | 'dark' | 'system';
+export type TThemeMode = 'light' | 'dark';
+
+/** Cursor 앱 UI 톤 — 중성 primary (Automations 등 회색·잉크 강조) */
+export const STR_PRIMARY_CURSOR_NEUTRAL = '#434343';
+
+/** Cursor 마케팅 브랜드 오렌지 (CTA·cursor.com) — 선택용 */
+export const STR_PRIMARY_CURSOR_BRAND = '#f54e00';
 
 // 포인트 컬러 팔레트 정의
 export const ARR_PRIMARY_COLORS = [
-  { strLabel: 'Cursor', strValue: '#5B6ADF' },
+  { strLabel: 'Cursor', strValue: STR_PRIMARY_CURSOR_NEUTRAL },
+  { strLabel: '브랜드 오렌지', strValue: STR_PRIMARY_CURSOR_BRAND },
+  { strLabel: '인디고', strValue: '#5B6ADF' },
   { strLabel: '퍼플 블루', strValue: '#667eea' },
   { strLabel: '블루', strValue: '#1677ff' },
   { strLabel: '사이언', strValue: '#13c2c2' },
@@ -25,8 +33,12 @@ export function fnGenPalette(strPrimary: string, bDark = false): string[] {
   return generate(strPrimary, bDark ? { theme: 'dark', backgroundColor: '#141414' } : undefined);
 }
 
-// 사이드바 너비 한계: 최소 160px, 최대 화면 너비의 1/3 (동적)
+// 사이드바 너비 — Ant Design collapsed 폭(80)과 맞춤
+export const N_SIDER_COLLAPSED_WIDTH = 80;
+/** 드래그·펼침 시 최소 너비(이하로 당기면 아이콘 모드) */
 export const N_SIDER_MIN = 160;
+/** 더블클릭·초기화 시 기본 너비 */
+export const N_SIDER_DEFAULT = 200;
 export function fnSiderMax(): number {
   return Math.floor(window.innerWidth / 3);
 }
@@ -34,10 +46,10 @@ export function fnSiderMax(): number {
 // 기본값
 const OBJ_DEFAULT = {
   strMode: 'light' as TThemeMode,
-  nSiderWidth: 200,
+  nSiderWidth: N_SIDER_DEFAULT,
   nFontSize: 14,
   bCompact: false,
-  strPrimaryColor: '#5B6ADF',
+  strPrimaryColor: STR_PRIMARY_CURSOR_NEUTRAL,
   bFunMode: false, // 재미 모드: 재요청 버튼을 롱프레스로 전환
 };
 
@@ -49,12 +61,12 @@ interface IThemeStore {
   strPrimaryColor: string;
   bFunMode: boolean;
 
-  // 시스템 다크모드 여부 (system 모드일 때 OS 설정 반영)
   fnGetIsDark: () => boolean;
 
   // 액션
   fnSetMode: (strMode: TThemeMode) => void;
-  fnSetSiderWidth: (nWidth: number) => void;
+  /** bClampMin=false: 드래그로 펼칠 때 80~160 사이도 따라감(릴리스 시 보정) */
+  fnSetSiderWidth: (nWidth: number, bClampMin?: boolean) => void;
   fnSetFontSize: (nSize: number) => void;
   fnSetCompact: (bCompact: boolean) => void;
   fnSetPrimaryColor: (strColor: string) => void;
@@ -91,17 +103,13 @@ export const useThemeStore = create<IThemeStore>()(
     (set, get) => ({
       ...OBJ_DEFAULT,
 
-      // OS 다크모드 감지 포함한 실제 다크 여부
-      fnGetIsDark: () => {
-        const { strMode } = get();
-        if (strMode === 'dark') return true;
-        if (strMode === 'light') return false;
-        // system: OS prefers-color-scheme 감지
-        return window.matchMedia('(prefers-color-scheme: dark)').matches;
-      },
+      fnGetIsDark: () => get().strMode === 'dark',
 
       fnSetMode: (strMode) => set({ strMode }),
-      fnSetSiderWidth: (nWidth) => set({ nSiderWidth: Math.min(fnSiderMax(), Math.max(N_SIDER_MIN, nWidth)) }),
+      fnSetSiderWidth: (nWidth, bClampMin = true) => {
+        const nLo = bClampMin ? N_SIDER_MIN : N_SIDER_COLLAPSED_WIDTH;
+        set({ nSiderWidth: Math.min(fnSiderMax(), Math.max(nLo, nWidth)) });
+      },
       fnSetFontSize: (nSize) => set({ nFontSize: Math.min(25, Math.max(12, nSize)) }),
       fnSetCompact: (bCompact) => set({ bCompact }),
       fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
@@ -112,6 +120,15 @@ export const useThemeStore = create<IThemeStore>()(
       name: 'db-event-manager-theme',
       storage: createJSONStorage(() => themePersistStorage),
       skipHydration: true,
+      version: 1,
+      migrate: (persisted) => {
+        const obj = persisted as { strMode?: string };
+        if (obj.strMode === 'system') {
+          const bDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          return { ...obj, strMode: bDark ? 'dark' : 'light' };
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         strMode: state.strMode,
         nSiderWidth: state.nSiderWidth,

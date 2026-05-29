@@ -1,12 +1,10 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge, theme as antdTheme } from 'antd';
+import { Layout, Menu, Typography, Button, Avatar, Dropdown, Space, Tag, Badge, Tooltip, theme as antdTheme } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
   CalendarOutlined,
   CodeOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   LogoutOutlined,
   UserOutlined,
   DatabaseOutlined,
@@ -20,7 +18,13 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEventStream } from '../hooks/useEventStream';
-import { useThemeStore, N_SIDER_MIN } from '../stores/useThemeStore';
+import {
+  useThemeStore,
+  N_SIDER_MIN,
+  N_SIDER_DEFAULT,
+  N_SIDER_COLLAPSED_WIDTH,
+  fnSiderMax,
+} from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
 import NotificationBellDropdown from './NotificationBellDropdown';
@@ -93,21 +97,37 @@ const MainLayout = () => {
   const nDragStartX = useRef(0);
   const nDragStartWidth = useRef(nSiderWidth);
   const bCollapsedRef = useRef(bCollapsed);
+  /** 접힌 상태에서 드래그로 펼치는 중 — nRaw<최소 시 즉시 재접힘 방지 */
+  const bExpandDragRef = useRef(false);
   bCollapsedRef.current = bCollapsed;
 
   const fnOnDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     bDragging.current = true;
+    bExpandDragRef.current = false;
     setBIsResizingSider(true);
     nDragStartX.current = e.clientX;
-    nDragStartWidth.current = nSiderWidth;
+    nDragStartWidth.current = bCollapsedRef.current ? N_SIDER_COLLAPSED_WIDTH : nSiderWidth;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
   }, [nSiderWidth]);
 
+  const fnOnResizeHandleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (bCollapsedRef.current) {
+        setBCollapsed(false);
+      }
+      fnSetSiderWidth(N_SIDER_DEFAULT);
+    },
+    [fnSetSiderWidth],
+  );
+
   useEffect(() => {
     const fnEndDragChrome = () => {
       bDragging.current = false;
+      bExpandDragRef.current = false;
       setBIsResizingSider(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
@@ -115,24 +135,54 @@ const MainLayout = () => {
 
     const fnOnMouseMove = (e: MouseEvent) => {
       if (!bDragging.current) return;
-      if (bCollapsedRef.current) return;
 
       const nDelta = e.clientX - nDragStartX.current;
-      const nRaw = nDragStartWidth.current + nDelta;
 
-      // 최소 폭보다 더 줄이려 하면 접기 버튼과 동일하게 아이콘만 표시
-      if (nRaw < N_SIDER_MIN) {
+      // 접힌(아이콘) 상태에서 오른쪽으로 당기면 펼침 — 80px부터 커서를 따라감(160으로 점프하지 않음)
+      if (bCollapsedRef.current) {
+        if (nDelta <= 2) return;
+        setBCollapsed(false);
+        bCollapsedRef.current = false;
+        bExpandDragRef.current = true;
+        nDragStartWidth.current = N_SIDER_COLLAPSED_WIDTH;
+        nDragStartX.current = e.clientX;
+      }
+
+      const nRaw = nDragStartWidth.current + (e.clientX - nDragStartX.current);
+
+      if (bExpandDragRef.current) {
+        const nNext = Math.min(fnSiderMax(), Math.max(N_SIDER_COLLAPSED_WIDTH, nRaw));
+        fnSetSiderWidth(nNext, false);
+        return;
+      }
+
+      const nClamped = Math.min(fnSiderMax(), Math.max(N_SIDER_COLLAPSED_WIDTH, nRaw));
+
+      // 최소 폭보다 더 줄이려 하면 아이콘만 표시
+      if (nClamped < N_SIDER_MIN) {
         setBCollapsed(true);
+        bCollapsedRef.current = true;
         fnEndDragChrome();
         return;
       }
 
-      fnSetSiderWidth(nRaw);
+      fnSetSiderWidth(nClamped, true);
     };
 
     const fnOnMouseUp = () => {
       if (!bDragging.current) return;
+      const bWasExpandDrag = bExpandDragRef.current;
       fnEndDragChrome();
+      if (!bWasExpandDrag) return;
+      const nW = useThemeStore.getState().nSiderWidth;
+      if (nW < N_SIDER_COLLAPSED_WIDTH + 28) {
+        setBCollapsed(true);
+        bCollapsedRef.current = true;
+        return;
+      }
+      if (nW < N_SIDER_MIN) {
+        fnSetSiderWidth(N_SIDER_MIN, true);
+      }
     };
 
     window.addEventListener('mousemove', fnOnMouseMove);
@@ -246,6 +296,17 @@ const MainLayout = () => {
   const strFirstRole = arrRoles[0] || '';
   const objRole = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
 
+  const strHeaderDisplayName = user?.strDisplayName?.trim() ?? '';
+  const bShowRoleTag =
+    Boolean(objRole.strText.trim()) &&
+    objRole.strText.trim().toLowerCase() !== strHeaderDisplayName.toLowerCase();
+  const strUserHoverHint =
+    !bShowRoleTag && user?.strUserId && user.strUserId.toLowerCase() !== strHeaderDisplayName.toLowerCase()
+      ? `아이디: ${user.strUserId}${objRole.strText ? ` · 역할: ${objRole.strText}` : ''}`
+      : !bShowRoleTag && objRole.strText
+        ? `역할: ${objRole.strText}`
+        : undefined;
+
   // 사이드 폭에 맞춰 로고 글자 크기 조절(좁게 당기면 자동으로 줄어듦)
   const nLogoFontPx = bCollapsed
     ? ds.objSider.nLogoFontSize
@@ -265,6 +326,7 @@ const MainLayout = () => {
         trigger={null}
         collapsible
         collapsed={bCollapsed}
+        collapsedWidth={N_SIDER_COLLAPSED_WIDTH}
         width={nSiderWidth}
         style={{
           overflow: 'auto',
@@ -328,32 +390,34 @@ const MainLayout = () => {
           }}
         />
 
-        {/* 드래그 리사이즈 핸들 — collapsed 시 숨김 */}
-        {!bCollapsed && (
-          <div
-            onMouseDown={fnOnDragStart}
-            style={{
-              position: 'absolute',
-              top: 0,
-              right: 0,
-              width: 5,
-              height: '100%',
-              cursor: 'col-resize',
-              zIndex: 20,
-              // hover 시 primary 컬러로 하이라이트
-              background: 'transparent',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = ds.objSider.strResizeHandle; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
-          />
-        )}
+        {/* 드래그 리사이즈 — 당김: 아이콘 모드 / 펼침: 너비 조절 · 더블클릭: 기본 200px */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="드래그: 너비 조절(왼쪽으로 당기면 아이콘만) · 더블클릭: 기본 너비"
+          onMouseDown={fnOnDragStart}
+          onDoubleClick={fnOnResizeHandleDoubleClick}
+          className="dqpm-sider-resize-handle"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 5,
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 20,
+            background: 'transparent',
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = ds.objSider.strResizeHandle; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
+        />
       </Sider>
 
       {/* 메인 영역 — 드래그 중에는 transition 제거로 버벅임 방지 */}
       <Layout
         style={{
-          marginLeft: bCollapsed ? 80 : nSiderWidth,
+          marginLeft: bCollapsed ? N_SIDER_COLLAPSED_WIDTH : nSiderWidth,
           background: objShell.strContentBg,
           transition: bIsResizingSider
             ? 'none'
@@ -377,17 +441,8 @@ const MainLayout = () => {
             zIndex: 9,
           }}
         >
-          {/* 사이드바 접기/펼치기 버튼 */}
-          <Button
-            type="text"
-            className="dqpm-header-icon-btn"
-            icon={bCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setBCollapsed(!bCollapsed)}
-            style={{ fontSize: 16, color: token.colorTextSecondary }}
-          />
-
           {/* 실시간 연결 상태 + 사용자 정보 + 설정 버튼 */}
-          <Space>
+          <Space style={{ marginLeft: 'auto' }}>
             <Badge
               status={bConnected ? 'success' : 'default'}
               title={bConnected ? '실시간 연결됨' : '연결 중...'}
@@ -401,14 +456,16 @@ const MainLayout = () => {
             </Badge>
             <NotificationBellDropdown />
             <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
-              <Space style={{ cursor: 'pointer' }}>
-                <Avatar
-                  icon={<UserOutlined />}
-                  style={{ background: objRole.strColor }}
-                />
-                <Text strong>{user?.strDisplayName}</Text>
-                <Tag color={objRole.strColor}>{objRole.strText}</Tag>
-              </Space>
+              <Tooltip title={strUserHoverHint}>
+                <Space style={{ cursor: 'pointer' }}>
+                  <Avatar
+                    icon={<UserOutlined />}
+                    style={{ background: objRole.strColor }}
+                  />
+                  <Text strong>{strHeaderDisplayName || user?.strUserId}</Text>
+                  {bShowRoleTag ? <Tag color={objRole.strColor}>{objRole.strText}</Tag> : null}
+                </Space>
+              </Tooltip>
             </Dropdown>
             {/* UI 설정 버튼 */}
             <Button

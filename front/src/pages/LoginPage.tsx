@@ -20,9 +20,8 @@ const LoginPage = () => {
   const fnLogin = useAuthStore((state) => state.fnLogin);
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = theme.useToken();
-  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const bIsDark = fnGetIsDark();
+  const bIsDark = useThemeStore((s) => s.strMode === 'dark');
   // 테마별 페이지 배경 — 본문·카드는 token으로 대비 확보
   const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
 

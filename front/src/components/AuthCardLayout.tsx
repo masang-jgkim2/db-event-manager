@@ -25,9 +25,8 @@ const AuthCardLayout = ({
   nWidth = 420,
 }: IAuthCardLayoutProps) => {
   const { token } = theme.useToken();
-  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const bIsDark = fnGetIsDark();
+  const bIsDark = useThemeStore((s) => s.strMode === 'dark');
   const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
 
   return (

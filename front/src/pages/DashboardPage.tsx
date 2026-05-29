@@ -40,6 +40,7 @@ import {
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore } from '../stores/useThemeStore';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { fnApiGetInstances } from '../api/eventInstanceApi';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
@@ -904,6 +905,7 @@ const DashboardPage = () => {
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
+  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
 
   const fnHas = (strPerm: TPermission) => arrPermissions.includes(strPerm);
 
@@ -2088,7 +2090,7 @@ const DashboardPage = () => {
               >
                 {strId === 'product' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(AppstoreOutlined, '#667eea')}
+                    icon={fnDashboardCardIcon(AppstoreOutlined, strPrimaryColor)}
                     title="프로덕트"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{arrProducts.length}개</span>
