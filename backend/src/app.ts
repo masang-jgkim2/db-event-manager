@@ -21,6 +21,7 @@ import adminRoutes from './routes/adminRoutes';
 import activityRoutes from './routes/activityRoutes';
 import pushRoutes from './routes/pushRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import e2eRoutes from './routes/e2eRoutes';
 import { fnIsInAppNotificationsPersisted } from './data/userNotifications';
 import { fnActivityLogMiddleware } from './middleware/activityLogMiddleware';
 
@@ -81,6 +82,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/e2e', e2eRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({

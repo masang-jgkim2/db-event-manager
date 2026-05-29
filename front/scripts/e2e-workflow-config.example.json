@@ -1,0 +1,14 @@
+{
+  "strApiBase": "http://localhost:4000/api",
+  "strTemplateLabel": "E2E_SELECT_워크플로",
+  "nEventTemplateId": 0,
+  "nProductId": 1,
+  "strProductName": "출조낚시왕",
+  "strServiceAbbr": "FH",
+  "strServiceRegion": "국내",
+  "nDbConnectionIdQa": 1,
+  "dtQaDeployDate": "2026-01-01T00:00:00.000Z",
+  "dtLiveDeployDate": "2026-01-01T00:00:00.000Z",
+  "arrDeployScope": ["qa", "live"],
+  "strEventNamePrefix": "[E2E]"
+}

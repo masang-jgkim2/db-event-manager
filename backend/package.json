@@ -13,6 +13,10 @@
     "test:mysql-meta": "jest --runInBand --testPathPattern=mysqlMetaSync",
     "reset-password": "node scripts/reset-password.js",
     "reset-e2e-passwords": "tsx src/scripts/resetE2ePasswords.ts",
+    "seed-demo-select-rows": "tsx src/scripts/seedDemoSelectResultRows.ts",
+    "seed-e2e-workflow": "tsx src/scripts/seedE2eWorkflowTemplate.ts",
+    "seed-e2e-workflow:fresh": "tsx src/scripts/seedE2eWorkflowTemplate.ts --create-instance",
+    "seed-e2e-result-ui": "tsx src/scripts/seedE2eResultUiDemo.ts",
     "import-json-to-mysql": "tsx src/scripts/importJsonToMysql.ts",
     "repair-users-from-json": "tsx src/scripts/repairUsersFromJson.ts",
     "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts"

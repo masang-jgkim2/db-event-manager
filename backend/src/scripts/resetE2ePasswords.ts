@@ -8,6 +8,8 @@ import { fnResetPasswordByUserId } from '../data/users';
 const arrTargets: { strUserId: string; strPassword: string }[] = [
   { strUserId: 'admin', strPassword: 'admin123' },
   { strUserId: 'dba01', strPassword: process.env.E2E_DBA_PASSWORD || 'dba01' },
+  { strUserId: 'gm01', strPassword: process.env.E2E_GM_PASSWORD || 'gm01' },
+  { strUserId: 'gm02', strPassword: process.env.E2E_GM2_PASSWORD || process.env.E2E_GM02_PASSWORD || 'gm02' },
 ];
 
 const fnMain = async (): Promise<void> => {
