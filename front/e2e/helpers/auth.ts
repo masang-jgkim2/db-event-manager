@@ -8,6 +8,14 @@ export const STR_ADMIN_PASS = process.env.E2E_PASSWORD || 'admin123';
 export const STR_DBA_USER = process.env.E2E_DBA_USER_ID || 'dba01';
 export const STR_DBA_PASS = process.env.E2E_DBA_PASSWORD || 'dba01';
 
+/** E2E GM (이벤트 생성·컨펌 요청·확인) */
+export const STR_GM_USER = process.env.E2E_GM_USER_ID || 'gm01';
+export const STR_GM_PASS = process.env.E2E_GM_PASSWORD || 'gm01';
+
+/** E2E GM2 (선택 — 계정 없으면 풀·생성자 검증에서 제외) */
+export const STR_GM2_USER = process.env.E2E_GM2_USER_ID || process.env.E2E_GM02_USER_ID || 'gm02';
+export const STR_GM2_PASS = process.env.E2E_GM2_PASSWORD || process.env.E2E_GM02_PASSWORD || 'gm02';
+
 export const fnE2eLogin = async (
   page: Page,
   strUserId: string,

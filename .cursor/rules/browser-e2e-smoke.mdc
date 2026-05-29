@@ -37,4 +37,10 @@ npm run test:e2e:smoke
 
 ## smoke에 포함 (`@smoke`)
 
-`auth`, `navigation`, `products`, `register-*`, `my-dashboard-dba`, `navigation-dba01-non-ops` — `front/e2e/README.md` 참고.
+`auth`, `navigation`, `products`, `register-*`, `my-dashboard-dba`, `navigation-dba01-non-ops`, **`navigation-gm01`** — `front/e2e/README.md` 참고.
+
+## workflow (기능 수정 시 선택)
+
+- **§I gm01+dba01** 상태 전이·나의 대시보드 행 버튼 변경 시: 시드 후 `npm run test:e2e:workflow` (헤드리스, `workflow-qa-live.spec.ts`만, serial).
+- 사전: `cd backend && npm run reset-e2e-passwords && npm run seed-e2e-workflow:fresh`
+- gm01 계정: `gm01`/`gm01` (`helpers/auth.ts` — `STR_GM_USER`/`STR_GM_PASS`)

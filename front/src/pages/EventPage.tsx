@@ -10,7 +10,6 @@ import {
   Tag,
   Popconfirm,
   message,
-  Card,
   Row,
   Col,
   Tabs,
@@ -20,7 +19,10 @@ import {
 import type { FormListFieldData } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
-import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined, CalendarOutlined,
+} from '@ant-design/icons';
+import CrudPageShell from '../components/CrudPageShell';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -35,7 +37,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 // 이벤트 종류 색상
@@ -595,19 +597,18 @@ const EventPage = () => {
   return (
     <>
       {contextHolder}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>쿼리 템플릿</Title>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 쿼리 템플릿
-          </Button>
-        )}
-      </div>
-
-      <Card>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-          행을 클릭하면 아래에 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 다시 클릭하면 접습니다.
-        </Text>
+      <CrudPageShell
+        strTitle="쿼리 템플릿"
+        nodeIcon={<CalendarOutlined />}
+        nodeDescription="행을 클릭하면 아래에 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 활성 이벤트가 남아 있으면 템플릿 삭제 전 대시보드에서 정리해야 합니다."
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 쿼리 템플릿
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="event_templates"
           rowKey="nId"
@@ -639,7 +640,7 @@ const EventPage = () => {
             style: { cursor: 'pointer' },
           })}
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 이벤트 추가/수정 모달 */}
       <Modal

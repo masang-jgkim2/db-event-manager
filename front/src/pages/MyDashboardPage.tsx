@@ -14,9 +14,11 @@ import {
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
-  TableOutlined, AppstoreOutlined, LinkOutlined,
+  TableOutlined, AppstoreOutlined, LinkOutlined, DashboardOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
+import CrudListToolbar from '../components/CrudListToolbar';
 import QueryEditDiffView from '../components/QueryEditDiffView';
 import QueryResultSetTable from '../components/QueryResultSetTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
@@ -38,7 +40,7 @@ import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 // 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
@@ -1650,81 +1652,84 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     <>
       {contextHolder}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <Title level={4} style={{ margin: 0 }}>나의 대시보드</Title>
-        {bFunMode && (
-          <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
-            <Tag color="orange">재미 모드</Tag>
-          </Tooltip>
-        )}
-      </div>
-
-      {/* 통계 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
-        </Col>
-      </Row>
-
-      {/* 탭 + 필터 + 목록 */}
-      <Card>
-        {/* 탭 — 전체 이벤트 / 완료 이벤트 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Segmented
-            options={[
-              { label: `진행중 (${arrActiveInstances.length})`, value: 'active' },
-              { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
-            ]}
-            value={strDashTab}
-            onChange={(v) => {
-              const strNext = v as 'active' | 'completed';
-              setStrDashTab(strNext);
-              // 다른 탭에 없는 행이 선택된 채로 남으면 테이블·탭 상태가 꼬일 수 있음
-              if (strNext === 'active' && objSelectedRow
-                && !arrActiveInstances.some((e) => e.nId === objSelectedRow.nId)) {
-                setObjSelectedRow(null);
-                setObjDetail(null);
-                setBDetailOpen(false);
-              }
-              if (strNext === 'completed' && objSelectedRow
-                && !arrCompletedInstances.some((e) => e.nId === objSelectedRow.nId)) {
-                setObjSelectedRow(null);
-                setObjDetail(null);
-                setBDetailOpen(false);
-              }
-            }}
-          />
-          <Space size="middle">
-            {/* 진행중 탭일 때 필터 — 드롭다운 */}
-            {strDashTab === 'active' && (
-              <Select
-                options={arrFilterOptions}
-                value={strFilter}
-                onChange={(v) => fnSetFilter(v ?? 'all')}
-                style={{ minWidth: 180 }}
-                size="middle"
+      <CrudPageShell
+        strTitle="나의 대시보드"
+        nodeIcon={<DashboardOutlined />}
+        nodeDescription="행을 클릭하면 워크플로 단계가 펼쳐집니다. 진행중·완료·숨김은 아래에서 전환하고, 진행중일 때만 필터·보기 방식을 바꿀 수 있습니다."
+        nodeExtra={
+          bFunMode ? (
+            <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
+              <Tag color="orange">재미 모드</Tag>
+            </Tooltip>
+          ) : undefined
+        }
+        nodeToolbar={(
+          <CrudListToolbar
+            nodeLeft={(
+              <Segmented
+                options={[
+                  { label: `진행중 (${arrActiveInstances.length})`, value: 'active' },
+                  { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
+                ]}
+                value={strDashTab}
+                onChange={(v) => {
+                  const strNext = v as 'active' | 'completed';
+                  setStrDashTab(strNext);
+                  if (strNext === 'active' && objSelectedRow
+                    && !arrActiveInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                    setObjSelectedRow(null);
+                    setObjDetail(null);
+                    setBDetailOpen(false);
+                  }
+                  if (strNext === 'completed' && objSelectedRow
+                    && !arrCompletedInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                    setObjSelectedRow(null);
+                    setObjDetail(null);
+                    setBDetailOpen(false);
+                  }
+                }}
               />
             )}
-            {/* 테이블 / 카드 보기 전환 — 드롭다운 우측 (전환 중 연타 무시) */}
-            <Tooltip title={strViewTransition !== 'idle' ? '전환 중…' : strViewMode === 'table' ? '카드 보기' : '테이블(행) 보기'}>
-              <Button
-                type={strViewMode === 'table' ? 'default' : 'primary'}
-                icon={strViewMode === 'table' ? <AppstoreOutlined /> : <TableOutlined />}
-                onClick={fnToggleViewMode}
-                disabled={strViewTransition !== 'idle'}
-              />
-            </Tooltip>
-          </Space>
-        </div>
+            nodeRight={(
+              <Space size="middle">
+                {strDashTab === 'active' && (
+                  <Select
+                    options={arrFilterOptions}
+                    value={strFilter}
+                    onChange={(v) => fnSetFilter(v ?? 'all')}
+                    style={{ minWidth: 180 }}
+                    size="middle"
+                  />
+                )}
+                <Tooltip title={strViewTransition !== 'idle' ? '전환 중…' : strViewMode === 'table' ? '카드 보기' : '테이블(행) 보기'}>
+                  <Button
+                    type={strViewMode === 'table' ? 'default' : 'primary'}
+                    icon={strViewMode === 'table' ? <AppstoreOutlined /> : <TableOutlined />}
+                    onClick={fnToggleViewMode}
+                    disabled={strViewTransition !== 'idle'}
+                  />
+                </Tooltip>
+              </Space>
+            )}
+          />
+        )}
+        nodeAboveCard={(
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={12} sm={6}>
+              <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
+            </Col>
+            <Col xs={12} sm={6}>
+              <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+            </Col>
+          </Row>
+        )}
+      >
         <div
           ref={viewContentRef}
           style={{
@@ -1903,7 +1908,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         </div>
         )}
         </div>
-      </Card>
+      </CrudPageShell>
 
       {/* 상세 모달 — 각 섹션 접기/펼치기, 입력값·쿼리는 기본 접힘 */}
       <Modal title="이벤트 상세" open={bDetailOpen} onCancel={() => setBDetailOpen(false)} footer={null} width={780}>

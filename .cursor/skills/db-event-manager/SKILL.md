@@ -60,11 +60,17 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 ## 주요 파일 위치
 
-- **브라우저 E2E·headed 테스트 (에이전트)**: `.cursor/skills/browser-e2e/SKILL.md` — smoke·dba01·가입승인·QA 모달 등 채팅 지시 → Playwright 실행
+- **브라우저 E2E (에이전트)**: `.cursor/skills/browser-e2e/SKILL.md` · 규칙 `browser-e2e-smoke.mdc`
+  - **smoke** (`npm run test:e2e:smoke`): auth·navigation·products·register-*·`navigation-dba01-non-ops`·`navigation-gm01`(gm01)·`my-dashboard-dba`
+  - **workflow** (`npm run test:e2e:workflow`): `e2e/workflow-qa-live.spec.ts` only — E-02·E-D1·E-03~E-10 `describe.serial` (gm01+dba01 §I)
+  - **시드**: `backend` — `reset-e2e-passwords`, `seed-e2e-workflow:fresh`, `seed-e2e-result-ui`(F-02/F-03 데모 이력) → `e2e-workflow-config.json`
+  - **headed probe**: `front/scripts/probe-gm01-dba01-headed-full.mjs` (`DQPM_FRESH=1`, `DQPM_HEADED=1`), 공통 `probe-workflow-lib.mjs`
+  - **카탈로그**: `front/e2e/HEADED-TEST-CATALOG.md` · `front/e2e/README.md`
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
 - **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
 - **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
+- **Cursor 스타일 UI**: `front/src/styles/design-system.ts` (`OBJ_CURSOR_NEUTRAL`, `objShell`), `MainLayout.tsx`, `useThemeStore` (primary «Cursor» `#5B6ADF`) · 컴포넌트 검토 `docs/CURSOR-UI-AUDIT.md`
 
 ```
 backend/src/
@@ -118,7 +124,9 @@ front/src/
   pages/RegisterPage.tsx                  # 공개 가입(사내 이메일)
   controllers/registrationController.ts   # register·check-register
   services/onboardingBootstrap.ts         # guest·user.approve 기동 보정
-  components/MainLayout.tsx               # 사이드바 + 메뉴 권한(보기 권한만으로 노출)
+  styles/design-system.ts                 # Cursor 톤 토큰·Ant components·objShell
+  styles/DesignSystemContext.tsx
+  components/MainLayout.tsx               # Cursor 셸(라이트 사이드바·48px 헤더)·메뉴 권한
   types/index.ts                          # TPermission(백엔드와 동일 유니온), OBJ_PERMISSION_LABELS, ARR_PERMISSION_GROUPS
 ```
 

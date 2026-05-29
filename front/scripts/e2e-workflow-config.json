@@ -1,0 +1,18 @@
+{
+  "strApiBase": "http://localhost:4000/api",
+  "strTemplateLabel": "E2E_INSERT_워크플로",
+  "nEventTemplateId": 29,
+  "nProductId": 3,
+  "strProductName": "콜오브카오스",
+  "strServiceAbbr": "CC",
+  "strServiceRegion": "국내",
+  "nDbConnectionIdQa": 7,
+  "dtQaDeployDate": "2026-05-29T05:20:46.142Z",
+  "dtLiveDeployDate": "2026-05-29T05:20:46.142Z",
+  "arrDeployScope": [
+    "qa",
+    "live"
+  ],
+  "strEventNamePrefix": "[E2E]",
+  "nFreshInstanceId": 168
+}

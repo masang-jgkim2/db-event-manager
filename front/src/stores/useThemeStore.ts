@@ -8,6 +8,7 @@ export type TThemeMode = 'light' | 'dark' | 'system';
 
 // 포인트 컬러 팔레트 정의
 export const ARR_PRIMARY_COLORS = [
+  { strLabel: 'Cursor', strValue: '#5B6ADF' },
   { strLabel: '퍼플 블루', strValue: '#667eea' },
   { strLabel: '블루', strValue: '#1677ff' },
   { strLabel: '사이언', strValue: '#13c2c2' },
@@ -36,7 +37,7 @@ const OBJ_DEFAULT = {
   nSiderWidth: 200,
   nFontSize: 14,
   bCompact: false,
-  strPrimaryColor: '#667eea',
+  strPrimaryColor: '#5B6ADF',
   bFunMode: false, // 재미 모드: 재요청 버튼을 롱프레스로 전환
 };
 

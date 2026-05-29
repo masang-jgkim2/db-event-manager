@@ -159,6 +159,18 @@ const fnHydrateMemoryFromMysql = async (): Promise<void> => {
   );
 };
 
+/** E2E 시드 후 — event_instance만 MySQL에서 인메모리 재로드 (전체 기동 생략) */
+export const fnReloadEventInstancesFromMysql = async (): Promise<number> => {
+  if (!fnIsMysqlStore()) return 0;
+  const pool = fnGetMysqlAppPool();
+  const { arrEventInstances } = await import('./eventInstances');
+  const arrI = (await fnMysqlLoadArrayByFilename(pool, 'eventInstances.json')) as IEventInstance[];
+  arrEventInstances.length = 0;
+  arrEventInstances.push(...arrI);
+  console.log(`[DataStore] event_instance 재로드 | ${arrI.length}건`);
+  return arrI.length;
+};
+
 export const fnBootstrapDataStore = async (): Promise<void> => {
   if (!fnIsMysqlStore()) {
     console.log('[DataStore] DATA_STORE=json | data/*.json');

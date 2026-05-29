@@ -11,6 +11,7 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
 import {
   fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
@@ -23,7 +24,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const OBJ_KIND_COLOR: Record<TDbConnectionKind, string> = {
   GAME: 'blue',
@@ -500,32 +501,28 @@ const DbConnectionPage = () => {
       </style>
       {contextHolder}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start', gap: 12 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            <DatabaseOutlined style={{ marginRight: 8 }} />
-            DB 접속 정보 관리
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-            {bShowConnectionColumn && bCanRunConnectionTest ? (
-              <>
-                「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
-              </>
-            ) : bShowConnectionColumn ? (
-              <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
-            ) : (
-              <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
-            )}
-          </Text>
-        </div>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 DB 접속 정보
-          </Button>
-        )}
-      </div>
-
-      <Card>
+      <CrudPageShell
+        strTitle="DB 접속 정보 관리"
+        nodeIcon={<DatabaseOutlined />}
+        nodeDescription={
+          bShowConnectionColumn && bCanRunConnectionTest ? (
+            <>
+              「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
+            </>
+          ) : bShowConnectionColumn ? (
+            <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
+          ) : (
+            <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
+          )
+        }
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 DB 접속 정보
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="db_connections"
           dataSource={arrConnections}
@@ -547,7 +544,7 @@ const DbConnectionPage = () => {
             style: { cursor: 'pointer' },
           })}
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 추가/수정 모달 */}
       <Modal

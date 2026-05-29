@@ -6,12 +6,22 @@ alwaysApply: false
 
 # 프론트엔드 패턴
 
+## Cursor 스타일 테마 (점진 적용)
+
+- **토큰**: `front/src/styles/design-system.ts` — `OBJ_CURSOR_NEUTRAL`, `fnBuildDesignSystem`, Ant `ConfigProvider` (`App.tsx`)
+- **셸**: `MainLayout.tsx` + `objShell` (사이드바·헤더 동일 톤, 44px 헤더, 흰 `dqpm-layout-content-panel`, `data-dqpm-theme` 스크롤바)
+- **primary 기본**: `#5B6ADF` (`useThemeStore` «Cursor»). 페이지 색은 **`theme.useToken()` / `useDesignSystem().objColor`** — hex 하드코드 지양
+- **검토표**: `docs/CURSOR-UI-AUDIT.md` (컴포넌트별 ✅/🟡/🔴, 3단계 우선순위)
+- **CRUD 목록 골격**: `CrudPageShell` — 헤더 DbConnection, `Card`+테이블 User (`nodeToolbar`+`CrudListToolbar`)
+- **목록 툴바**: `CrudListToolbar` — `nodeLeft` **Segmented**(사용자·나의 대시보드), `nodeRight`(Select·버튼). 활동은 `Form` 필터(별 패턴)
+
 ## 프로젝트 구조
 
 ```
 front/src/
   pages/      # 각 메뉴 페이지 (MyDashboardPage 등)
-  components/ # AppTable, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  components/ # AppTable, CrudPageShell, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  styles/     # design-system.ts, DesignSystemContext.tsx
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore, useNotificationStore)
   api/        # API 클라이언트 (axios 래퍼)
   hooks/      # useEventStream, useUserPresenceStream 등

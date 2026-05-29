@@ -46,6 +46,7 @@
 | CI·배포 전 smoke | `npm run test:e2e:smoke` 또는 `npm run test:smoke` |
 | smoke + 창 보기 | `npm run test:e2e:smoke:headed` |
 | QA 실행 모달 등 | `npm run test:e2e:workflow` |
+| F-02·F-03 결과 UI | `npm run test:e2e:result-ui` (시드·재기동 필요) |
 | 전체 자동 | `npm run test:e2e` |
 | **수동** 풀 플로우 | `npm run test:e2e:ui` + [MANUAL-FULL-WORKFLOW.md](./MANUAL-FULL-WORKFLOW.md) |
 
@@ -66,4 +67,74 @@
 - **register-approve.spec.ts** — 가입→승인대기→admin 승인→로그인 (`@smoke`, serial)
 - **my-dashboard-dba.spec.ts** — DBA 대시보드·상세·QA 실행 모달 (`@smoke` / `@workflow`)
 - **navigation-dba01-non-ops.spec.ts** — dba01 이벤트·사용자 메뉴 (`@smoke`, 운영 제외)
+- **navigation-gm01.spec.ts** — gm01 메뉴·이벤트 생성·대시보드 (`@smoke`)
+- **workflow-qa-live.spec.ts** — E-02·E-D1·E-03~E-10 serial (`@workflow`, config 필요)
+- **workflow-pool-live-delete.spec.ts** — 풀 `152-162` LIVE·삭제 (`@pool`, 생성자 gm01/dba01/gm02만)
+- **result-ui.spec.ts** — F-02·F-03 (`@result-ui`, 시드 데모 이력)
 - **helpers/auth.ts** — 공통 로그인
+
+## E2E SELECT 워크플로 (gm01 + dba01 L3)
+
+```powershell
+cd backend
+npm run reset-e2e-passwords    # admin·dba01·gm01 비밀번호
+npm run seed-e2e-workflow:fresh   # → front/scripts/e2e-workflow-config.json
+
+cd ../front
+$env:DQPM_FRESH='1'
+node scripts/probe-gm01-dba01-headed-full.mjs   # headed: DQPM_HEADED=1
+npm run test:e2e:workflow
+```
+
+### E2E 삭제 (단건)
+
+```powershell
+$env:E2E_INSTANCE_ID='163'
+npx playwright test e2e/workflow-pool-live-delete.spec.ts --project=workflow-pool --grep "@delete" --headed
+```
+
+### E2E 다른 프로덕트 풀
+
+```powershell
+cd backend
+$env:E2E_PRODUCT_ID='2'   # DK온라인
+npm run seed-e2e-workflow:fresh
+
+# 콜오브카오스 INSERT
+$env:E2E_PRODUCT_ID='3'
+$env:E2E_WORKFLOW_KIND='insert'
+npm run seed-e2e-workflow:fresh
+
+cd ../front
+$env:E2E_INSTANCE_ID='163'
+$env:E2E_SLOW_MO='900'
+npx playwright test e2e/workflow-qa-live.spec.ts --project=workflow --headed --grep "E-03|E-04|E-05|E-06|E-07|E-08|E-09|E-10"
+```
+
+### E2E 생성자·풀 (#152~162 · 출조낚시왕)
+
+- **생성자**: `gm01`, `dba01`, `gm02`만 (`helpers/e2eCreators.ts`)
+- **목록·지시 실행**: `e2e/HEADED-TEST-CATALOG.md` **§P** (P-152~P-162 체크리스트)
+- **일괄 자동 X** — 사용자 지시 후 해당 `E2E_INSTANCE_ID`만 실행
+- **삭제 제외** = 9단계(E-01~E-10: 생성→컨펌→DBA컨펌→QA요청/실행/확인→LIVE요청/실행→완료). 삭제(E-X3)·숨기기 제외 — `HEADED-TEST-CATALOG.md` §「삭제 제외」
+- **qa_requested부터**: `npm run test:e2e:pool:no-delete` (E-06~E-10만)
+
+```powershell
+$env:E2E_INSTANCE_ID='158'
+npm run test:e2e:pool:no-delete -- --headed
+```
+
+### F-02·F-03 결과 UI (상세·진행 이력)
+
+```powershell
+cd backend
+npm run seed-e2e-workflow:fresh
+npm run seed-e2e-result-ui    # MySQL INSERT + 인메모리 재로드(E2E_ALLOW_RELOAD=1)
+# backend/.env: E2E_ALLOW_RELOAD=1 (또는 run-e2e-with-servers.ps1)
+
+cd ../front
+npm run test:e2e:result-ui
+```
+
+- UI로 이벤트 생성까지: `DQPM_UI_CREATE=1`
+- 인스턴스 고정: `DQPM_WORKFLOW_ID=154` · 신규 생성 끔: `DQPM_FRESH=0`
