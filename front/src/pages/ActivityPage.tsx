@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Typography, Tag, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
+  Typography, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
 } from 'antd';
 import { HistoryOutlined } from '@ant-design/icons';
 import CrudPageShell from '../components/CrudPageShell';
@@ -18,6 +18,7 @@ import {
 } from '../api/activityApi';
 import { useActivityLogStream } from '../hooks/useActivityLogStream';
 import { useAuthStore } from '../stores/useAuthStore';
+import { DqpmTag } from '../components/DqpmTag';
 
 const { Text } = Typography;
 
@@ -287,7 +288,7 @@ const ActivityPage = () => {
       key: 'strCategory',
       width: 96,
       render: (c: TActivityCategory) => (
-        <Tag color="geekblue">{OBJ_CATEGORY_LABEL[c]}</Tag>
+        <DqpmTag color="geekblue">{OBJ_CATEGORY_LABEL[c]}</DqpmTag>
       ),
     },
     {
@@ -295,7 +296,7 @@ const ActivityPage = () => {
       dataIndex: 'strMethod',
       key: 'strMethod',
       width: 100,
-      render: (m: string) => <Tag color={OBJ_METHOD_COLOR[m] || 'default'}>{m}</Tag>,
+      render: (m: string) => <DqpmTag color={OBJ_METHOD_COLOR[m] || 'default'}>{m}</DqpmTag>,
     },
     {
       title: '경로',
@@ -311,7 +312,7 @@ const ActivityPage = () => {
       width: 88,
       render: (n: number) => {
         const bOk = n >= 200 && n < 400;
-        return <Tag color={bOk ? 'success' : 'error'}>{n}</Tag>;
+        return <DqpmTag color={bOk ? 'success' : 'error'}>{n}</DqpmTag>;
       },
     },
     {

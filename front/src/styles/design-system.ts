@@ -12,6 +12,21 @@
  */
 
 import { generate } from '@ant-design/colors';
+import { fnBuildTagPalette, type ITagPalette } from './tagPalette';
+import {
+  fnIsCursorSitePrimary,
+  OBJ_CURSOR_SITE_SHELL,
+  STR_CURSOR_SITE_ACCENT,
+  STR_CURSOR_SITE_ACCENT_HOVER,
+  STR_CURSOR_SITE_CANVAS,
+  STR_CURSOR_SITE_CREAM_BTN,
+  STR_CURSOR_SITE_INK,
+  STR_CURSOR_SITE_BODY,
+  STR_CURSOR_SEMANTIC_ERROR,
+  STR_CURSOR_SEMANTIC_SUCCESS,
+  STR_FONT_MONO,
+  STR_FONT_UI,
+} from './cursorSiteTokens';
 
 /** Cursor IDE에 가까운 중성 톤 (테마·셸 — 정교화 v2) */
 const OBJ_CURSOR_NEUTRAL = {
@@ -57,8 +72,7 @@ const OBJ_CURSOR_NEUTRAL = {
   },
 } as const;
 
-const STR_FONT_FAMILY =
-  "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans KR', sans-serif";
+const STR_FONT_FAMILY = STR_FONT_UI;
 
 // ─── 팔레트 인덱스 상수 ───────────────────────────────────────
 const IDX_BG         = 0;   // 가장 밝은 배경 (선택 배경, 테이블 헤더)
@@ -192,6 +206,14 @@ export interface IDesignSystem {
   // ── 팔레트 (10단계)
   arrPalette: string[];
 
+  /** Tag 전용 — primary 10단계 베리에이션 */
+  objTag: ITagPalette;
+
+  /** 라이트 + 포인트 Cursor.com(#f54e00) — 웜 셸·CTA 스타일 */
+  bCursorSiteShell: boolean;
+
+  strFontMono: string;
+
   // ── 자주 쓰는 컬러 단축
   objColor: {
     strPrimary:       string;
@@ -222,7 +244,10 @@ export function fnBuildDesignSystem(
   const objTypo    = fnBuildTypography(nFontSize);
   const objSpacing = fnBuildSpacing(nFontSize);
 
-  const objCursor = bDark ? OBJ_CURSOR_NEUTRAL.dark : OBJ_CURSOR_NEUTRAL.light;
+  const bCursorSiteShell = !bDark && fnIsCursorSitePrimary(strPrimary);
+  const objCursor = bDark
+    ? OBJ_CURSOR_NEUTRAL.dark
+    : (bCursorSiteShell ? OBJ_CURSOR_SITE_SHELL.light : OBJ_CURSOR_NEUTRAL.light);
 
   // ── 사이드바·헤더 (Cursor 중성 톤, 다크는 기존 primary 믹스 폴백) ──
   const strSiderBg = objCursor.strSiderBg;
@@ -234,7 +259,9 @@ export function fnBuildDesignSystem(
 
   const strHeaderBg = objCursor.strHeaderBg;
   const strHeaderBorder = objCursor.strHeaderBorder;
-  const strHeaderText = bDark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)';
+  const strHeaderText = bDark
+    ? 'rgba(255,255,255,0.88)'
+    : (bCursorSiteShell ? STR_CURSOR_SITE_INK : 'rgba(0,0,0,0.88)');
 
   const strMenuGroupColor = objCursor.strMenuGroup;
   const nMenuGroupFontSize = Math.max(objTypo.nXs, 10);
@@ -245,7 +272,20 @@ export function fnBuildDesignSystem(
 
   const strPrimaryBgSubtle = bDark
     ? `color-mix(in srgb, ${strPrimary} 22%, transparent)`
-    : `color-mix(in srgb, ${strPrimary} 12%, #ffffff)`;
+    : bCursorSiteShell
+      ? `color-mix(in srgb, ${strPrimary} 14%, ${STR_CURSOR_SITE_CANVAS})`
+      : `color-mix(in srgb, ${strPrimary} 12%, #ffffff)`;
+
+  // 사이드바 메뉴 — 선택·호버 배경을 포인트 컬러 틴트로
+  const strMenuSelectedBg = bDark
+    ? `color-mix(in srgb, ${strPrimary} 28%, ${objCursor.strSiderBg})`
+    : `color-mix(in srgb, ${strPrimary} 18%, ${objCursor.strSiderBg})`;
+  const strMenuHoverBg = bDark
+    ? `color-mix(in srgb, ${strPrimary} 14%, transparent)`
+    : `color-mix(in srgb, ${strPrimary} 10%, ${objCursor.strSiderBg})`;
+  const strMenuSelectedColor = bDark
+    ? `color-mix(in srgb, ${arrP[IDX_PRIMARY]} 92%, #ffffff)`
+    : (bCursorSiteShell ? STR_CURSOR_SITE_ACCENT : arrP[IDX_DARK1]);
 
   // ── Ant Design 컴포넌트 토큰 ─────────────────────────────
   const antdToken: Record<string, unknown> = {
@@ -258,8 +298,8 @@ export function fnBuildDesignSystem(
     colorBgElevated:     objCursor.strBgElevated,
     colorBorder:         objCursor.strBorder,
     colorBorderSecondary: objCursor.strBorderSecondary,
-    colorText:           bDark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)',
-    colorTextSecondary:  bDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)',
+    colorText:           bDark ? 'rgba(255,255,255,0.88)' : (bCursorSiteShell ? STR_CURSOR_SITE_INK : 'rgba(0,0,0,0.88)'),
+    colorTextSecondary:  bDark ? 'rgba(255,255,255,0.55)' : (bCursorSiteShell ? STR_CURSOR_SITE_BODY : 'rgba(0,0,0,0.55)'),
     colorTextTertiary:   bDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)',
     colorFillAlter:      bDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
     colorFillSecondary:  bDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
@@ -278,15 +318,15 @@ export function fnBuildDesignSystem(
     colorPrimaryText:    arrP[IDX_PRIMARY],
     colorPrimaryTextHover: arrP[IDX_HOVER],
 
-    // 링크
-    colorLink:       arrP[IDX_PRIMARY],
-    colorLinkHover:  arrP[IDX_HOVER],
-    colorLinkActive: arrP[IDX_ACTIVE],
+    // 링크 — cursor.com은 액센트 오렌지 고정
+    colorLink:       bCursorSiteShell ? STR_CURSOR_SITE_ACCENT : arrP[IDX_PRIMARY],
+    colorLinkHover:  bCursorSiteShell ? STR_CURSOR_SITE_ACCENT_HOVER : arrP[IDX_HOVER],
+    colorLinkActive: bCursorSiteShell ? STR_CURSOR_SITE_ACCENT_HOVER : arrP[IDX_ACTIVE],
 
-    // 상태 색 (primary 기반 채도 조정)
-    colorSuccess: '#52c41a',
+    // 상태 색 — cursor.com 셸은 DESIGN.md semantic
+    colorSuccess: bCursorSiteShell ? STR_CURSOR_SEMANTIC_SUCCESS : '#52c41a',
     colorWarning: '#faad14',
-    colorError:   '#ff4d4f',
+    colorError:   bCursorSiteShell ? STR_CURSOR_SEMANTIC_ERROR : '#ff4d4f',
     colorInfo:    arrP[IDX_PRIMARY],
 
     // 타이포그래피
@@ -350,20 +390,20 @@ export function fnBuildDesignSystem(
       itemBg:                 'transparent',
       subMenuItemBg:          'transparent',
       itemColor:              objCursor.strMenuItemColor,
-      itemHoverBg:            objCursor.strMenuItemHover,
+      itemHoverBg:            strMenuHoverBg,
       itemHoverColor:         bDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.88)',
-      itemSelectedBg:         objCursor.strMenuItemSelected,
-      itemSelectedColor:      bDark ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.90)',
+      itemSelectedBg:         strMenuSelectedBg,
+      itemSelectedColor:      strMenuSelectedColor,
       itemMarginInline:       4,
       itemPaddingInline:        10,
-      itemActiveBg:           objCursor.strMenuItemSelected,
+      itemActiveBg:           strMenuSelectedBg,
       activeBarWidth:         0,
       groupTitleColor:        strMenuGroupColor,
       darkItemBg:             'transparent',
       darkSubMenuItemBg:      'transparent',
-      darkItemSelectedBg:     objCursor.strMenuItemSelected,
-      darkItemSelectedColor:  bDark ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.88)',
-      darkItemHoverBg:        objCursor.strMenuItemHover,
+      darkItemSelectedBg:     strMenuSelectedBg,
+      darkItemSelectedColor:  strMenuSelectedColor,
+      darkItemHoverBg:        strMenuHoverBg,
       darkItemHoverColor:     bDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.88)',
       darkGroupTitleColor:    strMenuGroupColor,
       groupTitleFontSize:     nMenuGroupFontSize,
@@ -389,27 +429,40 @@ export function fnBuildDesignSystem(
       cellPaddingInline:     objSpacing.nMd,
     },
 
-    // 버튼 — 플랫(Cursor): 그림자 없음, default는 중성 보더
+    // 버튼 — 플랫; cursor.com: 크림 배경 + 오렌지 테두리·글자(primary는 CSS 보강)
     Button: {
       fontWeight:               500,
       primaryShadow:            'none',
       defaultShadow:            'none',
       dangerShadow:             'none',
       defaultBorderColor:       objCursor.strBorder,
-      defaultColor:             bDark ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)',
+      defaultColor:             bDark ? 'rgba(255,255,255,0.88)' : (bCursorSiteShell ? STR_CURSOR_SITE_INK : 'rgba(0,0,0,0.88)'),
       defaultBg:                bDark ? objCursor.strBgElevated : objCursor.strBgContainer,
       defaultHoverBg:           objCursor.strMenuItemHover,
       defaultHoverBorderColor:  objCursor.strBorder,
-      defaultHoverColor:        bDark ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.90)',
-      primaryColor:             fnContrastText(arrP[IDX_PRIMARY]),
+      defaultHoverColor:        bDark ? 'rgba(255,255,255,0.95)' : (bCursorSiteShell ? STR_CURSOR_SITE_INK : 'rgba(0,0,0,0.90)'),
+      ...(bCursorSiteShell
+        ? {
+            colorPrimary:           STR_CURSOR_SITE_CREAM_BTN,
+            colorPrimaryHover:      STR_CURSOR_SITE_CREAM_BTN,
+            colorPrimaryActive:     STR_CURSOR_SITE_CREAM_BTN,
+            colorPrimaryBorder:     STR_CURSOR_SITE_ACCENT,
+            colorPrimaryText:       STR_CURSOR_SITE_ACCENT,
+            colorPrimaryTextHover:  STR_CURSOR_SITE_ACCENT_HOVER,
+            colorPrimaryTextActive: STR_CURSOR_SITE_ACCENT_HOVER,
+            primaryColor:           STR_CURSOR_SITE_ACCENT,
+          }
+        : {
+            primaryColor: fnContrastText(arrP[IDX_PRIMARY]),
+          }),
       textHoverBg:              objCursor.strMenuItemHover,
       linkHoverBg:              'transparent',
     },
 
-    // 태그
+    // 태그 — preset 대신 hex(DqpmTag) 사용, default만 팔레트 톤
     Tag: {
-      defaultBg:           arrP[IDX_BG],
-      defaultColor:        arrP[IDX_DARK1],
+      defaultBg:           bDark ? 'rgba(255,255,255,0.08)' : arrP[IDX_BG],
+      defaultColor:        bDark ? 'rgba(255,255,255,0.75)' : arrP[IDX_DARK1],
       fontSize:            objTypo.nSm,
     },
 
@@ -659,6 +712,9 @@ export function fnBuildDesignSystem(
     objTypo,
     objSpacing,
     arrPalette: arrP,
+    objTag: fnBuildTagPalette(arrP, bDark),
+    bCursorSiteShell,
+    strFontMono: STR_FONT_MONO,
 
     objColor: {
       strPrimary:       arrP[IDX_PRIMARY],

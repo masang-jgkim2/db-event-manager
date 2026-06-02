@@ -486,32 +486,36 @@ function AppTable<T extends object>({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strTableId]);
 
-  // 현재 순서대로 컬럼 배열 재정렬 + 너비 반영 + onHeaderCell 주입 (인접 컬럼 키로 경계 리사이즈)
-  const arrSortedColumns: TableColumnType<T>[] | undefined =
-    bDraggableColumns && columns
-      ? arrOrder
-          .map((strKey, nIdx) => {
-            const col = (columns as TableColumnType<T>[]).find(
-              (c, i) => fnGetColKey(c, i) === strKey,
-            ) as TableColumnType<T> | undefined;
-            if (!col) return null;
-            const strColKey = strKey;
-            const strLeftKey = arrOrder[nIdx - 1];
-            const strRightKey = arrOrder[nIdx + 1];
-            const nWidth = objWidths[strColKey] ?? col.width;
-            return {
-              ...col,
-              width: typeof nWidth === 'number' ? nWidth : col.width,
-              onHeaderCell: () => ({
-                'data-drag-id': strColKey,
-                'data-col-key': strColKey,
-                'data-left-col-key': strLeftKey,
-                'data-right-col-key': strRightKey,
-              }),
-            };
-          })
-          .filter(Boolean) as TableColumnType<T>[]
-      : (columns as TableColumnType<T>[] | undefined);
+  const mapColsByKey = useMemo(() => {
+    const map = new Map<string, TableColumnType<T>>();
+    (columns ?? []).forEach((col, nIdx) => {
+      map.set(fnGetColKey(col, nIdx), col);
+    });
+    return map;
+  }, [columns]);
+
+  const arrSortedColumns = useMemo((): TableColumnType<T>[] | undefined => {
+    if (!bDraggableColumns || !columns) return undefined;
+    return arrOrder
+      .map((strKey, nIdx) => {
+        const col = mapColsByKey.get(strKey);
+        if (!col) return null;
+        const strLeftKey = arrOrder[nIdx - 1];
+        const strRightKey = arrOrder[nIdx + 1];
+        const nWidth = objWidths[strKey] ?? col.width;
+        return {
+          ...col,
+          width: typeof nWidth === 'number' ? nWidth : col.width,
+          onHeaderCell: () => ({
+            'data-drag-id': strKey,
+            'data-col-key': strKey,
+            'data-left-col-key': strLeftKey,
+            'data-right-col-key': strRightKey,
+          }),
+        };
+      })
+      .filter(Boolean) as TableColumnType<T>[];
+  }, [bDraggableColumns, columns, arrOrder, mapColsByKey, objWidths]);
 
   const arrColsForLayout = arrSortedColumns ?? (columns as TableColumnType<T>[] | undefined);
 

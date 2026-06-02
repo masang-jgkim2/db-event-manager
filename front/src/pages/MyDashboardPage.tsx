@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
 import CrudListToolbar from '../components/CrudListToolbar';
 import QueryEditDiffView from '../components/QueryEditDiffView';
 import QueryResultSetTable from '../components/QueryResultSetTable';
@@ -37,6 +38,8 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
+import { DqpmTag } from '../components/DqpmTag';
+import { useDesignSystem } from '../styles/DesignSystemContext';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -240,7 +243,7 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   return (
     <Space size={4}>
       <Text style={{ fontSize: 12 }}>{strLabel}:</Text>
-      <Tag icon={<UserOutlined />} color="blue" style={{ fontSize: 11 }}>{objActor.strDisplayName}</Tag>
+      <DqpmTag icon={<UserOutlined />} color="blue" style={{ fontSize: 11 }}>{objActor.strDisplayName}</DqpmTag>
       <Text type="secondary" style={{ fontSize: 11 }}>{new Date(objActor.dtProcessedAt).toLocaleString('ko-KR')}</Text>
     </Space>
   );
@@ -262,9 +265,9 @@ const fnBuildQueryResultCollapseItems = (
     label: (
       <Space>
         <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-        <Tag color="green">
+        <DqpmTag color="green">
           {bHasResultSet ? `${nResultRows}행 조회` : `${r.nAffectedRows}건 처리`}
-        </Tag>
+        </DqpmTag>
       </Space>
     ),
     children: (
@@ -594,15 +597,15 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
         <Space size={4}>
           {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
             const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-            return opt ? <Tag key={s} color={opt.strColor} style={{ fontSize: 11 }}>{opt.label}</Tag> : null;
+            return opt ? <DqpmTag key={s} tone={opt.strTagVariant} style={{ fontSize: 11 }}>{opt.label}</DqpmTag> : null;
           })}
         </Space>
         <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
         <Space size={4}>
           {fnRenderStatusIcon(objInstance.strStatus, 12)}
-          <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
+          <DqpmTag tone={OBJ_STATUS_CONFIG[objInstance.strStatus].strTagVariant} style={{ fontSize: 11 }}>
             {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
-          </Tag>
+          </DqpmTag>
         </Space>
       </div>
       <Steps
@@ -624,6 +627,7 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
 };
 
 const MyDashboardPage = () => {
+  const { objTag } = useDesignSystem();
   const [searchParams, setSearchParams] = useSearchParams();
   const strDeepLinkInstanceId = searchParams.get('nId') ?? searchParams.get('nInstanceId');
 
@@ -1508,7 +1512,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       title: '프로덕트',
       key: 'product',
       width: 140,
-      render: (_: unknown, r: IEventInstance) => <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag>,
+      render: (_: unknown, r: IEventInstance) => (
+        <ProductNameTag strName={`${r.strProductName} (${r.strServiceAbbr})`} />
+      ),
     },
     {
       title: '반영 일시',
@@ -1530,7 +1536,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       render: (_: unknown, r: IEventInstance) => {
         const env = fnGetDisplayEnv(r.strStatus);
         const scope = env ?? 'DEV';
-        return <Tag color={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</Tag>;
+        return <DqpmTag tone={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</DqpmTag>;
       },
     },
     {
@@ -1541,7 +1547,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       render: (s: TEventStatus) => (
         <Space size={4}>
           {fnRenderStatusIcon(s, 12)}
-          <Tag color={OBJ_STATUS_CONFIG[s].strColor}>{OBJ_STATUS_CONFIG[s].strLabel}</Tag>
+          <DqpmTag tone={OBJ_STATUS_CONFIG[s].strTagVariant}>{OBJ_STATUS_CONFIG[s].strLabel}</DqpmTag>
         </Space>
       ),
     },
@@ -1556,7 +1562,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             {fnRenderActions(r)}
             <Divider type="vertical" style={{ margin: '0 4px' }} />
             {r.bPermanentlyRemoved ? (
-              <Tag color="red">삭제됨 · 복원 불가</Tag>
+              <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>
             ) : !setHiddenIds.has(r.nId) ? (
               <>
                 <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
@@ -1659,7 +1665,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         nodeExtra={
           bFunMode ? (
             <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
-              <Tag color="orange">재미 모드</Tag>
+              <DqpmTag color="orange">재미 모드</DqpmTag>
             </Tooltip>
           ) : undefined
         }
@@ -1784,13 +1790,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Space wrap size={4}>
                         <span style={{ fontWeight: 600 }}>{r.strEventName}</span>
                         {fnGetDisplayEnv(r.strStatus) && (
-                          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</Tag>
+                          <DqpmTag tone={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</DqpmTag>
                         )}
                         <Space size={4}>
                           {fnRenderStatusIcon(r.strStatus, 12)}
-                          <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
+                          <DqpmTag tone={OBJ_STATUS_CONFIG[r.strStatus].strTagVariant}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</DqpmTag>
                         </Space>
-                        {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
+                        {r.bPermanentlyRemoved && <DqpmTag color="red">삭제됨</DqpmTag>}
                       </Space>
                     }
                     style={{
@@ -1814,7 +1820,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         {(() => {
                           const bCardCanDelete = fnCanDeleteInstanceRow(r);
                           if (r.bPermanentlyRemoved) {
-                            return <Tag color="red">삭제됨 · 복원 불가</Tag>;
+                            return <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>;
                           }
                           if (!setHiddenIds.has(r.nId)) {
                             return (
@@ -1936,8 +1942,8 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     </Descriptions.Item>
                     <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
                     <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
-                    <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
-                    <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="종류"><DqpmTag color="blue">{objDetail.strCategory}</DqpmTag></Descriptions.Item>
+                    <Descriptions.Item label="유형"><DqpmTag color="red">{objDetail.strType}</DqpmTag></Descriptions.Item>
                     {objDetail.strAlloLink && (
                       <Descriptions.Item label="알로 링크" span={2}>
                         <a href={objDetail.strAlloLink} target="_blank" rel="noreferrer">{objDetail.strAlloLink}</a>
@@ -1947,7 +1953,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Space size={4}>
                         {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
                           const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-                          return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                          return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                         })}
                       </Space>
                     </Descriptions.Item>
@@ -1964,8 +1970,8 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     <Descriptions.Item label="상태">
                       <Space size={4} wrap align="center">
                         {fnRenderStatusIcon(objDetail.strStatus, 14)}
-                        <Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag>
-                        {objDetail.bPermanentlyRemoved && <Tag color="red">삭제</Tag>}
+                        <DqpmTag tone={OBJ_STATUS_CONFIG[objDetail.strStatus].strTagVariant}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</DqpmTag>
+                        {objDetail.bPermanentlyRemoved && <DqpmTag color="red">삭제</DqpmTag>}
                       </Space>
                     </Descriptions.Item>
                   </Descriptions>
@@ -2051,16 +2057,19 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       // 서버 이력: 삭제(복원 불가) — 구 이력 '영구 삭제(복원 불가)' 호환
                       const bPermanentDeleteLog = typeof log.strComment === 'string' &&
                         (log.strComment === '삭제(복원 불가)' || log.strComment === '영구 삭제(복원 불가)');
-                      const strTimelineColor = bPermanentDeleteLog ? 'red' : (OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray');
+                      const strStVar = log.strStatus ? OBJ_STATUS_CONFIG[log.strStatus]?.strTagVariant : undefined;
+                      const strTimelineColor = bPermanentDeleteLog
+                        ? objTag.danger
+                        : (strStVar ? objTag[strStVar] : objTag.muted);
                       return {
                         color: strTimelineColor,
                         children: (
                         <div>
                           <Space size={4} wrap>
                             {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
-                            <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                            <DqpmTag tone={OBJ_STATUS_CONFIG[log.strStatus]?.strTagVariant}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</DqpmTag>
                             {bPermanentDeleteLog && (
-                              <Tag color="red">삭제</Tag>
+                              <DqpmTag color="red">삭제</DqpmTag>
                             )}
                           </Space>
                           <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
@@ -2099,10 +2108,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             }}>
                               <Space direction="vertical" size={4} style={{ width: '100%' }}>
                                 <Space wrap>
-                                  <Tag color={objEx.strEnv === 'qa' ? 'orange' : 'red'}>
+                                  <DqpmTag color={objEx.strEnv === 'qa' ? 'orange' : 'red'}>
                                     {objEx.strEnv.toUpperCase()}
-                                  </Tag>
-                                  {bExecFail && <Tag color="error">실패</Tag>}
+                                  </DqpmTag>
+                                  {bExecFail && <DqpmTag color="error">실패</DqpmTag>}
                                   <Text style={{ fontSize: 12 }}>처리 {objEx.nTotalAffectedRows}건</Text>
                                   <Divider type="vertical" />
                                   <Text type="secondary" style={{ fontSize: 11 }}>{objEx.nElapsedMs}ms</Text>
@@ -2191,7 +2200,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               <Space style={{ marginBottom: 4 }}>
                 <Text strong>반영 범위</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
-                  <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
+                  <DqpmTag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</DqpmTag>
                 )}
               </Space>
               <div style={{ marginTop: 4 }}>
@@ -2207,7 +2216,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   >
                     {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
                       <Checkbox key={opt.value} value={opt.value}>
-                        <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                        <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
                       </Checkbox>
                     ))}
                   </Checkbox.Group>
@@ -2215,7 +2224,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Space size={4}>
                     {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
                       const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-                      return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                      return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                     })}
                   </Space>
                 )}
@@ -2329,9 +2338,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             {objQueryEditInstance && (
               <Space size={4}>
                 {fnRenderStatusIcon(objQueryEditInstance.strStatus, 12)}
-                <Tag color={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strColor}>
+                <DqpmTag tone={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strTagVariant}>
                   {OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strLabel}
-                </Tag>
+                </DqpmTag>
               </Space>
             )}
           </Space>

@@ -7,7 +7,6 @@ import {
   Input,
   Select,
   Space,
-  Tag,
   Popconfirm,
   message,
   Row,
@@ -23,6 +22,8 @@ import {
   PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined, CalendarOutlined,
 } from '@ant-design/icons';
 import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { DqpmTag } from '../components/DqpmTag';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -36,21 +37,20 @@ import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS, OBJ_STATUS_CO
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import type { TTagVariant } from '../styles/tagPalette';
 
 const { Text } = Typography;
 const { TextArea } = Input;
 
-// 이벤트 종류 색상
-const objCategoryColor: Record<string, string> = {
-  '아이템': 'blue',
-  '퀘스트': 'green',
+const objCategoryVariant: Record<string, TTagVariant> = {
+  '아이템': 'tone4',
+  '퀘스트': 'success',
 };
 
-// 이벤트 유형 색상
-const objTypeColor: Record<string, string> = {
-  '삭제': 'red',
-  '지급': 'cyan',
-  '초기화': 'orange',
+const objTypeVariant: Record<string, TTagVariant> = {
+  '삭제': 'danger',
+  '지급': 'tone3',
+  '초기화': 'tone6',
 };
 
 // 쿼리 모드: 단일(한 연결 한 쿼리) / 다중(여러 연결·세트)
@@ -116,9 +116,9 @@ const QueryTemplatesTabContent = ({
               {arrConnectionsByProduct.map((c) => (
                 <Select.Option key={c.nId} value={c.nId}>
                   <Space wrap>
-                    <Tag color="blue">{c.strKind || 'GAME'}</Tag>
+                    <DqpmTag color="blue">{c.strKind || 'GAME'}</DqpmTag>
                     <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
-                    <Tag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</Tag>
+                    <DqpmTag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</DqpmTag>
                   </Space>
                 </Select.Option>
               ))}
@@ -259,16 +259,16 @@ const EventPage = () => {
       <div style={{ padding: '4px 8px 12px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <Text strong style={{ fontSize: 13 }}>연결된 이벤트</Text>
-          <Tag>템플릿 ID {objSelectedTemplate.nId}</Tag>
+          <DqpmTag>템플릿 ID {objSelectedTemplate.nId}</DqpmTag>
           <Text type="secondary" style={{ fontWeight: 400 }}>{objSelectedTemplate.strEventLabel}</Text>
           {objSelectedTemplate.strCreatedBy && (
-            <Tag color="blue">생성자 {objSelectedTemplate.strCreatedBy}</Tag>
+            <DqpmTag color="blue">생성자 {objSelectedTemplate.strCreatedBy}</DqpmTag>
           )}
           {nActiveRefCount > 0 && (
-            <Tag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</Tag>
+            <DqpmTag color="orange">삭제 전 처리 필요 {nActiveRefCount}건</DqpmTag>
           )}
           {nRemovedRefCount > 0 && (
-            <Tag color="default">이미 서버 삭제됨 {nRemovedRefCount}건</Tag>
+            <DqpmTag color="default">이미 서버 삭제됨 {nRemovedRefCount}건</DqpmTag>
           )}
           <Button size="small" onClick={() => void fnLoadRelatedInstances(objSelectedTemplate.nId)}>
             새로고침
@@ -309,7 +309,7 @@ const EventPage = () => {
                   render: (str: string, r) => (
                     <Space size={4}>
                       {str}
-                      {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
+                      {r.bPermanentlyRemoved && <DqpmTag color="red">삭제됨</DqpmTag>}
                     </Space>
                   ),
                 },
@@ -320,7 +320,7 @@ const EventPage = () => {
                   render: (s: TEventStatus) => (
                     <Space size={4}>
                       {fnRenderStatusIcon(s, 12)}
-                      <Tag color={OBJ_STATUS_CONFIG[s]?.strColor}>{OBJ_STATUS_CONFIG[s]?.strLabel}</Tag>
+                      <DqpmTag tone={OBJ_STATUS_CONFIG[s]?.strTagVariant}>{OBJ_STATUS_CONFIG[s]?.strLabel}</DqpmTag>
                     </Space>
                   ),
                 },
@@ -512,7 +512,7 @@ const EventPage = () => {
       dataIndex: 'strProductName',
       key: 'strProductName',
       width: 120,
-      render: (str: string) => <Tag>{str || '-'}</Tag>,
+      render: (str: string) => <ProductNameTag strName={str} />,
     },
     {
       title: '이벤트명',
@@ -537,7 +537,7 @@ const EventPage = () => {
       key: 'strCategory',
       width: 80,
       render: (str: TEventCategory) => (
-        <Tag color={objCategoryColor[str] || 'default'}>{str}</Tag>
+        <DqpmTag tone={objCategoryVariant[str] ?? 'muted'}>{str}</DqpmTag>
       ),
     },
     {
@@ -546,7 +546,7 @@ const EventPage = () => {
       key: 'strType',
       width: 80,
       render: (str: TEventType) => (
-        <Tag color={objTypeColor[str] || 'default'}>{str}</Tag>
+        <DqpmTag tone={objTypeVariant[str] ?? 'muted'}>{str}</DqpmTag>
       ),
     },
     {
@@ -564,7 +564,7 @@ const EventPage = () => {
         const arrSets = objRecord.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
         const nSetCount = arrSets.length;
         const strMode = nSetCount >= 2 ? '다중' : '단일';
-        return <Tag color={nSetCount >= 2 ? 'blue' : 'default'}>{strMode}</Tag>;
+        return <DqpmTag color={nSetCount >= 2 ? 'blue' : 'default'}>{strMode}</DqpmTag>;
       },
     },
     // 수정/삭제 권한이 있을 때만 관리 컬럼 표시

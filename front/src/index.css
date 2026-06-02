@@ -6,7 +6,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
     Arial, 'Noto Sans KR', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -37,6 +37,11 @@ body {
 
 .dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected {
   font-weight: 500;
+}
+
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected .ant-menu-item-icon,
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected .anticon {
+  color: inherit;
 }
 
 .dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title {
@@ -75,6 +80,29 @@ html[data-dqpm-theme='light'] {
   --dqpm-scrollbar-track: transparent;
 }
 
+/* cursor.com 셸 — 포인트 «Cursor.com» + 라이트 */
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] {
+  --dqpm-border: rgba(38, 37, 30, 0.1);
+  --dqpm-accent: #f54e00;
+  --dqpm-accent-hover: #d04200;
+  --dqpm-cream-btn: #ebeae5;
+  --dqpm-ink: #26251e;
+  --dqpm-canvas: #f7f7f4;
+}
+
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] .dqpm-layout-content-panel .ant-btn-primary:not(:disabled) {
+  background: var(--dqpm-cream-btn) !important;
+  border-color: var(--dqpm-accent) !important;
+  color: var(--dqpm-accent) !important;
+  box-shadow: none;
+}
+
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] .dqpm-layout-content-panel .ant-btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--dqpm-cream-btn) 85%, var(--dqpm-accent)) !important;
+  border-color: var(--dqpm-accent-hover) !important;
+  color: var(--dqpm-accent-hover) !important;
+}
+
 .dqpm-layout-content-panel .ant-card-bordered {
   border-color: var(--dqpm-border);
 }
@@ -110,6 +138,21 @@ html[data-dqpm-theme='light'] {
 
 .dqpm-app-table-root .ant-table-wrapper {
   max-width: 100%;
+}
+
+/* 프로덕트명 Tag — 긴 이름은 말줄임, 호버 시 title로 전체 표시 */
+.dqpm-product-name-tag {
+  margin: 0;
+  max-width: 100%;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.dqpm-app-table-root .dqpm-product-name-tag {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 목록 툴바 — Segmented (사용자·나의 대시보드) */

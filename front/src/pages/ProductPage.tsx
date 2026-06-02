@@ -7,7 +7,6 @@ import {
   Input,
   Select,
   Space,
-  Tag,
   Popconfirm,
   message,
   Row,
@@ -16,6 +15,9 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { DqpmTag } from '../components/DqpmTag';
+import type { TTagVariant } from '../styles/tagPalette';
 import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -90,21 +92,21 @@ const ProductPage = () => {
     messageApi[result.bSuccess ? 'success' : 'error'](result.strMessage);
   };
 
-  // DB 타입 색상
-  const objDbTypeColor: Record<string, string> = {
-    mysql: 'blue',
-    mssql: 'orange',
-    postgresql: 'green',
+  const objDbTypeVariant: Record<string, TTagVariant> = {
+    mysql: 'dbMysql',
+    mssql: 'dbMssql',
+    postgresql: 'dbPostgresql',
   };
 
   // 테이블 컬럼
   const arrColumns: ColumnsType<IProduct> = [
     fnMakeIndexColumn<IProduct>(),
     {
-      title: '프로젝트명',
+      title: '프로덕트명',
       dataIndex: 'strName',
       key: 'strName',
       width: 140,
+      render: (str: string) => <ProductNameTag strName={str} />,
     },
     {
       title: '서비스 범위',
@@ -113,9 +115,9 @@ const ProductPage = () => {
       render: (arrServices: IService[]) => (
         <Space wrap>
           {arrServices.map((s) => (
-            <Tag key={s.strAbbr} color="blue">
+            <DqpmTag key={s.strAbbr} tone="service">
               <strong>{s.strAbbr}</strong> ({s.strRegion})
-            </Tag>
+            </DqpmTag>
           ))}
         </Space>
       ),
@@ -126,9 +128,9 @@ const ProductPage = () => {
       key: 'strDbType',
       width: 100,
       render: (strType: string) => (
-        <Tag color={objDbTypeColor[strType] || 'default'}>
+        <DqpmTag tone={objDbTypeVariant[strType] ?? 'muted'}>
           {strType.toUpperCase()}
-        </Tag>
+        </DqpmTag>
       ),
     },
     {
@@ -199,8 +201,8 @@ const ProductPage = () => {
             <Col span={12}>
               <Form.Item
                 name="strName"
-                label="프로젝트명"
-                rules={[{ required: true, message: '프로젝트명을 입력해주세요.' }]}
+                label="프로덕트명"
+                rules={[{ required: true, message: '프로덕트명을 입력해주세요.' }]}
               >
                 <Input placeholder="예: DK온라인" />
               </Form.Item>

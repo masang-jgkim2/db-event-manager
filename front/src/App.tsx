@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from './stores/useAuthStore';
 import { useThemeStore } from './stores/useThemeStore';
 import { fnBuildDesignSystem } from './styles/design-system';
@@ -146,11 +147,14 @@ const App = () => {
   const fnVerifyToken = useAuthStore((state) => state.fnVerifyToken);
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
 
-  // 테마 스토어
-  const strMode = useThemeStore((state) => state.strMode);
-  const nFontSize = useThemeStore((state) => state.nFontSize);
-  const bCompact = useThemeStore((state) => state.bCompact);
-  const strPrimaryColor = useThemeStore((state) => state.strPrimaryColor);
+  const { strMode, nFontSize, bCompact, strPrimaryColor } = useThemeStore(
+    useShallow((s) => ({
+      strMode: s.strMode,
+      nFontSize: s.nFontSize,
+      bCompact: s.bCompact,
+      strPrimaryColor: s.strPrimaryColor,
+    })),
+  );
   // 앱 시작 시 토큰 검증 (자동 로그인)
   useEffect(() => {
     fnVerifyToken();
@@ -172,15 +176,21 @@ const App = () => {
   const bIsDark = strMode === 'dark';
 
   // CSS 변수·스크롤바 등 전역 테마 동기화
-  useEffect(() => {
-    document.documentElement.setAttribute('data-dqpm-theme', bIsDark ? 'dark' : 'light');
-    return () => {
-      document.documentElement.removeAttribute('data-dqpm-theme');
-    };
-  }, [bIsDark]);
-
   // 디자인 시스템 전체 토큰 생성
   const objDs = fnBuildDesignSystem(strPrimaryColor, bIsDark, nFontSize);
+
+  // CSS 변수·스크롤바·cursor.com 셸 플래그
+  useEffect(() => {
+    document.documentElement.setAttribute('data-dqpm-theme', bIsDark ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      'data-dqpm-shell',
+      objDs.bCursorSiteShell ? 'cursor-site' : 'ide',
+    );
+    return () => {
+      document.documentElement.removeAttribute('data-dqpm-theme');
+      document.documentElement.removeAttribute('data-dqpm-shell');
+    };
+  }, [bIsDark, objDs.bCursorSiteShell]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { token: dsToken, components: dsComponents } = objDs.antdThemeConfig as any;

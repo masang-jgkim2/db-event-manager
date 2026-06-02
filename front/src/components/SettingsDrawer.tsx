@@ -6,6 +6,7 @@ import {
   ReloadOutlined,
   CheckOutlined,
 } from '@ant-design/icons';
+import { useShallow } from 'zustand/react/shallow';
 import { useThemeStore, ARR_PRIMARY_COLORS, fnGenPalette } from '../stores/useThemeStore';
 import type { TThemeMode } from '../stores/useThemeStore';
 import { fnApiGetPushStatus } from '../api/pushApi';
@@ -28,17 +29,33 @@ interface ISettingsDrawerProps {
 const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
   const { token } = antdTheme.useToken();
 
-  const strMode = useThemeStore((s) => s.strMode);
-  const nFontSize = useThemeStore((s) => s.nFontSize);
-  const bCompact = useThemeStore((s) => s.bCompact);
-  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const fnSetMode = useThemeStore((s) => s.fnSetMode);
-  const fnSetFontSize = useThemeStore((s) => s.fnSetFontSize);
-  const fnSetCompact = useThemeStore((s) => s.fnSetCompact);
-  const fnSetPrimaryColor = useThemeStore((s) => s.fnSetPrimaryColor);
-  const bFunMode = useThemeStore((s) => s.bFunMode);
-  const fnSetFunMode = useThemeStore((s) => s.fnSetFunMode);
-  const fnReset = useThemeStore((s) => s.fnReset);
+  const {
+    strMode,
+    nFontSize,
+    bCompact,
+    strPrimaryColor,
+    bFunMode,
+    fnSetMode,
+    fnSetFontSize,
+    fnSetCompact,
+    fnSetPrimaryColor,
+    fnSetFunMode,
+    fnReset,
+  } = useThemeStore(
+    useShallow((s) => ({
+      strMode: s.strMode,
+      nFontSize: s.nFontSize,
+      bCompact: s.bCompact,
+      strPrimaryColor: s.strPrimaryColor,
+      bFunMode: s.bFunMode,
+      fnSetMode: s.fnSetMode,
+      fnSetFontSize: s.fnSetFontSize,
+      fnSetCompact: s.fnSetCompact,
+      fnSetPrimaryColor: s.fnSetPrimaryColor,
+      fnSetFunMode: s.fnSetFunMode,
+      fnReset: s.fnReset,
+    })),
+  );
 
   const bIsDark = strMode === 'dark';
   const bWebPushSupported = fnIsWebPushSupported();

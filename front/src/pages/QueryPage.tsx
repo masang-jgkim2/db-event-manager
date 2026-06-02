@@ -11,7 +11,6 @@ import {
   Col,
   message,
   Space,
-  Tag,
   Steps,
   Result,
   Alert,
@@ -32,6 +31,7 @@ import { useEventStore } from '../stores/useEventStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
+import { DqpmTag } from '../components/DqpmTag';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
@@ -523,10 +523,10 @@ const QueryPage = () => {
                     label={`#${e.nId} ${e.strEventLabel}`}
                   >
                     <Space wrap size={4}>
-                      <Tag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</Tag>
+                      <DqpmTag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</DqpmTag>
                       <span>{e.strEventLabel}</span>
-                      <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</Tag>
-                      <Tag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</Tag>
+                      <DqpmTag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</DqpmTag>
+                      <DqpmTag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</DqpmTag>
                     </Space>
                   </Select.Option>
                 ))}
@@ -535,11 +535,11 @@ const QueryPage = () => {
                 const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
                 return (
                   <Space wrap style={{ marginTop: 8 }}>
-                    <Tag color="purple">템플릿 번호 {objSelectedEvent.nId}</Tag>
+                    <DqpmTag color="purple">템플릿 번호 {objSelectedEvent.nId}</DqpmTag>
                     {arrValidSets.length >= 2 && (
-                      <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
+                      <DqpmTag color="blue">다중 쿼리 ({arrValidSets.length}세트)</DqpmTag>
                     )}
-                    {arrValidSets.length === 1 && <Tag>단일 쿼리</Tag>}
+                    {arrValidSets.length === 1 && <DqpmTag>단일 쿼리</DqpmTag>}
                   </Space>
                 );
               })()}
@@ -596,7 +596,7 @@ const QueryPage = () => {
                   label={
                     <Space>
                       반영 범위
-                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                      <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                     </Space>
                   }
                   extra={
@@ -623,7 +623,7 @@ const QueryPage = () => {
                           value={opt.value}
                           disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
                         >
-                          <Tag color={opt.strColor}>{opt.label}</Tag>
+                          <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
                           {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
                             <Text type="secondary" style={{ fontSize: 11 }}> (해당 프로덕트에 {opt.value.toUpperCase()} DB 접속 없음)</Text>
                           ) : null}
@@ -639,7 +639,7 @@ const QueryPage = () => {
                     label={
                       <Space>
                         QA 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 QA 실행 가능</Text>
                       </Space>
                     }
@@ -662,7 +662,7 @@ const QueryPage = () => {
                     label={
                       <Space>
                         LIVE 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
                       </Space>
                     }
@@ -689,7 +689,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && ' — 번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && ' — 문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                     >
@@ -722,7 +722,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && '번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && '문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                       extra={

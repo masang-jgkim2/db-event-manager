@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { STR_DBA_PASS, STR_DBA_USER, fnE2eLogin } from './helpers/auth';
+import { fnWaitDashboardTableReady } from './helpers/dashboard';
 
 test.describe('나의 대시보드 (DBA)', () => {
   test.beforeEach(async ({ page }) => {
@@ -17,7 +18,7 @@ test.describe('나의 대시보드 (DBA)', () => {
 
   test('E-X1 상세 모달 열기', { tag: ['@automate', '@smoke'] }, async ({ page }) => {
     await page.goto('/my-dashboard');
-    await page.waitForSelector('.ant-table tbody tr', { timeout: 15000 });
+    await fnWaitDashboardTableReady(page, 15000);
 
     const btnDetail = page.getByRole('button', { name: '상세' }).first();
     await expect(btnDetail).toBeVisible();
@@ -34,7 +35,7 @@ test.describe('나의 대시보드 (DBA)', () => {
     test.setTimeout(120000);
 
     await page.goto('/my-dashboard');
-    await page.waitForSelector('.ant-table tbody tr', { timeout: 15000 });
+    await fnWaitDashboardTableReady(page, 15000);
 
     const btnQa = page.getByRole('button', { name: 'QA 쿼리 실행' }).first();
     if ((await btnQa.count()) === 0) {

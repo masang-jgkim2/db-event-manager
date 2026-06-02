@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Form, Input, Checkbox, Popconfirm, message, Alert, Divider,
 } from 'antd';
 import {
@@ -13,6 +13,7 @@ import {
 } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
+import { DqpmTag } from '../components/DqpmTag';
 import { ARR_PERMISSION_GROUPS } from '../types';
 
 const { Text } = Typography;
@@ -133,14 +134,14 @@ const RolePage = () => {
       key: 'bIsSystem',
       width: 80,
       render: (v: boolean) => v
-        ? <Tag color="blue" icon={<SafetyCertificateOutlined />}>시스템</Tag>
-        : <Tag color="default">커스텀</Tag>,
+        ? <DqpmTag color="blue" icon={<SafetyCertificateOutlined />}>시스템</DqpmTag>
+        : <DqpmTag color="default">커스텀</DqpmTag>,
     },
     {
       title: '권한 수',
       key: 'permCount',
       width: 80,
-      render: (_: unknown, r: IRole) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
+      render: (_: unknown, r: IRole) => <DqpmTag color="green">{r.arrPermissions.length}개</DqpmTag>,
     },
     ...(bCanEditPermissions || bCanEdit || bCanDelete
       ? [{

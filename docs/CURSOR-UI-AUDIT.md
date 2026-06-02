@@ -11,7 +11,7 @@
 | Container | `#FFFFFF` | `#252526` |
 | Sider | `#F7F7F7` | `#252526` |
 | Border | `#E5E5E5` / `#E8E8E8` | `rgba(255,255,255,0.08–0.10)` |
-| Primary 기본 | `#434343` (Cursor 앱 중성, UI «Cursor») | `#f54e00`는 «브랜드 오렌지» 선택 |
+| Primary 기본 | `#434343` (UI «Cursor IDE») | `#f54e00`는 «Cursor.com» — 웜 셸·[적용 목록](DESIGN-SYSTEM-CURSOR-COM-APPLIED.md) |
 
 ## 컴포넌트·페이지 매트릭스
 

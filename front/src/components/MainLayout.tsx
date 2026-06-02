@@ -23,7 +23,8 @@ import {
   N_SIDER_MIN,
   N_SIDER_DEFAULT,
   N_SIDER_COLLAPSED_WIDTH,
-  fnSiderMax,
+  N_SIDER_EXPAND_RELEASE,
+  fnClampSiderWidth,
 } from '../stores/useThemeStore';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import SettingsDrawer from './SettingsDrawer';
@@ -42,6 +43,22 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
   dba: { strText: 'DBA', strColor: '#722ed1' },
   guest: { strText: 'GUEST', strColor: '#faad14' },
 };
+
+function fnResolveHeaderUserDisplay(
+  strDisplayName: string | undefined,
+  strUserId: string | undefined,
+  strRoleText: string,
+) {
+  const strHeaderDisplayName = strDisplayName?.trim() ?? '';
+  const strRoleNorm = strRoleText.trim();
+  const bShowRoleTag =
+    Boolean(strRoleNorm) && strRoleNorm.toLowerCase() !== strHeaderDisplayName.toLowerCase();
+  const strUserHoverHint =
+    !bShowRoleTag && strUserId && strUserId.toLowerCase() !== strHeaderDisplayName.toLowerCase()
+      ? `아이디: ${strUserId}${strRoleNorm ? ` · 역할: ${strRoleNorm}` : ''}`
+      : undefined;
+  return { strHeaderDisplayName, bShowRoleTag, strUserHoverHint };
+}
 
 /** 사이드바 메뉴 그룹 라벨 (커스텀 ReactNode일 때도 디자인 토큰 색·타이포 적용) */
 const fnRenderMenuGroupLabel = (
@@ -107,10 +124,12 @@ const MainLayout = () => {
     bExpandDragRef.current = false;
     setBIsResizingSider(true);
     nDragStartX.current = e.clientX;
-    nDragStartWidth.current = bCollapsedRef.current ? N_SIDER_COLLAPSED_WIDTH : nSiderWidth;
+    nDragStartWidth.current = bCollapsedRef.current
+      ? N_SIDER_COLLAPSED_WIDTH
+      : useThemeStore.getState().nSiderWidth;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-  }, [nSiderWidth]);
+  }, []);
 
   const fnOnResizeHandleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -118,6 +137,7 @@ const MainLayout = () => {
       e.stopPropagation();
       if (bCollapsedRef.current) {
         setBCollapsed(false);
+        bCollapsedRef.current = false;
       }
       fnSetSiderWidth(N_SIDER_DEFAULT);
     },
@@ -151,12 +171,11 @@ const MainLayout = () => {
       const nRaw = nDragStartWidth.current + (e.clientX - nDragStartX.current);
 
       if (bExpandDragRef.current) {
-        const nNext = Math.min(fnSiderMax(), Math.max(N_SIDER_COLLAPSED_WIDTH, nRaw));
-        fnSetSiderWidth(nNext, false);
+        fnSetSiderWidth(fnClampSiderWidth(nRaw, false), false);
         return;
       }
 
-      const nClamped = Math.min(fnSiderMax(), Math.max(N_SIDER_COLLAPSED_WIDTH, nRaw));
+      const nClamped = fnClampSiderWidth(nRaw, false);
 
       // 최소 폭보다 더 줄이려 하면 아이콘만 표시
       if (nClamped < N_SIDER_MIN) {
@@ -175,7 +194,7 @@ const MainLayout = () => {
       fnEndDragChrome();
       if (!bWasExpandDrag) return;
       const nW = useThemeStore.getState().nSiderWidth;
-      if (nW < N_SIDER_COLLAPSED_WIDTH + 28) {
+      if (nW < N_SIDER_EXPAND_RELEASE) {
         setBCollapsed(true);
         bCollapsedRef.current = true;
         return;
@@ -296,16 +315,10 @@ const MainLayout = () => {
   const strFirstRole = arrRoles[0] || '';
   const objRole = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
 
-  const strHeaderDisplayName = user?.strDisplayName?.trim() ?? '';
-  const bShowRoleTag =
-    Boolean(objRole.strText.trim()) &&
-    objRole.strText.trim().toLowerCase() !== strHeaderDisplayName.toLowerCase();
-  const strUserHoverHint =
-    !bShowRoleTag && user?.strUserId && user.strUserId.toLowerCase() !== strHeaderDisplayName.toLowerCase()
-      ? `아이디: ${user.strUserId}${objRole.strText ? ` · 역할: ${objRole.strText}` : ''}`
-      : !bShowRoleTag && objRole.strText
-        ? `역할: ${objRole.strText}`
-        : undefined;
+  const { strHeaderDisplayName, bShowRoleTag, strUserHoverHint } = useMemo(
+    () => fnResolveHeaderUserDisplay(user?.strDisplayName, user?.strUserId, objRole.strText),
+    [user?.strDisplayName, user?.strUserId, objRole.strText],
+  );
 
   // 사이드 폭에 맞춰 로고 글자 크기 조절(좁게 당기면 자동으로 줄어듦)
   const nLogoFontPx = bCollapsed
@@ -456,16 +469,16 @@ const MainLayout = () => {
             </Badge>
             <NotificationBellDropdown />
             <Dropdown menu={{ items: arrUserMenuItems }} placement="bottomRight">
-              <Tooltip title={strUserHoverHint}>
-                <Space style={{ cursor: 'pointer' }}>
+              <Space data-testid="header-user-menu" style={{ cursor: 'pointer' }}>
+                <Tooltip title={strUserHoverHint}>
                   <Avatar
                     icon={<UserOutlined />}
                     style={{ background: objRole.strColor }}
                   />
-                  <Text strong>{strHeaderDisplayName || user?.strUserId}</Text>
-                  {bShowRoleTag ? <Tag color={objRole.strColor}>{objRole.strText}</Tag> : null}
-                </Space>
-              </Tooltip>
+                </Tooltip>
+                <Text strong>{strHeaderDisplayName || user?.strUserId}</Text>
+                {bShowRoleTag ? <Tag color={objRole.strColor}>{objRole.strText}</Tag> : null}
+              </Space>
             </Dropdown>
             {/* UI 설정 버튼 */}
             <Button

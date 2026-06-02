@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { STR_ADMIN_PASS, STR_ADMIN_USER, fnE2eLogin } from './helpers/auth';
+import { STR_ADMIN_PASS, STR_ADMIN_USER, fnE2eLogin, fnHeaderLogout } from './helpers/auth';
 
 test.describe('로그인·로그아웃 (화면 클릭)', { tag: '@smoke' }, () => {
   test('로그인 페이지 접속 시 아이디/비밀번호 입력란과 로그인 버튼이 보인다', async ({ page }) => {
@@ -26,7 +26,7 @@ test.describe('로그인·로그아웃 (화면 클릭)', { tag: '@smoke' }, () =
   });
 });
 
-test.describe('로그아웃 (클릭)', () => {
+test.describe('로그아웃 (클릭)', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.getByPlaceholder('아이디').fill(STR_ADMIN_USER);
@@ -36,9 +36,7 @@ test.describe('로그아웃 (클릭)', () => {
   });
 
   test('헤더에서 사용자 영역 클릭 후 로그아웃 클릭하면 로그인 페이지로 이동한다', async ({ page }) => {
-    // 우측 상단 사용자 표시명(관리자) 클릭 → 드롭다운에서 로그아웃 클릭
-    await page.getByText('관리자', { exact: true }).first().click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
+    await fnHeaderLogout(page);
     await expect(page).toHaveURL(/\/login$/);
   });
 });
