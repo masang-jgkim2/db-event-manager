@@ -27,6 +27,7 @@ import {
   STR_FONT_MONO,
   STR_FONT_UI,
 } from './cursorSiteTokens';
+import { fnBuildTypographyRoles, type ITypographyRoles } from './typographyTokens';
 
 /** Cursor IDE에 가까운 중성 톤 (테마·셸 — 정교화 v2) */
 const OBJ_CURSOR_NEUTRAL = {
@@ -212,7 +213,11 @@ export interface IDesignSystem {
   /** 라이트 + 포인트 Cursor.com(#f54e00) — 웜 셸·CTA 스타일 */
   bCursorSiteShell: boolean;
 
+  strFontUi: string;
   strFontMono: string;
+
+  /** DESIGN.md 역할 (getdesign Cursor) — nFontSize 기준 스케일 */
+  objTypoRoles: ITypographyRoles;
 
   // ── 자주 쓰는 컬러 단축
   objColor: {
@@ -241,8 +246,9 @@ export function fnBuildDesignSystem(
   const arrP = generate(strPrimary, bDark ? { theme: 'dark', backgroundColor: '#141414' } : undefined);
 
   // 타이포/스페이싱
-  const objTypo    = fnBuildTypography(nFontSize);
-  const objSpacing = fnBuildSpacing(nFontSize);
+  const objTypo       = fnBuildTypography(nFontSize);
+  const objTypoRoles  = fnBuildTypographyRoles(nFontSize);
+  const objSpacing    = fnBuildSpacing(nFontSize);
 
   const bCursorSiteShell = !bDark && fnIsCursorSitePrimary(strPrimary);
   const objCursor = bDark
@@ -264,7 +270,7 @@ export function fnBuildDesignSystem(
     : (bCursorSiteShell ? STR_CURSOR_SITE_INK : 'rgba(0,0,0,0.88)');
 
   const strMenuGroupColor = objCursor.strMenuGroup;
-  const nMenuGroupFontSize = Math.max(objTypo.nXs, 10);
+  const nMenuGroupFontSize = objTypoRoles.captionUppercase.nFontSize;
 
   const nHeaderHeight = 44;
   const nLogoHeight = 44;
@@ -290,7 +296,7 @@ export function fnBuildDesignSystem(
   // ── Ant Design 컴포넌트 토큰 ─────────────────────────────
   const antdToken: Record<string, unknown> = {
     fontFamily: STR_FONT_FAMILY,
-    lineHeight: 1.5,
+    lineHeight: objTypoRoles.bodyMd.nLineHeight,
     fontWeightStrong: 600,
 
     colorBgLayout:       objCursor.strBgLayout,
@@ -329,16 +335,16 @@ export function fnBuildDesignSystem(
     colorError:   bCursorSiteShell ? STR_CURSOR_SEMANTIC_ERROR : '#ff4d4f',
     colorInfo:    arrP[IDX_PRIMARY],
 
-    // 타이포그래피
-    fontSize:       objTypo.nBase,
-    fontSizeSM:     objTypo.nSm,
-    fontSizeLG:     objTypo.nLg,
-    fontSizeXL:     objTypo.nXl,
+    // 타이포그래피 — DESIGN.md 역할 매핑
+    fontSize:       objTypoRoles.bodyMd.nFontSize,
+    fontSizeSM:     objTypoRoles.bodySm.nFontSize,
+    fontSizeLG:     objTypoRoles.titleMd.nFontSize,
+    fontSizeXL:     objTypoRoles.pageTitle.nFontSize,
     fontSizeHeading1: objTypo.nXxl,
-    fontSizeHeading2: objTypo.nXl,
-    fontSizeHeading3: objTypo.nLg,
-    fontSizeHeading4: objTypo.nMd,
-    fontSizeHeading5: objTypo.nBase,
+    fontSizeHeading2: objTypoRoles.pageTitle.nFontSize,
+    fontSizeHeading3: objTypoRoles.titleMd.nFontSize,
+    fontSizeHeading4: objTypoRoles.pageTitle.nFontSize,
+    fontSizeHeading5: objTypoRoles.titleSm.nFontSize,
 
     // 간격
     padding:    objSpacing.nLg,
@@ -410,7 +416,7 @@ export function fnBuildDesignSystem(
       groupTitleLineHeight:   1.5,
       itemHeight:             Math.max(32, Math.round(nFontSize * 2.29)),
       iconSize:               Math.round(nFontSize * 1.07),
-      fontSize:               objTypo.nBase,
+      fontSize:               objTypoRoles.bodyMd.nFontSize,
       itemBorderRadius:       6,
     },
 
@@ -423,15 +429,16 @@ export function fnBuildDesignSystem(
       rowHoverBg:            objCursor.strMenuItemHover,
       rowSelectedBg:         objCursor.strMenuItemSelected,
       rowSelectedHoverBg:    objCursor.strMenuItemSelected,
-      fontSize:              objTypo.nSm,
-      headerFontSize:        objTypo.nSm,
+      fontSize:              objTypoRoles.bodySm.nFontSize,
+      headerFontSize:        objTypoRoles.bodySm.nFontSize,
       cellPaddingBlock:      objSpacing.nSm,
       cellPaddingInline:     objSpacing.nMd,
     },
 
     // 버튼 — 플랫; cursor.com: 크림 배경 + 오렌지 테두리·글자(primary는 CSS 보강)
     Button: {
-      fontWeight:               500,
+      contentFontSize:          objTypoRoles.button.nFontSize,
+      fontWeight:               objTypoRoles.button.nFontWeight,
       primaryShadow:            'none',
       defaultShadow:            'none',
       dangerShadow:             'none',
@@ -463,7 +470,7 @@ export function fnBuildDesignSystem(
     Tag: {
       defaultBg:           bDark ? 'rgba(255,255,255,0.08)' : arrP[IDX_BG],
       defaultColor:        bDark ? 'rgba(255,255,255,0.75)' : arrP[IDX_DARK1],
-      fontSize:            objTypo.nSm,
+      fontSize:            objTypoRoles.bodySm.nFontSize,
     },
 
     // 카드 — 보더 위주, 그림자 최소
@@ -471,7 +478,7 @@ export function fnBuildDesignSystem(
       headerBg:       bDark ? objCursor.strBgElevated : objCursor.strBgContainer,
       colorBgContainer: objCursor.strBgContainer,
       colorBorderSecondary: objCursor.strBorderSecondary,
-      headerFontSize: objTypo.nMd,
+      headerFontSize: objTypoRoles.titleMd.nFontSize,
       paddingLG:      objSpacing.nLg,
       boxShadow:      'none',
       boxShadowTertiary: 'none',
@@ -489,7 +496,7 @@ export function fnBuildDesignSystem(
       activeBorderColor:  strPrimary,
       hoverBorderColor:   objCursor.strBorder,
       activeShadow:       `0 0 0 2px ${strPrimaryBgSubtle}`,
-      fontSize:           objTypo.nBase,
+      fontSize:           objTypoRoles.bodyMd.nFontSize,
       colorBgContainer:   objCursor.strBgContainer,
       colorBorder:        objCursor.strBorder,
     },
@@ -513,7 +520,7 @@ export function fnBuildDesignSystem(
       iconSize:           Math.round(nFontSize * 1.71),
       customIconSize:     Math.round(nFontSize * 2),
       titleLineHeight:    1.5,
-      fontSize:           objTypo.nSm,
+      fontSize:           objTypoRoles.bodySm.nFontSize,
     },
 
     // 타임라인
@@ -645,7 +652,7 @@ export function fnBuildDesignSystem(
 
     // 폼
     Form: {
-      labelFontSize:   objTypo.nSm,
+      labelFontSize:   objTypoRoles.bodySm.nFontSize,
       itemMarginBottom: objSpacing.nLg,
     },
 
@@ -679,8 +686,8 @@ export function fnBuildDesignSystem(
       strLogoBackground: 'transparent',
       strLogoBorder:     strSiderLogoBorder,
       strLogoText:       strSiderLogoText,
-      nLogoFontSize:     objTypo.nLg,
-      nLogoFontWeight:   600,
+      nLogoFontSize:     objTypoRoles.titleSm.nFontSize,
+      nLogoFontWeight:   objTypoRoles.titleSm.nFontWeight,
       strResizeHandle:   strResizeHandle,
     },
 
@@ -693,8 +700,8 @@ export function fnBuildDesignSystem(
     objMenuGroup: {
       strColor:       strMenuGroupColor,
       nFontSize:      nMenuGroupFontSize,
-      nFontWeight:    600,
-      strLetterSpacing: '0.05em',
+      nFontWeight:    objTypoRoles.captionUppercase.nFontWeight,
+      strLetterSpacing: objTypoRoles.captionUppercase.strLetterSpacing,
       strTextTransform: 'uppercase',
     },
 
@@ -714,7 +721,9 @@ export function fnBuildDesignSystem(
     arrPalette: arrP,
     objTag: fnBuildTagPalette(arrP, bDark),
     bCursorSiteShell,
+    strFontUi: STR_FONT_UI,
     strFontMono: STR_FONT_MONO,
+    objTypoRoles,
 
     objColor: {
       strPrimary:       arrP[IDX_PRIMARY],

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Typography, Button, Modal, Form, Input, Select, Space,
-  Popconfirm, message, Tooltip, Segmented,
+  Popconfirm, message, Tooltip, Segmented, theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -26,6 +26,7 @@ import {
 } from '../constants/userStatus';
 import type { IRole, TPermission } from '../types';
 import { REG_USER_ID, ruleUserIdCharsOnly } from '../utils/userIdInput';
+import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
 
@@ -50,6 +51,7 @@ interface IUserRow {
 type TUserListTab = 'all' | 'pending_approval';
 
 const UserPage = () => {
+  const { token } = theme.useToken();
   const [arrUsers, setArrUsers] = useState<IUserRow[]>([]);
   const [bUsersListReady, setBUsersListReady] = useState(false);
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
@@ -312,7 +314,9 @@ const UserPage = () => {
             render: (_: unknown, r: IUserRow) => {
               const bOn = Boolean(r.bOnline);
               const strTip = bOn ? '온라인 (최근 API 활동 기준)' : '오프라인';
-              const strColor = bOn ? '#52c41a' : '#bfbfbf';
+              const strColor = bOn
+                ? fnSemanticColor('success', token)
+                : String(token.colorTextQuaternary);
               const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
               return (
                 <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{strTip}</span>}>

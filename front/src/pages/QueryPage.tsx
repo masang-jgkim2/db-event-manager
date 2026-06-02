@@ -16,6 +16,7 @@ import {
   Alert,
   Checkbox,
   Tabs,
+  theme,
 } from 'antd';
 import {
   CodeOutlined,
@@ -37,6 +38,8 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
+import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle } from '../styles/queryEditorTokens';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -81,6 +84,23 @@ const QueryPage = () => {
   const user = useAuthStore((s) => s.user);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
   const bIsDark = useThemeStore((s) => s.strMode === 'dark');
+  const { token } = theme.useToken();
+  const { objTypoRoles } = useDesignSystem();
+  const objSqlInputStyle = useMemo(
+    () => fnCodeSurfaceStyle(token, objTypoRoles.code.nFontSize),
+    [token, objTypoRoles.code.nFontSize],
+  );
+  const objSqlFormInputStyle = useMemo(
+    () => ({
+      ...objSqlInputStyle,
+      marginTop: 8,
+    }),
+    [objSqlInputStyle],
+  );
+  const objSqlReadonlyStyle = useMemo(
+    () => fnSqlEditorReadonlyStyle(objTypoRoles.code.nFontSize),
+    [objTypoRoles.code.nFontSize],
+  );
   const strSubmitGradient = useMemo(() => {
     const arrP = fnGenPalette(strPrimaryColor, bIsDark);
     return `linear-gradient(135deg, ${strPrimaryColor} 0%, ${arrP[7]} 100%)`;
@@ -709,7 +729,8 @@ const QueryPage = () => {
                               }}
                               rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
                               placeholder={fnGetInputPlaceholder()}
-                              style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8 }}
+                              className={STR_CODE_BLOCK_CLASS}
+                              style={objSqlFormInputStyle}
                             />
                           ),
                         }))}
@@ -736,7 +757,8 @@ const QueryPage = () => {
                         onChange={(e) => setStrInputValues(e.target.value)}
                         rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
                         placeholder={fnGetInputPlaceholder()}
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        className={STR_CODE_BLOCK_CLASS}
+                        style={objSqlInputStyle}
                       />
                     </Form.Item>
                   )
@@ -809,16 +831,12 @@ const QueryPage = () => {
                       label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
                       children: (
                         <TextArea
+                          className={`${STR_CODE_BLOCK_CLASS} dqpm-code-block`}
                           value={t.strQuery}
                           readOnly
                           autoSize={{ minRows: 8, maxRows: 20 }}
                           style={{
-                            fontFamily: "'Consolas', 'Monaco', monospace",
-                            fontSize: 12,
-                            background: '#1e1e1e',
-                            color: '#d4d4d4',
-                            border: 'none',
-                            borderRadius: 8,
+                            ...objSqlReadonlyStyle,
                             padding: 12,
                             marginTop: 8,
                           }}
@@ -828,23 +846,19 @@ const QueryPage = () => {
                   />
                 ) : (
                   <TextArea
+                    className="dqpm-font-mono dqpm-code-block"
                     value={strGeneratedQuery}
                     readOnly
                     autoSize={{ minRows: 10, maxRows: 25 }}
                     style={{
-                      fontFamily: "'Consolas', 'Monaco', monospace",
-                      fontSize: 13,
-                      background: '#1e1e1e',
-                      color: '#d4d4d4',
-                      border: 'none',
-                      borderRadius: 8,
+                      ...objSqlReadonlyStyle,
                       padding: 16,
                     }}
                   />
                 )}
               </>
             ) : (
-              <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>
+              <div style={{ padding: '80px 0', textAlign: 'center', color: token.colorTextQuaternary }}>
                 <CodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
                 <br />
                 왼쪽에서 프로덕트와 이벤트를 선택하고

@@ -11,6 +11,7 @@ import {
   message,
   Row,
   Col,
+  theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -28,6 +29,7 @@ import { ARR_REGION_OPTIONS } from '../types';
 const { TextArea } = Input;
 
 const ProductPage = () => {
+  const { token } = theme.useToken();
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditProduct, setObjEditProduct] = useState<IProduct | null>(null);
   const [form] = Form.useForm();
@@ -275,7 +277,7 @@ const ProductPage = () => {
                     <Col span={4}>
                       <MinusCircleOutlined
                         onClick={() => remove(name)}
-                        style={{ color: '#ff4d4f', cursor: 'pointer', fontSize: 16 }}
+                        style={{ color: token.colorError, cursor: 'pointer', fontSize: 16 }}
                       />
                     </Col>
                   </Row>

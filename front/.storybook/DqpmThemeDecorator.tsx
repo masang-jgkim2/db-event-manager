@@ -4,6 +4,7 @@ import koKR from 'antd/locale/ko_KR';
 import type { Decorator } from '@storybook/react-vite';
 import { fnBuildDesignSystem } from '../src/styles/design-system';
 import { DesignSystemContext } from '../src/styles/DesignSystemContext';
+import { fnApplyTypographyCssVars } from '../src/styles/typographyCss';
 import {
   STR_PRIMARY_CURSOR_BRAND,
   STR_PRIMARY_CURSOR_NEUTRAL,
@@ -27,7 +28,12 @@ export const DqpmThemeDecorator: Decorator = (Story, context) => {
       'data-dqpm-shell',
       objDs.bCursorSiteShell ? 'cursor-site' : 'ide',
     );
-  }, [bDark, objDs.bCursorSiteShell]);
+    fnApplyTypographyCssVars({
+      strFontUi: objDs.strFontUi,
+      strFontMono: objDs.strFontMono,
+      objTypoRoles: objDs.objTypoRoles,
+    });
+  }, [bDark, objDs.bCursorSiteShell, objDs.strFontUi, objDs.strFontMono, objDs.objTypoRoles]);
 
   const objTheme = objDs.antdThemeConfig as {
     token: Record<string, unknown>;

@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Typography, Card, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
-  message, Descriptions, Alert, Spin, Tooltip,
+  message, Descriptions, Alert, Spin, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined,
@@ -25,6 +25,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
+import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
 
@@ -69,6 +70,7 @@ interface ITestResult {
 }
 
 const DbConnectionPage = () => {
+  const { token } = theme.useToken();
   const [arrConnections, setArrConnections] = useState<IDbConnection[]>([]);
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
@@ -299,11 +301,16 @@ const DbConnectionPage = () => {
         <div style={{ padding: 12, background: 'var(--ant-color-fill-quaternary)' }}>
           <Card
             size="small"
-            style={{ margin: 0, borderColor: objResultForRow.bSuccess ? '#52c41a' : '#ff4d4f' }}
+            style={{
+              margin: 0,
+              borderColor: objResultForRow.bSuccess
+                ? fnSemanticColor('success', token)
+                : fnSemanticColor('error', token),
+            }}
           >
             {objResultForRow.bSuccess ? (
               <>
-                <Text strong style={{ color: '#52c41a' }}>
+                <Text strong style={{ color: fnSemanticColor('success', token) }}>
                   <CheckCircleOutlined style={{ marginRight: 6 }} />
                   연결 성공
                 </Text>
@@ -417,12 +424,12 @@ const DbConnectionPage = () => {
                         : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
               const strColor =
                 strSt === 'ok'
-                  ? '#1677ff'
+                  ? fnSemanticColor('info', token)
                   : strSt === 'fail'
-                    ? '#ff4d4f'
+                    ? fnSemanticColor('error', token)
                     : strSt === 'pending'
-                      ? '#faad14'
-                      : '#bfbfbf';
+                      ? fnSemanticColor('warning', token)
+                      : String(token.colorTextQuaternary);
               const strShadow =
                 strSt === 'ok'
                   ? '0 0 8px rgba(22, 119, 255, 0.42)'

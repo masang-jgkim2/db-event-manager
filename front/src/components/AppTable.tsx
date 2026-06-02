@@ -569,6 +569,7 @@ function AppTable<T extends object>({
           : undefined
       }
       expandable={expandable}
+      bordered={false}
       {...restProps}
     />
   );

@@ -1,11 +1,13 @@
 import { ClockCircleOutlined } from '@ant-design/icons';
-import { Button, Result, Typography } from 'antd';
+import { Button, Result, Typography, theme } from 'antd';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AuthCardLayout from '../components/AuthCardLayout';
+import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
 
 const RegisterSentPage = () => {
+  const { token } = theme.useToken();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const strEmail = searchParams.get('email') ?? '';
@@ -18,7 +20,7 @@ const RegisterSentPage = () => {
       strFooterTo="/login"
     >
       <Result
-        icon={<ClockCircleOutlined style={{ color: '#faad14' }} />}
+        icon={<ClockCircleOutlined style={{ color: fnSemanticColor('warning', token) }} />}
         title="관리자 승인 대기"
         subTitle={
           <span style={{ display: 'block', textAlign: 'left' }}>

@@ -40,6 +40,12 @@ import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userSco
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
 import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import {
+  fnSemanticColor,
+  fnSemanticFilledButtonStyle,
+  fnSemanticStatisticStyle,
+} from '../styles/semanticColors';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -354,26 +360,22 @@ const ExecutionResultModal = ({
 
   const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, messageApi);
 
-  const strQueryBlockStyle: React.CSSProperties = {
+  const strQueryBlockStyle: React.CSSProperties = fnCodeSurfaceStyle(token, 11, {
     padding: '8px 12px',
-    background: token.colorFillTertiary,
     borderRadius: token.borderRadiusSM,
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: token.colorText,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-all',
     maxHeight: 220,
     overflow: 'auto',
-  };
+  });
 
   return (
     <Modal
       title={
         <Space>
           {objResult.bSuccess
-            ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
-            : <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+            ? <CheckCircleOutlined style={{ color: fnSemanticColor('success', token), fontSize: 18 }} />
+            : <ExclamationCircleOutlined style={{ color: fnSemanticColor('error', token), fontSize: 18 }} />
           }
           <span>{strEnv.toUpperCase()} 쿼리 실행 {objResult.bSuccess ? '완료' : '실패'}</span>
         </Space>
@@ -407,7 +409,7 @@ const ExecutionResultModal = ({
                           title="총 처리 건수"
                           value={objResult.nTotalAffectedRows}
                           suffix="건"
-                          valueStyle={{ color: '#1890ff', fontSize: 22 }}
+                          valueStyle={fnSemanticStatisticStyle('info', token)}
                         />
                       </Col>
                       <Col span={8}>
@@ -415,7 +417,7 @@ const ExecutionResultModal = ({
                           title="실행 시간"
                           value={objResult.nElapsedMs}
                           suffix="ms"
-                          valueStyle={{ color: '#52c41a', fontSize: 22 }}
+                          valueStyle={fnSemanticStatisticStyle('success', token)}
                         />
                       </Col>
                       <Col span={8}>
@@ -498,7 +500,7 @@ const ExecutionResultModal = ({
                       {objResult.strError}
                     </Text>
                     {objResult.strRollbackMsg && (
-                      <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
+                      <Text strong style={{ color: fnSemanticColor('info', token) }}>✓ {objResult.strRollbackMsg}</Text>
                     )}
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
@@ -679,6 +681,27 @@ const MyDashboardPage = () => {
 
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = antdTheme.useToken();
+
+  const objSqlPreBlock = React.useMemo(
+    () => fnCodeSurfaceStyle(token, 11, {
+      padding: '6px 10px',
+      borderRadius: token.borderRadiusSM,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-all',
+      maxHeight: 180,
+      overflow: 'auto',
+    }),
+    [token],
+  );
+  const objSqlTaReadonly12 = React.useMemo(
+    () => fnCodeSurfaceStyle(token, 12, { padding: 12 }),
+    [token],
+  );
+  const objSqlTaEditable13 = React.useMemo(() => fnCodeSurfaceStyle(token, 13), [token]);
+  const objSqlTaEditable13Mt = React.useMemo(
+    () => fnCodeSurfaceStyle(token, 13, { marginTop: 4 }),
+    [token],
+  );
 
   const user = useAuthStore((s) => s.user);
   const arrPermissions = user?.arrPermissions || [];
@@ -1060,6 +1083,9 @@ const MyDashboardPage = () => {
 
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
+    const objLiveBtnStyle = fnSemanticFilledButtonStyle('magenta', token);
+    const objQaExecuteBtnStyle = fnSemanticFilledButtonStyle('warning', token);
+    const objLiveVerifiedBtnStyle = fnSemanticFilledButtonStyle('success', token);
     const arrButtons = [];
 
     // 링크 복사 — 권한 무관, 항상 표시
@@ -1172,7 +1198,7 @@ const MyDashboardPage = () => {
             cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
+              <Button size="small" style={objLiveBtnStyle} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       }
@@ -1191,12 +1217,12 @@ const MyDashboardPage = () => {
           }
           okText="실행"
           cancelText="취소"
-          okButtonProps={{ danger: false, style: { background: '#faad14', border: 'none' } }}
+          okButtonProps={{ danger: false, style: objQaExecuteBtnStyle }}
           onConfirm={() => fnHandleExecute(r, 'qa')}
         >
           <Button
             size="small"
-            style={{ background: '#faad14', border: 'none', color: '#fff' }}
+            style={objQaExecuteBtnStyle}
             icon={bExecuting === r.nId ? <Spin size="small" /> : <ThunderboltOutlined />}
             disabled={bExecuting !== null}
           >
@@ -1267,7 +1293,7 @@ const MyDashboardPage = () => {
             rerequestTitle="QA 쿼리 실행 재요청을 하시겠습니까?"
             rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
             onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
-            primaryButtonStyle={{ background: '#eb2f96', border: 'none', color: '#fff' }}
+            primaryButtonStyle={objLiveBtnStyle}
             primaryIcon={<SendOutlined />}
             rerequestIcon={<SyncOutlined />}
             okText="요청"
@@ -1286,7 +1312,7 @@ const MyDashboardPage = () => {
               cancelText="취소"
               onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
+              <Button size="small" style={objLiveBtnStyle} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
             </PopconfirmWithSkip>
           );
         }
@@ -1314,7 +1340,7 @@ const MyDashboardPage = () => {
           key="live-execute"
           title={
             <Space direction="vertical" size={4}>
-              <Text strong style={{ color: '#ff4d4f' }}>⚠ LIVE DB에 쿼리를 실행하시겠습니까?</Text>
+              <Text strong style={{ color: fnSemanticColor('error', token) }}>⚠ LIVE DB에 쿼리를 실행하시겠습니까?</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>운영 DB에 직접 반영됩니다. 오류 시 롤백됩니다.</Text>
             </Space>
           }
@@ -1370,7 +1396,7 @@ const MyDashboardPage = () => {
         >
           <Button
             size="small"
-            style={{ background: '#52c41a', border: 'none', color: '#fff' }}
+            style={objLiveVerifiedBtnStyle}
             icon={<CheckCircleOutlined />}
             onClick={() => setObjConfirmModal({ nId: r.nId, strType: 'live' })}
           >
@@ -1725,13 +1751,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
             </Col>
             <Col xs={12} sm={6}>
-              <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
+              <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={fnSemanticStatisticStyle('warning', token)} /></Card>
             </Col>
             <Col xs={12} sm={6}>
-              <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
+              <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={fnSemanticStatisticStyle('info', token)} /></Card>
             </Col>
             <Col xs={12} sm={6}>
-              <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+              <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={fnSemanticStatisticStyle('success', token)} /></Card>
             </Col>
           </Row>
         )}
@@ -2016,8 +2042,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
                                 <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
                               </div>
-                              <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                                style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                              <TextArea
+                                className={STR_CODE_BLOCK_CLASS}
+                                value={t.strQuery}
+                                readOnly
+                                autoSize={{ minRows: 4, maxRows: 15 }}
+                                style={objSqlTaReadonly12}
+                              />
                             </div>
                           </Space>
                         ),
@@ -2042,8 +2073,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           <div style={{ textAlign: 'right' }}>
                             <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
                           </div>
-                          <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                            style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                          <TextArea
+                            className={STR_CODE_BLOCK_CLASS}
+                            value={objDetail.strGeneratedQuery}
+                            readOnly
+                            autoSize={{ minRows: 4, maxRows: 15 }}
+                            style={objSqlTaReadonly12}
+                          />
                         </Space>
                       ),
                     }]
@@ -2102,8 +2138,8 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             <div style={{
                               marginTop: 6,
                               padding: '6px 10px',
-                              background: bExecFail ? token.colorFillAlter : '#f6ffed',
-                              border: `1px solid ${bExecFail ? token.colorErrorBorder : '#b7eb8f'}`,
+                              background: bExecFail ? token.colorFillAlter : token.colorSuccessBg,
+                              border: `1px solid ${bExecFail ? token.colorErrorBorder : token.colorSuccessBorder}`,
                               borderRadius: 4,
                             }}>
                               <Space direction="vertical" size={4} style={{ width: '100%' }}>
@@ -2131,18 +2167,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                     style={{ background: 'transparent', width: '100%' }}
                                     items={fnBuildQueryResultCollapseItems(
                                       objEx.arrQueryResults,
-                                      {
-                                        padding: '6px 10px',
-                                        background: token.colorFillTertiary,
-                                        borderRadius: token.borderRadiusSM,
-                                        fontFamily: 'monospace',
-                                        fontSize: 11,
-                                        color: token.colorText,
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-all',
-                                        maxHeight: 180,
-                                        overflow: 'auto',
-                                      },
+                                      objSqlPreBlock,
                                       fnCopy,
                                     )}
                                   />
@@ -2275,6 +2300,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       label: `세트 ${idx + 1} 입력값`,
                       children: (
                         <TextArea
+                          className={STR_CODE_BLOCK_CLASS}
                           value={arrEditInputValues[idx] ?? ''}
                           onChange={(e) => {
                             const next = [...arrEditInputValues];
@@ -2283,7 +2309,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             setArrEditInputValues(next);
                           }}
                           rows={4}
-                          style={{ fontFamily: 'monospace', fontSize: 13 }}
+                          style={objSqlTaEditable13}
                         />
                       ),
                     }))}
@@ -2301,10 +2327,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       label: `쿼리 세트 ${idx + 1}`,
                       children: (
                         <TextArea
+                          className={STR_CODE_BLOCK_CLASS}
                           value={t.strQuery}
                           readOnly
                           rows={6}
-                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary }}
+                          style={objSqlTaReadonly12}
                         />
                       ),
                     }))}
@@ -2318,10 +2345,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
                 </Space>
                 <TextArea
+                  className={STR_CODE_BLOCK_CLASS}
                   value={strEditInputValues}
                   onChange={(e) => setStrEditInputValues(e.target.value)}
                   rows={5}
-                  style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
+                  style={objSqlTaEditable13Mt}
                 />
               </div>
             )}
@@ -2373,6 +2401,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
                       </div>
                       <Input.TextArea
+                        className={STR_CODE_BLOCK_CLASS}
                         value={arrQueryEditValues[idx] ?? ''}
                         onChange={(e) => {
                           const next = [...arrQueryEditValues];
@@ -2381,7 +2410,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           setArrQueryEditValues(next);
                         }}
                         autoSize={{ minRows: 10, maxRows: 25 }}
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        style={objSqlTaEditable13}
                         placeholder="SQL 쿼리를 입력하세요..."
                       />
                     </div>
@@ -2394,10 +2423,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
                 </div>
                 <Input.TextArea
+                  className={STR_CODE_BLOCK_CLASS}
                   value={strQueryEditValue}
                   onChange={(e) => setStrQueryEditValue(e.target.value)}
                   autoSize={{ minRows: 10, maxRows: 25 }}
-                  style={{ fontFamily: 'monospace', fontSize: 13 }}
+                  style={objSqlTaEditable13}
                   placeholder="SQL 쿼리를 입력하세요..."
                 />
               </>
@@ -2443,7 +2473,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 <Progress
                   percent={nDisplayPercent}
                   status={nDisplayPercent >= 100 ? 'success' : 'active'}
-                  trailColor="#f0f0f0"
+                  trailColor={token.colorFillSecondary}
                   strokeColor={nDisplayPercent >= 100 ? token.colorSuccess : token.colorPrimary}
                   showInfo={false}
                   style={{ marginTop: 0 }}

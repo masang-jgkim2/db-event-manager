@@ -51,6 +51,7 @@ import { fnApiGetRoles } from '../api/roleApi';
 import type { IProduct, IService, TEventStatus, IEventInstance, TPermission } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import { fnDashboardCardSemanticColor } from '../styles/semanticColors';
 import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
 
 const { Text } = Typography;
@@ -908,6 +909,10 @@ const DashboardPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const { token } = theme.useToken();
+
+  const fnCardIconColor = (strCardId: string) =>
+    fnDashboardCardSemanticColor(strCardId, token, strPrimaryColor);
 
   const fnHas = (strPerm: TPermission) => arrPermissions.includes(strPerm);
 
@@ -2106,7 +2111,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'eventTemplate' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CalendarOutlined, '#52c41a')}
+                    icon={fnDashboardCardIcon(CalendarOutlined, fnCardIconColor('eventTemplate'))}
                     title="쿼리 템플릿"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{arrEvents.length}개</span>
@@ -2114,7 +2119,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instance' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CodeOutlined, '#faad14')}
+                    icon={fnDashboardCardIcon(CodeOutlined, fnCardIconColor('instance'))}
                     title="이벤트 인스턴스"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
@@ -2124,7 +2129,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'service' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(TeamOutlined, '#eb2f96')}
+                    icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('service'))}
                     title="서비스(국내/해외)"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
@@ -2134,7 +2139,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'dbConnection' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(DatabaseOutlined, '#13c2c2')}
+                    icon={fnDashboardCardIcon(DatabaseOutlined, fnCardIconColor('dbConnection'))}
                     title="DB 접속"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nDbConnections, true)}개</span>
@@ -2142,7 +2147,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'user' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(TeamOutlined, '#722ed1')}
+                    icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('user'))}
                     title="사용자"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nUsers, true)}명</span>
@@ -2150,7 +2155,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'role' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(SafetyCertificateOutlined, '#eb2f96')}
+                    icon={fnDashboardCardIcon(SafetyCertificateOutlined, fnCardIconColor('role'))}
                     title="역할"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nRoles, true)}개</span>
@@ -2158,7 +2163,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instanceInProgress' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(RocketOutlined, '#1890ff')}
+                    icon={fnDashboardCardIcon(RocketOutlined, fnCardIconColor('instanceInProgress'))}
                     title="진행 중"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesInProgress ?? 0}건</span>
@@ -2166,7 +2171,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instanceCompleted' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CheckCircleOutlined, '#52c41a')}
+                    icon={fnDashboardCardIcon(CheckCircleOutlined, fnCardIconColor('instanceCompleted'))}
                     title="완료"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesCompleted ?? 0}건</span>
@@ -2185,7 +2190,7 @@ const DashboardPage = () => {
                 })()}
                 {strId === 'productTable' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(DashboardOutlined, '#1890ff')}
+                    icon={fnDashboardCardIcon(DashboardOutlined, fnCardIconColor('productTable'))}
                     title="프로덕트 현황"
                     bContentFill
                   >
@@ -2220,7 +2225,7 @@ const DashboardPage = () => {
                       : arrDefaultOpen;
                   return (
                     <DashboardCardContent
-                      icon={fnDashboardCardIcon(DashboardOutlined, '#575ECF')}
+                      icon={fnDashboardCardIcon(DashboardOutlined, fnCardIconColor(strId))}
                       title={objC.strTitle}
                       bContentFill={false}
                     >

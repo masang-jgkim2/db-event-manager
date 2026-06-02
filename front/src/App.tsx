@@ -7,6 +7,7 @@ import { useAuthStore } from './stores/useAuthStore';
 import { useThemeStore } from './stores/useThemeStore';
 import { fnBuildDesignSystem } from './styles/design-system';
 import { DesignSystemContext } from './styles/DesignSystemContext';
+import { fnApplyTypographyCssVars } from './styles/typographyCss';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import RegisterSentPage from './pages/RegisterSentPage';
@@ -186,11 +187,16 @@ const App = () => {
       'data-dqpm-shell',
       objDs.bCursorSiteShell ? 'cursor-site' : 'ide',
     );
+    fnApplyTypographyCssVars({
+      strFontUi: objDs.strFontUi,
+      strFontMono: objDs.strFontMono,
+      objTypoRoles: objDs.objTypoRoles,
+    });
     return () => {
       document.documentElement.removeAttribute('data-dqpm-theme');
       document.documentElement.removeAttribute('data-dqpm-shell');
     };
-  }, [bIsDark, objDs.bCursorSiteShell]);
+  }, [bIsDark, objDs.bCursorSiteShell, objDs.strFontUi, objDs.strFontMono, objDs.objTypoRoles]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { token: dsToken, components: dsComponents } = objDs.antdThemeConfig as any;

@@ -14,6 +14,7 @@ import {
   Tabs,
   Spin,
   Empty,
+  theme,
 } from 'antd';
 import type { FormListFieldData } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -38,6 +39,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import type { TTagVariant } from '../styles/tagPalette';
+import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -77,6 +79,9 @@ const QueryTemplatesTabContent = ({
   setActiveKey,
   justAddedRef,
 }: TQueryTemplatesTabContentProps) => {
+  const { token } = theme.useToken();
+  const objSqlFieldStyle = fnCodeSurfaceStyle(token, 12);
+
   useEffect(() => {
     if (justAddedRef.current && fields.length > 0) {
       justAddedRef.current = false;
@@ -125,7 +130,7 @@ const QueryTemplatesTabContent = ({
             </Select>
           </Form.Item>
           <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
-            <Input placeholder="예: 1,2,3" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
           </Form.Item>
           <Form.Item
             {...restField}
@@ -133,7 +138,12 @@ const QueryTemplatesTabContent = ({
             label="쿼리 템플릿"
             rules={[{ required: true, message: '쿼리 템플릿을 입력하세요.' }]}
           >
-            <TextArea rows={4} placeholder="{{items}}, {{date}} 등 치환 가능" style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            <TextArea
+              className={STR_CODE_BLOCK_CLASS}
+              rows={4}
+              placeholder="{{items}}, {{date}} 등 치환 가능"
+              style={objSqlFieldStyle}
+            />
           </Form.Item>
         </div>
       ),

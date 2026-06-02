@@ -16,6 +16,8 @@
 |------|------|
 | 토큰 빌더 | `front/src/styles/design-system.ts` |
 | cursor.com hex | `front/src/styles/cursorSiteTokens.ts` |
+| 시맨틱 색 | `front/src/styles/semanticColors.ts` |
+| SQL·코드 블록 | `queryEditorTokens.ts` — `fnCodeSurfaceStyle`, `fnSqlEditorReadonlyStyle`, `STR_CODE_BLOCK_CLASS` |
 | Tag 팔레트 | `front/src/styles/tagPalette.ts` |
 | React Context | `front/src/styles/DesignSystemContext.tsx` |
 | UI 설정 | `front/src/stores/useThemeStore.ts` |
@@ -32,7 +34,8 @@ npm run build-storybook
 
 - 데코레이터: `.storybook/DqpmThemeDecorator.tsx` (앱과 동일 `ConfigProvider`)
 - 툴바: **Theme** (light/dark), **Point** (Cursor IDE / Cursor.com)
-- 스토리: `front/src/stories/dqpm/*`
+- 스토리: `front/src/stories/dqpm/*` (Colors, Typography, Tag, Buttons)
+- 백로그: [DESIGN-SYSTEM-BACKLOG.md](./DESIGN-SYSTEM-BACKLOG.md)
 
 ## 포인트 컬러 프리셋
 
@@ -41,9 +44,30 @@ npm run build-storybook
 | Cursor IDE | `#434343` | 중성 IDE |
 | Cursor.com | `#f54e00` | 웜 캔버스 `#f7f7f4` |
 
+## 타이포그래피 (getdesign Cursor)
+
+| DESIGN.md 역할 | 용도 | 코드 |
+|----------------|------|------|
+| `pageTitle` (22px) | CRUD 페이지 제목 | `CrudPageShell` · `fontSizeHeading4` |
+| `titleMd` (18px) | Card 헤더 | Ant `Card.headerFontSize` |
+| `titleSm` (16px) | 사이드바 로고 | `objSider.nLogoFontSize` |
+| `bodyMd` | 본문·메뉴·Input | `fontSize` token |
+| `bodySm` | 테이블·Tag | `Table` / `Tag` |
+| `caption` | 페이지 설명 | `CrudPageShell` 설명 |
+| `captionUppercase` | 메뉴 그룹 | `objMenuGroup` |
+| `code` | SQL·diff | `fnCodeSurfaceStyle` + `.dqpm-font-mono` |
+| `button` / `navLink` | 버튼·메뉴 | Ant `Button` |
+
+- 구현: `typographyTokens.ts` → `fnBuildTypographyRoles(nFontSize)` (UI 설정 글자 크기와 동기)
+- CSS 변수: `typographyCss.ts` (`--dqpm-font-family`, `--dqpm-font-size-body` …)
+- 헬퍼: `fnTypoStyle(role)` — 인라인 스타일
+- 폰트: CursorGothic → **Inter** + Noto Sans KR · 코드 → **JetBrains Mono**
+
 ## 신규 UI 규칙 (요약)
 
 1. 색: `theme.useToken()` / `useDesignSystem()` — 페이지 hex 지양  
-2. Tag: `<DqpmTag tone="…" />`  
-3. 목록: `CrudPageShell` + `AppTable`  
-4. AI 에이전트: UI 작업 전 `front/DESIGN.md` 참고
+2. 타이포: `useDesignSystem().objTypoRoles` + `fnTypoStyle` — px 하드코드 지양  
+3. SQL/코드: `fnCodeSurfaceStyle(token)` · 읽기 전용 다크는 `fnSqlEditorReadonlyStyle`  
+4. Tag: `<DqpmTag tone="…" />`  
+5. 목록: `CrudPageShell` + `AppTable`  
+6. AI 에이전트: UI 작업 전 `front/DESIGN.md` 참고

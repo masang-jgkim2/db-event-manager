@@ -53,8 +53,8 @@
 | **cursor.com CSS/폰트 핫링크** | ToS·URL 변경 리스크 |
 | **히어로·데모·타임라인 파스텔 pill** | 마케팅 전용, CRUD 앱 범위 밖 |
 | **다크 모드 웜 셸** | 사이트는 라이트 중심 → 다크는 IDE `#1E1E1E` 유지 |
-| **전 페이지 hex 제거** | `DashboardPage` / `MyDashboardPage` 등 🔴 — `CURSOR-UI-AUDIT.md` 3단계 |
-| **코드 블록 전역 mono** | Query/MyDashboard 인라인 `monospace` → `STR_FONT_MONO` 치환은 별도 작업 |
+| **전 페이지 hex 제거** | 대시보드·2차 페이지 완료 — honeypot `#ccc`만 잔존 |
+| **코드 블록 전역 mono** | `queryEditorTokens.ts` (`fnCodeSurfaceStyle`, `STR_CODE_BLOCK_CLASS`) |
 
 ---
 

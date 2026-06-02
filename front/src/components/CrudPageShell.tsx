@@ -1,13 +1,15 @@
-import { Card, Typography } from 'antd';
+import { Card, Typography, theme } from 'antd';
 import type { ReactNode } from 'react';
+import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnTypoStyle } from '../styles/typographyTokens';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export interface ICrudPageShellProps {
   strTitle: string;
   /** Title 왼쪽 아이콘 (DbConnectionPage 패턴) */
   nodeIcon?: ReactNode;
-  /** 헤더 아래 보조 설명 — 12px secondary */
+  /** 헤더 아래 보조 설명 — caption secondary */
   nodeDescription?: ReactNode;
   /** 우측 상단 (새로운 ~ 버튼 등) */
   nodeExtra?: ReactNode;
@@ -34,7 +36,11 @@ const CrudPageShell = ({
   nodeAboveCard,
   bWrapChildrenInCard = true,
   children,
-}: ICrudPageShellProps) => (
+}: ICrudPageShellProps) => {
+  const { token } = theme.useToken();
+  const { objTypoRoles } = useDesignSystem();
+
+  return (
   <>
     <div
       className="dqpm-crud-page-header"
@@ -47,16 +53,30 @@ const CrudPageShell = ({
       }}
     >
       <div style={{ minWidth: 0, flex: 1 }}>
-        <Title level={4} style={{ margin: 0 }}>
+        <h1
+          className="dqpm-page-title"
+          style={{
+            margin: 0,
+            color: token.colorText,
+            ...fnTypoStyle(objTypoRoles.pageTitle),
+          }}
+        >
           {nodeIcon != null ? (
             <span style={{ marginRight: 8, display: 'inline-flex', verticalAlign: 'middle' }}>
               {nodeIcon}
             </span>
           ) : null}
           {strTitle}
-        </Title>
+        </h1>
         {nodeDescription != null ? (
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+          <Text
+            type="secondary"
+            style={{
+              ...fnTypoStyle(objTypoRoles.caption),
+              display: 'block',
+              marginTop: 4,
+            }}
+          >
             {nodeDescription}
           </Text>
         ) : null}
@@ -73,6 +93,7 @@ const CrudPageShell = ({
       children
     )}
   </>
-);
+  );
+};
 
 export default CrudPageShell;
