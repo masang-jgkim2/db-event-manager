@@ -41,6 +41,7 @@ import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import { fnStatusTimelineColor } from '../styles/workflowTimelineColors';
 import {
   fnSemanticColor,
   fnSemanticFilledButtonStyle,
@@ -614,15 +615,21 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
         current={nStep}
         status={bFinished ? 'finish' : 'process'}
         size="small"
-        items={arrSteps.map((s, nIdx) => ({
-          icon: fnRenderStatusIcon(s.strStatus, 16),
+        items={arrSteps.map((s, nIdx) => {
+          const bActive = nIdx <= nStep;
+          const strIconColor = bActive
+            ? fnStatusTimelineColor(s.strStatus)
+            : token.colorTextQuaternary;
+          return {
+          icon: fnRenderStatusIcon(s.strStatus, 16, String(strIconColor)),
           title: s.strLabel,
           status: ((): 'wait' | 'finish' | 'process' => {
             if (nIdx < nStep) return 'finish';
             if (nIdx === nStep) return bFinished ? 'finish' : 'process';
             return 'wait';
           })(),
-        }))}
+        };
+        })}
       />
     </div>
   );
@@ -2093,16 +2100,15 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       // 서버 이력: 삭제(복원 불가) — 구 이력 '영구 삭제(복원 불가)' 호환
                       const bPermanentDeleteLog = typeof log.strComment === 'string' &&
                         (log.strComment === '삭제(복원 불가)' || log.strComment === '영구 삭제(복원 불가)');
-                      const strStVar = log.strStatus ? OBJ_STATUS_CONFIG[log.strStatus]?.strTagVariant : undefined;
                       const strTimelineColor = bPermanentDeleteLog
                         ? objTag.danger
-                        : (strStVar ? objTag[strStVar] : objTag.muted);
+                        : fnStatusTimelineColor(log.strStatus as TEventStatus);
                       return {
                         color: strTimelineColor,
                         children: (
                         <div>
                           <Space size={4} wrap>
-                            {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
+                            {fnRenderStatusIcon(log.strStatus as TEventStatus, 12, strTimelineColor)}
                             <DqpmTag tone={OBJ_STATUS_CONFIG[log.strStatus]?.strTagVariant}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</DqpmTag>
                             {bPermanentDeleteLog && (
                               <DqpmTag color="red">삭제</DqpmTag>

@@ -16,7 +16,8 @@
 - [x] Storybook: Menu/Table/SemanticColors, assets 정리, 데코레이터 타이포 CSS
 - [x] `frontend-patterns.mdc` — 디자인 시스템 절
 - [x] Table `bordered={false}` — AppTable 기본, QueryResultSetTable
-- [ ] E2E: Cursor.com 프리셋 스모크 (선택)
+- [x] E2E: `theme-cursor-site.spec.ts` (@smoke) — `data-dqpm-shell` cursor-site / ide
+- [x] 워크플로 타임라인 파스텔 — `workflowTimelineColors.ts` · Steps · 이력 Timeline
 - [ ] 다크 모드 cursor-site 웜 셸 (보류)
 - [ ] `display-mega` 마케팅 타이포 (범위 밖)
 

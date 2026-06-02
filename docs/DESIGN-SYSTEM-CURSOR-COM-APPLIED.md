@@ -51,7 +51,7 @@
 |------|------|
 | **CursorGothic / jjannon / Berkeley Mono 원본** | 라이선스·배포 불가 → Inter / JetBrains Mono 대체 |
 | **cursor.com CSS/폰트 핫링크** | ToS·URL 변경 리스크 |
-| **히어로·데모·타임라인 파스텔 pill** | 마케팅 전용, CRUD 앱 범위 밖 |
+| **히어로·데모·타임라인 pill (마케팅)** | CRUD 범위 밖 · 워크플로 Steps/이력은 `workflowTimelineColors` 적용 |
 | **다크 모드 웜 셸** | 사이트는 라이트 중심 → 다크는 IDE `#1E1E1E` 유지 |
 | **전 페이지 hex 제거** | 대시보드·2차 페이지 완료 — honeypot `#ccc`만 잔존 |
 | **코드 블록 전역 mono** | `queryEditorTokens.ts` (`fnCodeSurfaceStyle`, `STR_CODE_BLOCK_CLASS`) |
@@ -60,12 +60,12 @@
 
 ## 검증 체크리스트
 
-- [ ] 설정 → **Cursor.com** + 라이트 → 배경 `#f7f7f4`에 가깝게 보이는지
-- [ ] 사이드바 **프로덕트** 선택 시 배경에 **연한 오렌지 틴트**, 글자 **오렌지**
-- [ ] **새로운 프로덕트** 버튼: 크림 배경 + 오렌지 테두리/글자
-- [ ] 링크·Tag가 포인트 팔레트를 따르는지
-- [ ] **Cursor IDE** 프리셋 시 기존 회색 UI로 돌아가는지
-- [ ] 다크 모드에서 레이아웃이 깨지지 않는지
+- [x] E2E `theme-cursor-site.spec.ts` — Cursor.com → `data-dqpm-shell=cursor-site`, IDE → `ide`
+- [ ] 설정 → **Cursor.com** + 라이트 → 배경 `#f7f7f4`에 가깝게 보이는지 (수동)
+- [ ] 사이드바 메뉴 선택 — 연한 오렌지 틴트·오렌지 글자 (수동)
+- [ ] primary 버튼 — 크림 + 오렌지 테두리 (수동)
+- [ ] 링크·Tag 포인트 팔레트 (수동 / Storybook)
+- [ ] 다크 모드 레이아웃 (수동)
 
 ---
 

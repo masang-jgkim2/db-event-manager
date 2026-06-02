@@ -18,6 +18,7 @@
 | cursor.com hex | `front/src/styles/cursorSiteTokens.ts` |
 | 시맨틱 색 | `front/src/styles/semanticColors.ts` |
 | SQL·코드 블록 | `queryEditorTokens.ts` — `fnCodeSurfaceStyle`, `fnSqlEditorReadonlyStyle`, `STR_CODE_BLOCK_CLASS` |
+| 워크플로 타임라인 색 | `workflowTimelineColors.ts` — `fnStatusTimelineColor` |
 | Tag 팔레트 | `front/src/styles/tagPalette.ts` |
 | React Context | `front/src/styles/DesignSystemContext.tsx` |
 | UI 설정 | `front/src/stores/useThemeStore.ts` |
