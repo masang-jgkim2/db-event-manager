@@ -24,7 +24,8 @@ echo.
 cd /d %~dp0
 echo ============================================
 echo   업데이트 완료! 현재 위치: %cd%
-echo   start.bat 을 실행하세요.
+echo   start.bat          - backend + frontend
+echo   start.bat storybook - 위 + Storybook (http://localhost:6006)
 echo ============================================
 echo.
 pause

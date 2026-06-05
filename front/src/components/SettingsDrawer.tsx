@@ -149,12 +149,13 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
           return (
             <button
               key={objColor.strValue}
+              type="button"
               onClick={() => fnSetPrimaryColor(objColor.strValue)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '7px 10px',
+                padding: '8px 10px',
                 borderRadius: token.borderRadius,
                 border: bSelected
                   ? `2px solid ${objColor.strValue}`
@@ -167,20 +168,21 @@ const SettingsDrawer = ({ bOpen, fnOnClose }: ISettingsDrawerProps) => {
               }}
             >
               <div style={{
-                width: 20, height: 20, borderRadius: '50%',
+                width: 22, height: 22, borderRadius: '50%',
                 background: objColor.strValue, flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)',
               }}>
-                {bSelected && <CheckOutlined style={{ color: '#fff', fontSize: 10 }} />}
+                {bSelected && <CheckOutlined style={{ color: '#fff', fontSize: 11 }} />}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: bSelected ? 600 : 400, color: token.colorText, marginBottom: 3 }}>
+                <div style={{ fontSize: 13, fontWeight: bSelected ? 600 : 400, color: token.colorText }}>
                   {objColor.strLabel}
                 </div>
-                <div style={{ display: 'flex', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, marginTop: 4 }}>
                   {arrPalette.map((strSwatchColor, nIdx) => (
                     <div key={nIdx} style={{
-                      flex: 1, height: 7, borderRadius: 2,
+                      flex: 1, height: 6, borderRadius: 2,
                       background: strSwatchColor,
                       outline: nIdx === 5 ? `1.5px solid ${strSwatchColor}` : 'none',
                     }} />

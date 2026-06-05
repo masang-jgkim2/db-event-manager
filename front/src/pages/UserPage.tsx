@@ -6,7 +6,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, MailOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, MailOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
@@ -473,6 +473,7 @@ const UserPage = () => {
       {contextHolder}
       <CrudPageShell
         strTitle="사용자"
+        nodeIcon={<TeamOutlined />}
         nodeDescription="관리자 직접 추가는 즉시 활성(active)이며, 회원 가입은 승인 대기(pending_approval) 후 역할을 부여합니다."
         nodeExtra={
           bCanCreate ? (

@@ -1,21 +1,26 @@
+import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
 import { Menu } from 'antd';
-import {
-  DashboardOutlined,
-  AppstoreOutlined,
-  CalendarOutlined,
-  DatabaseOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { DatabaseOutlined } from '@ant-design/icons';
 import { useDesignSystem } from '../../styles/DesignSystemContext';
+import { ARR_STORY_SUBMENU_KEYS, fnBuildStoryMenuItems } from './menuStoryItems';
 
-const SidebarMenuDemo = () => {
+interface ISiderMenuDemoProps {
+  bCollapsed?: boolean;
+  nWidth?: number;
+}
+
+const SiderMenuDemo = ({ bCollapsed = false, nWidth }: ISiderMenuDemoProps) => {
   const { objSider, objMenuGroup } = useDesignSystem();
+  const [arrOpenKeys, setArrOpenKeys] = useState<string[]>([...ARR_STORY_SUBMENU_KEYS]);
+  const arrItems = fnBuildStoryMenuItems(objMenuGroup);
+  const nSiderWidth = nWidth ?? (bCollapsed ? 80 : 200);
 
   return (
     <div
+      className={`dqpm-layout-sider${bCollapsed ? ' ant-layout-sider-collapsed' : ''}`}
       style={{
-        width: 220,
+        width: nSiderWidth,
         padding: 8,
         background: objSider.strBackground,
         border: `1px solid ${objSider.strLogoBorder}`,
@@ -23,70 +28,52 @@ const SidebarMenuDemo = () => {
       }}
     >
       <div
+        className="dqpm-layout-sider-logo"
         style={{
-          padding: '12px 10px',
-          fontWeight: objSider.nLogoFontWeight,
-          fontSize: objSider.nLogoFontSize,
-          color: objSider.strLogoText,
-          borderBottom: `1px solid ${objSider.strLogoBorder}`,
+          height: 48,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           marginBottom: 8,
+          borderBottom: `1px solid ${objSider.strLogoBorder}`,
         }}
       >
-        DQPM
-      </div>
-      <div
-        style={{
-          fontSize: objMenuGroup.nFontSize,
-          fontWeight: objMenuGroup.nFontWeight,
-          letterSpacing: objMenuGroup.strLetterSpacing,
-          textTransform: objMenuGroup.strTextTransform as 'uppercase',
-          color: objMenuGroup.strColor,
-          padding: '8px 10px 4px',
-        }}
-      >
-        이벤트
+        <DatabaseOutlined style={{ fontSize: 22, color: objSider.strLogoText }} />
       </div>
       <Menu
         mode="inline"
-        selectedKeys={['dashboard']}
-        style={{ border: 'none', background: 'transparent' }}
-        items={[
-          { key: 'dashboard', icon: <DashboardOutlined />, label: '대시보드' },
-          { key: 'product', icon: <AppstoreOutlined />, label: '프로덕트' },
-          { key: 'event', icon: <CalendarOutlined />, label: '쿼리 템플릿' },
-          { key: 'db', icon: <DatabaseOutlined />, label: 'DB 접속 정보' },
-        ]}
-      />
-      <div
+        inlineCollapsed={bCollapsed}
+        selectedKeys={['/users']}
+        openKeys={bCollapsed ? [] : arrOpenKeys}
+        onOpenChange={setArrOpenKeys}
+        items={arrItems}
         style={{
-          fontSize: objMenuGroup.nFontSize,
-          fontWeight: objMenuGroup.nFontWeight,
-          letterSpacing: objMenuGroup.strLetterSpacing,
-          textTransform: objMenuGroup.strTextTransform as 'uppercase',
-          color: objMenuGroup.strColor,
-          padding: '12px 10px 4px',
+          border: 'none',
+          background: 'transparent',
+          marginTop: 4,
+          paddingLeft: bCollapsed ? 0 : 6,
+          paddingRight: bCollapsed ? 0 : 6,
         }}
-      >
-        사용자
-      </div>
-      <Menu
-        mode="inline"
-        style={{ border: 'none', background: 'transparent' }}
-        items={[{ key: 'user', icon: <UserOutlined />, label: '사용자' }]}
       />
     </div>
   );
 };
 
-const meta: Meta = {
+const meta: Meta<ISiderMenuDemoProps> = {
   title: 'DQPM/Menu',
-  component: SidebarMenuDemo,
+  component: SiderMenuDemo,
   parameters: { layout: 'padded' },
 };
 
 export default meta;
-type TStory = StoryObj;
+type TStory = StoryObj<ISiderMenuDemoProps>;
 
-export const SiderInline: TStory = {
-  render: () => <SidebarMenuDemo />,
+export const SubMenuExpanded: TStory = {
+  name: 'SubMenu 펼침',
+  render: () => <SiderMenuDemo bCollapsed={false} />,
+};
+
+export const SubMenuCollapsed: TStory = {
+  name: 'SubMenu 접힘 (아이콘만)',
+  render: () => <SiderMenuDemo bCollapsed />,
 };

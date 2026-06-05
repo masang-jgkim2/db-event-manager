@@ -60,7 +60,7 @@ export function fnSemanticStatisticStyle(
   token: GlobalToken,
   nFontSize = 22,
 ): CSSProperties {
-  return { color: fnSemanticColor(strKind, token), fontSize: nFontSize };
+  return { color: fnSemanticColor(strKind, token), fontSize: nFontSize, lineHeight: 1.2 };
 }
 
 /** 대시보드 숫자 카드 아이콘 색 */

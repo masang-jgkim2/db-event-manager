@@ -1453,6 +1453,94 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     return <Space wrap>{arrButtons}</Space>;
   };
 
+  // 숨기기·삭제·복원 — 테이블 「관리」열·카드 보기 공용
+  const fnRenderManageActions = (r: IEventInstance) => {
+    const bCanDelete = fnCanDeleteInstanceRow(r);
+    if (r.bPermanentlyRemoved) {
+      return <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>;
+    }
+    if (!setHiddenIds.has(r.nId)) {
+      return (
+        <Space wrap size="small">
+          <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+            <PopconfirmWithSkip
+              actionKey="hide_instance"
+              title="이 이벤트를 숨기시겠습니까?"
+              description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+              okText="숨기기"
+              cancelText="취소"
+              onConfirm={() => fnHideInstance(r.nId)}
+              disabled={r.strStatus !== 'live_verified'}
+            >
+              <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
+                숨기기
+              </Button>
+            </PopconfirmWithSkip>
+          </Tooltip>
+          {bCanDelete && (
+            <Popconfirm
+              title="이벤트를 삭제할까요?"
+              description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+              okText="삭제"
+              okButtonProps={{ danger: true }}
+              cancelText="취소"
+              onConfirm={async () => {
+                const objRes = await fnStoreDeleteInstance(r.nId);
+                if (objRes.bSuccess) {
+                  messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                  setStrDashTab('completed');
+                } else {
+                  fnNotifyError(
+                    messageApi,
+                    '이벤트 삭제 실패',
+                    fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                    { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                  );
+                }
+              }}
+            >
+              <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      );
+    }
+    return (
+      <Space wrap size="small">
+        <Tooltip title="진행중 탭으로 복원">
+          <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
+            보이기
+          </Button>
+        </Tooltip>
+        {bCanDelete && (
+          <Popconfirm
+            title="이벤트를 삭제할까요?"
+            description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
+            okText="삭제"
+            okButtonProps={{ danger: true }}
+            cancelText="취소"
+            onConfirm={async () => {
+              const objRes = await fnStoreDeleteInstance(r.nId);
+              if (objRes.bSuccess) {
+                messageApi.success('삭제되었습니다.');
+                setStrDashTab('completed');
+              } else {
+                fnNotifyError(
+                  messageApi,
+                  '이벤트 삭제 실패',
+                  fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                  { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                );
+              }
+            }}
+          >
+            <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+          </Popconfirm>
+        )}
+      </Space>
+    );
+  };
+
   // 탭 (진행중 / 완료·숨김)
   const [strDashTab, setStrDashTab] = useState<'active' | 'completed'>('active');
   // 보기 형태: 테이블(행) / 카드
@@ -1532,7 +1620,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼 — 번호(nId) + 헤더·액션 정리
+  // 테이블 컬럼 — 번호(nId) + 워크플로·관리 열 분리
   const arrColumns: ColumnsType<IEventInstance> = [
     fnMakeIndexColumn<IEventInstance>(55),
     {
@@ -1585,97 +1673,20 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       ),
     },
     {
-      title: '액션',
-      key: 'actions',
-      width: 420,
-      render: (_: unknown, r: IEventInstance) => {
-        const bCanDelete = fnCanDeleteInstanceRow(r);
-        return (
-          <Space wrap size="small" align="start">
-            {fnRenderActions(r)}
-            <Divider type="vertical" style={{ margin: '0 4px' }} />
-            {r.bPermanentlyRemoved ? (
-              <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>
-            ) : !setHiddenIds.has(r.nId) ? (
-              <>
-                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                  <PopconfirmWithSkip
-                    actionKey="hide_instance"
-                    title="이 이벤트를 숨기시겠습니까?"
-                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                    okText="숨기기"
-                    cancelText="취소"
-                    onConfirm={() => fnHideInstance(r.nId)}
-                    disabled={r.strStatus !== 'live_verified'}
-                  >
-                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
-                      숨기기
-                    </Button>
-                  </PopconfirmWithSkip>
-                </Tooltip>
-                {bCanDelete && (
-                  <Popconfirm
-                    title="이벤트를 삭제할까요?"
-                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
-                    okText="삭제"
-                    okButtonProps={{ danger: true }}
-                    cancelText="취소"
-                    onConfirm={async () => {
-                      const objRes = await fnStoreDeleteInstance(r.nId);
-                      if (objRes.bSuccess) {
-                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
-                        setStrDashTab('completed');
-                      } else {
-                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                      }
-                    }}
-                  >
-                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                  </Popconfirm>
-                )}
-              </>
-            ) : (
-              <>
-                <Tooltip title="진행중 탭으로 복원">
-                  <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
-                    보이기
-                  </Button>
-                </Tooltip>
-                {bCanDelete && (
-                  <Popconfirm
-                    title="이벤트를 삭제할까요?"
-                    description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
-                    okText="삭제"
-                    okButtonProps={{ danger: true }}
-                    cancelText="취소"
-                    onConfirm={async () => {
-                      const objRes = await fnStoreDeleteInstance(r.nId);
-                      if (objRes.bSuccess) {
-                        messageApi.success('삭제되었습니다.');
-                        setStrDashTab('completed');
-                      } else {
-                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                      }
-                    }}
-                  >
-                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                  </Popconfirm>
-                )}
-              </>
-            )}
-          </Space>
-        );
-      },
+      title: '워크플로',
+      key: 'actions_workflow',
+      width: 320,
+      render: (_: unknown, r: IEventInstance) => (
+        <div onClick={(e) => e.stopPropagation()}>{fnRenderActions(r)}</div>
+      ),
+    },
+    {
+      title: '관리',
+      key: 'actions_manage',
+      width: 140,
+      render: (_: unknown, r: IEventInstance) => (
+        <div onClick={(e) => e.stopPropagation()}>{fnRenderManageActions(r)}</div>
+      ),
     },
   ];
 
@@ -1753,18 +1764,54 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           />
         )}
         nodeAboveCard={(
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={12} sm={6}>
-              <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="stretch">
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="전체"
+                  value={nTotal}
+                  suffix="건"
+                  prefix={<ClockCircleOutlined />}
+                  valueStyle={{ fontSize: 22, lineHeight: 1.2, color: token.colorText }}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
             </Col>
-            <Col xs={12} sm={6}>
-              <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={fnSemanticStatisticStyle('warning', token)} /></Card>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="내 처리 대기"
+                  value={nMyAction}
+                  suffix="건"
+                  prefix={<SyncOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('warning', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
             </Col>
-            <Col xs={12} sm={6}>
-              <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={fnSemanticStatisticStyle('info', token)} /></Card>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="진행 중"
+                  value={nInProgress}
+                  suffix="건"
+                  prefix={<RocketOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('info', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
             </Col>
-            <Col xs={12} sm={6}>
-              <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={fnSemanticStatisticStyle('success', token)} /></Card>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="완료"
+                  value={nCompleted}
+                  suffix="건"
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('success', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
             </Col>
           </Row>
         )}
@@ -1791,8 +1838,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => <InstanceStepper objInstance={r} />,
-            expandIcon: () => null,
-            columnWidth: 24, // 펼침 컬럼을 작게만 표시 (제거하지 않음)
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
@@ -1850,88 +1896,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Divider style={{ margin: '8px 0' }} />
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}
-                        {(() => {
-                          const bCardCanDelete = fnCanDeleteInstanceRow(r);
-                          if (r.bPermanentlyRemoved) {
-                            return <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>;
-                          }
-                          if (!setHiddenIds.has(r.nId)) {
-                            return (
-                              <>
-                                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                                  <PopconfirmWithSkip
-                                    actionKey="hide_instance"
-                                    title="이 이벤트를 숨기시겠습니까?"
-                                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                                    okText="숨기기"
-                                    cancelText="취소"
-                                    onConfirm={() => fnHideInstance(r.nId)}
-                                    disabled={r.strStatus !== 'live_verified'}
-                                  >
-                                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
-                                  </PopconfirmWithSkip>
-                                </Tooltip>
-                                {bCardCanDelete && (
-                                  <Popconfirm
-                                    title="이벤트를 삭제할까요?"
-                                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
-                                    okText="삭제"
-                                    okButtonProps={{ danger: true }}
-                                    cancelText="취소"
-                                    onConfirm={async () => {
-                                      const objRes = await fnStoreDeleteInstance(r.nId);
-                                      if (objRes.bSuccess) {
-                                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
-                                        setStrDashTab('completed');
-                                      } else {
-                                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                                      }
-                                    }}
-                                  >
-                                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                                  </Popconfirm>
-                                )}
-                              </>
-                            );
-                          }
-                          return (
-                            <>
-                              <Tooltip title="진행중 탭으로 복원">
-                                <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
-                              </Tooltip>
-                              {bCardCanDelete && (
-                                <Popconfirm
-                                  title="이벤트를 삭제할까요?"
-                                  description="숨김 상태와 무관하게 복원할 수 없습니다."
-                                  okText="삭제"
-                                  okButtonProps={{ danger: true }}
-                                  cancelText="취소"
-                                  onConfirm={async () => {
-                                    const objRes = await fnStoreDeleteInstance(r.nId);
-                                    if (objRes.bSuccess) {
-                                      messageApi.success('삭제되었습니다.');
-                                      setStrDashTab('completed');
-                                    } else {
-                                      fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                                    }
-                                  }}
-                                >
-                                  <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                                </Popconfirm>
-                              )}
-                            </>
-                          );
-                        })()}
+                        {fnRenderManageActions(r)}
                       </Space>
                     </Space>
                     {objSelectedRow?.nId === r.nId && (

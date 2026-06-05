@@ -72,9 +72,40 @@ pre.dqpm-code-block {
   color: inherit;
 }
 
-.dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title {
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title,
+.dqpm-layout-sider .ant-menu-inline .ant-menu-submenu-title {
   padding-inline: 10px;
   font-weight: 600;
+}
+
+/* 사이드바 접힘: 아이콘만 · 가운데 정렬 */
+.dqpm-layout-sider.ant-layout-sider-collapsed .ant-menu-root.ant-menu-inline-collapsed {
+  padding-inline: 0;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title,
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: calc(50% - 14px / 2) !important;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .dqpm-menu-submenu-label,
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .ant-menu-title-content {
+  display: none !important;
+  width: 0;
+  overflow: hidden;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-arrow {
+  display: none !important;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .ant-menu-item-icon,
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-item .ant-menu-item-icon {
+  margin-inline-end: 0 !important;
+  line-height: 0;
 }
 
 .dqpm-layout-header .ant-btn,

@@ -10,7 +10,8 @@ alwaysApply: false
 
 - **스펙**: `front/DESIGN.md` · 인덱스 `docs/DESIGN-SYSTEM.md` · Storybook `cd front && npm run storybook`
 - **토큰**: `design-system.ts` + `cursorSiteTokens.ts` · `App.tsx` `ConfigProvider`
-- **프리셋**: UI «Cursor IDE» `#434343` / «Cursor.com» `#f54e00` (라이트 웜 셸)
+- **프리셋**: UI 3종 — Cursor IDE `#434343` / Cursor.com `#f54e00` / 블루 `#1677ff` (`ARR_PRIMARY_COLORS`)
+- **사이드바**: `MainLayout` Ant SubMenu · `openKeys` · 접힘 `inlineCollapsed` + `index.css` 아이콘 중앙
 - **색**: `theme.useToken()` · `useDesignSystem()` · `fnSemanticColor` (`semanticColors.ts`) — 페이지 hex 지양
 - **Tag**: `<DqpmTag tone="warning" />` (Ant `color` preset 대신)
 - **타이포**: `objTypoRoles` + `fnTypoStyle` (`typographyTokens.ts`) · CRUD 제목 `CrudPageShell`
