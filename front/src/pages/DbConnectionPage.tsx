@@ -543,8 +543,7 @@ const DbConnectionPage = () => {
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => fnRenderTestPanel(r),
-            expandIcon: () => null,
-            columnWidth: 24,
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           rowClassName={(r: IDbConnection) => (r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : '')}

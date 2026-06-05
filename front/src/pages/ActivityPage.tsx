@@ -427,6 +427,7 @@ const ActivityPage = () => {
         </Form>
 
         <AppTable
+          strTableId="activity_logs"
           rowKey="nId"
           loading={bLoading}
           columns={arrColumns}

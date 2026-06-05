@@ -631,8 +631,7 @@ const EventPage = () => {
               setNSelectedTemplateId(bExpanded ? record.nId : null);
             },
             expandedRowRender: () => fnRenderRelatedInstancesPanel(),
-            expandIcon: () => null,
-            columnWidth: 24,
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           rowClassName={(record) => (record.nId === nSelectedTemplateId ? 'ant-table-row-selected' : '')}

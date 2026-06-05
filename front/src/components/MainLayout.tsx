@@ -60,23 +60,19 @@ function fnResolveHeaderUserDisplay(
   return { strHeaderDisplayName, bShowRoleTag, strUserHoverHint };
 }
 
-/** 사이드바 메뉴 그룹 라벨 (커스텀 ReactNode일 때도 디자인 토큰 색·타이포 적용) */
-const fnRenderMenuGroupLabel = (
-  nodeIcon: React.ReactNode,
-  strLabel: string,
-  objMg: {
-    strColor: string;
-    nFontSize: number;
-    nFontWeight: number;
-    strLetterSpacing: string;
-    strTextTransform: string;
-  },
-) => (
+type TMenuGroupStyle = {
+  strColor: string;
+  nFontSize: number;
+  nFontWeight: number;
+  strLetterSpacing: string;
+  strTextTransform: string;
+};
+
+/** SubMenu 펼침 시 제목 텍스트 — 아이콘은 Menu `icon` prop (접힘 시 아이콘만 표시) */
+const fnRenderMenuSubmenuLabel = (strLabel: string, objMg: TMenuGroupStyle) => (
   <span
+    className="dqpm-menu-submenu-label"
     style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 6,
       color: objMg.strColor,
       fontSize: objMg.nFontSize,
       fontWeight: objMg.nFontWeight,
@@ -84,7 +80,7 @@ const fnRenderMenuGroupLabel = (
       textTransform: objMg.strTextTransform as React.CSSProperties['textTransform'],
     }}
   >
-    {nodeIcon} {strLabel}
+    {strLabel}
   </span>
 );
 
@@ -93,6 +89,8 @@ const MainLayout = () => {
   const [bSettingsOpen, setBSettingsOpen] = useState(false);
   /** 사이드바 폭 드래그 중 — ref만 쓰면 margin/width transition 이 먹지 않아 state로 동기화 */
   const [bIsResizingSider, setBIsResizingSider] = useState(false);
+  /** 인라인 SubMenu 펼침 키 (group 은 접기 불가 → children = SubMenu) */
+  const [arrOpenKeys, setArrOpenKeys] = useState<string[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
@@ -247,8 +245,8 @@ const MainLayout = () => {
     if (arrEventChildren.length > 0) {
       arrResult.push({
         key: 'event-group',
-        label: fnRenderMenuGroupLabel(<CalendarOutlined />, '이벤트', objMg),
-        type: 'group' as const,
+        icon: <CalendarOutlined />,
+        label: fnRenderMenuSubmenuLabel('이벤트', objMg),
         children: arrEventChildren,
       });
     }
@@ -267,8 +265,8 @@ const MainLayout = () => {
     if (arrUserGroupChildren.length > 0) {
       arrResult.push({
         key: 'user-group',
-        label: fnRenderMenuGroupLabel(<TeamOutlined />, '사용자', objMg),
-        type: 'group' as const,
+        icon: <TeamOutlined />,
+        label: fnRenderMenuSubmenuLabel('사용자', objMg),
         children: arrUserGroupChildren,
       });
     }
@@ -282,16 +280,46 @@ const MainLayout = () => {
       arrOpChildren.push({ key: '/query', icon: <CodeOutlined />, label: '이벤트 생성' });
     }
 
-    arrResult.push({
-      key: 'operation-group',
-      label: fnRenderMenuGroupLabel(<RocketOutlined />, '운영', objMg),
-      type: 'group' as const,
-      children: arrOpChildren,
-    });
+    if (arrOpChildren.length > 0) {
+      arrResult.push({
+        key: 'operation-group',
+        icon: <RocketOutlined />,
+        label: fnRenderMenuSubmenuLabel('운영', objMg),
+        children: arrOpChildren,
+      });
+    }
 
     return arrResult;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrPermissions, objMg.strColor, objMg.nFontSize, objMg.nFontWeight, objMg.strLetterSpacing, objMg.strTextTransform]);
+
+  const arrSubmenuKeys = useMemo(
+    () =>
+      arrMenuItems
+        .filter((obj) => obj != null && 'children' in obj && Array.isArray(obj.children) && obj.children.length > 0)
+        .map((obj) => String(obj!.key)),
+    [arrMenuItems],
+  );
+
+  // 권한에 따라 메뉴가 늘면 새 SubMenu는 기본 펼침
+  useEffect(() => {
+    setArrOpenKeys((prev) => [...new Set([...prev, ...arrSubmenuKeys])]);
+  }, [arrSubmenuKeys]);
+
+  // 현재 경로가 속한 그룹은 접혀 있어도 펼침
+  useEffect(() => {
+    const strPath = location.pathname;
+    const objParent = arrMenuItems.find(
+      (obj) =>
+        obj != null
+        && 'children' in obj
+        && Array.isArray(obj.children)
+        && obj.children.some((ch) => ch != null && 'key' in ch && ch.key === strPath),
+    );
+    if (objParent?.key == null) return;
+    const strKey = String(objParent.key);
+    setArrOpenKeys((prev) => (prev.includes(strKey) ? prev : [...prev, strKey]));
+  }, [location.pathname, arrMenuItems]);
 
   // 사이드바 메뉴 클릭 처리
   const fnHandleMenuClick = (info: { key: string }) => {
@@ -390,15 +418,18 @@ const MainLayout = () => {
         <Menu
           theme={objShell.strMenuTheme}
           mode="inline"
+          inlineCollapsed={bCollapsed}
           selectedKeys={[location.pathname]}
+          openKeys={arrOpenKeys}
+          onOpenChange={setArrOpenKeys}
           items={arrMenuItems}
           onClick={fnHandleMenuClick}
           style={{
             borderRight: 0,
             marginTop: 4,
             marginBottom: 8,
-            paddingLeft: 6,
-            paddingRight: 6,
+            paddingLeft: bCollapsed ? 0 : 6,
+            paddingRight: bCollapsed ? 0 : 6,
             background: 'transparent',
           }}
         />
@@ -486,6 +517,7 @@ const MainLayout = () => {
               className="dqpm-header-icon-btn"
               icon={<SettingOutlined />}
               onClick={() => setBSettingsOpen(true)}
+              aria-label="UI 설정"
               title="UI 설정"
               style={{ fontSize: 16, color: token.colorTextSecondary }}
             />

@@ -366,6 +366,32 @@ const DraggableHeaderCell = (props: IDraggableHeaderCellProps) => {
   );
 };
 
+const fnIsExpandIconHeaderCell = (props: React.HTMLAttributes<HTMLTableCellElement>): boolean => {
+  const mix = props.className;
+  if (typeof mix === 'string') return mix.includes('ant-table-row-expand-icon-cell');
+  if (Array.isArray(mix)) {
+    return mix.some((c) => typeof c === 'string' && c.includes('ant-table-row-expand-icon-cell'));
+  }
+  return false;
+};
+
+/** 펼침 전용 빈 th — 드래그·리사이즈 대상에서 제외 */
+const WrappedDraggableHeaderCell = (
+  props: IDraggableHeaderCellProps & React.HTMLAttributes<HTMLTableCellElement>,
+) => {
+  if (fnIsExpandIconHeaderCell(props)) {
+    const {
+      'data-drag-id': _dragId,
+      'data-col-key': _colKey,
+      'data-left-col-key': _leftKey,
+      'data-right-col-key': _rightKey,
+      ...rest
+    } = props;
+    return <th {...rest} />;
+  }
+  return <DraggableHeaderCell {...props} />;
+};
+
 // ─── 컬럼에서 안정적인 key 추출 ─────────────────────────────
 function fnGetColKey<T>(col: TableColumnType<T>, nIdx: number): string {
   return String(col.key ?? (col.dataIndex as string) ?? `__col_${nIdx}`);
@@ -382,7 +408,7 @@ function fnComputeScrollX<T>(
 ): number {
   if (!arrCols?.length) return N_MIN_TABLE_SCROLL_X;
   let nSum = 0;
-  if (expandable) {
+  if (expandable && expandable.showExpandColumn !== false) {
     const nExpandW = expandable.columnWidth;
     nSum += typeof nExpandW === 'number' ? nExpandW : 48;
   }
@@ -477,11 +503,12 @@ function AppTable<T extends object>({
     [strTableId],
   );
 
-  // strTableId가 뒤늦게 바뀐 경우 저장된 순서 다시 로드
+  // strTableId가 바뀐 경우 저장된 순서·너비 다시 로드 (다른 CRUD 페이지와 동일)
   useEffect(() => {
     if (!strTableId) return;
     const arrKeys = (columns ?? []).map((col, nIdx) => fnGetColKey(col, nIdx));
     setArrOrder(fnLoadOrder(strTableId, arrKeys));
+    setObjWidths(fnLoadWidths(strTableId));
   // columns 변경 감지는 의도적으로 제외 (prevColsRef가 담당)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strTableId]);
@@ -563,7 +590,9 @@ function AppTable<T extends object>({
         bDraggableColumns
           ? {
               header: {
-                cell: DraggableHeaderCell as React.ComponentType<React.HTMLAttributes<HTMLTableCellElement>>,
+                cell: WrappedDraggableHeaderCell as React.ComponentType<
+                  React.HTMLAttributes<HTMLTableCellElement>
+                >,
               },
             }
           : undefined
