@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { generate } from '@ant-design/colors';
 import { useAuthStore } from './useAuthStore';
+import { STR_CURSOR_SITE_ACCENT } from '../styles/cursorSiteTokens';
 
 // 테마 모드 타입
 export type TThemeMode = 'light' | 'dark';
@@ -9,23 +10,25 @@ export type TThemeMode = 'light' | 'dark';
 /** Cursor 앱 UI 톤 — 중성 primary (Automations 등 회색·잉크 강조) */
 export const STR_PRIMARY_CURSOR_NEUTRAL = '#434343';
 
-/** Cursor 마케팅 브랜드 오렌지 (CTA·cursor.com) — 선택용 */
-export const STR_PRIMARY_CURSOR_BRAND = '#f54e00';
+/** Cursor.com 마케팅 액센트 (CTA·링크) */
+export const STR_PRIMARY_CURSOR_BRAND = STR_CURSOR_SITE_ACCENT;
 
-// 포인트 컬러 팔레트 정의
+/** UI 설정 포인트 컬러 — 3종만 노출 (디자인 시스템 정렬) */
+export const STR_PRIMARY_ANT_BLUE = '#1677ff';
+
 export const ARR_PRIMARY_COLORS = [
-  { strLabel: 'Cursor', strValue: STR_PRIMARY_CURSOR_NEUTRAL },
-  { strLabel: '브랜드 오렌지', strValue: STR_PRIMARY_CURSOR_BRAND },
-  { strLabel: '인디고', strValue: '#5B6ADF' },
-  { strLabel: '퍼플 블루', strValue: '#667eea' },
-  { strLabel: '블루', strValue: '#1677ff' },
-  { strLabel: '사이언', strValue: '#13c2c2' },
-  { strLabel: '그린', strValue: '#52c41a' },
-  { strLabel: '오렌지', strValue: '#fa8c16' },
-  { strLabel: '레드', strValue: '#f5222d' },
-  { strLabel: '마젠타', strValue: '#eb2f96' },
-  { strLabel: '바이올렛', strValue: '#722ed1' },
-];
+  { strLabel: 'Cursor IDE', strValue: STR_PRIMARY_CURSOR_NEUTRAL },
+  { strLabel: 'Cursor.com', strValue: STR_PRIMARY_CURSOR_BRAND },
+  { strLabel: '블루', strValue: STR_PRIMARY_ANT_BLUE },
+] as const;
+
+const SET_ALLOWED_PRIMARY = new Set(ARR_PRIMARY_COLORS.map((obj) => obj.strValue));
+
+/** 저장값이 구 팔레트(인디고 등)이면 허용 3색 중 하나로 보정 */
+export function fnNormalizePrimaryColor(strColor: string): string {
+  if (SET_ALLOWED_PRIMARY.has(strColor)) return strColor;
+  return STR_PRIMARY_CURSOR_NEUTRAL;
+}
 
 // primary 컬러 하나로 10단계 팔레트를 생성한다
 // generate()[5] = primary (index 5, 6번째), [0]~[4] = 밝은 계열, [6]~[9] = 어두운 계열
@@ -39,8 +42,16 @@ export const N_SIDER_COLLAPSED_WIDTH = 80;
 export const N_SIDER_MIN = 160;
 /** 더블클릭·초기화 시 기본 너비 */
 export const N_SIDER_DEFAULT = 200;
+/** 펼침 드래그 후 mouseup — 이보다 좁으면 다시 아이콘 모드 */
+export const N_SIDER_EXPAND_RELEASE = N_SIDER_COLLAPSED_WIDTH + 28;
+
 export function fnSiderMax(): number {
   return Math.floor(window.innerWidth / 3);
+}
+
+export function fnClampSiderWidth(nWidth: number, bClampMin = true): number {
+  const nLo = bClampMin ? N_SIDER_MIN : N_SIDER_COLLAPSED_WIDTH;
+  return Math.min(fnSiderMax(), Math.max(nLo, nWidth));
 }
 
 // 기본값
@@ -60,8 +71,6 @@ interface IThemeStore {
   bCompact: boolean;
   strPrimaryColor: string;
   bFunMode: boolean;
-
-  fnGetIsDark: () => boolean;
 
   // 액션
   fnSetMode: (strMode: TThemeMode) => void;
@@ -100,19 +109,16 @@ const themePersistStorage = {
 
 export const useThemeStore = create<IThemeStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...OBJ_DEFAULT,
-
-      fnGetIsDark: () => get().strMode === 'dark',
 
       fnSetMode: (strMode) => set({ strMode }),
       fnSetSiderWidth: (nWidth, bClampMin = true) => {
-        const nLo = bClampMin ? N_SIDER_MIN : N_SIDER_COLLAPSED_WIDTH;
-        set({ nSiderWidth: Math.min(fnSiderMax(), Math.max(nLo, nWidth)) });
+        set({ nSiderWidth: fnClampSiderWidth(nWidth, bClampMin) });
       },
       fnSetFontSize: (nSize) => set({ nFontSize: Math.min(25, Math.max(12, nSize)) }),
       fnSetCompact: (bCompact) => set({ bCompact }),
-      fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: strColor }),
+      fnSetPrimaryColor: (strColor) => set({ strPrimaryColor: fnNormalizePrimaryColor(strColor) }),
       fnSetFunMode: (bFunMode) => set({ bFunMode }),
       fnReset: () => set({ ...OBJ_DEFAULT }),
     }),
@@ -120,14 +126,17 @@ export const useThemeStore = create<IThemeStore>()(
       name: 'db-event-manager-theme',
       storage: createJSONStorage(() => themePersistStorage),
       skipHydration: true,
-      version: 1,
-      migrate: (persisted) => {
-        const obj = persisted as { strMode?: string };
-        if (obj.strMode === 'system') {
+      version: 2,
+      migrate: (persisted, nVersion) => {
+        const obj = { ...(persisted as Record<string, unknown>) };
+        if (nVersion < 1 && obj.strMode === 'system') {
           const bDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          return { ...obj, strMode: bDark ? 'dark' : 'light' };
+          obj.strMode = bDark ? 'dark' : 'light';
         }
-        return persisted;
+        if (typeof obj.strPrimaryColor === 'string') {
+          obj.strPrimaryColor = fnNormalizePrimaryColor(obj.strPrimaryColor);
+        }
+        return obj;
       },
       partialize: (state) => ({
         strMode: state.strMode,

@@ -6,14 +6,18 @@ alwaysApply: false
 
 # 프론트엔드 패턴
 
-## Cursor 스타일 테마 (점진 적용)
+## 디자인 시스템 (getdesign Cursor)
 
-- **토큰**: `front/src/styles/design-system.ts` — `OBJ_CURSOR_NEUTRAL`, `fnBuildDesignSystem`, Ant `ConfigProvider` (`App.tsx`)
-- **셸**: `MainLayout.tsx` + `objShell` (사이드바·헤더 동일 톤, 44px 헤더, 흰 `dqpm-layout-content-panel`, `data-dqpm-theme` 스크롤바)
-- **primary 기본**: `#434343` (`STR_PRIMARY_CURSOR_NEUTRAL`, UI «Cursor»). 브랜드 오렌지 `#f54e00`는 «브랜드 오렌지» 프리셋. 페이지 색은 **`theme.useToken()`** — hex 하드코드 지양
-- **검토표**: `docs/CURSOR-UI-AUDIT.md` (컴포넌트별 ✅/🟡/🔴, 3단계 우선순위)
-- **CRUD 목록 골격**: `CrudPageShell` — 헤더 DbConnection, `Card`+테이블 User (`nodeToolbar`+`CrudListToolbar`)
-- **목록 툴바**: `CrudListToolbar` — `nodeLeft` **Segmented**(사용자·나의 대시보드), `nodeRight`(Select·버튼). 활동은 `Form` 필터(별 패턴)
+- **스펙**: `front/DESIGN.md` · 인덱스 `docs/DESIGN-SYSTEM.md` · Storybook `cd front && npm run storybook`
+- **토큰**: `design-system.ts` + `cursorSiteTokens.ts` · `App.tsx` `ConfigProvider`
+- **프리셋**: UI 3종 — Cursor IDE `#434343` / Cursor.com `#f54e00` / 블루 `#1677ff` (`ARR_PRIMARY_COLORS`)
+- **사이드바**: `MainLayout` Ant SubMenu · `openKeys` · 접힘 `inlineCollapsed` + `index.css` 아이콘 중앙
+- **색**: `theme.useToken()` · `useDesignSystem()` · `fnSemanticColor` (`semanticColors.ts`) — 페이지 hex 지양
+- **Tag**: `<DqpmTag tone="warning" />` (Ant `color` preset 대신)
+- **타이포**: `objTypoRoles` + `fnTypoStyle` (`typographyTokens.ts`) · CRUD 제목 `CrudPageShell`
+- **SQL 블록**: `fnCodeSurfaceStyle(token)` / `fnSqlEditorReadonlyStyle` · class `dqpm-font-mono` (`queryEditorTokens.ts`)
+- **검토표**: `docs/CURSOR-UI-AUDIT.md`
+- **CRUD 골격**: `CrudPageShell` + `CrudListToolbar` (Segmented·Form 필터)
 
 ## 프로젝트 구조
 
@@ -21,7 +25,8 @@ alwaysApply: false
 front/src/
   pages/      # 각 메뉴 페이지 (MyDashboardPage 등)
   components/ # AppTable, CrudPageShell, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
-  styles/     # design-system.ts, DesignSystemContext.tsx
+  styles/     # design-system, typographyTokens, semanticColors, queryEditorTokens
+  stories/    # Storybook DQPM 카탈로그
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore, useNotificationStore)
   api/        # API 클라이언트 (axios 래퍼)
   hooks/      # useEventStream, useUserPresenceStream 등

@@ -11,12 +11,12 @@ import {
   Col,
   message,
   Space,
-  Tag,
   Steps,
   Result,
   Alert,
   Checkbox,
   Tabs,
+  theme,
 } from 'antd';
 import {
   CodeOutlined,
@@ -32,11 +32,14 @@ import { useEventStore } from '../stores/useEventStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
+import { DqpmTag } from '../components/DqpmTag';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope } from '../types';
 import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
 import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
+import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle } from '../styles/queryEditorTokens';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -81,6 +84,23 @@ const QueryPage = () => {
   const user = useAuthStore((s) => s.user);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
   const bIsDark = useThemeStore((s) => s.strMode === 'dark');
+  const { token } = theme.useToken();
+  const { objTypoRoles } = useDesignSystem();
+  const objSqlInputStyle = useMemo(
+    () => fnCodeSurfaceStyle(token, objTypoRoles.code.nFontSize),
+    [token, objTypoRoles.code.nFontSize],
+  );
+  const objSqlFormInputStyle = useMemo(
+    () => ({
+      ...objSqlInputStyle,
+      marginTop: 8,
+    }),
+    [objSqlInputStyle],
+  );
+  const objSqlReadonlyStyle = useMemo(
+    () => fnSqlEditorReadonlyStyle(objTypoRoles.code.nFontSize),
+    [objTypoRoles.code.nFontSize],
+  );
   const strSubmitGradient = useMemo(() => {
     const arrP = fnGenPalette(strPrimaryColor, bIsDark);
     return `linear-gradient(135deg, ${strPrimaryColor} 0%, ${arrP[7]} 100%)`;
@@ -523,10 +543,10 @@ const QueryPage = () => {
                     label={`#${e.nId} ${e.strEventLabel}`}
                   >
                     <Space wrap size={4}>
-                      <Tag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</Tag>
+                      <DqpmTag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</DqpmTag>
                       <span>{e.strEventLabel}</span>
-                      <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</Tag>
-                      <Tag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</Tag>
+                      <DqpmTag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</DqpmTag>
+                      <DqpmTag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</DqpmTag>
                     </Space>
                   </Select.Option>
                 ))}
@@ -535,11 +555,11 @@ const QueryPage = () => {
                 const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
                 return (
                   <Space wrap style={{ marginTop: 8 }}>
-                    <Tag color="purple">템플릿 번호 {objSelectedEvent.nId}</Tag>
+                    <DqpmTag color="purple">템플릿 번호 {objSelectedEvent.nId}</DqpmTag>
                     {arrValidSets.length >= 2 && (
-                      <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
+                      <DqpmTag color="blue">다중 쿼리 ({arrValidSets.length}세트)</DqpmTag>
                     )}
-                    {arrValidSets.length === 1 && <Tag>단일 쿼리</Tag>}
+                    {arrValidSets.length === 1 && <DqpmTag>단일 쿼리</DqpmTag>}
                   </Space>
                 );
               })()}
@@ -596,7 +616,7 @@ const QueryPage = () => {
                   label={
                     <Space>
                       반영 범위
-                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                      <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                     </Space>
                   }
                   extra={
@@ -623,7 +643,7 @@ const QueryPage = () => {
                           value={opt.value}
                           disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
                         >
-                          <Tag color={opt.strColor}>{opt.label}</Tag>
+                          <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
                           {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
                             <Text type="secondary" style={{ fontSize: 11 }}> (해당 프로덕트에 {opt.value.toUpperCase()} DB 접속 없음)</Text>
                           ) : null}
@@ -639,7 +659,7 @@ const QueryPage = () => {
                     label={
                       <Space>
                         QA 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 QA 실행 가능</Text>
                       </Space>
                     }
@@ -662,7 +682,7 @@ const QueryPage = () => {
                     label={
                       <Space>
                         LIVE 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
                       </Space>
                     }
@@ -689,7 +709,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && ' — 번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && ' — 문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                     >
@@ -709,7 +729,8 @@ const QueryPage = () => {
                               }}
                               rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
                               placeholder={fnGetInputPlaceholder()}
-                              style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8 }}
+                              className={STR_CODE_BLOCK_CLASS}
+                              style={objSqlFormInputStyle}
                             />
                           ),
                         }))}
@@ -722,7 +743,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && '번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && '문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                       extra={
@@ -736,7 +757,8 @@ const QueryPage = () => {
                         onChange={(e) => setStrInputValues(e.target.value)}
                         rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
                         placeholder={fnGetInputPlaceholder()}
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        className={STR_CODE_BLOCK_CLASS}
+                        style={objSqlInputStyle}
                       />
                     </Form.Item>
                   )
@@ -809,16 +831,12 @@ const QueryPage = () => {
                       label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
                       children: (
                         <TextArea
+                          className={`${STR_CODE_BLOCK_CLASS} dqpm-code-block`}
                           value={t.strQuery}
                           readOnly
                           autoSize={{ minRows: 8, maxRows: 20 }}
                           style={{
-                            fontFamily: "'Consolas', 'Monaco', monospace",
-                            fontSize: 12,
-                            background: '#1e1e1e',
-                            color: '#d4d4d4',
-                            border: 'none',
-                            borderRadius: 8,
+                            ...objSqlReadonlyStyle,
                             padding: 12,
                             marginTop: 8,
                           }}
@@ -828,23 +846,19 @@ const QueryPage = () => {
                   />
                 ) : (
                   <TextArea
+                    className="dqpm-font-mono dqpm-code-block"
                     value={strGeneratedQuery}
                     readOnly
                     autoSize={{ minRows: 10, maxRows: 25 }}
                     style={{
-                      fontFamily: "'Consolas', 'Monaco', monospace",
-                      fontSize: 13,
-                      background: '#1e1e1e',
-                      color: '#d4d4d4',
-                      border: 'none',
-                      borderRadius: 8,
+                      ...objSqlReadonlyStyle,
                       padding: 16,
                     }}
                   />
                 )}
               </>
             ) : (
-              <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>
+              <div style={{ padding: '80px 0', textAlign: 'center', color: token.colorTextQuaternary }}>
                 <CodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
                 <br />
                 왼쪽에서 프로덕트와 이벤트를 선택하고

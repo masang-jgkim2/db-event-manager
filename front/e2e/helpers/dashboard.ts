@@ -17,10 +17,17 @@ export const fnCloseModals = async (page: Page) => {
   }
 };
 
+const STR_TABLE_DATA_ROW = '.ant-table tbody tr:not(.ant-table-measure-row)';
+
+/** AppTable 측정용 hidden 행 제외 — 데이터 행이 보일 때까지 대기 */
+export const fnWaitDashboardTableReady = async (page: Page, nTimeout = 20000) => {
+  await page.waitForSelector(STR_TABLE_DATA_ROW, { timeout: nTimeout, state: 'visible' });
+};
+
 /** ?nInstanceId= 딥링크는 상세 모달을 열어 행 버튼 클릭을 가림 — ID는 테이블 행 탐색만 사용 */
 export const fnGoMyDashboard = async (page: Page) => {
   await page.goto('/my-dashboard');
-  await page.waitForSelector('.ant-table tbody tr', { timeout: 20000 });
+  await fnWaitDashboardTableReady(page);
   await fnCloseModals(page);
 };
 

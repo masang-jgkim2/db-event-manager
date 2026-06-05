@@ -11,7 +11,7 @@
 | Container | `#FFFFFF` | `#252526` |
 | Sider | `#F7F7F7` | `#252526` |
 | Border | `#E5E5E5` / `#E8E8E8` | `rgba(255,255,255,0.08–0.10)` |
-| Primary 기본 | `#434343` (Cursor 앱 중성, UI «Cursor») | `#f54e00`는 «브랜드 오렌지» 선택 |
+| Primary 기본 | `#434343` (UI «Cursor IDE») | `#f54e00`는 «Cursor.com» — 웜 셸·[적용 목록](DESIGN-SYSTEM-CURSOR-COM-APPLIED.md) |
 
 ## 컴포넌트·페이지 매트릭스
 
@@ -26,20 +26,21 @@
 | `AuthCardLayout.tsx` | Card | 🟡 | Login과 동일 그라데이션 배경 |
 | `LoginPage.tsx` | Card, Form | 🟡 | primary radial 배경 — Cursor Home과 유사, 카드는 OK |
 | `RegisterPage.tsx` | Form | 🟡 | AuthCardLayout 경유 시 token |
-| `RegisterSentPage.tsx` | Result | 🟡 | `#faad14` 아이콘 하드코드 |
-| `QueryEditDiffView.tsx` | Typography | ✅ | `colorErrorBg` / `colorSuccessBg` |
-| `QueryResultSetTable.tsx` | Table | 🟡 | ConfigProvider 상속; `bordered` — 3단계에서 `bordered={false}` 검토 |
+| `RegisterSentPage.tsx` | Result | ✅ | `token.colorWarning` 경유 |
+| `QueryEditDiffView.tsx` | Typography | ✅ | diff `fnCodeSurfaceStyle` + `dqpm-font-mono` |
+| `QueryResultSetTable.tsx` | Table | ✅ | `bordered={false}` |
+| `AppTable.tsx` | Table | ✅ | 기본 `bordered={false}` (호출부 override 가능) |
 | `DashboardCardContent.tsx` | Card 내부 | 🟡 | DnD 스타일만; 카드 shell은 token |
 | `InstanceCardLabelRows.tsx` | Tag, Text | ✅ | 레이아웃 위주 |
 | `ApproveUserModal.tsx` | Modal | ✅ | 기본 Modal token |
 | `RequestWithLongPressButton.tsx` | Button | ✅ | |
-| `DashboardPage.tsx` | Card, Modal, Table | 🔴 | 맞춤 카드 아이콘 12곳 `#667eea` 등 hex |
-| `MyDashboardPage.tsx` | Card, Steps, Modal | 🔴 | 워크플로 버튼·Statistic·실행결과 박스 다수 hex |
-| `QueryPage.tsx` | Form, Card | 🟡 | SQL 프리뷰 `#1e1e1e` — Cursor 에디터 톤과 **일치**(유지) |
-| `EventPage.tsx` | Table, Modal | 🟡 | AppTable + 일부 인라인 |
-| `ProductPage.tsx` | Table | 🟡 | 삭제 아이콘 `#ff4d4f` |
-| `UserPage.tsx` | Table, Tabs | 🟡 | 온라인 점 `#52c41a` / `#bfbfbf` |
-| `DbConnectionPage.tsx` | Table, Tag | 🟡 | 연결 상태 색 4단계 hex |
+| `DashboardPage.tsx` | Card, Modal, Table | ✅ | 카드 아이콘 `fnDashboardCardSemanticColor` |
+| `MyDashboardPage.tsx` | Card, Steps, Modal | ✅ | semanticColors + `fnCodeSurfaceStyle` (honeypot `#ccc` 2곳만) |
+| `QueryPage.tsx` | Form, Card | ✅ | SQL `queryEditorTokens` + `dqpm-font-mono` |
+| `EventPage.tsx` | Table, Modal | ✅ | 쿼리 템플릿 `fnCodeSurfaceStyle` |
+| `ProductPage.tsx` | Table | ✅ | 삭제 아이콘 `token.colorError` |
+| `UserPage.tsx` | Table, Tabs | ✅ | 온라인 점 `fnSemanticColor` |
+| `DbConnectionPage.tsx` | Table, Tag | ✅ | 연결 점·테스트 결과 `fnSemanticColor` |
 | `RolePage.tsx` | Form, Checkbox | ✅ | hex 거의 없음 |
 | `ActivityPage.tsx` | Table, Tag | ✅ | |
 

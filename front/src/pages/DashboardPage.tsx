@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import {
-  Card, Typography, Tag, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, InputNumber, Collapse, Table,
+  Card, Typography, Space, Button, theme, Modal, Steps, Checkbox, Input, Select, InputNumber, Collapse, Table,
   Divider, Spin, DatePicker,
 } from 'antd';
 import dayjs from 'dayjs';
@@ -19,6 +19,8 @@ import type { DragEndEvent } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import AppTable from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { DqpmTag } from '../components/DqpmTag';
 import {
   DashboardCardContent,
   DashboardCardTitleDragProvider,
@@ -49,6 +51,7 @@ import { fnApiGetRoles } from '../api/roleApi';
 import type { IProduct, IService, TEventStatus, IEventInstance, TPermission } from '../types';
 import { OBJ_STATUS_CONFIG } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import { fnDashboardCardSemanticColor } from '../styles/semanticColors';
 import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../types/eventDashboardCustom';
 
 const { Text } = Typography;
@@ -114,7 +117,7 @@ const OBJ_TABLE_CARD_TABLE_IDS: Record<(typeof TABLE_CARD_IDS)[number], string> 
 /** 테이블 카드별 컬럼 메타 (추가 모달 컬럼 선택용) */
 const OBJ_TABLE_CARD_COLUMNS: Record<(typeof TABLE_CARD_IDS)[number], { key: string; title: string }[]> = {
   productTable: [
-    { key: 'strName', title: '프로젝트명' },
+    { key: 'strName', title: '프로덕트명' },
     { key: 'arrServices', title: '서비스' },
     { key: 'eventCount', title: '쿼리 템플릿 수' },
   ],
@@ -906,6 +909,10 @@ const DashboardPage = () => {
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const { token } = theme.useToken();
+
+  const fnCardIconColor = (strCardId: string) =>
+    fnDashboardCardSemanticColor(strCardId, token, strPrimaryColor);
 
   const fnHas = (strPerm: TPermission) => arrPermissions.includes(strPerm);
 
@@ -1321,7 +1328,13 @@ const DashboardPage = () => {
   );
 
   const arrProductColumns = [
-    { title: '프로젝트명', dataIndex: 'strName', key: 'strName', width: 140 },
+    {
+      title: '프로덕트명',
+      dataIndex: 'strName',
+      key: 'strName',
+      width: 140,
+      render: (str: string) => <ProductNameTag strName={str} />,
+    },
     {
       title: '서비스',
       dataIndex: 'arrServices',
@@ -1329,7 +1342,7 @@ const DashboardPage = () => {
       render: (arrServices: IService[]) => (
         <Space wrap>
           {arrServices.map((s) => (
-            <Tag key={s.strAbbr} color="blue">{s.strAbbr} ({s.strRegion})</Tag>
+            <DqpmTag key={s.strAbbr} tone="service">{s.strAbbr} ({s.strRegion})</DqpmTag>
           ))}
         </Space>
       ),
@@ -1340,7 +1353,7 @@ const DashboardPage = () => {
       width: 120,
       render: (_: unknown, objRecord: IProduct) => {
         const nCount = arrEvents.filter((e) => e.nProductId === objRecord.nId).length;
-        return nCount > 0 ? <Tag color="green">{nCount}개</Tag> : <Tag>0개</Tag>;
+        return nCount > 0 ? <DqpmTag tone="success">{nCount}개</DqpmTag> : <DqpmTag>0개</DqpmTag>;
       },
     },
   ];
@@ -1852,9 +1865,9 @@ const DashboardPage = () => {
         {nAddCardStep === 3 && bAddCardIsCustom && (
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">다음 맞춤 카드를 추가합니다.</Text>
-            <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
+            <DqpmTag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
               {strCustomTitle.trim() || '맞춤 카드'}
-            </Tag>
+            </DqpmTag>
             {strCustomSummaryGroupKey &&
               (() => {
                 const g = arrCustomFormGroups.find((x) => x.strGroupKey === strCustomSummaryGroupKey);
@@ -2003,9 +2016,9 @@ const DashboardPage = () => {
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">다음 카드를 대시보드에 추가합니다.</Text>
             {strAddCardSelectedId && (
-              <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
+              <DqpmTag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
                 {OBJ_CARD_LABELS[strAddCardSelectedId]}
-              </Tag>
+              </DqpmTag>
             )}
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <Button onClick={() => setNAddCardStep(2)}>이전</Button>
@@ -2022,9 +2035,9 @@ const DashboardPage = () => {
           <Space direction="vertical" size={12} style={{ width: '100%' }}>
             <Text type="secondary">다음 카드를 대시보드에 추가합니다.</Text>
             {strAddCardSelectedId && (
-              <Tag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
+              <DqpmTag color="blue" style={{ fontSize: 14, padding: '4px 12px' }}>
                 {OBJ_CARD_LABELS[strAddCardSelectedId]}
-              </Tag>
+              </DqpmTag>
             )}
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <Button onClick={() => setNAddCardStep(3)}>이전</Button>
@@ -2098,7 +2111,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'eventTemplate' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CalendarOutlined, '#52c41a')}
+                    icon={fnDashboardCardIcon(CalendarOutlined, fnCardIconColor('eventTemplate'))}
                     title="쿼리 템플릿"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{arrEvents.length}개</span>
@@ -2106,7 +2119,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instance' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CodeOutlined, '#faad14')}
+                    icon={fnDashboardCardIcon(CodeOutlined, fnCardIconColor('instance'))}
                     title="이벤트 인스턴스"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
@@ -2116,7 +2129,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'service' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(TeamOutlined, '#eb2f96')}
+                    icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('service'))}
                     title="서비스(국내/해외)"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
@@ -2126,7 +2139,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'dbConnection' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(DatabaseOutlined, '#13c2c2')}
+                    icon={fnDashboardCardIcon(DatabaseOutlined, fnCardIconColor('dbConnection'))}
                     title="DB 접속"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nDbConnections, true)}개</span>
@@ -2134,7 +2147,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'user' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(TeamOutlined, '#722ed1')}
+                    icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('user'))}
                     title="사용자"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nUsers, true)}명</span>
@@ -2142,7 +2155,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'role' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(SafetyCertificateOutlined, '#eb2f96')}
+                    icon={fnDashboardCardIcon(SafetyCertificateOutlined, fnCardIconColor('role'))}
                     title="역할"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{fnRenderCount(nRoles, true)}개</span>
@@ -2150,7 +2163,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instanceInProgress' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(RocketOutlined, '#1890ff')}
+                    icon={fnDashboardCardIcon(RocketOutlined, fnCardIconColor('instanceInProgress'))}
                     title="진행 중"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesInProgress ?? 0}건</span>
@@ -2158,7 +2171,7 @@ const DashboardPage = () => {
                 )}
                 {strId === 'instanceCompleted' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(CheckCircleOutlined, '#52c41a')}
+                    icon={fnDashboardCardIcon(CheckCircleOutlined, fnCardIconColor('instanceCompleted'))}
                     title="완료"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>{nInstancesCompleted ?? 0}건</span>
@@ -2177,7 +2190,7 @@ const DashboardPage = () => {
                 })()}
                 {strId === 'productTable' && (
                   <DashboardCardContent
-                    icon={fnDashboardCardIcon(DashboardOutlined, '#1890ff')}
+                    icon={fnDashboardCardIcon(DashboardOutlined, fnCardIconColor('productTable'))}
                     title="프로덕트 현황"
                     bContentFill
                   >
@@ -2212,7 +2225,7 @@ const DashboardPage = () => {
                       : arrDefaultOpen;
                   return (
                     <DashboardCardContent
-                      icon={fnDashboardCardIcon(DashboardOutlined, '#575ECF')}
+                      icon={fnDashboardCardIcon(DashboardOutlined, fnCardIconColor(strId))}
                       title={objC.strTitle}
                       bContentFill={false}
                     >
@@ -2296,9 +2309,9 @@ const DashboardPage = () => {
                                     label: (
                                       <Space wrap size={8}>
                                         <span style={{ fontWeight: 600 }}>{objGrp.strTitle}</span>
-                                        <Tag color="processing">{arrF.length}건</Tag>
+                                        <DqpmTag color="processing">{arrF.length}건</DqpmTag>
                                         {(objGrp.strPeriodStart || objGrp.strPeriodEnd) && (
-                                          <Tag>
+                                          <DqpmTag>
                                             {(objGrp.strDateBasis ?? 'deploy') === 'deploy'
                                               ? '반영일'
                                               : '생성일'}{' '}
@@ -2312,7 +2325,7 @@ const DashboardPage = () => {
                                                   objGrp.strPeriodEnd
                                                 )}`
                                               : ''}
-                                          </Tag>
+                                          </DqpmTag>
                                         )}
                                       </Space>
                                     ),
@@ -2354,9 +2367,9 @@ const DashboardPage = () => {
                                             dataIndex: 'strStatus',
                                             width: 110,
                                             render: (strSt: TEventStatus) => (
-                                              <Tag color={OBJ_STATUS_CONFIG[strSt].strColor}>
+                                              <DqpmTag tone={OBJ_STATUS_CONFIG[strSt].strTagVariant}>
                                                 {OBJ_STATUS_CONFIG[strSt].strLabel}
-                                              </Tag>
+                                              </DqpmTag>
                                             ),
                                           },
                                         ]}

@@ -1,0 +1,22 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="DQPM/소개" />
+
+# DQPM Design System (Storybook)
+
+Database Query Process Manager UI 컴포넌트·토큰 카탈로그입니다.
+
+- **참조 스펙**: [DESIGN.md](../../DESIGN.md) (getdesign Cursor 분석)
+- **구현**: `src/styles/design-system.ts`, `cursorSiteTokens.ts`
+- **문서**: `docs/DESIGN-SYSTEM.md`
+
+## 툴바
+
+- **Theme**: 라이트 / 다크
+- **Point**: Cursor IDE · Cursor.com · **블루** (`#1677ff`) — 앱 UI 설정 3종과 동일 (Storybook 툴바)
+
+## 스토리
+
+Typography · SemanticColors · FoundationColors · DqpmTag · ProductNameTag · Icons · **Menu** (SubMenu 펼침/접힘) · **CrudPageShell** · **SettingsDrawer** · Table · Buttons · CodeSurface · WorkflowTimeline
+
+토큰·헬퍼(`src/styles/*`)를 수정하면 Storybook과 **운영 페이지가 함께** 바뀝니다. 스토리 파일(`.stories.tsx`)만 수정하면 미리보기에만 반영됩니다. 자세한 표는 `docs/DESIGN-SYSTEM.md` § Storybook과 앱 동기화.

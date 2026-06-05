@@ -25,7 +25,7 @@ const QueryResultSetTable = ({ objPart }: IProps) => {
     <div style={{ marginTop: 8 }}>
       <Table
         size="small"
-        bordered
+        bordered={false}
         pagination={arrRows.length > 10 ? { pageSize: 10, size: 'small' } : false}
         scroll={{ x: 'max-content', y: 220 }}
         columns={arrTableCols}

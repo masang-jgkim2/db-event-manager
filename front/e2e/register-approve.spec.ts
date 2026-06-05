@@ -1,12 +1,54 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import {
   STR_ADMIN_PASS,
   STR_ADMIN_USER,
   fnBuildE2eRegisterUserId,
   fnE2eLogin,
+  fnHeaderLogout,
 } from './helpers/auth';
 
 const STR_E2E_REGISTER_PASS = 'E2eTest1234!';
+
+const fnFindPendingUserRow = async (page: Page, strUserId: string) => {
+  for (let n = 0; n < 15; n++) {
+    const row = page
+      .locator('.ant-table tbody tr:not(.ant-table-measure-row)')
+      .filter({ has: page.locator('code', { hasText: strUserId }) });
+    if (await row.count()) return row.first();
+    const next = page.locator('.ant-pagination-next:not(.ant-pagination-disabled)');
+    if (!(await next.count())) break;
+    await next.click();
+    await page.waitForTimeout(300);
+  }
+  return page
+    .locator('.ant-table tbody tr:not(.ant-table-measure-row)')
+    .filter({ has: page.locator('code', { hasText: strUserId }) })
+    .first();
+};
+
+const fnApprovePendingUserWithGm = async (page: Page, row: Locator) => {
+  await row.getByRole('button', { name: '승인' }).click();
+  const modal = page.locator('.ant-modal').filter({ hasText: '가입 승인' });
+  await expect(modal).toBeVisible();
+  if ((await modal.locator('.ant-select-selection-item').count()) === 0) {
+    await modal.getByRole('combobox', { name: /부여할 역할/ }).click();
+    const opt = page
+      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+      .filter({ hasText: 'GM' })
+      .first();
+    await opt.scrollIntoViewIfNeeded();
+    await opt.click();
+    await expect(modal.locator('.ant-select-selection-item').first()).toBeVisible({ timeout: 5000 });
+  }
+  await page.keyboard.press('Escape');
+  const respPromise = page.waitForResponse(
+    (r) => r.url().includes('/approve') && r.request().method() === 'PATCH',
+  );
+  await modal.getByRole('button', { name: '승인', exact: true }).click();
+  const resp = await respPromise;
+  expect(resp.ok()).toBeTruthy();
+  await expect(modal).toBeHidden({ timeout: 15000 });
+};
 
 test.describe('회원가입 → 승인 대기 로그인 차단 → 관리자 승인', () => {
   test.describe.configure({ mode: 'serial' });
@@ -42,36 +84,28 @@ test.describe('회원가입 → 승인 대기 로그인 차단 → 관리자 승
     await page.getByPlaceholder('비밀번호').fill(STR_E2E_REGISTER_PASS);
     await page.getByRole('button', { name: '로그인' }).click();
 
-    await expect(page.getByText(/승인|대기|로그인할 수 없/i)).toBeVisible({ timeout: 10000 });
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
+    await expect(
+      page.locator('.ant-message-notice-content, .ant-notification-notice-message').filter({
+        hasText: /승인|대기|로그인할 수 없/i,
+      }).first(),
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test('A-09 관리자 승인 후 로그인', { tag: ['@automate', '@smoke'] }, async ({ page }) => {
     test.skip(!strNewUserId, '가입 단계 실패 시 스킵');
+    test.setTimeout(120000);
 
     await fnE2eLogin(page, STR_ADMIN_USER, STR_ADMIN_PASS);
     await page.goto('/users');
-    await page.getByRole('tab', { name: /승인 대기/ }).click();
+    await page.locator('.ant-segmented-item').filter({ hasText: /승인 대기/ }).click();
+    await expect(page.getByRole('radio', { name: /승인 대기/ })).toBeChecked({ timeout: 10000 });
 
-    const row = page.locator('.ant-table tbody tr').filter({ hasText: strNewUserId });
-    await expect(row).toBeVisible({ timeout: 15000 });
-    await row.getByRole('button', { name: '승인' }).click();
+    const row = await fnFindPendingUserRow(page, strNewUserId);
+    await expect(row).toBeVisible({ timeout: 30000 });
+    await fnApprovePendingUserWithGm(page, row);
 
-    const modal = page.locator('.ant-modal').filter({ hasText: '가입 승인' });
-    await expect(modal).toBeVisible();
-    await modal.locator('.ant-select').click();
-    await page
-      .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
-      .locator('.ant-select-item-option')
-      .filter({ hasText: /^GM\b/ })
-      .first()
-      .click();
-    await modal.getByRole('button', { name: '승인', exact: true }).click();
-    await expect(modal).toBeHidden({ timeout: 15000 });
-
-    await page.getByText('관리자', { exact: true }).first().click();
-    await page.getByRole('menuitem', { name: '로그아웃' }).click();
-    await expect(page).toHaveURL(/\/login/);
+    await fnHeaderLogout(page);
 
     await fnE2eLogin(page, strNewUserId, STR_E2E_REGISTER_PASS);
     await expect(page).not.toHaveURL(/\/login$/);

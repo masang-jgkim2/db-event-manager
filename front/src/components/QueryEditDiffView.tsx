@@ -1,6 +1,7 @@
 import { Typography, theme as antdTheme } from 'antd';
 import type { IQueryEditLog } from '../types';
 import { fnDiffChangedLinesOnly } from '../utils/textLineDiff';
+import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 
 const { Text } = Typography;
 
@@ -13,18 +14,15 @@ const QueryTextDiff = ({ strBefore, strAfter }: { strBefore: string; strAfter: s
 
   return (
     <pre
-      style={{
+      className={STR_CODE_BLOCK_CLASS}
+      style={fnCodeSurfaceStyle(token, 11, {
         margin: 0,
         padding: 8,
-        fontSize: 11,
-        fontFamily: 'monospace',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-all',
-        background: token.colorFillTertiary,
-        borderRadius: token.borderRadius,
         maxHeight: 280,
         overflow: 'auto',
-      }}
+      })}
     >
       {arrLines.map((line, nIdx) => (
         <span

@@ -33,6 +33,7 @@ test.describe.serial('E2E 풀 LIVE·삭제 #152-162', { tag: ['@workflow', '@poo
 
   let setAllowedUserIds = new Set<number>();
   let nGmUserId = 0;
+  let strGmTokenCache = '';
   let bQaOk = false;
   let nWorkedId = 0;
 
@@ -45,11 +46,11 @@ test.describe.serial('E2E 풀 LIVE·삭제 #152-162', { tag: ['@workflow', '@poo
     });
     const objLogin = await resLogin.json();
     nGmUserId = objLogin.user?.nId ?? 0;
-    const strGmToken = objLogin.strToken as string;
+    strGmTokenCache = objLogin.strToken as string;
 
     const nFixed = Number(process.env.E2E_INSTANCE_ID || 0);
     if (nFixed > 0) {
-      const obj = await fnApiGetInstance(STR_API, strGmToken, nFixed);
+      const obj = await fnApiGetInstance(STR_API, strGmTokenCache, nFixed);
       if (obj) {
         fnAssertE2eAllowedCreator(obj, setAllowedUserIds);
         if (!arrPool.includes(nFixed)) {
@@ -63,10 +64,13 @@ test.describe.serial('E2E 풀 LIVE·삭제 #152-162', { tag: ['@workflow', '@poo
     }
   });
 
+  // 고정 ID 상태 조회는 GM 토큰(dba01은 my_dashboard.view 없어 GET 단건 403 가능)
   const fnResolveId = async (strStatus: string, strToken: string): Promise<number | null> => {
     const nFixed = Number(process.env.E2E_INSTANCE_ID || 0);
     if (nFixed > 0) {
-      const obj = await fnApiGetInstance(STR_API, strToken, nFixed);
+      const strLookup =
+        strGmTokenCache || (await fnApiLoginToken(STR_API, STR_GM_USER, STR_GM_PASS));
+      const obj = await fnApiGetInstance(STR_API, strLookup, nFixed);
       if (obj?.strStatus === strStatus) {
         fnAssertE2eAllowedCreator(obj, setAllowedUserIds);
         return nFixed;
@@ -112,7 +116,9 @@ test.describe.serial('E2E 풀 LIVE·삭제 #152-162', { tag: ['@workflow', '@poo
     let nId = nWorkedId;
     if (!nId) nId = (await fnResolveId('live_requested', strToken)) ?? 0;
     test.skip(!nId, 'live_requested 인스턴스 없음');
-    const objSt = await fnApiGetInstance(STR_API, strToken, nId);
+    const strGm =
+      strGmTokenCache || (await fnApiLoginToken(STR_API, STR_GM_USER, STR_GM_PASS));
+    const objSt = await fnApiGetInstance(STR_API, strGm, nId);
     test.skip(objSt?.strStatus !== 'live_requested', `E-08 미완료 — 현재 ${objSt?.strStatus}`);
     nWorkedId = nId;
     await fnE2eLogin(page, STR_DBA_USER, STR_DBA_PASS);

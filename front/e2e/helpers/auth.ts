@@ -29,6 +29,17 @@ export const fnE2eLogin = async (
   await expect(page.locator('.ant-layout-sider')).toBeVisible({ timeout: 20000 });
 };
 
+/** 헤더 사용자 드롭다운 (Tooltip·역할 Tag 변경에도 안정적) */
+export const fnOpenHeaderUserMenu = async (page: Page): Promise<void> => {
+  await page.getByTestId('header-user-menu').click();
+};
+
+export const fnHeaderLogout = async (page: Page): Promise<void> => {
+  await fnOpenHeaderUserMenu(page);
+  await page.getByRole('menuitem', { name: '로그아웃' }).click();
+  await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
+};
+
 /** 고유 E2E 가입 아이디 (4~32자 영숫자) */
 export const fnBuildE2eRegisterUserId = (): string => {
   const strSuffix = Date.now().toString(36).slice(-8);

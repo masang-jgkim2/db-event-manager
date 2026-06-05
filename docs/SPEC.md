@@ -447,7 +447,7 @@ interface IUser {
 ```typescript
 interface IProduct {
   nId: number;              // PK
-  strName: string;          // 프로젝트명 (예: DK온라인)
+  strName: string;          // 프로덕트명 (예: DK온라인)
   strDescription: string;   // 설명
   strDbType: 'mysql' | 'mssql' | 'postgresql';
   arrServices: IService[];  // 서비스 범위 목록 (1개 이상)
@@ -572,12 +572,12 @@ interface IQueryLog {
 
 #### 대시보드 (`/`)
 - 통계 카드 4개: 프로덕트 수, 쿼리 템플릿 수, 생성된 이벤트 수, 서비스 총 수
-- 프로덕트 현황 테이블 (프로젝트명, 서비스 태그, 이벤트 수)
+- 프로덕트 현황 테이블 (프로덕트명, 서비스 태그, 이벤트 수)
 
 #### 프로덕트 관리 (`/products`)
 - 프로덕트 목록 테이블 (이름, 서비스 범위 태그, DB 타입 태그)
 - 추가/수정 모달:
-  - 프로젝트명 (필수)
+  - 프로덕트명 (필수)
   - DB 타입 선택: MySQL / MSSQL / PostgreSQL (필수)
   - 설명 (선택)
   - 서비스 범위 (동적 추가/삭제, 최소 1개):
@@ -678,7 +678,7 @@ interface IQueryLog {
 
 ## 9. 등록된 프로덕트 (시드 데이터, 서버 내장)
 
-| nId | 프로젝트명 | 약자 | 서비스 범위 | DB 타입 |
+| nId | 프로덕트명 | 약자 | 서비스 범위 | DB 타입 |
 |-----|-----------|------|------------|---------|
 | 1 | 출조낚시왕 | FH | 국내 | MySQL |
 | 2 | DK온라인 | DK/KR, DK/G | 국내, 스팀 | MySQL |

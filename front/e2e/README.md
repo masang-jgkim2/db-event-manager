@@ -44,6 +44,7 @@
 | 용도 | 명령 |
 |------|------|
 | CI·배포 전 smoke | `npm run test:e2e:smoke` 또는 `npm run test:smoke` |
+| Cursor.com UI 셸 | `theme-cursor-site.spec.ts` (@smoke) — `data-dqpm-shell` |
 | smoke + 창 보기 | `npm run test:e2e:smoke:headed` |
 | QA 실행 모달 등 | `npm run test:e2e:workflow` |
 | F-02·F-03 결과 UI | `npm run test:e2e:result-ui` (시드·재기동 필요) |

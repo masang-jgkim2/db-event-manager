@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { Form, Input, Modal, Select, Tag, Typography } from 'antd';
+import { Form, Input, Modal, Select, Typography } from 'antd';
+import { DqpmTag } from './DqpmTag';
 import type { IRole } from '../types';
 
 const { Text } = Typography;
@@ -76,9 +77,9 @@ const ApproveUserModal = ({
                     <Select.Option key={r.strCode} value={r.strCode}>
                       {r.strDisplayName}
                       {r.bIsSystem && (
-                        <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>
+                        <DqpmTag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>
                           시스템
-                        </Tag>
+                        </DqpmTag>
                       )}
                     </Select.Option>
                   ))}

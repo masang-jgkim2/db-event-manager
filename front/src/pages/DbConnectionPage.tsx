@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
-  message, Descriptions, Alert, Spin, Tooltip,
+  message, Descriptions, Alert, Spin, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined,
@@ -12,6 +12,8 @@ import {
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { DqpmTag } from '../components/DqpmTag';
 import {
   fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
@@ -23,6 +25,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
+import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
 
@@ -67,6 +70,7 @@ interface ITestResult {
 }
 
 const DbConnectionPage = () => {
+  const { token } = theme.useToken();
   const [arrConnections, setArrConnections] = useState<IDbConnection[]>([]);
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
@@ -297,11 +301,16 @@ const DbConnectionPage = () => {
         <div style={{ padding: 12, background: 'var(--ant-color-fill-quaternary)' }}>
           <Card
             size="small"
-            style={{ margin: 0, borderColor: objResultForRow.bSuccess ? '#52c41a' : '#ff4d4f' }}
+            style={{
+              margin: 0,
+              borderColor: objResultForRow.bSuccess
+                ? fnSemanticColor('success', token)
+                : fnSemanticColor('error', token),
+            }}
           >
             {objResultForRow.bSuccess ? (
               <>
-                <Text strong style={{ color: '#52c41a' }}>
+                <Text strong style={{ color: fnSemanticColor('success', token) }}>
                   <CheckCircleOutlined style={{ marginRight: 6 }} />
                   연결 성공
                 </Text>
@@ -345,7 +354,7 @@ const DbConnectionPage = () => {
       title: '프로덕트',
       key: 'product',
       width: 120,
-      render: (_: unknown, r: IDbConnection) => <Text strong>{r.strProductName}</Text>,
+      render: (_: unknown, r: IDbConnection) => <ProductNameTag strName={r.strProductName} />,
     },
     {
       title: '환경',
@@ -353,9 +362,9 @@ const DbConnectionPage = () => {
       key: 'strEnv',
       width: 80,
       render: (v: string) => (
-        <Tag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
+        <DqpmTag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
           {v.toUpperCase()}
-        </Tag>
+        </DqpmTag>
       ),
     },
     {
@@ -364,7 +373,7 @@ const DbConnectionPage = () => {
       key: 'strKind',
       width: 80,
       render: (v: TDbConnectionKind) => (
-        <Tag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</Tag>
+        <DqpmTag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</DqpmTag>
       ),
     },
     {
@@ -372,7 +381,7 @@ const DbConnectionPage = () => {
       dataIndex: 'strDbType',
       key: 'strDbType',
       width: 80,
-      render: (v: string) => <Tag color={OBJ_DB_COLOR[v]}>{v.toUpperCase()}</Tag>,
+      render: (v: string) => <DqpmTag color={OBJ_DB_COLOR[v]}>{v.toUpperCase()}</DqpmTag>,
     },
     {
       title: '접속 정보',
@@ -390,8 +399,8 @@ const DbConnectionPage = () => {
       key: 'bIsActive',
       width: 80,
       render: (v: boolean) => v
-        ? <Tag color="green">활성</Tag>
-        : <Tag color="default">비활성</Tag>,
+        ? <DqpmTag color="green">활성</DqpmTag>
+        : <DqpmTag color="default">비활성</DqpmTag>,
     },
     ...(bShowConnectionColumn
       ? [
@@ -415,12 +424,12 @@ const DbConnectionPage = () => {
                         : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
               const strColor =
                 strSt === 'ok'
-                  ? '#1677ff'
+                  ? fnSemanticColor('info', token)
                   : strSt === 'fail'
-                    ? '#ff4d4f'
+                    ? fnSemanticColor('error', token)
                     : strSt === 'pending'
-                      ? '#faad14'
-                      : '#bfbfbf';
+                      ? fnSemanticColor('warning', token)
+                      : String(token.colorTextQuaternary);
               const strShadow =
                 strSt === 'ok'
                   ? '0 0 8px rgba(22, 119, 255, 0.42)'
@@ -534,8 +543,7 @@ const DbConnectionPage = () => {
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => fnRenderTestPanel(r),
-            expandIcon: () => null,
-            columnWidth: 24,
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           rowClassName={(r: IDbConnection) => (r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : '')}
@@ -582,13 +590,13 @@ const DbConnectionPage = () => {
             >
               <Select placeholder="환경 선택">
                 <Select.Option value="dev">
-                  <Tag color="green">DEV</Tag> 개발/테스트 환경
+                  <DqpmTag color="green">DEV</DqpmTag> 개발/테스트 환경
                 </Select.Option>
                 <Select.Option value="qa">
-                  <Tag color="orange">QA</Tag> QA 환경
+                  <DqpmTag color="orange">QA</DqpmTag> QA 환경
                 </Select.Option>
                 <Select.Option value="live">
-                  <Tag color="red">LIVE</Tag> 운영 환경
+                  <DqpmTag color="red">LIVE</DqpmTag> 운영 환경
                 </Select.Option>
               </Select>
             </Form.Item>
@@ -603,7 +611,7 @@ const DbConnectionPage = () => {
             <Select placeholder="종류 선택">
               {ARR_DB_CONNECTION_KINDS.map((k) => (
                 <Select.Option key={k} value={k}>
-                  <Tag color={OBJ_KIND_COLOR[k]}>{k}</Tag>
+                  <DqpmTag color={OBJ_KIND_COLOR[k]}>{k}</DqpmTag>
                 </Select.Option>
               ))}
             </Select>

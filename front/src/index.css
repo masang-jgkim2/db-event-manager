@@ -6,11 +6,39 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, 'Noto Sans KR', sans-serif;
+  font-family: var(
+    --dqpm-font-family,
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    'Noto Sans KR',
+    sans-serif
+  );
+  font-size: var(--dqpm-font-size-body, 14px);
+  line-height: var(--dqpm-line-height-body, 1.5);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* SQL·diff·실행 결과 — DESIGN.md code 역할 */
+.dqpm-font-mono,
+.dqpm-code-block,
+pre.dqpm-code-block {
+  font-family: var(
+    --dqpm-font-family-mono,
+    'JetBrains Mono',
+    'Consolas',
+    'Monaco',
+    ui-monospace,
+    monospace
+  );
+  font-size: var(--dqpm-font-size-caption, 13px);
+  line-height: 1.5;
 }
 
 #root {
@@ -39,9 +67,45 @@ body {
   font-weight: 500;
 }
 
-.dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title {
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected .ant-menu-item-icon,
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-selected .anticon {
+  color: inherit;
+}
+
+.dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title,
+.dqpm-layout-sider .ant-menu-inline .ant-menu-submenu-title {
   padding-inline: 10px;
   font-weight: 600;
+}
+
+/* 사이드바 접힘: 아이콘만 · 가운데 정렬 */
+.dqpm-layout-sider.ant-layout-sider-collapsed .ant-menu-root.ant-menu-inline-collapsed {
+  padding-inline: 0;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-submenu > .ant-menu-submenu-title,
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: calc(50% - 14px / 2) !important;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .dqpm-menu-submenu-label,
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .ant-menu-title-content {
+  display: none !important;
+  width: 0;
+  overflow: hidden;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-arrow {
+  display: none !important;
+}
+
+.dqpm-layout-sider .ant-menu-inline-collapsed .ant-menu-submenu-title .ant-menu-item-icon,
+.dqpm-layout-sider .ant-menu-inline-collapsed > .ant-menu-item .ant-menu-item-icon {
+  margin-inline-end: 0 !important;
+  line-height: 0;
 }
 
 .dqpm-layout-header .ant-btn,
@@ -73,6 +137,29 @@ html[data-dqpm-theme='light'] {
   --dqpm-border: #e5e5e5;
   --dqpm-scrollbar-thumb: rgba(0, 0, 0, 0.22);
   --dqpm-scrollbar-track: transparent;
+}
+
+/* cursor.com 셸 — 포인트 «Cursor.com» + 라이트 */
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] {
+  --dqpm-border: rgba(38, 37, 30, 0.1);
+  --dqpm-accent: #f54e00;
+  --dqpm-accent-hover: #d04200;
+  --dqpm-cream-btn: #ebeae5;
+  --dqpm-ink: #26251e;
+  --dqpm-canvas: #f7f7f4;
+}
+
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] .dqpm-layout-content-panel .ant-btn-primary:not(:disabled) {
+  background: var(--dqpm-cream-btn) !important;
+  border-color: var(--dqpm-accent) !important;
+  color: var(--dqpm-accent) !important;
+  box-shadow: none;
+}
+
+html[data-dqpm-theme='light'][data-dqpm-shell='cursor-site'] .dqpm-layout-content-panel .ant-btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--dqpm-cream-btn) 85%, var(--dqpm-accent)) !important;
+  border-color: var(--dqpm-accent-hover) !important;
+  color: var(--dqpm-accent-hover) !important;
 }
 
 .dqpm-layout-content-panel .ant-card-bordered {
@@ -110,6 +197,21 @@ html[data-dqpm-theme='light'] {
 
 .dqpm-app-table-root .ant-table-wrapper {
   max-width: 100%;
+}
+
+/* 프로덕트명 Tag — 긴 이름은 말줄임, 호버 시 title로 전체 표시 */
+.dqpm-product-name-tag {
+  margin: 0;
+  max-width: 100%;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.dqpm-app-table-root .dqpm-product-name-tag {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 목록 툴바 — Segmented (사용자·나의 대시보드) */

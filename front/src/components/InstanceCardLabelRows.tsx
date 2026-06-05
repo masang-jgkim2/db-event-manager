@@ -1,5 +1,6 @@
 import React from 'react';
-import { Typography, Tag, Space } from 'antd';
+import { Typography, Space } from 'antd';
+import { DqpmTag } from './DqpmTag';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { IEventInstance, TEventStatus } from '../types';
 import {
@@ -8,6 +9,7 @@ import {
   fnGetDisplayEnv,
 } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
+import { ProductNameTag } from './ProductNameTag';
 import { fnGetInstanceValueByPath } from '../utils/dashboardInstanceField';
 
 const { Text } = Typography;
@@ -63,18 +65,18 @@ export function InstanceCardLabelRows({
       elValue = (
         <Space size={4}>
           {fnRenderStatusIcon(strSt, 12)}
-          <Tag color={OBJ_STATUS_CONFIG[strSt].strColor}>{OBJ_STATUS_CONFIG[strSt].strLabel}</Tag>
+          <DqpmTag tone={OBJ_STATUS_CONFIG[strSt].strTagVariant}>{OBJ_STATUS_CONFIG[strSt].strLabel}</DqpmTag>
         </Space>
       );
     } else if (strRender === 'env_tag' && fnIsTEventStatus(objRaw)) {
       const strEnv = fnGetDisplayEnv(objRaw);
       elValue = strEnv ? (
-        <Tag color={OBJ_DISPLAY_ENV_COLOR[strEnv]}>{strEnv}</Tag>
+        <DqpmTag tone={OBJ_DISPLAY_ENV_COLOR[strEnv]}>{strEnv}</DqpmTag>
       ) : (
         <span>{strEmpty}</span>
       );
     } else if (strRender === 'tag') {
-      elValue = <Tag>{String(objRaw)}</Tag>;
+      elValue = <ProductNameTag strName={String(objRaw)} />;
     } else {
       elValue = <span>{String(objRaw)}</span>;
     }

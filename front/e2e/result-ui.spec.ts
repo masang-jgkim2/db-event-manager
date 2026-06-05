@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { STR_DBA_PASS, STR_DBA_USER, fnE2eLogin } from './helpers/auth';
 import { fnAssertWorkflowInstanceAllowed, fnApiLoginToken, fnLoadE2eWorkflowConfig } from './helpers/workflow';
+import { fnWaitDashboardTableReady } from './helpers/dashboard';
 import {
   fnExpandProgressHistory,
   fnExpandQueryResultPanel,
@@ -68,7 +69,7 @@ test.describe.serial('쿼리 결과 UI (F-02·F-03)', { tag: ['@automate', '@res
   test('F-02 QA 실행 모달 (qa_requested 행 있을 때)', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('/my-dashboard');
-    await page.waitForSelector('.ant-table tbody tr', { timeout: 15000 });
+    await fnWaitDashboardTableReady(page, 15000);
 
     const btnQa = page.getByRole('button', { name: 'QA 쿼리 실행' }).first();
     if ((await btnQa.count()) === 0) {

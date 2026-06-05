@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography, Button, Modal, Form, Input, Select, Space, Tag,
-  Popconfirm, message, Tooltip, Segmented,
+  Typography, Button, Modal, Form, Input, Select, Space,
+  Popconfirm, message, Tooltip, Segmented, theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, MailOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, MailOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
@@ -18,6 +18,7 @@ import {
 } from '../api/userApi';
 import { fnApiGetRoles } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
+import { DqpmTag } from '../components/DqpmTag';
 import { useUserPresenceStream } from '../hooks/useUserPresenceStream';
 import {
   OBJ_USER_STATUS_LABEL, OBJ_USER_STATUS_COLOR,
@@ -25,6 +26,7 @@ import {
 } from '../constants/userStatus';
 import type { IRole, TPermission } from '../types';
 import { REG_USER_ID, ruleUserIdCharsOnly } from '../utils/userIdInput';
+import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
 
@@ -49,6 +51,7 @@ interface IUserRow {
 type TUserListTab = 'all' | 'pending_approval';
 
 const UserPage = () => {
+  const { token } = theme.useToken();
   const [arrUsers, setArrUsers] = useState<IUserRow[]>([]);
   const [bUsersListReady, setBUsersListReady] = useState(false);
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
@@ -267,7 +270,7 @@ const UserPage = () => {
     const s = (strStatus ?? 'active') as TUserStatus;
     const strLabel = OBJ_USER_STATUS_LABEL[s] ?? s;
     const strColor = OBJ_USER_STATUS_COLOR[s] ?? 'default';
-    return <Tag color={strColor}>{strLabel}</Tag>;
+    return <DqpmTag color={strColor}>{strLabel}</DqpmTag>;
   };
 
   const bShowPresenceCols = strListTab !== 'pending_approval';
@@ -311,7 +314,9 @@ const UserPage = () => {
             render: (_: unknown, r: IUserRow) => {
               const bOn = Boolean(r.bOnline);
               const strTip = bOn ? '온라인 (최근 API 활동 기준)' : '오프라인';
-              const strColor = bOn ? '#52c41a' : '#bfbfbf';
+              const strColor = bOn
+                ? fnSemanticColor('success', token)
+                : String(token.colorTextQuaternary);
               const strShadow = bOn ? '0 0 8px rgba(82, 196, 26, 0.45)' : 'none';
               return (
                 <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{strTip}</span>}>
@@ -357,7 +362,7 @@ const UserPage = () => {
       render: (arrRoles: string[]) => (
         <Space wrap size={4}>
           {arrRoles.map((code) => (
-            <Tag key={code} color="blue">{objRoleMap[code] || code}</Tag>
+            <DqpmTag key={code} color="blue">{objRoleMap[code] || code}</DqpmTag>
           ))}
         </Space>
       ),
@@ -367,7 +372,7 @@ const UserPage = () => {
           title: '권한 수',
           key: 'permCount',
           width: 80,
-          render: (_: unknown, r: IUserRow) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
+          render: (_: unknown, r: IUserRow) => <DqpmTag color="green">{r.arrPermissions.length}개</DqpmTag>,
         }]
       : []),
     {
@@ -468,6 +473,7 @@ const UserPage = () => {
       {contextHolder}
       <CrudPageShell
         strTitle="사용자"
+        nodeIcon={<TeamOutlined />}
         nodeDescription="관리자 직접 추가는 즉시 활성(active)이며, 회원 가입은 승인 대기(pending_approval) 후 역할을 부여합니다."
         nodeExtra={
           bCanCreate ? (
@@ -573,7 +579,7 @@ const UserPage = () => {
                 .map((r) => (
                   <Select.Option key={r.strCode} value={r.strCode}>
                     {r.strDisplayName}
-                    {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
+                    {r.bIsSystem && <DqpmTag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</DqpmTag>}
                   </Select.Option>
                 ))}
             </Select>
@@ -618,7 +624,7 @@ const UserPage = () => {
                   .map((r) => (
                     <Select.Option key={r.strCode} value={r.strCode}>
                       {r.strDisplayName}
-                      {r.bIsSystem && <Tag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</Tag>}
+                      {r.bIsSystem && <DqpmTag color="blue" style={{ marginLeft: 6, fontSize: 10 }}>시스템</DqpmTag>}
                     </Select.Option>
                   ))}
               </Select>
