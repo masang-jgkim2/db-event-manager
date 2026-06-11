@@ -29,6 +29,7 @@ import type { IActivityLogRow } from './activityLogs';
 import { fnHydrateUserUiPreferencesFromMysql } from './userUiPreferences';
 import { fnIsDbConnPasswordSecretConfigured } from '../services/dbConnectionPasswordCrypto';
 import { fnRelationalWriteFullFromMemory } from '../db/mysqlRelationalSync';
+import { fnReconcileMetaJsonWithMysql } from './metaJsonMysqlReconcile';
 
 const B_SKIP_JSON_IMPORT =
   process.env.DATA_MYSQL_NO_JSON_IMPORT === '1' || process.env.DATA_MYSQL_NO_JSON_IMPORT === 'true';
@@ -94,7 +95,7 @@ export const fnMysqlImportAllFromJsonDisk = async (): Promise<void> => {
   console.log('[DataStore] JSON → MySQL 전체 치환 완료 | 상세 건수는 [DATA_MYSQL] 정규화 적재 완료 로그 참고');
 };
 
-const fnHydrateMemoryFromMysql = async (): Promise<void> => {
+export const fnHydrateMemoryFromMysql = async (): Promise<void> => {
   const pool = fnGetMysqlAppPool();
   console.log('[DataStore] MySQL → 인메모리 하이드레이트 시작 | 정규화 테이블 로드');
   const { arrProducts } = await import('./products');
@@ -197,6 +198,12 @@ export const fnBootstrapDataStore = async (): Promise<void> => {
     console.warn('[DataStore] MySQL 비어 있음 — DATA_MYSQL_NO_JSON_IMPORT 로 JSON 적재 생략');
   }
   await fnHydrateMemoryFromMysql();
+
+  try {
+    await fnReconcileMetaJsonWithMysql(pool);
+  } catch (err: unknown) {
+    console.error('[DataStore] JSON↔MySQL 동기화 실패 — 기동은 계속 |', (err as Error)?.message);
+  }
 
   if (fnIsDbConnPasswordSecretConfigured()) {
     try {

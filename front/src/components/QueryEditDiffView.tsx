@@ -24,21 +24,25 @@ const QueryTextDiff = ({ strBefore, strAfter }: { strBefore: string; strAfter: s
         overflow: 'auto',
       })}
     >
-      {arrLines.map((line, nIdx) => (
-        <span
-          key={`${nIdx}-${line.strKind}`}
-          style={{
-            display: 'block',
-            background: line.strKind === 'removed' ? token.colorErrorBg : token.colorSuccessBg,
-            textDecoration: line.strKind === 'removed' ? 'line-through' : undefined,
-          }}
-        >
-          <span style={{ color: token.colorTextSecondary, userSelect: 'none', marginRight: 6 }}>
-            {line.strKind === 'removed' ? '−' : '+'}
+      {arrLines.map((line, nIdx) => {
+        const nLineNo = line.strKind === 'removed' ? line.nLineNoBefore : line.nLineNoAfter;
+        return (
+          <span
+            key={`${nIdx}-${line.strKind}-${nLineNo ?? 'x'}`}
+            style={{
+              display: 'block',
+              background: line.strKind === 'removed' ? token.colorErrorBg : token.colorSuccessBg,
+              textDecoration: line.strKind === 'removed' ? 'line-through' : undefined,
+            }}
+          >
+            <span style={{ color: token.colorTextSecondary, userSelect: 'none', marginRight: 6 }}>
+              {nLineNo != null ? `${nLineNo} ` : ''}
+              {line.strKind === 'removed' ? '−' : '+'}
+            </span>
+            {line.strLine || ' '}
           </span>
-          {line.strLine || ' '}
-        </span>
-      ))}
+        );
+      })}
     </pre>
   );
 };
@@ -52,10 +56,12 @@ const QueryEditDiffView = ({ objQueryEdit }: TQueryEditDiffViewProps) => {
     return (
       <>
         {objQueryEdit.arrSetChanges.map((chg) => (
-          <span key={chg.nSetIndex} style={{ display: 'block', marginTop: 8 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>쿼리 세트 {chg.nSetIndex + 1}</Text>
+          <div key={chg.nSetIndex} style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+              쿼리 세트 {chg.nSetIndex + 1}
+            </Text>
             <QueryTextDiff strBefore={chg.strBefore} strAfter={chg.strAfter} />
-          </span>
+          </div>
         ))}
       </>
     );

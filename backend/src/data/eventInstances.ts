@@ -115,6 +115,7 @@ export interface IEventInstance {
 
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
+import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 
 const STR_FILE = 'eventInstances.json';
 
@@ -137,6 +138,14 @@ export const fnSaveEventInstances = () => {
   // mysql 모드: 정규 테이블 반영 + 운영 확인용 eventInstances.json 미러
   if (fnIsMysqlStore()) {
     fnMirrorJsonToDisk(STR_FILE, arrEventInstances);
+  }
+};
+
+/** 메모리 저장 후 MySQL doc flush까지 대기 (재시작 전 유실 방지) */
+export const fnCommitEventInstancesToStore = async (): Promise<void> => {
+  fnSaveEventInstances();
+  if (fnIsMysqlStore()) {
+    await fnAwaitMysqlDocFlush();
   }
 };
 

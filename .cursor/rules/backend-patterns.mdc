@@ -51,9 +51,11 @@ router.get('/admin', fnAuthMiddleware, fnAdminOnly, fnHandler);
 - **가입·승인**: `POST /api/auth/register`(공개), `GET /api/auth/check-register`. 로그인·JWT는 `fnGetUserLoginBlock` — `pending_approval`/`rejected`/`disabled`·이메일 가입자 무역할 차단. `PATCH /api/users/:id/approve|reject` → `fnRequireAnyPermission('user.approve','user.manage')`. 기동 `fnEnsureOnboardingPrerequisites` — 상세 `.cursor/rules/domain-user-registration.mdc`.
 - `GET /api/users/presence-stream` — `fnRequireAnyPermission('user.view','user.manage')`, SSE `connected` → `presence_snapshot` → `user_presence` (`sseBroadcaster` + `userPresence` 스윕).
 
-## 메타 MySQL — 쿼리 템플릿·스텁
+## 메타 MySQL — 쿼리 템플릿·스텁·인스턴스
 
-- `fnSaveJson` → `mysqlDocPersist` 디바운스 → `fnRelationalWriteFullFromMemory`. **이벤트·템플릿·인스턴스** CUD 후 `fnAwaitMysqlDocFlush`.
+- `fnSaveJson` → `mysqlDocPersist` 디바운스(40ms) → `fnRelationalWriteFullFromMemory`. 템플릿·기타 doc CUD 후 `fnAwaitMysqlDocFlush`.
+- **이벤트 인스턴스**: `fnSaveEventInstances`만 쓰지 말 것 — **`await fnCommitEventInstancesToStore()`** (저장+flush). 컨트롤러는 flush 실패 시 500·SSE 전 응답 금지.
+- **기동 reconcile**: mysql 하이드레이트 후 `fnReconcileMetaJsonWithMysql` — JSON 미러가 MySQL보다 최신이면 병합(`metaJsonMysqlReconcile.ts`). `DATA_MYSQL_SKIP_JSON_RECONCILE=1`로 생략. 수동: `npm run reconcile-meta-json-mysql`.
 - **DB 접속 정보**(`dbConnections.json`): `fnSaveJson` 예약 금지. `fnCommitOneDbConnectionToMysql` / `fnCommitDbConnectionDeleteToMysql` — `db_connection` **1행 UPSERT/DELETE**만. `fnAwaitInFlightMysqlDocFlush` 호출 금지(인스턴스 전체 스냅샷 대기로 저장 지연 방지). 중복 키: 프로덕트+env+kind+**host+DB명**. 게임 MySQL **4.x**는 `mysqlGameConnection.ts` 레거시 드라이버(`mysql@2.18`).
 - **스텁 `event_template`**: `IRelationalImportPayload.bAllowStubTemplates` — `true`는 `fnMysqlImportAllFromJsonDisk`·CLI 임포트만. 일상 flush는 `false`(삭제 템플릿이 인스턴스 FK로 되살아나지 않게).
 - **DELETE `/api/events/:id`**: 활성 인스턴스 참조 시 400; 영구삭제만 참조 시 해당 인스턴스 제거 후 템플릿 삭제·flush.
