@@ -19,6 +19,7 @@
     "seed-e2e-result-ui": "tsx src/scripts/seedE2eResultUiDemo.ts",
     "import-json-to-mysql": "tsx src/scripts/importJsonToMysql.ts",
     "repair-users-from-json": "tsx src/scripts/repairUsersFromJson.ts",
+    "reconcile-meta-json-mysql": "tsx src/scripts/reconcileMetaJsonMysql.ts",
     "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts"
   },
   "keywords": [],

@@ -21,6 +21,7 @@ import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
 import CrudListToolbar from '../components/CrudListToolbar';
 import QueryEditDiffView from '../components/QueryEditDiffView';
+import SqlLineNumberArea from '../components/SqlLineNumberArea';
 import QueryResultSetTable from '../components/QueryResultSetTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -698,10 +699,6 @@ const MyDashboardPage = () => {
       maxHeight: 180,
       overflow: 'auto',
     }),
-    [token],
-  );
-  const objSqlTaReadonly12 = React.useMemo(
-    () => fnCodeSurfaceStyle(token, 12, { padding: 12 }),
     [token],
   );
   const objSqlTaEditable13 = React.useMemo(() => fnCodeSurfaceStyle(token, 13), [token]);
@@ -2014,12 +2011,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
                                 <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
                               </div>
-                              <TextArea
-                                className={STR_CODE_BLOCK_CLASS}
-                                value={t.strQuery}
-                                readOnly
-                                autoSize={{ minRows: 4, maxRows: 15 }}
-                                style={objSqlTaReadonly12}
+                              <SqlLineNumberArea
+                                strValue={t.strQuery}
+                                bReadOnly
+                                nFontSize={12}
+                                nMinRows={4}
+                                nMaxRows={15}
                               />
                             </div>
                           </Space>
@@ -2045,12 +2042,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           <div style={{ textAlign: 'right' }}>
                             <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
                           </div>
-                          <TextArea
-                            className={STR_CODE_BLOCK_CLASS}
-                            value={objDetail.strGeneratedQuery}
-                            readOnly
-                            autoSize={{ minRows: 4, maxRows: 15 }}
-                            style={objSqlTaReadonly12}
+                          <SqlLineNumberArea
+                            strValue={objDetail.strGeneratedQuery}
+                            bReadOnly
+                            nFontSize={12}
+                            nMinRows={4}
+                            nMaxRows={15}
                           />
                         </Space>
                       ),
@@ -2297,12 +2294,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       key: String(idx),
                       label: `쿼리 세트 ${idx + 1}`,
                       children: (
-                        <TextArea
-                          className={STR_CODE_BLOCK_CLASS}
-                          value={t.strQuery}
-                          readOnly
-                          rows={6}
-                          style={objSqlTaReadonly12}
+                        <SqlLineNumberArea
+                          strValue={t.strQuery}
+                          bReadOnly
+                          nFontSize={12}
+                          nMinRows={6}
+                          nMaxRows={18}
                         />
                       ),
                     }))}
@@ -2371,18 +2368,18 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
                         <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
                       </div>
-                      <Input.TextArea
-                        className={STR_CODE_BLOCK_CLASS}
-                        value={arrQueryEditValues[idx] ?? ''}
-                        onChange={(e) => {
+                      <SqlLineNumberArea
+                        strValue={arrQueryEditValues[idx] ?? ''}
+                        fnOnChange={(strNext) => {
                           const next = [...arrQueryEditValues];
                           while (next.length <= idx) next.push('');
-                          next[idx] = e.target.value;
+                          next[idx] = strNext;
                           setArrQueryEditValues(next);
                         }}
-                        autoSize={{ minRows: 10, maxRows: 25 }}
-                        style={objSqlTaEditable13}
-                        placeholder="SQL 쿼리를 입력하세요..."
+                        nFontSize={13}
+                        nMinRows={10}
+                        nMaxRows={25}
+                        strPlaceholder="SQL 쿼리를 입력하세요..."
                       />
                     </div>
                   ),
@@ -2393,13 +2390,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
                 </div>
-                <Input.TextArea
-                  className={STR_CODE_BLOCK_CLASS}
-                  value={strQueryEditValue}
-                  onChange={(e) => setStrQueryEditValue(e.target.value)}
-                  autoSize={{ minRows: 10, maxRows: 25 }}
-                  style={objSqlTaEditable13}
-                  placeholder="SQL 쿼리를 입력하세요..."
+                <SqlLineNumberArea
+                  strValue={strQueryEditValue}
+                  fnOnChange={setStrQueryEditValue}
+                  nFontSize={13}
+                  nMinRows={10}
+                  nMaxRows={25}
+                  strPlaceholder="SQL 쿼리를 입력하세요..."
                 />
               </>
             )}
