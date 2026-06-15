@@ -1,0 +1,41 @@
+---
+description: DB 접속 정보 — 메타 vs 게임 DB, MySQL 4.x, 저장·연결테스트 트러블슈팅·구현
+globs: backend/**/dbConnection*.ts, backend/**/dbConnections.ts, backend/**/dbManager.ts, backend/**/mysqlGameConnection.ts, backend/**/mysqlServerProbe.ts, front/**/DbConnectionPage.tsx
+alwaysApply: false
+---
+
+# DB 접속 정보 (도메인)
+
+## 두 종류의 MySQL (혼동 금지)
+
+| 구분 | 설정 | 용도 |
+|------|------|------|
+| **메타 DB** | `backend/.env` `DATA_MYSQL_*` | DQPM 저장소(`users`, `db_connection` **테이블**, …). 로컬이면 보통 `127.0.0.1`/`dqpm` |
+| **게임 DB** | 화면 **DB 접속 정보** | 쿼리 실행·`POST …/test`. 호스트·계정은 행마다 다름(예: `10.31.104.28`) |
+
+- `''@클라이언트IP (Using password: NO)` 가 **연결 테스트**에 나오면 → 먼저 **게임 DB 행**·드라이버·프로토콜 의심. **메타 `.env`만 고치라고 하지 말 것**(Heidi로 같은 IP·계정이 되면 더욱 그림).
+- 메타 `.env` 수정 제안은 **저장 시 `db_connection` INSERT 실패·기동 시 `[DATA_MYSQL]` 오류**일 때만.
+
+## 연결 실패 조사 순서 (에이전트)
+
+1. 로그 `[연결테스트] mysql | user="…" | host:port/db` — 빈 `user`면 **저장/복호화** 문제.
+2. **TCP 핸드셰이크** `mysqlServerProbe` — `4.0.x`면 **mysql2 단독 사용 금지** → `mysqlGameConnection`(레거시 `mysql@2.18`, `insecureAuth`).
+3. 동일 host·user·password로 **Node 직접 접속** 1회(레거시 vs mysql2) — GRANT 전에 프로토콜 분리.
+4. 클라이언트 IP는 **DQPM 서버 IP**(Heidi PC IP와 다를 수 있음).
+
+## MySQL 메타 — `db_connection` 저장
+
+- **패턴**: `users.ts`와 같이 **1행 UPSERT** — `fnUpsertDbConnectionRowToMysql` / `fnCommitOneDbConnectionToMysql`.
+- **금지**: `DELETE FROM db_connection` 전체 치환 → `event_instance_execution_target`·`event_template_query_set` **FK RESTRICT**.
+- **금지**: `fnAwaitInFlightMysqlDocFlush` / `fnRelationalWriteFullFromMemory` on db 접속 CUD(인스턴스 전체 스냅샷 대기).
+- **금지**: `fnSaveJson('dbConnections.json')` 예약(전체 메타 flush 트리거).
+- **중복**: 프로덕트 + env + kind + **host + DB명** (샤드 DB 여러 건 허용).
+- **삭제**: `fnDeleteDbConnectionRowFromMysql` + 참조 검사 → 409.
+
+## 연결 테스트 SQL
+
+- MySQL **4.x**: `@@hostname` 없음 — 레거시 분기에서 `VERSION()`, `USER()`, `NOW()`만.
+
+## 코드 위치
+
+`dbConnectionController.ts`, `data/dbConnections.ts`, `db/mysqlRelationalSync.ts`, `db/dbManager.ts`, `db/mysqlGameConnection.ts`, `db/mysqlServerProbe.ts`

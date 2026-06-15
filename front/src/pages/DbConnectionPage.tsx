@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Form, Input, Select, InputNumber, Switch, Popconfirm,
-  message, Descriptions, Alert, Spin, Tooltip,
+  message, Descriptions, Alert, Spin, Tooltip, theme,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined,
@@ -11,6 +11,9 @@ import {
   DatabaseOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { DqpmTag } from '../components/DqpmTag';
 import {
   fnApiCreateDbConnection,
   fnApiUpdateDbConnection, fnApiDeleteDbConnection,
@@ -22,8 +25,9 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
+import { fnSemanticColor } from '../styles/semanticColors';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const OBJ_KIND_COLOR: Record<TDbConnectionKind, string> = {
   GAME: 'blue',
@@ -45,8 +49,9 @@ const OBJ_DB_COLOR: Record<string, string> = {
 };
 
 /** 연결 열 자동 점검: 간격·요청 타임아웃(무응답 시 빨간 점) */
-const N_MONITOR_INTERVAL_MS = 10_000;
+const N_MONITOR_INTERVAL_MS = 30_000;
 const N_MONITOR_TIMEOUT_MS = 12_000;
+const N_MONITOR_CHUNK_SIZE = 3;
 
 type TMonitorStatus = 'unknown' | 'pending' | 'ok' | 'fail';
 
@@ -65,6 +70,7 @@ interface ITestResult {
 }
 
 const DbConnectionPage = () => {
+  const { token } = theme.useToken();
   const [arrConnections, setArrConnections] = useState<IDbConnection[]>([]);
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
@@ -143,15 +149,41 @@ const DbConnectionPage = () => {
         setBModalOpen(false);
         form.resetFields();
         setObjEditConn(null);
-        fnLoad();
+        const objSaved = (result as { objDbConnection?: IDbConnection }).objDbConnection;
+        if (objSaved?.nId) {
+          setArrConnections((prev) => {
+            const nIdx = prev.findIndex((c) => c.nId === objSaved.nId);
+            const objRow = { ...objSaved, strPassword: '••••••••' };
+            if (nIdx >= 0) {
+              const arrNext = [...prev];
+              arrNext[nIdx] = objRow;
+              return arrNext;
+            }
+            return [...prev, objRow];
+          });
+          useDbConnectionStore.setState((s) => {
+            const arr = [...s.arrDbConnections];
+            const nIdx = arr.findIndex((c) => c.nId === objSaved.nId);
+            const objRow = { ...objSaved, strPassword: '••••••••' };
+            if (nIdx >= 0) arr[nIdx] = objRow;
+            else arr.push(objRow);
+            return { arrDbConnections: arr };
+          });
+        } else {
+          void fnLoad();
+        }
       } else if ((result as any).strErrorCode === 'DUPLICATE') {
         // 중복 등록 시 warning 아이콘으로 구분
         messageApi.warning(result.strMessage);
       } else {
         messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
       }
-    } catch {
-      // 유효성 검사 실패 — Ant Design Form 인라인 에러 표시
+    } catch (err: unknown) {
+      const strMsg =
+        err && typeof err === 'object' && 'errorFields' in err
+          ? ''
+          : (err as Error)?.message;
+      if (strMsg) messageApi.error(strMsg);
     }
   };
 
@@ -209,21 +241,26 @@ const DbConnectionPage = () => {
 
     const fnPoll = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
-      const arr = arrConnectionsRef.current;
-      if (arr.length === 0) return;
+      const arrAll = arrConnectionsRef.current;
+      if (arrAll.length === 0) return;
+      const arrActive = arrAll.filter((c) => c.bIsActive);
+      const arrTargets = arrActive.length > 0 ? arrActive : arrAll;
 
-      await Promise.all(
-        arr.map(async (c) => {
-          const result = (await fnApiTestDbConnection(c.nId, {
-            nTimeoutMs: N_MONITOR_TIMEOUT_MS,
-          })) as ITestResult;
-          const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
-          setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
-          if (objSelectedRowRef.current?.nId === c.nId) {
-            setObjTestResult({ nId: c.nId, result });
-          }
-        }),
-      );
+      for (let nOff = 0; nOff < arrTargets.length; nOff += N_MONITOR_CHUNK_SIZE) {
+        const arrChunk = arrTargets.slice(nOff, nOff + N_MONITOR_CHUNK_SIZE);
+        await Promise.all(
+          arrChunk.map(async (c) => {
+            const result = (await fnApiTestDbConnection(c.nId, {
+              nTimeoutMs: N_MONITOR_TIMEOUT_MS,
+            })) as ITestResult;
+            const strSt: TMonitorStatus = result.bSuccess ? 'ok' : 'fail';
+            setMapMonitorStatus((prev) => ({ ...prev, [c.nId]: strSt }));
+            if (objSelectedRowRef.current?.nId === c.nId) {
+              setObjTestResult({ nId: c.nId, result });
+            }
+          }),
+        );
+      }
     };
 
     void fnPoll();
@@ -264,11 +301,16 @@ const DbConnectionPage = () => {
         <div style={{ padding: 12, background: 'var(--ant-color-fill-quaternary)' }}>
           <Card
             size="small"
-            style={{ margin: 0, borderColor: objResultForRow.bSuccess ? '#52c41a' : '#ff4d4f' }}
+            style={{
+              margin: 0,
+              borderColor: objResultForRow.bSuccess
+                ? fnSemanticColor('success', token)
+                : fnSemanticColor('error', token),
+            }}
           >
             {objResultForRow.bSuccess ? (
               <>
-                <Text strong style={{ color: '#52c41a' }}>
+                <Text strong style={{ color: fnSemanticColor('success', token) }}>
                   <CheckCircleOutlined style={{ marginRight: 6 }} />
                   연결 성공
                 </Text>
@@ -312,7 +354,7 @@ const DbConnectionPage = () => {
       title: '프로덕트',
       key: 'product',
       width: 120,
-      render: (_: unknown, r: IDbConnection) => <Text strong>{r.strProductName}</Text>,
+      render: (_: unknown, r: IDbConnection) => <ProductNameTag strName={r.strProductName} />,
     },
     {
       title: '환경',
@@ -320,9 +362,9 @@ const DbConnectionPage = () => {
       key: 'strEnv',
       width: 80,
       render: (v: string) => (
-        <Tag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
+        <DqpmTag color={OBJ_ENV_COLOR[v]} style={{ fontWeight: 700 }}>
           {v.toUpperCase()}
-        </Tag>
+        </DqpmTag>
       ),
     },
     {
@@ -331,7 +373,7 @@ const DbConnectionPage = () => {
       key: 'strKind',
       width: 80,
       render: (v: TDbConnectionKind) => (
-        <Tag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</Tag>
+        <DqpmTag color={OBJ_KIND_COLOR[v || 'GAME']}>{v || 'GAME'}</DqpmTag>
       ),
     },
     {
@@ -339,7 +381,7 @@ const DbConnectionPage = () => {
       dataIndex: 'strDbType',
       key: 'strDbType',
       width: 80,
-      render: (v: string) => <Tag color={OBJ_DB_COLOR[v]}>{v.toUpperCase()}</Tag>,
+      render: (v: string) => <DqpmTag color={OBJ_DB_COLOR[v]}>{v.toUpperCase()}</DqpmTag>,
     },
     {
       title: '접속 정보',
@@ -357,8 +399,8 @@ const DbConnectionPage = () => {
       key: 'bIsActive',
       width: 80,
       render: (v: boolean) => v
-        ? <Tag color="green">활성</Tag>
-        : <Tag color="default">비활성</Tag>,
+        ? <DqpmTag color="green">활성</DqpmTag>
+        : <DqpmTag color="default">비활성</DqpmTag>,
     },
     ...(bShowConnectionColumn
       ? [
@@ -382,12 +424,12 @@ const DbConnectionPage = () => {
                         : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
               const strColor =
                 strSt === 'ok'
-                  ? '#1677ff'
+                  ? fnSemanticColor('info', token)
                   : strSt === 'fail'
-                    ? '#ff4d4f'
+                    ? fnSemanticColor('error', token)
                     : strSt === 'pending'
-                      ? '#faad14'
-                      : '#bfbfbf';
+                      ? fnSemanticColor('warning', token)
+                      : String(token.colorTextQuaternary);
               const strShadow =
                 strSt === 'ok'
                   ? '0 0 8px rgba(22, 119, 255, 0.42)'
@@ -468,32 +510,28 @@ const DbConnectionPage = () => {
       </style>
       {contextHolder}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, alignItems: 'flex-start', gap: 12 }}>
-        <div>
-          <Title level={4} style={{ margin: 0 }}>
-            <DatabaseOutlined style={{ marginRight: 8 }} />
-            DB 접속 정보 관리
-          </Title>
-          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-            {bShowConnectionColumn && bCanRunConnectionTest ? (
-              <>
-                「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
-              </>
-            ) : bShowConnectionColumn ? (
-              <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
-            ) : (
-              <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
-            )}
-          </Text>
-        </div>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 DB 접속 정보
-          </Button>
-        )}
-      </div>
-
-      <Card>
+      <CrudPageShell
+        strTitle="DB 접속 정보 관리"
+        nodeIcon={<DatabaseOutlined />}
+        nodeDescription={
+          bShowConnectionColumn && bCanRunConnectionTest ? (
+            <>
+              「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
+            </>
+          ) : bShowConnectionColumn ? (
+            <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
+          ) : (
+            <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
+          )
+        }
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 DB 접속 정보
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="db_connections"
           dataSource={arrConnections}
@@ -505,8 +543,7 @@ const DbConnectionPage = () => {
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => fnRenderTestPanel(r),
-            expandIcon: () => null,
-            columnWidth: 24,
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           rowClassName={(r: IDbConnection) => (r.nId === objSelectedRow?.nId ? 'ant-table-row-selected' : '')}
@@ -515,7 +552,7 @@ const DbConnectionPage = () => {
             style: { cursor: 'pointer' },
           })}
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 추가/수정 모달 */}
       <Modal
@@ -553,13 +590,13 @@ const DbConnectionPage = () => {
             >
               <Select placeholder="환경 선택">
                 <Select.Option value="dev">
-                  <Tag color="green">DEV</Tag> 개발/테스트 환경
+                  <DqpmTag color="green">DEV</DqpmTag> 개발/테스트 환경
                 </Select.Option>
                 <Select.Option value="qa">
-                  <Tag color="orange">QA</Tag> QA 환경
+                  <DqpmTag color="orange">QA</DqpmTag> QA 환경
                 </Select.Option>
                 <Select.Option value="live">
-                  <Tag color="red">LIVE</Tag> 운영 환경
+                  <DqpmTag color="red">LIVE</DqpmTag> 운영 환경
                 </Select.Option>
               </Select>
             </Form.Item>
@@ -574,7 +611,7 @@ const DbConnectionPage = () => {
             <Select placeholder="종류 선택">
               {ARR_DB_CONNECTION_KINDS.map((k) => (
                 <Select.Option key={k} value={k}>
-                  <Tag color={OBJ_KIND_COLOR[k]}>{k}</Tag>
+                  <DqpmTag color={OBJ_KIND_COLOR[k]}>{k}</DqpmTag>
                 </Select.Option>
               ))}
             </Select>

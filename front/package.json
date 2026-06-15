@@ -8,8 +8,19 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e": "playwright test --project=chromium",
+    "test:e2e:smoke": "playwright test --project=smoke",
+    "test:smoke": "powershell -NoProfile -File scripts/run-smoke.ps1",
+    "test:e2e:workflow": "playwright test --project=workflow",
+    "test:e2e:result-ui": "playwright test --project=result-ui",
+    "test:e2e:pool": "playwright test --project=workflow-pool",
+    "test:e2e:pool:no-delete": "playwright test --project=workflow-pool --grep-invert @delete",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --project=chromium --headed",
+    "test:e2e:smoke:headed": "playwright test --project=smoke --headed",
+    "probe:dba01": "node scripts/probe-select-result-ui.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -27,6 +38,11 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.58.2",
+    "@storybook/addon-a11y": "^8.6.18",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/blocks": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
@@ -36,6 +52,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "storybook": "^8.6.18",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1"

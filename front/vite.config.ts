@@ -32,6 +32,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const { objHttps, bUseBasicSsl } = fnResolveDevHttps(env);
   const strProxyTarget = env.VITE_PROXY_TARGET || 'http://127.0.0.1:4000';
+  const arrAllowedHosts = (env.VITE_ALLOWED_HOSTS || 'localhost,db.masangsoft.com')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const objProxy = {
     '/api': {
       target: strProxyTarget,
@@ -45,11 +49,13 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 5173,
       https: objHttps,
+      allowedHosts: arrAllowedHosts,
       proxy: objProxy,
     },
     preview: {
       host: true,
       https: objHttps,
+      allowedHosts: arrAllowedHosts,
       proxy: objProxy,
     },
   };

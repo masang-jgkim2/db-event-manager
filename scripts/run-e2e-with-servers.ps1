@@ -35,6 +35,7 @@ if ($existing.Count -gt 0) {
 }
 
 Write-Host "[1/4] 백엔드 서버 기동 중 (포트 $PortBackend)..."
+$env:E2E_ALLOW_RELOAD = "1"
 $null = Start-Process -FilePath "npm" -ArgumentList "run","dev" -WorkingDirectory $BackendDir -PassThru -WindowStyle Hidden
 
 Write-Host "[2/4] 프론트 서버 기동 중 (포트 $PortFront)..."
@@ -61,6 +62,13 @@ if ($waited -ge $maxWait) {
     exit 1
 }
 Write-Host "서버 준비 완료."
+
+Write-Host "[2b/4] E2E 시드 (workflow·result-ui)..."
+Push-Location $BackendDir
+npm run seed-e2e-workflow:fresh 2>$null
+if ($LASTEXITCODE -ne 0) { npm run seed-e2e-workflow 2>$null }
+npm run seed-e2e-result-ui 2>$null
+Pop-Location
 
 try {
     Write-Host "[3/4] E2E 테스트 실행 중..."

@@ -22,6 +22,8 @@ export interface IUserRowJson {
   strUserId: string;
   strPassword: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: string;
   dtCreatedAt: string;
 }
 
@@ -136,8 +138,16 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
   for (const u of p.arrUsers) {
     const strDt = fnToMysqlDatetime6Required(u.dtCreatedAt, new Date().toISOString());
     await conn.execute(
-      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, dt_created_at) VALUES (?,?,?,?,?)`,
-      [u.nId, u.strUserId, u.strPassword, u.strDisplayName, strDt],
+      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at) VALUES (?,?,?,?,?,?,?)`,
+      [
+        u.nId,
+        u.strUserId,
+        u.strPassword,
+        u.strDisplayName,
+        u.strEmail ?? null,
+        u.strStatus ?? 'active',
+        strDt,
+      ],
     );
   }
 
@@ -525,6 +535,134 @@ export const fnRelationalLoadProducts = async (pool: Pool): Promise<IProduct[]> 
   }));
 };
 
+const fnDbConnectionRowParams = (c: IDbConnection): (string | number | boolean)[] => [
+  c.nId,
+  c.nProductId,
+  c.strProductName,
+  c.strKind,
+  c.strEnv,
+  c.strDbType,
+  c.strHost,
+  c.nPort,
+  c.strDatabase,
+  c.strUser,
+  fnEncryptDbConnPasswordForDisk(c.strPassword),
+  fnTiny(c.bIsActive),
+  fnToMysqlDatetime6Required(c.dtCreatedAt, new Date().toISOString()),
+  fnToMysqlDatetime6Required(c.dtUpdatedAt, c.dtCreatedAt),
+];
+
+/** CUD 1건 — 전체 스냅샷·fnAwaitMysqlDocFlush 없이 db_connection 행만 반영 */
+export const fnUpsertDbConnectionRowToMysql = async (
+  pool: Pool,
+  c: IDbConnection,
+): Promise<void> => {
+  await pool.execute(
+    `INSERT INTO db_connection (
+      n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
+      str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON DUPLICATE KEY UPDATE
+      n_product_id = VALUES(n_product_id),
+      str_product_name = VALUES(str_product_name),
+      str_kind = VALUES(str_kind),
+      str_env = VALUES(str_env),
+      str_db_type = VALUES(str_db_type),
+      str_host = VALUES(str_host),
+      n_port = VALUES(n_port),
+      str_database = VALUES(str_database),
+      str_user = VALUES(str_user),
+      str_password = VALUES(str_password),
+      b_is_active = VALUES(b_is_active),
+      dt_created_at = VALUES(dt_created_at),
+      dt_updated_at = VALUES(dt_updated_at)`,
+    fnDbConnectionRowParams(c),
+  );
+};
+
+/** 삭제 1건 — FK 참조 시 예외 */
+export const fnDeleteDbConnectionRowFromMysql = async (pool: Pool, nId: number): Promise<void> => {
+  if (await fnIsDbConnectionReferencedInMysql(pool, nId)) {
+    throw new Error(
+      `DB 접속 정보 #${nId} 은(는) 이벤트 인스턴스 또는 쿼리 템플릿에서 사용 중이라 삭제할 수 없습니다.`,
+    );
+  }
+  await pool.execute('DELETE FROM db_connection WHERE n_id = ?', [nId]);
+};
+
+/** 인스턴스·템플릿에서 참조 중인 db_connection 은 삭제 불가(FK RESTRICT) */
+export const fnIsDbConnectionReferencedInMysql = async (
+  pool: Pool,
+  nDbConnectionId: number,
+): Promise<boolean> => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT 1 AS b FROM event_instance_execution_target WHERE n_db_connection_id = ? LIMIT 1
+     UNION ALL
+     SELECT 1 FROM event_template_query_set WHERE n_db_connection_id = ? LIMIT 1`,
+    [nDbConnectionId, nDbConnectionId],
+  );
+  return (rows as RowDataPacket[]).length > 0;
+};
+
+/** db_connection 행만 UPSERT — 전체 DELETE 금지(FK: event_instance_execution_target 등) */
+export const fnSyncDbConnectionsOnlyToMysql = async (
+  pool: Pool,
+  arrRows: IDbConnection[],
+): Promise<void> => {
+  const conn = await pool.getConnection();
+  const setKeepIds = new Set(arrRows.map((c) => c.nId));
+  try {
+    await conn.beginTransaction();
+    for (const c of arrRows) {
+      await conn.execute(
+        `INSERT INTO db_connection (
+          n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
+          str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE
+          n_product_id = VALUES(n_product_id),
+          str_product_name = VALUES(str_product_name),
+          str_kind = VALUES(str_kind),
+          str_env = VALUES(str_env),
+          str_db_type = VALUES(str_db_type),
+          str_host = VALUES(str_host),
+          n_port = VALUES(n_port),
+          str_database = VALUES(str_database),
+          str_user = VALUES(str_user),
+          str_password = VALUES(str_password),
+          b_is_active = VALUES(b_is_active),
+          dt_created_at = VALUES(dt_created_at),
+          dt_updated_at = VALUES(dt_updated_at)`,
+        fnDbConnectionRowParams(c),
+      );
+    }
+    const [arrDbIds] = await conn.query<RowDataPacket[]>('SELECT n_id FROM db_connection');
+    for (const objDb of arrDbIds as RowDataPacket[]) {
+      const nId = Number(objDb.n_id);
+      if (setKeepIds.has(nId)) continue;
+      const [arrRef] = await conn.query<RowDataPacket[]>(
+        `SELECT 1 AS b FROM event_instance_execution_target WHERE n_db_connection_id = ? LIMIT 1
+         UNION ALL
+         SELECT 1 FROM event_template_query_set WHERE n_db_connection_id = ? LIMIT 1`,
+        [nId, nId],
+      );
+      if ((arrRef as RowDataPacket[]).length > 0) {
+        throw new Error(
+          `DB 접속 정보 #${nId} 은(는) 이벤트 인스턴스 또는 쿼리 템플릿에서 사용 중이라 삭제할 수 없습니다.`,
+        );
+      }
+      await conn.execute('DELETE FROM db_connection WHERE n_id = ?', [nId]);
+    }
+    await conn.commit();
+    console.log(`[dbConnections] MySQL db_connection 동기화 | ${arrRows.length}건`);
+  } catch (err: unknown) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
 export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConnection[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
     `SELECT n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
@@ -714,13 +852,15 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
 
 export const fnRelationalLoadUsers = async (pool: Pool): Promise<IUserRowJson[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT n_id, str_user_id, str_password, str_display_name, dt_created_at FROM users ORDER BY n_id',
+    'SELECT n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at FROM users ORDER BY n_id',
   );
   return (rows as RowDataPacket[]).map((r) => ({
     nId: Number(r.n_id),
     strUserId: String(r.str_user_id),
     strPassword: String(r.str_password),
     strDisplayName: String(r.str_display_name),
+    strEmail: r.str_email != null ? String(r.str_email) : null,
+    strStatus: r.str_status != null ? String(r.str_status) : 'active',
     dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
   }));
 };

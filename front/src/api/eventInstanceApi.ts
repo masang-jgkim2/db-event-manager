@@ -58,6 +58,28 @@ export const fnApiUpdateStatus = async (nId: number, strNextStatus: string, strC
   return response.data;
 };
 
+/** 실행(예정) 쿼리 기준 MSSQL GRANT 스크립트 (로그인 기본 dqpm) */
+export const fnApiGetGrantScript = async (
+  nId: number,
+  opts?: { strLogin?: string; strEnv?: 'qa' | 'live' },
+): Promise<{
+  bSuccess: boolean;
+  strScript?: string;
+  strMessage?: string;
+  nTableCount?: number;
+}> => {
+  try {
+    const response = await apiClient.get(`/event-instances/${nId}/grant-script`, { params: opts });
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.data) return error.response.data;
+    return {
+      bSuccess: false,
+      strMessage: error.message || '네트워크 오류가 발생했습니다.',
+    };
+  }
+};
+
 /** 서버 인메모리: 해당 템플릿·환경 마지막 성공 실행 소요(ms), 없으면 0 */
 export const fnApiGetTemplateExecElapsed = async (
   nEventTemplateId: number,

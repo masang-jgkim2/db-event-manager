@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Form, Input, Checkbox, Popconfirm, message, Alert, Divider,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn, type TAppColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
+import { DqpmTag } from '../components/DqpmTag';
 import { ARR_PERMISSION_GROUPS } from '../types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const RolePage = () => {
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
@@ -132,14 +134,14 @@ const RolePage = () => {
       key: 'bIsSystem',
       width: 80,
       render: (v: boolean) => v
-        ? <Tag color="blue" icon={<SafetyCertificateOutlined />}>시스템</Tag>
-        : <Tag color="default">커스텀</Tag>,
+        ? <DqpmTag color="blue" icon={<SafetyCertificateOutlined />}>시스템</DqpmTag>
+        : <DqpmTag color="default">커스텀</DqpmTag>,
     },
     {
       title: '권한 수',
       key: 'permCount',
       width: 80,
-      render: (_: unknown, r: IRole) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
+      render: (_: unknown, r: IRole) => <DqpmTag color="green">{r.arrPermissions.length}개</DqpmTag>,
     },
     ...(bCanEditPermissions || bCanEdit || bCanDelete
       ? [{
@@ -180,16 +182,18 @@ const RolePage = () => {
     <>
       {contextHolder}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>역할 권한</Title>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 역할
-          </Button>
-        )}
-      </div>
-
-      <Card>
+      <CrudPageShell
+        strTitle="역할 권한"
+        nodeIcon={<SafetyCertificateOutlined />}
+        nodeDescription="역할별 세분화 권한을 설정합니다. 시스템 역할은 삭제할 수 없으며, 권한 폼에는 저장된 권한만 표시됩니다."
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 역할
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="roles"
           dataSource={arrRoles}
@@ -198,7 +202,7 @@ const RolePage = () => {
           pagination={false}
           strEmptyText="등록된 역할이 없습니다."
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 추가/수정 모달 */}
       <Modal
