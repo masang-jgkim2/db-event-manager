@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { fnLogin, fnLogout, fnVerifyToken } from '../controllers/authController';
+import { fnRegister, fnCheckRegisterAvailability } from '../controllers/registrationController';
 import { fnGetUserUiPreferences, fnPutUserUiPreferences } from '../controllers/userUiPreferencesController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 
@@ -7,6 +8,12 @@ const router = Router();
 
 // POST /api/auth/login - 로그인
 router.post('/login', fnLogin);
+
+// GET /api/auth/check-register - 가입 전 아이디·이메일 중복 확인 (공개)
+router.get('/check-register', fnCheckRegisterAvailability);
+
+// POST /api/auth/register - 공개 가입 (Phase A)
+router.post('/register', fnRegister);
 
 // POST /api/auth/logout - 로그아웃 (활동 로그는 미들웨어 finish에서 기록)
 router.post('/logout', fnAuthMiddleware, fnLogout);

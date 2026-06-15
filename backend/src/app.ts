@@ -21,6 +21,7 @@ import adminRoutes from './routes/adminRoutes';
 import activityRoutes from './routes/activityRoutes';
 import pushRoutes from './routes/pushRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import e2eRoutes from './routes/e2eRoutes';
 import { fnIsInAppNotificationsPersisted } from './data/userNotifications';
 import { fnActivityLogMiddleware } from './middleware/activityLogMiddleware';
 
@@ -36,22 +37,32 @@ app.use((req, res, next) => {
   next();
 });
 
-// localhost + IP(외부 접속) 허용 — 동일 서버를 IP로 접근해도 로그인 등 동작
-// SSE는 브라우저가 :5173 → :4000 등 다른 포트로 직접 붙어 Origin이 달라짐. PC 이름 Origin은 `DQPM_RELAX_CORS=true`로 허용 확대.
-// 운영 환경의 프론트 도메인은 CORS_ALLOWED_ORIGINS(콤마 구분)로 명시 허용 (예: https://qa-db.masanggames.co.kr,https://db.masanggames.co.kr)
-const arrCorsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
-  .split(',').map((s) => s.trim()).filter(Boolean);
+// localhost + IP + DQPM_CORS_ORIGINS(예: db.masangsoft.com) — SSE는 :5173→:4000 직접 연결 시 Origin 검사 필요
+const fnIsCorsOriginAllowed = (origin: string): boolean => {
+  if (process.env.DQPM_RELAX_CORS === 'true' || process.env.DQPM_RELAX_CORS === '1') {
+    return true;
+  }
+  if (/^https?:\/\/localhost(:\d+)?$/i.test(origin)) return true;
+  if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)) return true;
+  if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/i.test(origin)) return true;
+  const strExtra = process.env.DQPM_CORS_ORIGINS?.trim();
+  if (strExtra) {
+    try {
+      const strHost = new URL(origin).hostname.toLowerCase();
+      const arr = strExtra.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      if (arr.some((h) => strHost === h || strHost.endsWith(`.${h}`))) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+};
 
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
-    if (process.env.DQPM_RELAX_CORS === 'true' || process.env.DQPM_RELAX_CORS === '1') {
-      return cb(null, true);
-    }
-    if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
-    if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return cb(null, true);
-    if (/^https?:\/\/(\d+\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);
-    if (arrCorsAllowedOrigins.includes(origin)) return cb(null, true);
+    if (fnIsCorsOriginAllowed(origin)) return cb(null, true);
+    console.warn(`[CORS] 차단된 Origin | ${origin} | DQPM_CORS_ORIGINS 또는 DQPM_RELAX_CORS 설정`);
     cb(null, false);
   },
   credentials: true,
@@ -71,6 +82,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/e2e', e2eRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({

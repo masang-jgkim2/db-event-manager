@@ -111,6 +111,19 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     });
     console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_created_by, n_created_by_user_id');
   }
+
+  const [userEmailCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'str_email'`,
+  );
+  if (Number((userEmailCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE users
+       ADD COLUMN str_email VARCHAR(255) NULL AFTER str_display_name,
+       ADD COLUMN str_status VARCHAR(32) NOT NULL DEFAULT 'active' AFTER str_email`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | users.str_email, users.str_status');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {

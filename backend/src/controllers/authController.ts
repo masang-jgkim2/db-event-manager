@@ -2,10 +2,13 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
-import { fnFindUserByStrUserId } from '../data/users';
-import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
+import { fnFindUserByStrUserId, fnReloadUsersFromMysql } from '../data/users';
+import { fnIsMysqlStore } from '../data/dataStore';
 import { fnPushActivityLog } from '../data/activityLogs';
 import { fnMarkUserOffline, fnTouchUserPresence } from '../services/userPresence';
+import { fnBuildAuthUserPayload } from '../services/authUserResponse';
+import { fnGetUserLoginBlock } from '../types/userStatus';
+import { fnFindUserRowById } from '../data/users';
 
 const strJwtSecret    = process.env.JWT_SECRET    || 'default-secret';
 const strJwtExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
@@ -27,6 +30,8 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       res.status(400).json({ bSuccess: false, strMessage: '아이디와 비밀번호를 입력해주세요.' });
       return;
     }
+    // MySQL 저장소: 비밀번호 초기화·외부 스크립트 반영을 위해 로그인마다 사용자 재적재
+    if (fnIsMysqlStore()) await fnReloadUsersFromMysql();
     const objUser = fnFindUserByStrUserId(strUserIdTrim);
     if (!objUser) {
       console.log(`[로그인] 사용자 없음 | strUserId=${JSON.stringify(strUserIdTrim)}`);
@@ -57,15 +62,22 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const arrRaw = fnGetMergedPermissions(objUser.arrRoles);
-    const arrPermissions = fnExpandPermissions(arrRaw, objUser.arrRoles);
+    const row = fnFindUserRowById(objUser.nId);
+    const objBlock = fnGetUserLoginBlock(row?.strStatus, objUser.arrRoles, row?.strEmail);
+    if (objBlock) {
+      console.log(`[로그인] 차단 | ${objUser.strUserId} | ${objBlock.strErrorCode} | status=${row?.strStatus ?? '-'}`);
+      res.status(403).json({ bSuccess: false, ...objBlock });
+      return;
+    }
+
+    const objAuthUser = fnBuildAuthUserPayload(objUser);
 
     const objPayload: IJwtPayload = {
       nId:            objUser.nId,
       strUserId:      objUser.strUserId,
       strDisplayName: objUser.strDisplayName,
-      arrRoles:       objUser.arrRoles,
-      arrPermissions: arrPermissions as any,
+      arrRoles:       objAuthUser.arrRoles,
+      arrPermissions: objAuthUser.arrPermissions as any,
     };
 
     const strToken = jwt.sign(objPayload, strJwtSecret, { expiresIn: strJwtExpiresIn as any });
@@ -84,13 +96,7 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
     res.json({
       bSuccess: true,
       strToken,
-      user: {
-        nId:            objUser.nId,
-        strUserId:      objUser.strUserId,
-        strDisplayName: objUser.strDisplayName,
-        arrRoles:       objUser.arrRoles,
-        arrPermissions: arrPermissions as any,
-      },
+      user: objAuthUser,
     });
   } catch (error) {
     console.error('로그인 오류:', error);
@@ -131,18 +137,16 @@ export const fnVerifyToken = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const arrRaw = fnGetMergedPermissions(objFullUser.arrRoles);
-    const arrPermissions = fnExpandPermissions(arrRaw, objFullUser.arrRoles);
+    const row = fnFindUserRowById(objFullUser.nId);
+    const objBlock = fnGetUserLoginBlock(row?.strStatus, objFullUser.arrRoles, row?.strEmail);
+    if (objBlock) {
+      res.status(403).json({ bSuccess: false, ...objBlock });
+      return;
+    }
 
     res.json({
       bSuccess: true,
-      user: {
-        nId:            objFullUser.nId,
-        strUserId:      objFullUser.strUserId,
-        strDisplayName: objFullUser.strDisplayName,
-        arrRoles:       objFullUser.arrRoles,
-        arrPermissions: arrPermissions as any,
-      },
+      user: fnBuildAuthUserPayload(objFullUser),
     });
   } catch (error) {
     console.error('토큰 검증 오류:', error);

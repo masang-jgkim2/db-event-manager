@@ -920,6 +920,43 @@ describe('API 전체 테스트', () => {
       nConnId = res.body.objDbConnection.nId;
     });
 
+    it('동일 프로덕트·환경·종류라도 DB명이 다르면 추가 등록 가능', async () => {
+      const strDbA = `test_shard_a_${Date.now()}`;
+      const strDbB = `test_shard_b_${Date.now()}`;
+      const objBase = {
+        nProductId: nProductIdMysql,
+        strKind: 'GAME' as const,
+        strEnv: 'dev' as const,
+        strDbType: 'mysql' as const,
+        strHost: '127.0.0.1',
+        nPort: 3306,
+        strUser: 'u',
+        strPassword: 'p',
+      };
+      const resA = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ ...objBase, strDatabase: strDbA });
+      expect(resA.status).toBe(200);
+      const resB = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ ...objBase, strDatabase: strDbB });
+      expect(resB.status).toBe(200);
+      const resDup = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ ...objBase, strDatabase: strDbA });
+      expect(resDup.status).toBe(409);
+      expect(resDup.body.strErrorCode).toBe('DUPLICATE');
+      await request(app)
+        .delete(`/api/db-connections/${resA.body.objDbConnection.nId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+      await request(app)
+        .delete(`/api/db-connections/${resB.body.objDbConnection.nId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
+    });
+
     it('PUT /api/db-connections/:id → 200', async () => {
       const res = await request(app)
         .put(`/api/db-connections/${nConnId}`)
