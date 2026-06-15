@@ -28,50 +28,69 @@ const STR_CONFIG_PATH = resolve(
     || resolve(process.cwd(), '../front/scripts/e2e-workflow-config.json'),
 );
 
+interface ILoginResponse {
+  strToken?: string;
+  strMessage?: string;
+  user?: { nId?: number; strDisplayName?: string };
+}
+
+interface IProduct {
+  nId: number;
+  strName?: string;
+  arrServices?: Array<{ strAbbr: string; strRegion: string }>;
+}
+
+interface IDbConnection {
+  nId: number;
+  nProductId: number;
+  strEnv: string;
+  bIsActive?: boolean;
+}
+
 const fnLogin = async (strUserId: string, strPassword: string) => {
   const res = await fetch(`${STR_API}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ strUserId, strPassword }),
   });
-  const obj = await res.json();
+  const obj = (await res.json()) as ILoginResponse;
   if (!obj.strToken) throw new Error(`로그인 실패: ${strUserId} ${obj.strMessage || res.status}`);
-  return { strToken: obj.strToken as string, objUser: obj.user };
+  return { strToken: obj.strToken, objUser: obj.user };
 };
 
-const fnGet = async (strPath: string, strToken: string) => {
+const fnGet = async <T>(strPath: string, strToken: string): Promise<T> => {
   const res = await fetch(`${STR_API}${strPath}`, {
     headers: { Authorization: `Bearer ${strToken}` },
   });
-  const obj = await res.json();
+  const obj = (await res.json()) as T;
   if (!res.ok) throw new Error(`GET ${strPath} → ${res.status} ${JSON.stringify(obj).slice(0, 200)}`);
   return obj;
 };
 
-const fnPost = async (strPath: string, strToken: string, body: unknown) => {
+const fnPost = async <T>(strPath: string, strToken: string, body: unknown) => {
   const res = await fetch(`${STR_API}${strPath}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${strToken}` },
     body: JSON.stringify(body),
   });
-  const obj = await res.json();
+  const obj = (await res.json()) as T;
   return { res, obj };
 };
 
 const fnPickProduct = async (strToken: string) => {
-  const obj = await fnGet('/products', strToken);
+  const obj = await fnGet<{ arrProducts?: IProduct[] }>('/products', strToken);
   const arr = obj.arrProducts || [];
   if (N_PRODUCT_ID > 0) {
-    const p = arr.find((x: { nId: number }) => x.nId === N_PRODUCT_ID);
+    const p = arr.find((x) => x.nId === N_PRODUCT_ID);
     if (!p) throw new Error(`E2E_PRODUCT_ID=${N_PRODUCT_ID} 없음`);
     return p;
   }
-  const objConn = await fnGet('/db-connections', strToken);
-  const arrConn = (objConn.arrDbConnections || []).filter((c: { bIsActive?: boolean }) => c.bIsActive !== false);
+  const objConn = await fnGet<{ arrDbConnections?: IDbConnection[] }>('/db-connections', strToken);
+  const arrConn = (objConn.arrDbConnections || []).filter((c) => c.bIsActive !== false);
   const setQaProduct = new Set(
-    arrConn.filter((c: { strEnv: string }) => c.strEnv === 'qa').map((c: { nProductId: number }) => c.nProductId),
+    arrConn.filter((c) => c.strEnv === 'qa').map((c) => c.nProductId),
   );
-  const p = arr.find((x: { nId: number }) => setQaProduct.has(x.nId));
+  const p = arr.find((x) => setQaProduct.has(x.nId));
   if (!p) throw new Error('QA DB 접속이 있는 프로덕트 없음');
   return p;
 };
@@ -85,19 +104,19 @@ const fnMain = async () => {
   const objSvc = objProduct.arrServices?.[0];
   if (!objSvc) throw new Error(`프로덕트 ${nProductId} 서비스 없음`);
 
-  const objConnList = await fnGet('/db-connections', strAdminToken);
+  const objConnList = await fnGet<{ arrDbConnections?: IDbConnection[] }>('/db-connections', strAdminToken);
   const nConnQa = (objConnList.arrDbConnections || []).find(
-    (c: { nProductId: number; strEnv: string }) => c.nProductId === nProductId && c.strEnv === 'qa',
+    (c) => c.nProductId === nProductId && c.strEnv === 'qa',
   )?.nId;
   if (!nConnQa) throw new Error(`프로덕트 ${nProductId} QA 접속 없음`);
 
-  const objEvents = await fnGet('/events', strAdminToken);
+  const objEvents = await fnGet<{ arrEvents?: Array<{ nId: number; strEventLabel: string }> }>('/events', strAdminToken);
   let nTemplateId = (objEvents.arrEvents || []).find(
-    (e: { strEventLabel: string }) => e.strEventLabel === STR_TEMPLATE_LABEL,
+    (e) => e.strEventLabel === STR_TEMPLATE_LABEL,
   )?.nId;
 
   if (!nTemplateId) {
-    const { res, obj } = await fnPost('/events', strAdminToken, {
+    const { res, obj } = await fnPost<{ objEvent?: { nId: number } }>('/events', strAdminToken, {
       nProductId,
       strEventLabel: STR_TEMPLATE_LABEL,
       strDescription: `E2E headed/workflow — ${STR_WORKFLOW_KIND}`,
@@ -137,7 +156,7 @@ const fnMain = async () => {
   if (bCreateInstance) {
     const { strToken: strGmToken, objUser } = await fnLogin(STR_GM_USER, STR_GM_PASS);
     const strEventName = `[E2E] SELECT 워크플로 ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
-    const { res, obj } = await fnPost('/event-instances', strGmToken, {
+    const { res, obj } = await fnPost<{ objInstance?: { nId: number } }>('/event-instances', strGmToken, {
       nEventTemplateId: nTemplateId,
       nProductId,
       strEventLabel: STR_TEMPLATE_LABEL,
