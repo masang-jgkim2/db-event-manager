@@ -49,6 +49,17 @@ describe('Web Push API', () => {
     jest.clearAllMocks();
   });
 
+  it('GET /api/push/status → 구독·설정 진단', async () => {
+    const res = await request(app)
+      .get('/api/push/status')
+      .set('Authorization', `Bearer ${strAdminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.bSuccess).toBe(true);
+    expect(res.body.bVapidConfigured).toBe(true);
+    expect(typeof res.body.bUserPrefEnabled).toBe('boolean');
+    expect(typeof res.body.nSubscriptionCount).toBe('number');
+  });
+
   it('GET /api/push/vapid-public-key → bEnabled·공개키', async () => {
     const res = await request(app).get('/api/push/vapid-public-key');
     expect(res.status).toBe(200);

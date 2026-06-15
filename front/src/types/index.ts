@@ -1,3 +1,5 @@
+import type { TTagVariant } from '../styles/tagPalette';
+
 // =============================================
 // 권한 코드 (백엔드 types와 동기 — JWT arrPermissions 전부)
 // =============================================
@@ -5,7 +7,7 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
-  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
@@ -38,6 +40,7 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'user.edit': '사용자 수정',
   'user.delete': '사용자 삭제',
   'user.reset_password': '비밀번호 초기화',
+  'user.approve': '가입 승인',
   'user.manage': '사용자 관리',
   'role.view': '역할 조회',
   'role.create': '역할 생성',
@@ -120,6 +123,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'user.edit', label: '수정' },
     { value: 'user.delete', label: '삭제' },
     { value: 'user.reset_password', label: '비밀번호 초기화' },
+    { value: 'user.approve', label: '가입 승인' },
   ]},
   { groupLabel: '역할 권한', permissions: [
     { value: 'role.view', label: '보기' },
@@ -188,7 +192,7 @@ export function fnFormatPermissionErrorMessage(strMessage: string): string {
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
-  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
@@ -230,6 +234,8 @@ export interface IUser {
   nId: number;
   strUserId: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: string;
   arrRoles: string[];           // 역할 코드 배열 (멀티 역할)
   arrPermissions: TPermission[];
 }
@@ -244,6 +250,7 @@ export interface ILoginResponse {
   strToken?: string;
   user?: IUser;
   strMessage?: string;
+  strErrorCode?: string;
 }
 
 export interface IAuthStore {
@@ -269,7 +276,7 @@ export interface IService {
 // 프로덕트 (게임/서비스)
 export interface IProduct {
   nId: number;
-  strName: string;          // 프로젝트명 (예: DK온라인)
+  strName: string;          // 프로덕트명 (예: DK온라인)
   strDescription: string;
   strDbType: 'mysql' | 'mssql' | 'postgresql';
   arrServices: IService[];  // 서비스 범위 목록
@@ -331,9 +338,10 @@ export interface IEventTemplate {
 
 // 단일 서버 쿼리(한 환경) vs 다중 서버 쿼리(QA+LIVE) — DEV는 UI 선택 불가(백엔드 차단)
 export type TDeployScope = 'qa' | 'live';
-export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strColor: string }[] = [
-  { value: 'qa',   label: 'QA',   strColor: 'orange' },
-  { value: 'live', label: 'LIVE', strColor: 'red' },
+
+export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strTagVariant: TTagVariant }[] = [
+  { value: 'qa',   label: 'QA',   strTagVariant: 'tone6' },
+  { value: 'live', label: 'LIVE', strTagVariant: 'tone9' },
 ];
 
 // 이벤트 상태 워크플로
@@ -349,16 +357,16 @@ export type TEventStatus =
   | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
 // 상태 라벨/색상 — 나의 대시보드 권한 이름과 동일 (작성 중→생성, 완료 유지)
-export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
-  event_created:      { strLabel: '생성',            strColor: 'default' },
-  confirm_requested:  { strLabel: '컨펌 요청',       strColor: 'blue' },
-  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strColor: 'cyan' },
-  qa_requested:       { strLabel: 'QA 반영 요청',   strColor: 'geekblue' },
-  qa_deployed:        { strLabel: 'QA 반영 실행',    strColor: 'orange' },
-  qa_verified:        { strLabel: 'QA 확인',        strColor: 'gold' },
-  live_requested:     { strLabel: 'LIVE 반영 요청',  strColor: 'magenta' },
-  live_deployed:      { strLabel: 'LIVE 반영 실행',  strColor: 'volcano' },
-  live_verified:      { strLabel: '완료',            strColor: 'green' },
+export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  event_created:      { strLabel: '생성',            strTagVariant: 'muted' },
+  confirm_requested:  { strLabel: '컨펌 요청',       strTagVariant: 'tone3' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strTagVariant: 'tone4' },
+  qa_requested:       { strLabel: 'QA 반영 요청',   strTagVariant: 'tone5' },
+  qa_deployed:        { strLabel: 'QA 반영 실행',    strTagVariant: 'tone6' },
+  qa_verified:        { strLabel: 'QA 확인',        strTagVariant: 'tone7' },
+  live_requested:     { strLabel: 'LIVE 반영 요청',  strTagVariant: 'tone8' },
+  live_deployed:      { strLabel: 'LIVE 반영 실행',  strTagVariant: 'tone2' },
+  live_verified:      { strLabel: '완료',            strTagVariant: 'success' },
 };
 
 // 프로세스 진행에 따른 현재 환경 (QA / LIVE / DEV 중 하나만 표시)
@@ -370,17 +378,23 @@ export const fnGetDisplayEnv = (strStatus: TEventStatus): TDisplayEnv | null => 
   return null;
 };
 
-export const OBJ_DISPLAY_ENV_COLOR: Record<TDisplayEnv, string> = {
-  DEV: 'default',
-  QA: 'orange',
-  LIVE: 'red',
+export const OBJ_DISPLAY_ENV_TAG: Record<TDisplayEnv, TTagVariant> = {
+  DEV: 'muted',
+  QA: 'tone6',
+  LIVE: 'tone9',
 };
+
+/** @deprecated OBJ_DISPLAY_ENV_TAG 사용 */
+export const OBJ_DISPLAY_ENV_COLOR = OBJ_DISPLAY_ENV_TAG;
 
 // 쿼리 개별 실행 결과
 export interface IQueryPartResult {
   nIndex: number;
   strQuery: string;
   nAffectedRows: number;
+  arrResultColumns?: string[];
+  arrResultRows?: Record<string, string | number | boolean | null>[];
+  bResultTruncated?: boolean;
   /** 다중 실행 세트일 때만 */
   nSetIndex?: number;
   nSetTotal?: number;

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import {
   fnCreateInstance, fnGetInstances,
   fnUpdateStatus, fnGetInstance, fnUpdateInstance,
-  fnExecuteAndDeploy, fnGetTemplateExecElapsed, fnDeleteInstance,
+  fnExecuteAndDeploy, fnGetTemplateExecElapsed, fnGetGrantScript, fnDeleteInstance,
 } from '../controllers/eventInstanceController';
 import { fnAuthMiddleware } from '../middleware/authMiddleware';
 import { fnRequireAnyPermission } from '../middleware/permissionMiddleware';
@@ -58,6 +58,13 @@ router.get('/', fnRequireAnyPermission('my_dashboard.view'), fnGetInstances);
 
 // GET /api/event-instances/template-exec-elapsed — :id 보다 먼저 등록 (프로그레스 바용)
 router.get('/template-exec-elapsed', fnRequireAnyPermission('my_dashboard.view'), fnGetTemplateExecElapsed);
+
+// GET /api/event-instances/:id/grant-script — 실행 쿼리 기준 DB 권한 GRANT (MSSQL)
+router.get(
+  '/:id/grant-script',
+  fnRequireAnyPermission('my_dashboard.view', 'my_dashboard.query_edit', 'my_dashboard.execute_qa', 'my_dashboard.execute_live'),
+  fnGetGrantScript,
+);
 
 // GET /api/event-instances/:id - 단건 조회 (나의 대시보드 보기 권한)
 router.get('/:id', fnRequireAnyPermission('my_dashboard.view'), fnGetInstance);

@@ -1,6 +1,7 @@
 import { Typography, theme as antdTheme } from 'antd';
 import type { IQueryEditLog } from '../types';
 import { fnDiffChangedLinesOnly } from '../utils/textLineDiff';
+import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 
 const { Text } = Typography;
 
@@ -13,34 +14,35 @@ const QueryTextDiff = ({ strBefore, strAfter }: { strBefore: string; strAfter: s
 
   return (
     <pre
-      style={{
+      className={STR_CODE_BLOCK_CLASS}
+      style={fnCodeSurfaceStyle(token, 11, {
         margin: 0,
         padding: 8,
-        fontSize: 11,
-        fontFamily: 'monospace',
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-all',
-        background: token.colorFillTertiary,
-        borderRadius: token.borderRadius,
         maxHeight: 280,
         overflow: 'auto',
-      }}
+      })}
     >
-      {arrLines.map((line, nIdx) => (
-        <span
-          key={`${nIdx}-${line.strKind}`}
-          style={{
-            display: 'block',
-            background: line.strKind === 'removed' ? token.colorErrorBg : token.colorSuccessBg,
-            textDecoration: line.strKind === 'removed' ? 'line-through' : undefined,
-          }}
-        >
-          <span style={{ color: token.colorTextSecondary, userSelect: 'none', marginRight: 6 }}>
-            {line.strKind === 'removed' ? '−' : '+'}
+      {arrLines.map((line, nIdx) => {
+        const nLineNo = line.strKind === 'removed' ? line.nLineNoBefore : line.nLineNoAfter;
+        return (
+          <span
+            key={`${nIdx}-${line.strKind}-${nLineNo ?? 'x'}`}
+            style={{
+              display: 'block',
+              background: line.strKind === 'removed' ? token.colorErrorBg : token.colorSuccessBg,
+              textDecoration: line.strKind === 'removed' ? 'line-through' : undefined,
+            }}
+          >
+            <span style={{ color: token.colorTextSecondary, userSelect: 'none', marginRight: 6 }}>
+              {nLineNo != null ? `${nLineNo} ` : ''}
+              {line.strKind === 'removed' ? '−' : '+'}
+            </span>
+            {line.strLine || ' '}
           </span>
-          {line.strLine || ' '}
-        </span>
-      ))}
+        );
+      })}
     </pre>
   );
 };
@@ -54,10 +56,12 @@ const QueryEditDiffView = ({ objQueryEdit }: TQueryEditDiffViewProps) => {
     return (
       <>
         {objQueryEdit.arrSetChanges.map((chg) => (
-          <span key={chg.nSetIndex} style={{ display: 'block', marginTop: 8 }}>
-            <Text type="secondary" style={{ fontSize: 11 }}>쿼리 세트 {chg.nSetIndex + 1}</Text>
+          <div key={chg.nSetIndex} style={{ marginTop: 8 }}>
+            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
+              쿼리 세트 {chg.nSetIndex + 1}
+            </Text>
             <QueryTextDiff strBefore={chg.strBefore} strAfter={chg.strAfter} />
-          </span>
+          </div>
         ))}
       </>
     );

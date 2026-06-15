@@ -1,5 +1,16 @@
 import apiClient from './axiosInstance';
 
+export const fnApiGetPushStatus = async (): Promise<{
+  bSuccess: boolean;
+  bVapidConfigured?: boolean;
+  bUserPrefEnabled?: boolean;
+  nSubscriptionCount?: number;
+  strMessage?: string;
+}> => {
+  const res = await apiClient.get('/push/status');
+  return res.data;
+};
+
 export const fnApiGetPushVapidPublicKey = async (): Promise<{
   bSuccess: boolean;
   bEnabled?: boolean;

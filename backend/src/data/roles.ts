@@ -81,7 +81,7 @@ export const fnGetMergedPermissions = (arrRoleCodes: string[]): string[] => {
 const OBJ_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
-  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   // instance.create는 이벤트 수정/컨펌 요청 권한을 자동 부여하지 않음 (역할에서 별도 체크한 권한만 적용)
   'instance.create': ['instance.view'],
@@ -104,7 +104,7 @@ export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): s
     if (arrExp) arrExp.forEach((e) => setOut.add(e));
   });
   if (arrRoleCodes.includes('admin')) {
-    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view', 'activity.clear'].forEach((p) => setOut.add(p));
+    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view', 'activity.clear'].forEach((p) => setOut.add(p));
   }
   return Array.from(setOut);
 };

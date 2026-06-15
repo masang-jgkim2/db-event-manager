@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { ConfigProvider, Spin, Result, theme as antdTheme } from 'antd';
 import koKR from 'antd/locale/ko_KR';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from './stores/useAuthStore';
 import { useThemeStore } from './stores/useThemeStore';
 import { fnBuildDesignSystem } from './styles/design-system';
 import { DesignSystemContext } from './styles/DesignSystemContext';
+import { fnApplyTypographyCssVars } from './styles/typographyCss';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import RegisterSentPage from './pages/RegisterSentPage';
 import DashboardPage from './pages/DashboardPage';
 import ProductPage from './pages/ProductPage';
 import EventPage from './pages/EventPage';
@@ -144,25 +148,14 @@ const App = () => {
   const fnVerifyToken = useAuthStore((state) => state.fnVerifyToken);
   const bIsAuthenticated = useAuthStore((state) => state.bIsAuthenticated);
 
-  // 테마 스토어
-  const fnGetIsDark = useThemeStore((state) => state.fnGetIsDark);
-  const nFontSize = useThemeStore((state) => state.nFontSize);
-  const bCompact = useThemeStore((state) => state.bCompact);
-  const strPrimaryColor = useThemeStore((state) => state.strPrimaryColor);
-  const strMode = useThemeStore((state) => state.strMode);
-
-  // system 모드일 때 OS 변경 감지하여 리렌더 유도
-  useEffect(() => {
-    if (strMode !== 'system') return;
-    const objMq = window.matchMedia('(prefers-color-scheme: dark)');
-    const fnHandler = () => {
-      // 리렌더 트리거: 스토어 액션 없이 강제 재평가를 위해 임시 상태 변경
-      useThemeStore.setState((s) => ({ ...s }));
-    };
-    objMq.addEventListener('change', fnHandler);
-    return () => objMq.removeEventListener('change', fnHandler);
-  }, [strMode]);
-
+  const { strMode, nFontSize, bCompact, strPrimaryColor } = useThemeStore(
+    useShallow((s) => ({
+      strMode: s.strMode,
+      nFontSize: s.nFontSize,
+      bCompact: s.bCompact,
+      strPrimaryColor: s.strPrimaryColor,
+    })),
+  );
   // 앱 시작 시 토큰 검증 (자동 로그인)
   useEffect(() => {
     fnVerifyToken();
@@ -181,10 +174,29 @@ const App = () => {
 
   // 프로덕트/이벤트/DB목록은 각 페이지에서 로드(전역 prefetch 시 활동 로그·이중 GET 증가)
 
-  const bIsDark = fnGetIsDark();
+  const bIsDark = strMode === 'dark';
 
+  // CSS 변수·스크롤바 등 전역 테마 동기화
   // 디자인 시스템 전체 토큰 생성
   const objDs = fnBuildDesignSystem(strPrimaryColor, bIsDark, nFontSize);
+
+  // CSS 변수·스크롤바·cursor.com 셸 플래그
+  useEffect(() => {
+    document.documentElement.setAttribute('data-dqpm-theme', bIsDark ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      'data-dqpm-shell',
+      objDs.bCursorSiteShell ? 'cursor-site' : 'ide',
+    );
+    fnApplyTypographyCssVars({
+      strFontUi: objDs.strFontUi,
+      strFontMono: objDs.strFontMono,
+      objTypoRoles: objDs.objTypoRoles,
+    });
+    return () => {
+      document.documentElement.removeAttribute('data-dqpm-theme');
+      document.documentElement.removeAttribute('data-dqpm-shell');
+    };
+  }, [bIsDark, objDs.bCursorSiteShell, objDs.strFontUi, objDs.strFontMono, objDs.objTypoRoles]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { token: dsToken, components: dsComponents } = objDs.antdThemeConfig as any;
@@ -210,6 +222,22 @@ const App = () => {
             element={
               <PublicRoute>
                 <LoginPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <RegisterPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register/sent"
+            element={
+              <PublicRoute>
+                <RegisterSentPage />
               </PublicRoute>
             }
           />

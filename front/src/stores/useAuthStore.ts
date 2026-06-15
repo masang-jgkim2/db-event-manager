@@ -1,5 +1,6 @@
+import axios from 'axios';
 import { create } from 'zustand';
-import type { IAuthStore } from '../types';
+import type { IAuthStore, ILoginResponse } from '../types';
 import { fnApiLogin, fnApiLogout, fnApiVerifyToken } from '../api/authApi';
 
 // 인증 상태 관리 스토어
@@ -27,10 +28,23 @@ export const useAuthStore = create<IAuthStore>((set) => ({
       }
 
       set({ bIsLoading: false });
-      return false;
-    } catch {
+      const strMsg = objResult.strMessage ?? '아이디 또는 비밀번호가 올바르지 않습니다.';
+      const errAuth = new Error(strMsg) as Error & { strErrorCode?: string };
+      errAuth.strErrorCode = objResult.strErrorCode;
+      throw errAuth;
+    } catch (err: unknown) {
       set({ bIsLoading: false });
-      return false;
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const objData = err.response.data as ILoginResponse;
+        const strMsg = objData.strMessage ?? '로그인에 실패했습니다.';
+        const errAuth = new Error(strMsg) as Error & { strErrorCode?: string };
+        errAuth.strErrorCode = objData.strErrorCode;
+        throw errAuth;
+      }
+      if (axios.isAxiosError(err) && !err.response) {
+        throw err;
+      }
+      throw err instanceof Error ? err : new Error('로그인에 실패했습니다.');
     }
   },
 
@@ -73,7 +87,11 @@ export const useAuthStore = create<IAuthStore>((set) => ({
       localStorage.removeItem('strToken');
       set({ bIsAuthenticated: false, bIsLoading: false });
       return false;
-    } catch {
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err) && err.response?.status === 403) {
+        const objData = err.response.data as ILoginResponse;
+        console.log(`[인증] 토큰 거부 | ${objData.strErrorCode ?? ''} | ${objData.strMessage ?? ''}`);
+      }
       localStorage.removeItem('strToken');
       set({ bIsAuthenticated: false, bIsLoading: false });
       return false;

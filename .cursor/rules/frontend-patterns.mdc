@@ -6,12 +6,27 @@ alwaysApply: false
 
 # 프론트엔드 패턴
 
+## 디자인 시스템 (getdesign Cursor)
+
+- **스펙**: `front/DESIGN.md` · 인덱스 `docs/DESIGN-SYSTEM.md` · Storybook `cd front && npm run storybook`
+- **토큰**: `design-system.ts` + `cursorSiteTokens.ts` · `App.tsx` `ConfigProvider`
+- **프리셋**: UI 3종 — Cursor IDE `#434343` / Cursor.com `#f54e00` / 블루 `#1677ff` (`ARR_PRIMARY_COLORS`)
+- **사이드바**: `MainLayout` Ant SubMenu · `openKeys` · 접힘 `inlineCollapsed` + `index.css` 아이콘 중앙
+- **색**: `theme.useToken()` · `useDesignSystem()` · `fnSemanticColor` (`semanticColors.ts`) — 페이지 hex 지양
+- **Tag**: `<DqpmTag tone="warning" />` (Ant `color` preset 대신)
+- **타이포**: `objTypoRoles` + `fnTypoStyle` (`typographyTokens.ts`) · CRUD 제목 `CrudPageShell`
+- **SQL 블록**: `fnCodeSurfaceStyle(token)` / `fnSqlEditorReadonlyStyle` · class `dqpm-font-mono` (`queryEditorTokens.ts`)
+- **검토표**: `docs/CURSOR-UI-AUDIT.md`
+- **CRUD 골격**: `CrudPageShell` + `CrudListToolbar` (Segmented·Form 필터)
+
 ## 프로젝트 구조
 
 ```
 front/src/
   pages/      # 각 메뉴 페이지 (MyDashboardPage 등)
-  components/ # AppTable, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  components/ # AppTable, CrudPageShell, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  styles/     # design-system, typographyTokens, semanticColors, queryEditorTokens
+  stories/    # Storybook DQPM 카탈로그
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore, useNotificationStore)
   api/        # API 클라이언트 (axios 래퍼)
   hooks/      # useEventStream, useUserPresenceStream 등
@@ -24,7 +39,8 @@ front/src/
 
 - **원칙**: 해당 권한이 있을 때만 버튼/관리 컬럼 노출. 없으면 버튼 숨김(API도 동일 권한으로 403).
 - **페이지 접근**: `PermissionRoute`에 보기 권한만 지정. 예: `product.view`, `user.view`, `role.view`, `db_connection.view`|`db.manage`, `event_template.view`, `instance.view`|`instance.create`.
-- **DB 접속 정보 페이지**: 「연결」열 표시 = `db_connection.view`|`db.manage`. 자동 점검·행 펼침 시 테스트 실행 = `db_connection.test`|`db.manage`(백엔드 `POST …/test` 동일).
+- **DB 접속 정보 페이지**: 「연결」열 표시 = `db_connection.view`|`db.manage`. 자동 점검·행 펼침 시 테스트 실행 = `db_connection.test`|`db.manage`(백엔드 `POST …/test` 동일). 저장 성공 시 `objDbConnection`으로 목록만 갱신(전체 `fnLoad` 생략). 10초마다 전 행 연결 테스트(원격 MySQL은 느릴 수 있음).
+- **회원 가입·승인**: `/register`(공개), 로그인 403 `pending_approval`/`rejected`/`no_roles` → `LoginPage` 안내. `UserPage` «승인 대기» 탭·승인/거절 = `user.approve`|`user.manage`; 역할 선택 UI에서 `guest` 제외.
 
 ```typescript
 const arrPermissions = useAuthStore((s) => s.user?.arrPermissions ?? []);
@@ -124,3 +140,9 @@ export const fnApiGetProducts = () => apiClient.get('/products');
 | 이벤트 | 대시보드, 프로덕트, 쿼리 템플릿, DB 접속 정보 | dashboard.view, product.view, event_template.view, db_connection.view 또는 db.manage |
 | 사용자 | 사용자, 역할 권한, 활동 | user.view, role.view, activity.view |
 | 운영 | 나의 대시보드, 이벤트 생성 | (인증만), instance.view 또는 instance.create |
+
+## 브라우저 E2E (Playwright)
+
+- **기능 변경 후**: `.cursor/rules/browser-e2e-smoke.mdc` — `front`에서 `npm run test:e2e:smoke` (헤드리스). 서버 미기동 시 `npm run test:smoke`는 exit 2.
+- **계정**: `front/.env.e2e.local` — `E2E_USER_ID`/`E2E_PASSWORD`(admin), `E2E_DBA_*`(dba01). admin 불일치 시 `E2E_INIT_SECRET` + backend `ALLOW_INIT_ADMIN`/`INIT_ADMIN_SECRET` → `init-e2e-passwords`.
+- **headed·전체 워크플로**: `.cursor/skills/browser-e2e/SKILL.md`, `front/e2e/HEADED-TEST-CATALOG.md`.

@@ -6,8 +6,10 @@ const fnCatchApiError = (error: any, strFallback: string) => {
 };
 
 // 사용자 목록 조회
-export const fnApiGetUsers = async () => {
-  const response = await apiClient.get('/users');
+export const fnApiGetUsers = async (strStatus?: string) => {
+  const response = await apiClient.get('/users', {
+    params: strStatus ? { strStatus } : undefined,
+  });
   return response.data;
 };
 
@@ -16,6 +18,7 @@ export const fnApiCreateUser = async (objData: {
   strUserId: string;
   strPassword: string;
   strDisplayName: string;
+  strEmail?: string;
   arrRoles: string[];
 }) => {
   try {
@@ -56,5 +59,23 @@ export const fnApiResetPassword = async (nId: number, strNewPassword: string) =>
     return response.data;
   } catch (error: any) {
     return fnCatchApiError(error, '비밀번호 초기화에 실패했습니다.');
+  }
+};
+
+export const fnApiApproveUser = async (nId: number, arrRoles: string[]) => {
+  try {
+    const response = await apiClient.patch(`/users/${nId}/approve`, { arrRoles });
+    return response.data;
+  } catch (error: any) {
+    return fnCatchApiError(error, '승인에 실패했습니다.');
+  }
+};
+
+export const fnApiRejectUser = async (nId: number) => {
+  try {
+    const response = await apiClient.patch(`/users/${nId}/reject`, {});
+    return response.data;
+  } catch (error: any) {
+    return fnCatchApiError(error, '거절에 실패했습니다.');
   }
 };

@@ -1,0 +1,77 @@
+{
+  "strUser": "gm01",
+  "strBase": "http://localhost:5173",
+  "nOk": 12,
+  "nFail": 0,
+  "arrReport": [
+    {
+      "strId": "A-02",
+      "strDesc": "로그인",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-10",
+      "strDesc": "GM 메뉴 노출·숨김",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-01",
+      "strDesc": "대시보드",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-02",
+      "strDesc": "프로덕트",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "C-01",
+      "strDesc": "프로덕트 추가 모달",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-03",
+      "strDesc": "쿼리 템플릿",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-07",
+      "strDesc": "나의 대시보드",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "E-X1",
+      "strDesc": "이벤트 상세 모달",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "E-GM-btns",
+      "strDesc": "노출된 GM 버튼",
+      "strStatus": "info",
+      "arrFound": [
+        "QA 쿼리 실행 요청",
+        "LIVE 쿼리 실행 요청"
+      ]
+    },
+    {
+      "strId": "E-GM",
+      "strDesc": "GM 액션 버튼 노출 확인",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "B-08",
+      "strDesc": "이벤트 생성 페이지",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "D-01",
+      "strDesc": "이벤트 생성 — 템플릿 영역만 확인(제출 안 함)",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "A-04",
+      "strDesc": "로그아웃",
+      "strStatus": "ok"
+    }
+  ]
+}

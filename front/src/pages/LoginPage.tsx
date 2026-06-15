@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space, theme } from 'antd';
 import { UserOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { bShowLoginDefaultAccountHint } from '../config/loginUi';
+import { ruleUserIdCharsOnly } from '../utils/userIdInput';
 
 const { Title, Text } = Typography;
 
@@ -18,9 +20,8 @@ const LoginPage = () => {
   const fnLogin = useAuthStore((state) => state.fnLogin);
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = theme.useToken();
-  const fnGetIsDark = useThemeStore((s) => s.fnGetIsDark);
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
-  const bIsDark = fnGetIsDark();
+  const bIsDark = useThemeStore((s) => s.strMode === 'dark');
   // 테마별 페이지 배경 — 본문·카드는 token으로 대비 확보
   const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
 
@@ -32,10 +33,23 @@ const LoginPage = () => {
       if (bResult) {
         messageApi.success('로그인 성공!');
         // PublicRoute가 redirect 파라미터를 읽어 자동 이동 처리
-      } else {
-        messageApi.error('아이디 또는 비밀번호가 올바르지 않습니다.');
       }
-    } catch {
+    } catch (err: unknown) {
+      const objErr = err as Error & { strErrorCode?: string };
+      if (objErr.strErrorCode === 'pending_approval' || objErr.strErrorCode === 'no_roles') {
+        messageApi.warning(
+          objErr.message || '관리자 승인 후 로그인할 수 있습니다.',
+        );
+        return;
+      }
+      if (objErr.strErrorCode === 'rejected') {
+        messageApi.error(objErr.message || '가입이 거절된 계정입니다. 관리자에게 문의하세요.');
+        return;
+      }
+      if (objErr.message && !objErr.message.includes('Network')) {
+        messageApi.error(objErr.message);
+        return;
+      }
       messageApi.error('서버 연결에 실패했습니다.');
     } finally {
       setBIsSubmitting(false);
@@ -88,14 +102,18 @@ const LoginPage = () => {
             autoComplete="off"
             size="large"
             layout="vertical"
+            validateTrigger={['onChange', 'onBlur']}
           >
             <Form.Item
               name="strUserId"
-              rules={[{ required: true, message: '아이디를 입력해주세요.' }]}
+              rules={[
+                { required: true, message: '아이디를 입력해주세요.' },
+                ruleUserIdCharsOnly,
+              ]}
             >
               <Input
                 prefix={<UserOutlined style={{ color: token.colorTextTertiary }} />}
-                placeholder="아이디"
+                placeholder="아이디 (영문·숫자)"
               />
             </Form.Item>
 
@@ -126,6 +144,13 @@ const LoginPage = () => {
               </Button>
             </Form.Item>
           </Form>
+
+          <div style={{ marginTop: 20, textAlign: 'center' }}>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              계정이 없나요?{' '}
+              <Link to="/register">회원 가입</Link>
+            </Text>
+          </div>
 
           {/* 기본 계정 안내 — VITE_SHOW_LOGIN_DEFAULT_ACCOUNT_HINT=true 일 때만 표시 */}
           {bShowLoginDefaultAccountHint && (

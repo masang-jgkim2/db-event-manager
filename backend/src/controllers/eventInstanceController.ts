@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import {
-  arrEventInstances, fnGetNextInstanceId, fnSaveEventInstances,
+  arrEventInstances, fnGetNextInstanceId, fnCommitEventInstancesToStore,
   fnReloadEventInstancesFromDiskIfEmpty,
   TEventStatus, IStageActor, IEventInstance,
 } from '../data/eventInstances';
@@ -13,8 +13,20 @@ import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/
 import { IQueryExecutionResult, IDbConnection } from '../types';
 import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
 import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
-import { fnIsMysqlStore } from '../data/dataStore';
-import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
+import { fnBuildMssqlGrantScriptForSql } from '../utils/grantScriptFromSql';
+const STR_MSG_INSTANCE_MYSQL_FAIL =
+  '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.';
+
+const fnCommitInstancesOr500 = async (res: Response, strTag: string): Promise<boolean> => {
+  try {
+    await fnCommitEventInstancesToStore();
+    return true;
+  } catch (err: unknown) {
+    console.error(`[이벤트 인스턴스] MySQL 반영 실패 | ${strTag} |`, (err as Error)?.message);
+    res.status(500).json({ bSuccess: false, strMessage: STR_MSG_INSTANCE_MYSQL_FAIL });
+    return false;
+  }
+};
 
 // 상태 전이 규칙 (9단계 + 재요청)
 // 쿼리 실행 대상이 LIVE만(단일 서버)인 경우 fnGetTransitions에서 QA 단계 스킵
@@ -100,14 +112,14 @@ const fnSummarizeDbConnection = (objConn: IDbConnection | undefined): string | u
 };
 
 /** 실행 실패 시 상태 유지 + 진행 이력에 남김(SSE 동기화) */
-const fnAppendQueryExecutionFailureLog = (
+const fnAppendQueryExecutionFailureLog = async (
   objInstance: IEventInstance,
   req: Request,
   strEnv: 'qa' | 'live',
   strCurrentStatus: TEventStatus,
   objExecResult: IQueryExecutionResult,
   objResolvedConn?: IDbConnection,
-): void => {
+): Promise<void> => {
   const objActor = fnMakeActor(req);
   const strErr = (objExecResult.strError || '').trim().slice(0, 800);
   const strConn = fnSummarizeDbConnection(objResolvedConn);
@@ -127,7 +139,7 @@ const fnAppendQueryExecutionFailureLog = (
       arrQueryResults: objExecResult.arrQueryResults,
     },
   });
-  fnSaveEventInstances();
+  await fnCommitEventInstancesToStore();
   fnBroadcastInstanceUpdate(objInstance);
 };
 
@@ -215,7 +227,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
     };
 
     arrEventInstances.push(objNew);
-    fnSaveEventInstances();
+    if (!(await fnCommitInstancesOr500(res, 'create'))) return;
     // 생성자 외 모든 클라이언트에 신규 이벤트 알림 (instance_created)
     fnBroadcastInstanceCreated(objNew);
     res.json({ bSuccess: true, objInstance: objNew });
@@ -337,7 +349,7 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       dtChangedAt: new Date().toISOString(),
     });
 
-    fnSaveEventInstances();
+    if (!(await fnCommitInstancesOr500(res, 'update-status'))) return;
     // 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
@@ -521,7 +533,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         nSetTotal: 1,
       });
       if (!objExecResult.bSuccess) {
-        fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objExecResult, objDbConn);
+        try {
+          await fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objExecResult, objDbConn);
+        } catch (err: unknown) {
+          console.error('[이벤트 인스턴스] MySQL 반영 실패 | execute-fail-single |', (err as Error)?.message);
+          res.status(500).json({ bSuccess: false, strMessage: STR_MSG_INSTANCE_MYSQL_FAIL });
+          return;
+        }
         res.status(200).json({
           bSuccess: false,
           strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
@@ -562,7 +580,18 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
             strError: strMsg,
             dtExecutedAt: new Date().toISOString(),
           };
-          fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objFailResult, undefined);
+          try {
+            await fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objFailResult, undefined);
+          } catch (err: unknown) {
+            console.error('[이벤트 인스턴스] MySQL 반영 실패 | execute-fail-resolve |', (err as Error)?.message);
+            if (bStream) {
+              res.write(`data: ${JSON.stringify({ type: 'error', strMessage: STR_MSG_INSTANCE_MYSQL_FAIL })}\n\n`);
+              res.end();
+            } else {
+              res.status(500).json({ bSuccess: false, strMessage: STR_MSG_INSTANCE_MYSQL_FAIL });
+            }
+            return;
+          }
           if (bStream) {
             res.write(`data: ${JSON.stringify({ type: 'error', strMessage: strMsg, objExecutionResult: objFailResult, objInstance })}\n\n`);
             res.end();
@@ -579,7 +608,18 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
         if (strOneConnSum) arrConnSummariesForLog.push(strOneConnSum);
         if (!oneResult.bSuccess) {
           const strMsg = `쿼리 세트 ${i + 1} 실행에 실패했습니다. 롤백이 완료되었습니다.`;
-          fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, oneResult, objConn);
+          try {
+            await fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, oneResult, objConn);
+          } catch (err: unknown) {
+            console.error('[이벤트 인스턴스] MySQL 반영 실패 | execute-fail-multi |', (err as Error)?.message);
+            if (bStream) {
+              res.write(`data: ${JSON.stringify({ type: 'error', strMessage: STR_MSG_INSTANCE_MYSQL_FAIL })}\n\n`);
+              res.end();
+            } else {
+              res.status(500).json({ bSuccess: false, strMessage: STR_MSG_INSTANCE_MYSQL_FAIL });
+            }
+            return;
+          }
           if (bStream) {
             res.write(`data: ${JSON.stringify({ type: 'error', strMessage: strMsg, objExecutionResult: oneResult, objInstance })}\n\n`);
             res.end();
@@ -641,7 +681,14 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
             arrQueryResults: objExecResult.arrQueryResults,
           },
         });
-        fnSaveEventInstances();
+        try {
+          await fnCommitEventInstancesToStore();
+        } catch (err: unknown) {
+          console.error('[이벤트 인스턴스] MySQL 반영 실패 | execute-stream-done |', (err as Error)?.message);
+          res.write(`data: ${JSON.stringify({ type: 'error', strMessage: STR_MSG_INSTANCE_MYSQL_FAIL })}\n\n`);
+          res.end();
+          return;
+        }
         fnBroadcastInstanceUpdate(objInstance);
         if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
           fnSetTemplateExecElapsedMs(objInstance.nEventTemplateId, strEnv, objExecResult.nElapsedMs);
@@ -668,7 +715,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       );
 
       if (!objExecResult.bSuccess) {
-        fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objExecResult, objDbConn);
+        try {
+          await fnAppendQueryExecutionFailureLog(objInstance, req, strEnv, strWaitStatus, objExecResult, objDbConn);
+        } catch (err: unknown) {
+          console.error('[이벤트 인스턴스] MySQL 반영 실패 | execute-fail-legacy |', (err as Error)?.message);
+          res.status(500).json({ bSuccess: false, strMessage: STR_MSG_INSTANCE_MYSQL_FAIL });
+          return;
+        }
         res.status(200).json({
           bSuccess: false,
           strMessage: '쿼리 실행에 실패했습니다. 롤백이 완료되었습니다.',
@@ -708,7 +761,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       },
     });
 
-    fnSaveEventInstances();
+    if (!(await fnCommitInstancesOr500(res, 'execute-done'))) return;
     // DB 실행 후 상태 변경 SSE 브로드캐스트
     fnBroadcastInstanceUpdate(objInstance);
     if ((strEnv === 'qa' || strEnv === 'live') && objInstance.nEventTemplateId > 0 && objExecResult.nElapsedMs > 0) {
@@ -748,6 +801,46 @@ export const fnGetTemplateExecElapsed = async (req: Request, res: Response): Pro
     res.json({ bSuccess: true, nElapsedMs });
   } catch (error: any) {
     console.error('[fnGetTemplateExecElapsed]', error?.message);
+    res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// GET /api/event-instances/:id/grant-script — 실행(예정) 쿼리 기준 MSSQL GRANT (로그인 기본 dqpm)
+export const fnGetGrantScript = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const nId = Number(req.params.id);
+    const strLogin = String(req.query.strLogin ?? 'dqpm').trim() || 'dqpm';
+    const objInstance = arrEventInstances.find((e) => e.nId === nId);
+    if (!objInstance) {
+      res.status(404).json({ bSuccess: false, strMessage: '이벤트를 찾을 수 없습니다.' });
+      return;
+    }
+
+    const arrQueries: string[] = [];
+    if (objInstance.arrExecutionTargets?.length) {
+      for (const t of objInstance.arrExecutionTargets) {
+        if (t.strQuery?.trim()) arrQueries.push(t.strQuery);
+      }
+    } else if (objInstance.strGeneratedQuery?.trim()) {
+      arrQueries.push(objInstance.strGeneratedQuery);
+    }
+
+    const strSql = arrQueries.join('\n');
+    if (!strSql.trim()) {
+      res.status(400).json({ bSuccess: false, strMessage: '생성된 쿼리가 없습니다.' });
+      return;
+    }
+
+    const objGrant = fnBuildMssqlGrantScriptForSql(strSql, strLogin);
+    res.json({
+      bSuccess: true,
+      strScript: objGrant.strScript,
+      nTableCount: objGrant.nTableCount,
+      arrDatabases: objGrant.arrDatabases,
+    });
+  } catch (error: unknown) {
+    const strMsg = error instanceof Error ? error.message : String(error);
+    console.error('[fnGetGrantScript]', strMsg);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
   }
 };
@@ -831,16 +924,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
           });
         }
       }
-      fnSaveEventInstances();
-      if (fnIsMysqlStore()) {
-        try {
-          await fnAwaitMysqlDocFlush();
-        } catch (err: unknown) {
-          console.error('[이벤트 인스턴스] DBA 쿼리 수정 MySQL 반영 실패 |', (err as Error)?.message);
-          res.status(500).json({ bSuccess: false, strMessage: '쿼리 수정은 적용됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
-          return;
-        }
-      }
+      if (!(await fnCommitInstancesOr500(res, 'dba-query-edit'))) return;
       // strStatus 불변 — «상태 변경» WebPush·인앱 생략(비관여자 이중 노트 방지). SSE는 그대로.
       fnBroadcastInstanceUpdate(objInstance, false);
       res.json({ bSuccess: true, objInstance });
@@ -940,7 +1024,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
-    fnSaveEventInstances();
+    if (!(await fnCommitInstancesOr500(res, 'update'))) return;
     fnBroadcastInstanceUpdate(objInstance);
     res.json({ bSuccess: true, objInstance });
   } catch (error) {
@@ -995,7 +1079,7 @@ export const fnDeleteInstance = async (req: Request, res: Response): Promise<voi
       dtChangedAt: new Date().toISOString(),
     });
 
-    fnSaveEventInstances();
+    if (!(await fnCommitInstancesOr500(res, 'delete'))) return;
     try {
       fnBroadcastInstanceUpdate(objInstance);
     } catch (err: any) {

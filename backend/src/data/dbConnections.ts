@@ -1,8 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 import { IDbConnection, TDbConnectionKind } from '../types';
-import { STR_DATA_DIR, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { STR_DATA_DIR, fnMirrorJsonToDisk, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
+import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnCancelMysqlDocFlushForFiles } from '../db/mysqlDocPersist';
+import {
+  fnDeleteDbConnectionRowFromMysql,
+  fnRelationalLoadDbConnections,
+  fnSyncDbConnectionsOnlyToMysql,
+  fnUpsertDbConnectionRowToMysql,
+} from '../db/mysqlRelationalSync';
 import {
   fnDecryptDbConnPasswordIfNeeded,
   fnEncryptDbConnPasswordForDisk,
@@ -67,15 +75,65 @@ export const fnSaveDbConnections = (): void => {
     ...c,
     strPassword: fnEncryptDbConnPasswordForDisk(c.strPassword),
   }));
-  // MySQL 모드에서 fnSaveJson 은 디스크에 안 씀 — 비밀키 있으면 JSON 백업도 enc 로 동기화
-  if (fnIsMysqlStore() && fnIsDbConnPasswordSecretConfigured()) {
+  if (fnIsMysqlStore()) {
+    // MySQL: 전체 메타 스냅샷(fnSaveJson) 예약 금지 — fnCommitDbConnectionsDataStore 가 db_connection 만 반영
     try {
-      fnWriteDbConnectionsJsonFileSync(arrForDisk);
+      fnMirrorJsonToDisk(STR_FILE, arrForDisk);
     } catch (err: unknown) {
-      console.error('[dbConnections] MySQL 모드 JSON 동기 실패 |', (err as Error)?.message);
+      console.error('[dbConnections] MySQL 모드 JSON 미러 실패 |', (err as Error)?.message);
     }
+    return;
   }
   fnSaveJson(STR_FILE, arrForDisk);
+};
+
+const fnMirrorDbConnectionsJson = (): void => {
+  const arrForDisk = arrDbConnections.map((c) => ({
+    ...c,
+    strPassword: fnEncryptDbConnPasswordForDisk(c.strPassword),
+  }));
+  fnMirrorJsonToDisk(STR_FILE, arrForDisk);
+};
+
+/** 추가·수정 1건 — 전체 메타 flush 대기 없음(이벤트 인스턴스 스냅샷과 분리) */
+export const fnCommitOneDbConnectionToMysql = async (objConn: IDbConnection): Promise<void> => {
+  if (!fnIsMysqlStore()) return;
+  fnCancelMysqlDocFlushForFiles(['dbConnections.json']);
+  const pool = fnGetMysqlAppPool();
+  await fnUpsertDbConnectionRowToMysql(pool, objConn);
+  fnMirrorDbConnectionsJson();
+};
+
+/** 삭제 1건 */
+export const fnCommitDbConnectionDeleteToMysql = async (nId: number): Promise<void> => {
+  if (!fnIsMysqlStore()) return;
+  fnCancelMysqlDocFlushForFiles(['dbConnections.json']);
+  const pool = fnGetMysqlAppPool();
+  await fnDeleteDbConnectionRowFromMysql(pool, nId);
+  fnMirrorDbConnectionsJson();
+};
+
+/** 일괄·임포트용 — 전체 db_connection 테이블 동기화 */
+export const fnCommitDbConnectionsDataStore = async (): Promise<void> => {
+  if (!fnIsMysqlStore()) return;
+  fnCancelMysqlDocFlushForFiles(['dbConnections.json']);
+  const pool = fnGetMysqlAppPool();
+  await fnSyncDbConnectionsOnlyToMysql(pool, [...arrDbConnections]);
+  fnMirrorDbConnectionsJson();
+};
+
+/** 연결 테스트 직전 MySQL에서 해당 행 재로드(저장 직후·다른 flush와 어긋남 방지) */
+export const fnRefreshDbConnectionByIdFromMysql = async (
+  nId: number,
+): Promise<IDbConnection | undefined> => {
+  if (!fnIsMysqlStore()) return fnFindConnectionById(nId);
+  const pool = fnGetMysqlAppPool();
+  const arrFromDb = fnNormalizeConnections(await fnRelationalLoadDbConnections(pool));
+  const row = arrFromDb.find((c) => c.nId === nId);
+  if (!row) return undefined;
+  const nIdx = arrDbConnections.findIndex((c) => c.nId === nId);
+  if (nIdx >= 0) arrDbConnections[nIdx] = row;
+  return row;
 };
 
 /** 비밀키 있고 디스크에 평문이 있으면 1회 enc:v1 재저장(재시작만으로 JSON 반영) */
@@ -160,3 +218,28 @@ export const fnFindActiveConnectionByKind = (
 /** ID로 접속 정보 1건 조회 */
 export const fnFindConnectionById = (nId: number): IDbConnection | undefined =>
   arrDbConnections.find((c) => c.nId === nId);
+
+/**
+ * 동일 프로덕트·환경·종류·호스트·DB명 조합 중복 여부.
+ * (예: 라그하임 QA GAME — acheron / cassiopeia 는 DB명이 다르면 각각 등록 가능)
+ */
+export const fnFindDuplicateDbConnection = (
+  nProductId: number,
+  strEnv: IDbConnection['strEnv'],
+  strKind: TDbConnectionKind,
+  strHost: string,
+  strDatabase: string,
+  nExcludeId?: number,
+): IDbConnection | undefined => {
+  const strHostNorm = strHost.trim();
+  const strDbNorm = strDatabase.trim();
+  return arrDbConnections.find(
+    (c) =>
+      c.nId !== nExcludeId &&
+      c.nProductId === nProductId &&
+      c.strEnv === strEnv &&
+      c.strKind === strKind &&
+      c.strHost.trim() === strHostNorm &&
+      c.strDatabase.trim() === strDbNorm,
+  );
+};
