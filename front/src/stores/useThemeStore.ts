@@ -22,7 +22,7 @@ export const ARR_PRIMARY_COLORS = [
   { strLabel: '블루', strValue: STR_PRIMARY_ANT_BLUE },
 ] as const;
 
-const SET_ALLOWED_PRIMARY = new Set(ARR_PRIMARY_COLORS.map((obj) => obj.strValue));
+const SET_ALLOWED_PRIMARY = new Set<string>(ARR_PRIMARY_COLORS.map((obj) => obj.strValue));
 
 /** 저장값이 구 팔레트(인디고 등)이면 허용 3색 중 하나로 보정 */
 export function fnNormalizePrimaryColor(strColor: string): string {
