@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { theme as antdTheme } from 'antd';
 import type { CSSProperties } from 'react';
 import { STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';

@@ -370,7 +370,7 @@ const fnIsExpandIconHeaderCell = (props: React.HTMLAttributes<HTMLTableCellEleme
   const mix = props.className;
   if (typeof mix === 'string') return mix.includes('ant-table-row-expand-icon-cell');
   if (Array.isArray(mix)) {
-    return mix.some((c) => typeof c === 'string' && c.includes('ant-table-row-expand-icon-cell'));
+    return (mix as string[]).some((c) => typeof c === 'string' && c.includes('ant-table-row-expand-icon-cell'));
   }
   return false;
 };
