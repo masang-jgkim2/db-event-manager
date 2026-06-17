@@ -10,12 +10,9 @@ export interface IUserRoleRow {
 export const STR_USER_ROLES_FILE = 'userRoles.json';
 const STR_FILE = STR_USER_ROLES_FILE;
 
-// 시드: admin→admin, gm01→game_manager, dba01→dba, planner01→game_designer
+// 시드: admin→admin (추가 사용자·역할은 UI·API로 등록)
 const ARR_SEED: IUserRoleRow[] = [
-  { nUserId: 1, nRoleId: 1 }, // admin → admin
-  { nUserId: 2, nRoleId: 3 }, // gm01 → game_manager
-  { nUserId: 3, nRoleId: 2 }, // dba01 → dba
-  { nUserId: 4, nRoleId: 4 }, // planner01 → game_designer
+  { nUserId: 1, nRoleId: 1 },
 ];
 
 export const arrUserRoles: IUserRoleRow[] = fnLoadJson<IUserRoleRow>(STR_FILE, ARR_SEED);
