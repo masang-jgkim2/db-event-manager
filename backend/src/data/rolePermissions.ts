@@ -16,6 +16,7 @@ const ARR_SEED: IRolePermissionRow[] = [
   ...['my_dashboard.view','my_dashboard.detail','my_dashboard.confirm','my_dashboard.execute_qa','my_dashboard.execute_live'].map((strPermission) => ({ nRoleId: 2, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
   ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
+  ...['my_dashboard.view'].map((strPermission) => ({ nRoleId: 6, strPermission })),
 ];
 
 // DBA(nRoleId 2) 필수 권한 5개 — 예전 파일에 3개만 있으면 보정

@@ -26,6 +26,7 @@ const ARR_SEED_ROWS: IRoleRow[] = [
   { nId: 2, strCode: 'dba', strDisplayName: 'DBA', strDescription: 'DB 쿼리 실행 전담', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
   { nId: 3, strCode: 'game_manager', strDisplayName: 'GM', strDescription: '게임 운영 관리자', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
   { nId: 4, strCode: 'game_designer', strDisplayName: '기획자', strDescription: '이벤트 기획 및 생성', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
+  { nId: 6, strCode: 'guest', strDisplayName: '승인 대기(GUEST)', strDescription: '가입 시 부여(로그인은 승인 후)', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
 ];
 
 export const arrRoles: IRoleRow[] = fnLoadJson<IRoleRow>(STR_FILE, ARR_SEED_ROWS);

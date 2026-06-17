@@ -1,7 +1,7 @@
 import request from 'supertest';
 import webpush from 'web-push';
 import app from '../app';
-import { fnInitUsers } from '../data/users';
+import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
 import { fnSetUserUiPreferenceEntries } from '../data/userUiPreferences';
 import { arrNotificationSubscriptions } from '../data/notificationSubscriptions';
 import { STR_UI_WEB_PUSH_ENABLED } from '../services/webPushService';
@@ -38,7 +38,7 @@ describe('Web Push API', () => {
     process.env.VAPID_PUBLIC_KEY = STR_TEST_PUBLIC_KEY;
     process.env.VAPID_PRIVATE_KEY = STR_TEST_PRIVATE_KEY;
     process.env.VAPID_SUBJECT = 'mailto:dqpm@test.local';
-    await fnInitUsers();
+    await fnEnsureRoleTestUsers();
     strAdminToken = await fnLoginAs('admin', 'admin123');
     strGmToken = await fnLoginAs('gm01', 'gm123');
     strDbaToken = await fnLoginAs('dba01', 'dba123');
