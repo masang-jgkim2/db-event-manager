@@ -69,7 +69,7 @@
 - **my-dashboard-dba.spec.ts** — DBA 대시보드·상세·QA 실행 모달 (`@smoke` / `@workflow`)
 - **navigation-dba01-non-ops.spec.ts** — dba01 이벤트·사용자 메뉴 (`@smoke`, 운영 제외)
 - **navigation-gm01.spec.ts** — gm01 메뉴·이벤트 생성·대시보드 (`@smoke`)
-- **workflow-qa-live.spec.ts** — E-02·E-D1·E-03~E-10 serial (`@workflow`, config 필요)
+- **workflow-qa-live.spec.ts** — E-02·E-D1·E-05~E-10 serial (`@workflow`, config 필요)
 - **workflow-pool-live-delete.spec.ts** — 풀 `152-162` LIVE·삭제 (`@pool`, 생성자 gm01/dba01/gm02만)
 - **result-ui.spec.ts** — F-02·F-03 (`@result-ui`, 시드 데모 이력)
 - **helpers/auth.ts** — 공통 로그인
@@ -109,7 +109,7 @@ npm run seed-e2e-workflow:fresh
 cd ../front
 $env:E2E_INSTANCE_ID='163'
 $env:E2E_SLOW_MO='900'
-npx playwright test e2e/workflow-qa-live.spec.ts --project=workflow --headed --grep "E-03|E-04|E-05|E-06|E-07|E-08|E-09|E-10"
+npx playwright test e2e/workflow-qa-live.spec.ts --project=workflow --headed --grep "E-05|E-06|E-07|E-08|E-09|E-10"
 ```
 
 ### E2E 생성자·풀 (#152~162 · 출조낚시왕)
@@ -117,7 +117,7 @@ npx playwright test e2e/workflow-qa-live.spec.ts --project=workflow --headed --g
 - **생성자**: `gm01`, `dba01`, `gm02`만 (`helpers/e2eCreators.ts`)
 - **목록·지시 실행**: `e2e/HEADED-TEST-CATALOG.md` **§P** (P-152~P-162 체크리스트)
 - **일괄 자동 X** — 사용자 지시 후 해당 `E2E_INSTANCE_ID`만 실행
-- **삭제 제외** = 9단계(E-01~E-10: 생성→컨펌→DBA컨펌→QA요청/실행/확인→LIVE요청/실행→완료). 삭제(E-X3)·숨기기 제외 — `HEADED-TEST-CATALOG.md` §「삭제 제외」
+- **삭제 제외** = 7단계 인스턴스(E-01~E-02·E-D1·E-05~E-10: 생성→QA→LIVE) + 템플릿 T-01~T-02(시드 자동). 삭제(E-X3)·숨기기 제외 — `HEADED-TEST-CATALOG.md` §「삭제 제외」
 - **qa_requested부터**: `npm run test:e2e:pool:no-delete` (E-06~E-10만)
 
 ```powershell

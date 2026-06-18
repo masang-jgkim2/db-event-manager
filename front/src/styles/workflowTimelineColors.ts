@@ -8,13 +8,10 @@ import type { TEventStatus } from '../types';
 import { OBJ_CURSOR_TIMELINE } from './cursorSiteTokens';
 
 /** 이벤트 상태별 타임라인·스텝 아이콘 색 */
-export function fnStatusTimelineColor(strStatus: TEventStatus): string {
+export function fnStatusTimelineColor(strStatus: TEventStatus | string): string {
   switch (strStatus) {
     case 'event_created':
-    case 'confirm_requested':
       return OBJ_CURSOR_TIMELINE.thinking;
-    case 'dba_confirmed':
-      return OBJ_CURSOR_TIMELINE.read;
     case 'qa_requested':
     case 'qa_deployed':
       return OBJ_CURSOR_TIMELINE.grep;

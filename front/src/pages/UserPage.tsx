@@ -416,15 +416,13 @@ const UserPage = () => {
                   </>
                 )}
                 {bCanEdit && !bPending && (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    onClick={() => fnOpenEdit(objRecord)}
-                    title="사용자 수정"
-                  >
-                    수정
-                  </Button>
+                  <Tooltip title="사용자 수정">
+                    <Button
+                      type="text"
+                      icon={<EditOutlined />}
+                      onClick={() => fnOpenEdit(objRecord)}
+                    />
+                  </Tooltip>
                 )}
                 {bCanResetPassword && !bPending && (
                   <Button
@@ -445,7 +443,9 @@ const UserPage = () => {
                     okText="삭제"
                     cancelText="취소"
                   >
-                    <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                    <Tooltip title="삭제">
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Tooltip>
                   </Popconfirm>
                 )}
               </Space>
