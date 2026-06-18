@@ -8,9 +8,7 @@ export const fnInsertSeedUsers = async (): Promise<void> => {
     const pool = await fnGetSystemPool();
 
     const arrUserSeeds = [
-      { strUserId: 'admin', strPassword: await bcrypt.hash('admin123', 10), strDisplayName: '관리자',     arrRoles: ['admin'] },
-      { strUserId: 'gm01',  strPassword: await bcrypt.hash('gm123',    10), strDisplayName: 'GM_홍길동',  arrRoles: ['game_manager'] },
-      { strUserId: 'dba01', strPassword: await bcrypt.hash('dba123',   10), strDisplayName: 'DBA_김철수', arrRoles: ['dba'] },
+      { strUserId: 'admin', strPassword: await bcrypt.hash('admin123', 10), strDisplayName: '관리자', arrRoles: ['admin'] },
     ];
 
     for (const u of arrUserSeeds) {

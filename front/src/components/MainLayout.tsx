@@ -47,10 +47,11 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
 function fnResolveHeaderUserDisplay(
   strDisplayName: string | undefined,
   strUserId: string | undefined,
-  strRoleText: string,
+  strRoleCode: string,
 ) {
   const strHeaderDisplayName = strDisplayName?.trim() ?? '';
-  const strRoleNorm = strRoleText.trim();
+  const strRoleNorm = strRoleCode.trim();
+  // 표시명과 역할 한글 라벨이 같으면 태그를 숨기던 기존 동작 → 역할 코드는 항상 구분 가능
   const bShowRoleTag =
     Boolean(strRoleNorm) && strRoleNorm.toLowerCase() !== strHeaderDisplayName.toLowerCase();
   const strUserHoverHint =
@@ -233,13 +234,13 @@ const MainLayout = () => {
     if (fnHasPerm('product.view')) {
       arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' });
     }
+    // DB 접속 정보: 보기 권한 있어야 메뉴 노출 (쿼리 템플릿보다 먼저 — 접속 설정 후 템플릿)
+    if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
+      arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
+    }
     // 쿼리 템플릿: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('event_template.view')) {
       arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' });
-    }
-    // DB 접속 정보: 보기 권한 있어야 메뉴 노출
-    if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
-      arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
     }
 
     if (arrEventChildren.length > 0) {
@@ -339,13 +340,18 @@ const MainLayout = () => {
     },
   ];
 
-  // 첫 번째 역할을 대표로 표시
+  // 첫 번째 역할을 대표로 표시 (표시명은 로그인·토큰 검증 시 mapRoleDisplayNames 반영)
   const strFirstRole = arrRoles[0] || '';
-  const objRole = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
+  const strRoleDisplayName = user?.mapRoleDisplayNames?.[strFirstRole];
+  const objRoleFallback = objRoleLabel[strFirstRole] || { strText: strFirstRole, strColor: '#999' };
+  const objRole = {
+    strText: strRoleDisplayName ?? objRoleFallback.strText,
+    strColor: objRoleFallback.strColor,
+  };
 
   const { strHeaderDisplayName, bShowRoleTag, strUserHoverHint } = useMemo(
-    () => fnResolveHeaderUserDisplay(user?.strDisplayName, user?.strUserId, objRole.strText),
-    [user?.strDisplayName, user?.strUserId, objRole.strText],
+    () => fnResolveHeaderUserDisplay(user?.strDisplayName, user?.strUserId, strFirstRole),
+    [user?.strDisplayName, user?.strUserId, strFirstRole],
   );
 
   // 사이드 폭에 맞춰 로고 글자 크기 조절(좁게 당기면 자동으로 줄어듦)
@@ -508,7 +514,7 @@ const MainLayout = () => {
                   />
                 </Tooltip>
                 <Text strong>{strHeaderDisplayName || user?.strUserId}</Text>
-                {bShowRoleTag ? <Tag color={objRole.strColor}>{objRole.strText}</Tag> : null}
+                {bShowRoleTag ? <Tag color={objRole.strColor}>{strFirstRole}</Tag> : null}
               </Space>
             </Dropdown>
             {/* UI 설정 버튼 */}

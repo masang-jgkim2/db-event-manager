@@ -2,10 +2,8 @@
  * API 전체 테스트 — 헬스, 인증, 역할별 API 접근, 권한 추가/삭제에 따른 동작
  */
 import request from 'supertest';
-import bcrypt from 'bcryptjs';
 import app from '../app';
-import { arrUsers, fnInitUsers, fnSaveUsers } from '../data/users';
-import { arrUserRoles, fnSetRolesForUser, fnSaveUserRoles } from '../data/userRoles';
+import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
 import { arrRolePermissions, fnSetPermissionsForRole, fnGetPermissionsByRoleId } from '../data/rolePermissions';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
@@ -27,35 +25,7 @@ describe('API 전체 테스트', () => {
   let strDbaToken: string;
 
   beforeAll(async () => {
-    await fnInitUsers();
-    // 기획자(planner01) 시드 유저 — users.json에 3명만 있으면 추가 (전 역할 테스트용)
-    if (!arrUsers.some((u) => u.strUserId === 'planner01')) {
-      const nId = 4;
-      const strHash = await bcrypt.hash(OBJ_PASSWORDS.planner01, 10);
-      arrUsers.push({
-        nId,
-        strUserId: 'planner01',
-        strPassword: strHash,
-        strDisplayName: '기획자_이영희',
-        dtCreatedAt: new Date().toISOString(),
-      });
-      fnSaveUsers();
-      if (!arrUserRoles.some((r) => r.nUserId === nId && r.nRoleId === 4)) {
-        fnSetRolesForUser(nId, [4]);
-        fnSaveUserRoles();
-      }
-    }
-    // 테스트에서 사용할 비밀번호로 통일 (저장소 상태와 무관하게 동일 결과 보장)
-    const arrSeedPwds = [
-      { nId: 1, strPwd: OBJ_PASSWORDS.admin },
-      { nId: 2, strPwd: OBJ_PASSWORDS.gm01 },
-      { nId: 3, strPwd: OBJ_PASSWORDS.dba01 },
-      { nId: 4, strPwd: OBJ_PASSWORDS.planner01 },
-    ];
-    for (const { nId, strPwd } of arrSeedPwds) {
-      const u = arrUsers.find((x) => x.nId === nId);
-      if (u) u.strPassword = await bcrypt.hash(strPwd, 10);
-    }
+    await fnEnsureRoleTestUsers();
   });
 
   describe('헬스 체크', () => {
