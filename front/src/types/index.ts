@@ -238,6 +238,7 @@ export interface IUser {
   strStatus?: string;
   arrRoles: string[];           // 역할 코드 배열 (멀티 역할)
   arrPermissions: TPermission[];
+  mapRoleDisplayNames?: Record<string, string>; // 역할 코드 → 표시명 (헤더·태그용)
 }
 
 export interface ILoginRequest {
