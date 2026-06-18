@@ -46,8 +46,8 @@ export function fnBuildStoryMenuItems(objMg: TMenuGroupStyle): MenuProps['items'
       children: [
         { key: '/dashboard', icon: <DashboardOutlined />, label: '대시보드' },
         { key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' },
-        { key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' },
         { key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' },
+        { key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' },
       ],
     },
     {
