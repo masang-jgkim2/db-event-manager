@@ -6,6 +6,7 @@ import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { IDbConnection } from '../types';
 import type { IProduct } from '../data/products';
 import type { IEventTemplate, IQueryTemplateItem } from '../data/events';
+import { fnNormalizeEventTemplate } from '../data/events';
 import type {
   IEventInstance,
   IExecutionTarget,
@@ -13,6 +14,7 @@ import type {
   IStatusLog,
   TEventStatus,
 } from '../data/eventInstances';
+import { fnNormalizeEventInstance } from '../data/eventInstances';
 import type { IActivityLogRow } from '../data/activityLogs';
 import { fnEncryptDbConnPasswordForDisk } from '../services/dbConnectionPasswordCrypto';
 
@@ -212,8 +214,9 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     await conn.execute(
       `INSERT INTO event_template (
         n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+        str_status, json_status_logs, json_creator, json_confirmer
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         e.nId,
         e.nProductId,
@@ -228,6 +231,10 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         e.strCreatedBy?.trim() || null,
         nCreatorUserId,
         fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
+        e.strStatus ?? 'dba_confirmed',
+        JSON.stringify(e.arrStatusLogs ?? []),
+        e.objCreator ? JSON.stringify(e.objCreator) : null,
+        e.objConfirmer ? JSON.stringify(e.objConfirmer) : null,
       ],
     );
     const arrSets = e.arrQueryTemplates?.length ? e.arrQueryTemplates : [];
@@ -268,8 +275,9 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
       await conn.execute(
         `INSERT INTO event_template (
           n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-          str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+          str_status, json_status_logs, json_creator, json_confirmer
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           nTplId,
           inst.nProductId,
@@ -284,6 +292,10 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
           inst.strCreatedBy?.trim() || null,
           nStubCreatorId,
           fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
+          'dba_confirmed',
+          '[]',
+          null,
+          null,
         ],
       );
       setEventTemplateIds.add(nTplId);
@@ -690,7 +702,8 @@ export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConn
 export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate[]> => {
   const [trows] = await pool.query<RowDataPacket[]>(
     `SELECT n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-            str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at
+            str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+            str_status, json_status_logs, json_creator, json_confirmer
      FROM event_template ORDER BY n_id`,
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
@@ -710,7 +723,7 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
   return (trows as RowDataPacket[]).map((r) => {
     const nId = Number(r.n_id);
     const arrQueryTemplates = mapQ.get(nId);
-    return {
+    const objParsed = {
       nId,
       nProductId: Number(r.n_product_id),
       strProductName: String(r.str_product_name),
@@ -728,7 +741,37 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
         r.n_created_by_user_id != null && Number(r.n_created_by_user_id) > 0
           ? Number(r.n_created_by_user_id)
           : undefined,
+      strStatus: r.str_status != null ? String(r.str_status) : undefined,
+      arrStatusLogs: (() => {
+        try {
+          const raw = r.json_status_logs;
+          if (raw == null) return [];
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })(),
+      objCreator: (() => {
+        try {
+          const raw = r.json_creator;
+          if (raw == null) return null;
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch {
+          return null;
+        }
+      })(),
+      objConfirmer: (() => {
+        try {
+          const raw = r.json_confirmer;
+          if (raw == null) return null;
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch {
+          return null;
+        }
+      })(),
     };
+    return fnNormalizeEventTemplate(objParsed as IEventTemplate);
   });
 };
 
@@ -781,7 +824,7 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
       }
     }
     const row: IStatusLog = {
-      strStatus: String(r.str_status) as TEventStatus,
+      strStatus: String(r.str_status) as IStatusLog['strStatus'],
       strChangedBy: String(r.str_changed_by),
       nChangedByUserId: Number(r.n_changed_by_user_id),
       strComment: r.str_comment != null ? String(r.str_comment) : '',
@@ -847,7 +890,7 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
         ? new Date(r.dt_permanently_removed_at as string | Date).toISOString()
         : undefined,
     };
-  });
+  }).map(fnNormalizeEventInstance);
 };
 
 export const fnRelationalLoadUsers = async (pool: Pool): Promise<IUserRowJson[]> => {

@@ -4,8 +4,7 @@ import { fnGetUsersWithRoles } from '../data/users';
 
 /** 나의 대시보드 `my_action` 필터와 동일 — front `eventInstanceListFilter.ts` 와 맞출 것 */
 const OBJ_STATUS_ACTION_PERMISSIONS: Partial<Record<TEventStatus, readonly string[]>> = {
-  event_created: ['my_dashboard.request_confirm'],
-  confirm_requested: ['my_dashboard.confirm'],
+  event_created: ['my_dashboard.request_qa', 'my_dashboard.request_live'],
   qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
   qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq', 'my_dashboard.request_live'],
   live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],

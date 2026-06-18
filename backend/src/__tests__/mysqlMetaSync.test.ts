@@ -100,6 +100,8 @@ const fnBuildMinimalPayload = (): IRelationalImportPayload => {
         { nDbConnectionId: N_DB_CONN, strDefaultItems: '', strQueryTemplate: 'SELECT 1' },
       ],
       dtCreatedAt: strDt,
+      strStatus: 'dba_confirmed',
+      arrStatusLogs: [],
     },
   ];
   const arrEventInstances: IEventInstance[] = [

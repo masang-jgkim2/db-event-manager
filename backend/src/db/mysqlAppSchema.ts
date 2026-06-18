@@ -107,9 +107,14 @@ COMMENT='dbConnections.json'`,
   str_created_by      VARCHAR(200)  NULL COMMENT 'JSON strCreatedBy',
   n_created_by_user_id INT          NULL COMMENT 'JSON nCreatedByUserId',
   dt_created_at       DATETIME(6)   NOT NULL,
+  str_status          VARCHAR(32)   NOT NULL DEFAULT 'dba_confirmed' COMMENT 'template_created|confirm_requested|dba_confirmed',
+  json_status_logs    JSON          NOT NULL COMMENT 'ITemplateStatusLog[]',
+  json_creator        JSON          NULL COMMENT 'ITemplateStageActor objCreator',
+  json_confirmer      JSON          NULL COMMENT 'ITemplateStageActor objConfirmer',
   CONSTRAINT fk_event_template_product FOREIGN KEY (n_product_id) REFERENCES product(n_id) ON DELETE RESTRICT,
   CONSTRAINT fk_event_template_creator FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE SET NULL,
-  KEY idx_event_template_product (n_product_id)
+  KEY idx_event_template_product (n_product_id),
+  KEY idx_event_template_status (str_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='events.json 본문(세트 제외)'`,
 

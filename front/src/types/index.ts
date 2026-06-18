@@ -7,6 +7,7 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
+  | 'event_template.request_confirm' | 'event_template.confirm'
   | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
@@ -35,6 +36,8 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'event_template.edit': '쿼리 템플릿 수정',
   'event_template.delete': '쿼리 템플릿 삭제',
   'event_template.manage': '쿼리 템플릿 관리 (CRUD)',
+  'event_template.request_confirm': '템플릿 쿼리 리뷰 요청',
+  'event_template.confirm': '템플릿 DBA 리뷰 완료',
   'user.view': '사용자 조회',
   'user.create': '사용자 생성',
   'user.edit': '사용자 수정',
@@ -109,6 +112,8 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'event_template.create', label: '생성' },
     { value: 'event_template.edit', label: '수정' },
     { value: 'event_template.delete', label: '삭제' },
+    { value: 'event_template.request_confirm', label: '쿼리 리뷰 요청' },
+    { value: 'event_template.confirm', label: 'DBA 리뷰 완료' },
   ]},
   { groupLabel: 'DB 접속 정보', permissions: [
     { value: 'db_connection.view', label: '보기' },
@@ -191,7 +196,7 @@ export function fnFormatPermissionErrorMessage(strMessage: string): string {
 /** 레거시 권한 → 세분화 권한으로 확장 (역할 편집 폼 초기값용) */
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
-  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete', 'event_template.request_confirm', 'event_template.confirm'],
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
@@ -315,6 +320,24 @@ export interface IQueryTemplateItem {
   strQueryTemplate: string;
 }
 
+// 쿼리 템플릿 워크플로
+export type TTemplateStatus =
+  | 'template_created'
+  | 'confirm_requested'
+  | 'dba_confirmed';
+
+export const ARR_TEMPLATE_STATUSES: TTemplateStatus[] = [
+  'template_created',
+  'confirm_requested',
+  'dba_confirmed',
+];
+
+export const OBJ_TEMPLATE_STATUS_CONFIG: Record<TTemplateStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  template_created:   { strLabel: '템플릿 등록',   strTagVariant: 'muted' },
+  confirm_requested:  { strLabel: '쿼리 리뷰 요청', strTagVariant: 'tone3' },
+  dba_confirmed:      { strLabel: 'DBA 리뷰 완료', strTagVariant: 'tone4' },
+};
+
 // 쿼리 템플릿
 export interface IEventTemplate {
   nId: number;
@@ -331,6 +354,17 @@ export interface IEventTemplate {
   dtCreatedAt: string;
   strCreatedBy?: string;
   nCreatedByUserId?: number;
+  strStatus?: TTemplateStatus;
+  arrStatusLogs?: Array<{
+    strStatus: TTemplateStatus;
+    strChangedBy: string;
+    nChangedByUserId: number;
+    strComment?: string;
+    dtChangedAt: string;
+    objQueryEdit?: IQueryEditLog;
+  }>;
+  objCreator?: { strDisplayName: string; nUserId: number; strUserId: string; dtProcessedAt: string } | null;
+  objConfirmer?: { strDisplayName: string; nUserId: number; strUserId: string; dtProcessedAt: string } | null;
 }
 
 // =============================================
@@ -345,11 +379,9 @@ export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; str
   { value: 'live', label: 'LIVE', strTagVariant: 'tone9' },
 ];
 
-// 이벤트 상태 워크플로
+// 이벤트 상태 워크플로 (7단계)
 export type TEventStatus =
   | 'event_created'       // 운영자 이벤트 생성 (수정 가능)
-  | 'confirm_requested'   // 운영자 컨펌 요청 (수정 불가)
-  | 'dba_confirmed'       // DBA 컨펌 확인
   | 'qa_requested'        // 운영자 QA 반영 요청
   | 'qa_deployed'         // DBA QA 반영
   | 'qa_verified'         // 운영자 QA 확인
@@ -357,11 +389,14 @@ export type TEventStatus =
   | 'live_deployed'       // DBA LIVE 반영
   | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
+/** Phase 3 이전 인스턴스 상태 — 진행 이력 표시용 */
+export type TLegacyInstanceStatus = 'confirm_requested' | 'dba_confirmed';
+
+export type TInstanceStatusLogStatus = TEventStatus | TLegacyInstanceStatus;
+
 // 상태 라벨/색상 — 나의 대시보드 권한 이름과 동일 (작성 중→생성, 완료 유지)
 export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
   event_created:      { strLabel: '생성',            strTagVariant: 'muted' },
-  confirm_requested:  { strLabel: '컨펌 요청',       strTagVariant: 'tone3' },
-  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strTagVariant: 'tone4' },
   qa_requested:       { strLabel: 'QA 반영 요청',   strTagVariant: 'tone5' },
   qa_deployed:        { strLabel: 'QA 반영 실행',    strTagVariant: 'tone6' },
   qa_verified:        { strLabel: 'QA 확인',        strTagVariant: 'tone7' },
@@ -370,12 +405,30 @@ export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strTagV
   live_verified:      { strLabel: '완료',            strTagVariant: 'success' },
 };
 
+/** 레거시 인스턴스 상태 라벨 (이력·알림 표시) */
+export const OBJ_LEGACY_INSTANCE_STATUS_CONFIG: Record<TLegacyInstanceStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  confirm_requested:  { strLabel: '컨펌 요청',       strTagVariant: 'tone3' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strTagVariant: 'tone4' },
+};
+
+export const fnGetInstanceStatusConfig = (
+  strStatus: string,
+): { strLabel: string; strTagVariant: TTagVariant } | undefined => {
+  if (strStatus in OBJ_STATUS_CONFIG) {
+    return OBJ_STATUS_CONFIG[strStatus as TEventStatus];
+  }
+  if (strStatus in OBJ_LEGACY_INSTANCE_STATUS_CONFIG) {
+    return OBJ_LEGACY_INSTANCE_STATUS_CONFIG[strStatus as TLegacyInstanceStatus];
+  }
+  return undefined;
+};
+
 // 프로세스 진행에 따른 현재 환경 (QA / LIVE / DEV 중 하나만 표시)
 export type TDisplayEnv = 'DEV' | 'QA' | 'LIVE';
 export const fnGetDisplayEnv = (strStatus: TEventStatus): TDisplayEnv | null => {
   if (strStatus.startsWith('live_')) return 'LIVE';
   if (strStatus.startsWith('qa_')) return 'QA';
-  if (strStatus === 'event_created' || strStatus === 'confirm_requested' || strStatus === 'dba_confirmed') return 'DEV';
+  if (strStatus === 'event_created') return 'DEV';
   return null;
 };
 
@@ -449,7 +502,7 @@ export interface IQueryEditLog {
 
 // 상태 변경 이력
 export interface IStatusLog {
-  strStatus: TEventStatus;
+  strStatus: TInstanceStatusLogStatus;
   strChangedBy: string;
   nChangedByUserId: number;
   strComment: string;

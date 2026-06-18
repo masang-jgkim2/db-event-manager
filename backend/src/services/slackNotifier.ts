@@ -9,8 +9,6 @@ import {
 
 const OBJ_STATUS_LABEL: Record<TEventStatus, string> = {
   event_created: '생성',
-  confirm_requested: '컨펌 요청',
-  dba_confirmed: 'DBA 컨펌 완료',
   qa_requested: 'QA 반영 요청',
   qa_deployed: 'QA 반영 실행',
   qa_verified: 'QA 확인',

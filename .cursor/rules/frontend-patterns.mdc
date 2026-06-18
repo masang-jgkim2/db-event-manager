@@ -51,7 +51,7 @@ const bCanCreate = fnHas('product.create') || fnHas('product.manage');
 // 테이블 관리 컬럼: bCanEdit || bCanDelete 일 때만 컬럼 추가, 버튼은 각 권한별
 ```
 
-- **나의 대시보드**: 상세 → `my_dashboard.detail`, 수정 → `my_dashboard.edit`, 컨펌 요청 → `my_dashboard.request_confirm`, 숨김/복원 → `my_dashboard.hide`, **삭제**(복원 불가) → `my_dashboard.delete_instance`(표시명만; 레거시 `my_dashboard.delete`는 로그인 시 확장) (각각 있을 때만 버튼 노출).
+- **나의 대시보드**: 상세 → `my_dashboard.detail`, 수정(`event_created`만) → `my_dashboard.edit`, QA/LIVE 요청·실행·확인 → `my_dashboard.request_*` / `execute_*` / `verify_*`, DBA 쿼리 수정 → `my_dashboard.query_edit`, 숨김/복원 → `my_dashboard.hide`, **삭제** → `my_dashboard.delete_any`/`instance.delete_own`. 템플릿 리뷰·승인은 `EventPage`(`event_template.*`).
 
 ## Zustand 스토어 패턴
 
@@ -140,6 +140,8 @@ export const fnApiGetProducts = () => apiClient.get('/products');
 | 이벤트 | 대시보드, 프로덕트, DB 접속 정보, 쿼리 템플릿 | dashboard.view, product.view, db_connection.view 또는 db.manage, event_template.view |
 | 사용자 | 사용자, 역할 권한, 활동 | user.view, role.view, activity.view |
 | 운영 | 나의 대시보드, 이벤트 생성 | (인증만), instance.view 또는 instance.create |
+
+- **QueryPage (D1)**: 템플릿 Select·제출은 `dba_confirmed`만. 리뷰 대기 건은 `EventPage` 안내 Alert. `event_template.view`로 목록은 보되 생성 불가.
 
 ## 브라우저 E2E (Playwright)
 

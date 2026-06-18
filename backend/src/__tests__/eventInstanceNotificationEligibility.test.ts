@@ -1,4 +1,4 @@
-import type { IEventInstance } from '../data/eventInstances';
+import type { IEventInstance, TEventStatus } from '../data/eventInstances';
 import {
   fnIsEventInstanceInvolved,
   fnIsEventInstanceMyAction,
@@ -21,7 +21,7 @@ const fnMakeInstance = (objPartial: Partial<IEventInstance>): IEventInstance => 
   strGeneratedQuery: '',
   dtDeployDate: new Date().toISOString(),
   arrDeployScope: ['qa', 'live'],
-  strStatus: 'confirm_requested',
+  strStatus: 'qa_requested',
   arrStatusLogs: [],
   objCreator: { nUserId: 2, strUserId: 'gm01', strDisplayName: 'GM', dtProcessedAt: new Date().toISOString() },
   objConfirmer: null,
@@ -44,10 +44,10 @@ describe('eventInstanceNotificationEligibility', () => {
     expect(fnShouldNotifyEventInstanceProgress(objInstance, 2, [])).toBe(true);
   });
 
-  it('DBA confirm 권한은 confirm_requested 에서 my_action', () => {
-    const objInstance = fnMakeInstance({ strStatus: 'confirm_requested' });
-    expect(fnIsEventInstanceMyAction(objInstance, ['my_dashboard.confirm'])).toBe(true);
-    expect(fnShouldNotifyEventInstanceProgress(objInstance, 3, ['my_dashboard.confirm'])).toBe(true);
+  it('DBA execute_qa 권한은 qa_requested 에서 my_action', () => {
+    const objInstance = fnMakeInstance({ strStatus: 'qa_requested' });
+    expect(fnIsEventInstanceMyAction(objInstance, ['my_dashboard.execute_qa'])).toBe(true);
+    expect(fnShouldNotifyEventInstanceProgress(objInstance, 3, ['my_dashboard.execute_qa'])).toBe(true);
   });
 
   it('무관한 사용자·권한은 제외', () => {

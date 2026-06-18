@@ -474,9 +474,9 @@ const DbConnectionPage = () => {
             render: (_: unknown, r: IDbConnection) => (
               <Space onClick={(e) => e.stopPropagation()}>
                 {bCanEdit && (
-                  <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-                    수정
-                  </Button>
+                  <Tooltip title="수정">
+                    <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(r)} />
+                  </Tooltip>
                 )}
                 {bCanDelete && (
                   <Popconfirm
@@ -485,7 +485,9 @@ const DbConnectionPage = () => {
                     okText="삭제"
                     cancelText="취소"
                   >
-                    <Button size="small" danger icon={<DeleteOutlined />} />
+                    <Tooltip title="삭제">
+                      <Button type="text" danger icon={<DeleteOutlined />} />
+                    </Tooltip>
                   </Popconfirm>
                 )}
               </Space>

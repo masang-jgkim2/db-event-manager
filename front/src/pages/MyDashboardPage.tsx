@@ -10,7 +10,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
-  SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
+  SyncOutlined, CheckCircleOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
@@ -32,7 +32,7 @@ import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission,
 } from '../types';
-import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage, fnGetInstanceStatusConfig } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
@@ -606,9 +606,7 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
 
   // OBJ_STATUS_CONFIG 기준으로 라벨 사용 (간소화 표시 일원화)
   const arrSteps: { strStatus: TEventStatus; strLabel: string; strSubLabel: string }[] = [
-    { strStatus: 'event_created',     strLabel: OBJ_STATUS_CONFIG.event_created.strLabel,     strSubLabel: '' },
-    { strStatus: 'confirm_requested', strLabel: OBJ_STATUS_CONFIG.confirm_requested.strLabel, strSubLabel: '' },
-    { strStatus: 'dba_confirmed',     strLabel: OBJ_STATUS_CONFIG.dba_confirmed.strLabel,     strSubLabel: '' },
+    { strStatus: 'event_created', strLabel: OBJ_STATUS_CONFIG.event_created.strLabel, strSubLabel: '' },
   ];
 
   if (bHasQa) {
@@ -1124,8 +1122,7 @@ const MyDashboardPage = () => {
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
   // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
   const OBJ_ACTION_PERMISSIONS: Partial<Record<TEventStatus, TPermission[]>> = {
-    event_created: ['my_dashboard.request_confirm'],
-    confirm_requested: ['my_dashboard.confirm'],
+    event_created: ['my_dashboard.request_qa', 'my_dashboard.request_live'],
     qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
     qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq', 'my_dashboard.request_live'],
     live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],
@@ -1184,7 +1181,7 @@ const MyDashboardPage = () => {
     }
 
     // 쿼리 수정 — my_dashboard.query_edit 권한만 사용
-    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
+    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['qa_requested', 'live_requested'];
     if (fnHasPermission('my_dashboard.query_edit') && ARR_QUERY_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
@@ -1195,45 +1192,18 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 생성(event_created): 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
+    // 생성(event_created): 수정 + QA/LIVE 요청
     const bCanEdit = fnHasPermission('my_dashboard.edit');
-    const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm');
-    if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
-      if (bCanEdit) {
-        arrButtons.push(
-          <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
-        );
-      }
-      if (bCanRequestConfirm) {
-        arrButtons.push(
-          <PopconfirmWithSkip
-            key="req-confirm"
-            actionKey="confirm_requested"
-            title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다."
-            okText="요청"
-            cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}
-          >
-            <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
-          </PopconfirmWithSkip>
-        );
-      }
-    }
-
-    // DBA 컨펌 — my_dashboard.confirm 권한만 사용
-    if (r.strStatus === 'confirm_requested' && fnHasPermission('my_dashboard.confirm')) {
+    if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && bCanEdit) {
       arrButtons.push(
-        <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
-          <Button size="small" type="primary" icon={<SafetyCertificateOutlined />}>컨펌</Button>
-        </Popconfirm>
+        <Tooltip key="edit" title="수정">
+          <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)} />
+        </Tooltip>,
       );
     }
 
-    // dba_confirmed 이후 → 쿼리 실행 대상에 따라 QA 요청 또는 LIVE 요청 (단일 권한)
-    if (r.strStatus === 'dba_confirmed') {
+    if (r.strStatus === 'event_created') {
       if (bHasQa && fnHasPermission('my_dashboard.request_qa')) {
-        // QA 포함: QA 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="qa-req"
@@ -1247,7 +1217,6 @@ const MyDashboardPage = () => {
           </PopconfirmWithSkip>
         );
       } else if (!bHasQa && bHasLive && fnHasPermission('my_dashboard.request_live')) {
-        // LIVE만(단일 서버): QA 스킵 → LIVE 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="live-req-skip"
@@ -2038,7 +2007,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 children: (
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
-                    <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
+                    {objDetail.objConfirmer && (
+                      <ActorTag objActor={objDetail.objConfirmer} strLabel="DBA 컨펌 (레거시)" />
+                    )}
                     <ActorTag objActor={objDetail.objQaRequester} strLabel="QA 쿼리 실행 요청자" />
                     <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA 쿼리 실행자" />
                     <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
@@ -2131,7 +2102,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         <div>
                           <Space size={4} wrap>
                             {fnRenderStatusIcon(log.strStatus as TEventStatus, 12, strTimelineColor)}
-                            <DqpmTag tone={OBJ_STATUS_CONFIG[log.strStatus]?.strTagVariant}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</DqpmTag>
+                            <DqpmTag tone={fnGetInstanceStatusConfig(log.strStatus)?.strTagVariant}>{fnGetInstanceStatusConfig(log.strStatus)?.strLabel}</DqpmTag>
                             {bPermanentDeleteLog && (
                               <DqpmTag color="red">삭제</DqpmTag>
                             )}
@@ -2218,7 +2189,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
       {/* 수정 모달 */}
       <Modal
-        title="이벤트 수정 (컨펌 요청 전)"
+        title="이벤트 수정"
         open={bEditOpen}
         onOk={fnSaveEdit}
         onCancel={() => setBEditOpen(false)}
@@ -2253,7 +2224,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               <Space style={{ marginBottom: 4 }}>
                 <Text strong>반영 범위</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
-                  <DqpmTag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</DqpmTag>
+                  <DqpmTag color="warning" style={{ fontSize: 11 }}>생성 단계에서만 수정 가능</DqpmTag>
                 )}
               </Space>
               <div style={{ marginTop: 4 }}>

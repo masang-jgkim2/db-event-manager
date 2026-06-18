@@ -49,7 +49,8 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 ## 핵심 도메인
 
-- **이벤트 인스턴스**: 9단계 워크플로 (event_created → … → live_verified). **재요청** 전이: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
+- **쿼리 템플릿**: 3단계 (`template_created` → `confirm_requested` → `dba_confirmed`). **D1**: `dba_confirmed`만 `QueryPage`·`POST /api/event-instances` 허용. 전이 `PATCH /api/events/:id/status`. **D2**: 승인 후 `PUT /api/events/:id`로 쿼리·세트 변경 시 `confirm_requested` 자동 전이. 리뷰 대기 중 DBA 쿼리 수정은 `PUT /api/events/:id/query` + `objQueryEdit` 로그 (`EventPage`).
+- **이벤트 인스턴스**: **7단계** (`event_created` → qa_* → live_* → `live_verified`). 템플릿 컨펌은 인스턴스에 없음(D7: 레거시 confirm/dba → `event_created`). **재요청**: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
 - **쿼리 실행**: QA/LIVE는 `fnResolveExecuteConnection`(단일·다중 세트 동일). 실패 시 상태 유지 + `arrStatusLogs`에 오류·접속 요약 기록; 성공 이력에 선택 `strConnectionSummary`.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
 - **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸.
@@ -62,7 +63,7 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 - **브라우저 E2E (에이전트)**: `.cursor/skills/browser-e2e/SKILL.md` · 규칙 `browser-e2e-smoke.mdc`
   - **smoke** (`npm run test:e2e:smoke`): auth·navigation·products·register-*·`navigation-dba01-non-ops`·`navigation-gm01`(gm01)·`my-dashboard-dba`
-  - **workflow** (`npm run test:e2e:workflow`): `e2e/workflow-qa-live.spec.ts` only — E-02·E-D1·E-03~E-10 `describe.serial` (gm01+dba01 §I)
+  - **workflow** (`npm run test:e2e:workflow`): `e2e/workflow-qa-live.spec.ts` only — E-02·E-D1·E-05~E-10 `describe.serial` (gm01+dba01 §I; 템플릿 승인은 시드·EventPage)
   - **시드**: `backend` — `reset-e2e-passwords`, `seed-e2e-workflow:fresh`, `seed-e2e-result-ui`(F-02/F-03 데모 이력) → `e2e-workflow-config.json`
   - **headed probe**: `front/scripts/probe-gm01-dba01-headed-full.mjs` (`DQPM_FRESH=1`, `DQPM_HEADED=1`), 공통 `probe-workflow-lib.mjs`
   - **카탈로그**: `front/e2e/HEADED-TEST-CATALOG.md` · `front/e2e/README.md`
@@ -75,7 +76,8 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 ```
 backend/src/
   controllers/eventInstanceController.ts  # 워크플로·재요청 전이 + 실행 로직
-  controllers/eventController.ts          # 쿼리 템플릿 CRUD·삭제 시 참조 검사·MySQL flush
+  controllers/eventController.ts          # 쿼리 템플릿 CRUD·PATCH status·PUT /query(DBA)·D2 재승인·삭제 시 참조 검사
+  data/events.ts                          # fnNormalizeEventTemplate·fnIsTemplateReadyForInstance (D1)
   services/queryExecutor.ts               # SQL 파싱 + 트랜잭션 실행
   services/sseBroadcaster.ts              # SSE 클라이언트 관리 + `user_presence` 브로드캐스트
   services/userPresence.ts                # 접속 터치·fnMarkUserOffline·스윕·스냅샷
@@ -144,16 +146,16 @@ front/src/
 | 도메인 | 보기 | 생성/수정/삭제/기타 |
 |--------|------|---------------------|
 | 프로덕트 | product.view | product.create / edit / delete |
-| 쿼리 템플릿 | event_template.view | event_template.create / edit / delete |
+| 쿼리 템플릿 | event_template.view | event_template.create / edit / delete / **request_confirm** / **confirm** |
 | DB 접속 | db_connection.view(목록·「연결」열) | create / edit / delete / test(연결 테스트 API·자동 점검; `db.manage` 시 전부) |
 | 사용자 | user.view | user.create / edit / delete / reset_password / **approve**(가입 승인·거절) |
 | 역할 | role.view | role.create / edit / delete / edit_permissions |
 | 활동 | activity.view (`GET /api/activity/logs` 등) | activity.clear (`DELETE /api/activity/logs` 전체 삭제) |
-| 나의 대시보드 | my_dashboard.view(보기) | detail, edit, request_confirm, query_edit, confirm, request/execute/verify QA·LIVE, hide, **delete_any**(타인 이벤트 영구 삭제) 등 |
+| 나의 대시보드 | my_dashboard.view(보기) | detail, edit, query_edit, request/execute/verify QA·LIVE, hide, **delete_any** 등 (레거시 `request_confirm`/`confirm` → `event_template.*` expand) |
 | 이벤트 생성 | instance.view | instance.create, **delete_own**(본인 작성 이벤트만 영구 삭제) |
 
-- **나의 대시보드**: 삭제는 `my_dashboard.delete_any`(타인 포함) 또는 `instance.delete_own`+본인 작성 건만. 레거시 `my_dashboard.delete`/`delete_instance`는 로그인 시 `delete_any`로 확장. 서버 `bPermanentlyRemoved`·복원 없음. `instance.create`는 이벤트 수정/컨펌을 자동 부여하지 않음.
-- **이벤트 생성 페이지**: 진입은 `instance.view` 또는 `instance.create`; 제출 버튼은 `instance.create`만.
+- **나의 대시보드**: 삭제는 `my_dashboard.delete_any`(타인 포함) 또는 `instance.delete_own`+본인 작성 건만. 레거시 `my_dashboard.delete`/`delete_instance`는 로그인 시 `delete_any`로 확장. 서버 `bPermanentlyRemoved`·복원 없음. `instance.create`는 이벤트 수정을 자동 부여하지 않음. 인스턴스 컨펌 단계 없음 — 템플릿 승인은 `EventPage`.
+- **이벤트 생성 페이지**: 진입 `instance.view`|`instance.create`; 제출 `instance.create`만. 템플릿 선택·제출은 **`dba_confirmed`만** (미승인 건은 쿼리 템플릿 메뉴에서 리뷰·승인).
 
 ## 반영 날짜 검증 규칙
 
