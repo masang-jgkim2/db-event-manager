@@ -342,17 +342,28 @@ const fnBuildQueryResultCollapseItems = (
   }));
 };
 
+/** 다중 세트 실행 실패 시 오류 메시지에서 실패한 세트 번호(1-based) 추출 */
+const fnParseFailedSetIndex = (strError?: string): number | null => {
+  const m = strError?.match(/쿼리 세트\s*(\d+)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 // 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
   objResult,
   strEnv,
+  arrExecutionTargets,
   onClose,
   messageApi,
 }: {
   bOpen: boolean;
   objResult: IQueryExecutionResult | null;
   strEnv: 'qa' | 'live';
+  /** 다중 세트 실패 시 DBA 쿼리 수정 모달과 동일한 탭 UI */
+  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
   onClose: () => void;
   /** useMessage() 인스턴스 — 모달 위에 토스트가 뜨도록 필수 */
   messageApi: TMessageLike;
@@ -370,6 +381,61 @@ const ExecutionResultModal = ({
     maxHeight: 220,
     overflow: 'auto',
   });
+
+  const bMultiSetFail = !objResult.bSuccess && (arrExecutionTargets?.length ?? 0) > 0;
+  const nFailedSetIndex = fnParseFailedSetIndex(objResult.strError);
+
+  const fnRenderReadonlySqlBlock = (strQuery: string, objExtraStyle?: React.CSSProperties) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+        <Button
+          type="default"
+          htmlType="button"
+          size="small"
+          icon={<CopyOutlined />}
+          onClick={() => fnCopySql(strQuery)}
+        >
+          복사
+        </Button>
+      </div>
+      <SqlLineNumberArea
+        strValue={strQuery}
+        bReadOnly
+        nFontSize={13}
+        nMinRows={10}
+        nMaxRows={25}
+        objStyle={objExtraStyle}
+      />
+    </div>
+  );
+
+  const nodeAttemptedQuerySetTabs = bMultiSetFail ? (
+    <Tabs
+      type="card"
+      items={arrExecutionTargets!.map((t, idx) => {
+        const nSetNo = idx + 1;
+        const bFailed = nFailedSetIndex === nSetNo;
+        return {
+          key: String(idx),
+          label: (
+            <Space size={6}>
+              <span>{`쿼리 세트 ${nSetNo}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`}</span>
+              {bFailed ? <DqpmTag color="red">실패</DqpmTag> : null}
+            </Space>
+          ),
+          children: (
+            <Space direction="vertical" style={{ width: '100%' }} size={4}>
+              <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
+              {fnRenderReadonlySqlBlock(
+                t.strQuery,
+                bFailed ? { border: `1px solid ${fnSemanticColor('error', token)}` } : undefined,
+              )}
+            </Space>
+          ),
+        };
+      })}
+    />
+  ) : null;
 
   return (
     <Modal
@@ -511,34 +577,21 @@ const ExecutionResultModal = ({
                   </Space>
                 ),
               },
-              ...(objResult.strExecutedQuery
+              ...(!bMultiSetFail && objResult.strExecutedQuery
                 ? [{
                     key: 'attempted-query',
                     label: '실행 시도 쿼리',
                     children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size={4}>
                         <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
-                        <div style={{ textAlign: 'right' }}>
-                          <Button
-                            type="default"
-                            htmlType="button"
-                            size="small"
-                            icon={<CopyOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              fnCopySql(objResult.strExecutedQuery);
-                            }}
-                          >
-                            복사
-                          </Button>
-                        </div>
-                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                        {fnRenderReadonlySqlBlock(objResult.strExecutedQuery)}
                       </Space>
                     ),
                   }]
                 : []),
             ]}
           />
+          {nodeAttemptedQuerySetTabs}
         </Space>
       )}
     </Modal>
@@ -684,6 +737,10 @@ const MyDashboardPage = () => {
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
+  /** 실행 실패 모달 — 다중 세트 탭용 (DBA 쿼리 수정과 동일 레이아웃) */
+  const [arrExecModalTargets, setArrExecModalTargets] = useState<
+    Array<{ nDbConnectionId: number; strQuery: string }> | undefined
+  >(undefined);
   // QA/LIVE 확인 팝업 — 팝업 안에 취소 / 확인 / 재요청 버튼
   const [objConfirmModal, setObjConfirmModal] = useState<{ nId: number; strType: 'qa' | 'live' } | null>(null);
 
@@ -890,6 +947,9 @@ const MyDashboardPage = () => {
     setNDisplayPercent(0);
     refExecProgress.current = { completed: 0, total: Math.max(1, nTotal) };
     setStrExecEnv(strEnv);
+    setArrExecModalTargets(
+      r.arrExecutionTargets?.length ? r.arrExecutionTargets.map((t) => ({ ...t })) : undefined,
+    );
     type TExecResult = {
       bSuccess: boolean;
       strMessage?: string;
@@ -2409,7 +2469,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         bOpen={bExecResultOpen}
         objResult={objExecResult}
         strEnv={strExecEnv}
-        onClose={() => setBExecResultOpen(false)}
+        arrExecutionTargets={arrExecModalTargets}
+        onClose={() => {
+          setBExecResultOpen(false);
+          setArrExecModalTargets(undefined);
+        }}
         messageApi={messageApi}
       />
 
