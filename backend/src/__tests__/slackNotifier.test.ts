@@ -101,7 +101,7 @@ describe('slackNotifier', () => {
     } = await import('../services/slackNotifier');
     expect(fnShouldNotifySlackDbaChannel('qa_requested')).toBe(true);
     expect(fnShouldNotifySlackDbaChannel('live_requested')).toBe(true);
-    expect(fnShouldNotifySlackDbaChannel('confirm_requested')).toBe(false);
+    expect(fnShouldNotifySlackDbaChannel('event_created')).toBe(false);
     expect(fnShouldNotifySlackDbaChannel('qa_deployed')).toBe(false);
 
     expect(fnShouldNotifySlackProductChannel('qa_deployed')).toBe(true);

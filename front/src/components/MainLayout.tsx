@@ -234,13 +234,13 @@ const MainLayout = () => {
     if (fnHasPerm('product.view')) {
       arrEventChildren.push({ key: '/products', icon: <AppstoreOutlined />, label: '프로덕트' });
     }
+    // DB 접속 정보: 보기 권한 있어야 메뉴 노출 (쿼리 템플릿보다 먼저 — 접속 설정 후 템플릿)
+    if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
+      arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
+    }
     // 쿼리 템플릿: 보기 권한 있어야 메뉴 노출
     if (fnHasPerm('event_template.view')) {
       arrEventChildren.push({ key: '/events', icon: <CalendarOutlined />, label: '쿼리 템플릿' });
-    }
-    // DB 접속 정보: 보기 권한 있어야 메뉴 노출
-    if (fnHasPerm('db_connection.view') || fnHasPerm('db.manage')) {
-      arrEventChildren.push({ key: '/db-connections', icon: <DatabaseOutlined />, label: 'DB 접속 정보' });
     }
 
     if (arrEventChildren.length > 0) {

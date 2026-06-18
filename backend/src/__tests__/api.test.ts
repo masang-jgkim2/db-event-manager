@@ -781,6 +781,105 @@ describe('API 전체 테스트', () => {
       nEventTemplateId = res.body.objEvent.nId;
     });
 
+    it('다중 세트 템플릿 DBA 승인 (confirm_requested → dba_confirmed)', async () => {
+      const resReq = await request(app)
+        .patch(`/api/events/${nEventTemplateId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'confirm_requested' });
+      expect(resReq.status).toBe(200);
+      const resConf = await request(app)
+        .patch(`/api/events/${nEventTemplateId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'dba_confirmed' });
+      expect(resConf.status).toBe(200);
+      expect(resConf.body.objEvent?.strStatus).toBe('dba_confirmed');
+    });
+
+    it('D2: dba_confirmed 템플릿 쿼리 변경 → confirm_requested 재승인', async () => {
+      const res = await request(app)
+        .put(`/api/events/${nEventTemplateId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          arrQueryTemplates: [
+            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1Changed, {{items}} AS Items;' },
+            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+          ],
+          strQueryTemplate: '',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.bReapprovalRequired).toBe(true);
+      expect(res.body.objEvent?.strStatus).toBe('confirm_requested');
+      const arrLogs = res.body.objEvent?.arrStatusLogs ?? [];
+      expect(arrLogs.some((l: { strComment?: string }) => l.strComment?.includes('재승인'))).toBe(true);
+
+      // 재승인 후 다시 DBA 승인 (이후 인스턴스 생성 테스트용)
+      await request(app)
+        .patch(`/api/events/${nEventTemplateId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'dba_confirmed' });
+    });
+
+    it('confirm_requested 중 PUT /api/events/:id 쿼리 변경 → 400', async () => {
+      const resCreate = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId,
+          strEventLabel: '리뷰 중 쿼리 잠금 테스트',
+          strDescription: '',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strQueryTemplate: 'SELECT {{items}};',
+          arrQueryTemplates: [],
+        });
+      const nTplId = resCreate.body.objEvent?.nId;
+      await request(app)
+        .patch(`/api/events/${nTplId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'confirm_requested' });
+
+      const resBlock = await request(app)
+        .put(`/api/events/${nTplId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strQueryTemplate: 'SELECT 2 AS Changed;' });
+      expect(resBlock.status).toBe(400);
+      expect(resBlock.body.strMessage).toMatch(/쿼리 리뷰 대기/);
+    });
+
+    it('confirm_requested 중 PUT /api/events/:id/query → objQueryEdit 로그', async () => {
+      const resCreate = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId,
+          strEventLabel: 'DBA 쿼리 수정 테스트',
+          strDescription: '',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strQueryTemplate: 'SELECT {{items}} AS Before;',
+          arrQueryTemplates: [],
+        });
+      const nTplId = resCreate.body.objEvent?.nId;
+      await request(app)
+        .patch(`/api/events/${nTplId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'confirm_requested' });
+
+      const resEdit = await request(app)
+        .put(`/api/events/${nTplId}/query`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strQueryTemplate: 'SELECT {{items}} AS After;' });
+      expect(resEdit.status).toBe(200);
+      expect(resEdit.body.objEvent?.strStatus).toBe('confirm_requested');
+      const arrLogs = resEdit.body.objEvent?.arrStatusLogs ?? [];
+      const objLast = arrLogs[arrLogs.length - 1];
+      expect(objLast?.strComment).toBe('DBA 쿼리 리뷰 중 수정');
+      expect(objLast?.objQueryEdit?.strBefore).toContain('Before');
+      expect(objLast?.objQueryEdit?.strAfter).toContain('After');
+    });
+
     it('다중 세트로 이벤트 인스턴스 생성 (arrExecutionTargets 2건)', async () => {
       const dtDeploy = new Date(Date.now() + 86400000).toISOString();
       const res = await request(app)
@@ -823,22 +922,13 @@ describe('API 전체 테스트', () => {
       expect(res.body.objInstance?.arrExecutionTargets?.[1]?.strQuery).toContain('Set2');
     });
 
-    it('이벤트 진행: 컨펌 요청 (confirm_requested)', async () => {
+    it('이벤트 진행: QA 실행 요청 (event_created → qa_requested)', async () => {
       const res = await request(app)
         .patch(`/api/event-instances/${nInstanceId}/status`)
         .set('Authorization', `Bearer ${strGmToken}`)
-        .send({ strNextStatus: 'confirm_requested', strComment: '다중세트 E2E 컨펌 요청' });
-      expect([200, 400]).toContain(res.status);
-      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('confirm_requested');
-    });
-
-    it('DBA 컨펌 (dba_confirmed)', async () => {
-      const res = await request(app)
-        .patch(`/api/event-instances/${nInstanceId}/status`)
-        .set('Authorization', `Bearer ${strDbaToken}`)
-        .send({ strNextStatus: 'dba_confirmed', strComment: '다중세트 E2E DBA 컨펌' });
-      expect([200, 400]).toContain(res.status);
-      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('dba_confirmed');
+        .send({ strNextStatus: 'qa_requested', strComment: '다중세트 E2E QA 요청' });
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.strStatus).toBe('qa_requested');
     });
   });
 
@@ -1062,6 +1152,46 @@ describe('API 전체 테스트', () => {
       nInstanceId = res.body.objInstance.nId;
     });
 
+    it('D1: DBA 리뷰 미완료(template_created) 템플릿으로 POST /api/event-instances → 400', async () => {
+      const createTpl = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId,
+          strEventLabel: 'D1차단테스트',
+          strDescription: 'D1',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strDefaultItems: '',
+          strQueryTemplate: 'SELECT 1;',
+        });
+      expect(createTpl.status).toBe(200);
+      expect(createTpl.body.objEvent?.strStatus).toBe('template_created');
+
+      const res = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({
+          nEventTemplateId: createTpl.body.objEvent.nId,
+          nProductId,
+          strEventLabel: 'D1차단테스트',
+          strProductName: '테스트프로덕트',
+          strServiceAbbr: 'T',
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] D1 차단 테스트',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa'],
+          strCreatedBy: 'GM테스트',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.strMessage).toMatch(/DBA 리뷰/);
+    });
+
     it('PUT /api/event-instances/:id (event_created 수정) → 200', async () => {
       const res = await request(app)
         .put(`/api/event-instances/${nInstanceId}`)
@@ -1116,24 +1246,23 @@ describe('API 전체 테스트', () => {
       expect(res.body.objInstance?.nId).toBe(nInstanceId);
     });
 
-    it('PATCH /api/event-instances/:id/status (confirm_requested, GM) → 200', async () => {
+    it('PATCH /api/event-instances/:id/status (qa_requested, GM) → 200', async () => {
       if (!nInstanceId) return;
       const res = await request(app)
         .patch(`/api/event-instances/${nInstanceId}/status`)
         .set('Authorization', `Bearer ${strGmToken}`)
-        .send({ strNextStatus: 'confirm_requested', strComment: '컨펌 요청' });
-      expect([200, 400]).toContain(res.status);
-      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('confirm_requested');
+        .send({ strNextStatus: 'qa_requested', strComment: 'QA 실행 요청' });
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.strStatus).toBe('qa_requested');
     });
 
-    it('PATCH /api/event-instances/:id/status (dba_confirmed, DBA) → 200', async () => {
+    it('PATCH /api/event-instances/:id/status (confirm_requested 레거시) → 400', async () => {
       if (!nInstanceId) return;
       const res = await request(app)
         .patch(`/api/event-instances/${nInstanceId}/status`)
-        .set('Authorization', `Bearer ${strDbaToken}`)
-        .send({ strNextStatus: 'dba_confirmed', strComment: 'DBA 컨펌' });
-      expect([200, 400]).toContain(res.status);
-      if (res.status === 200) expect(res.body.objInstance?.strStatus).toBe('dba_confirmed');
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({ strNextStatus: 'confirm_requested', strComment: '레거시' });
+      expect(res.status).toBe(400);
     });
 
     it('POST /api/event-instances/:id/execute (권한 있으면 200/400, 403 아님)', async () => {
@@ -1196,7 +1325,7 @@ describe('API 전체 테스트', () => {
       expect(res.body?.objInstance?.bPermanentlyRemoved).toBe(true);
     });
 
-    // 쿼리 수정 권한: my_dashboard.query_edit 없으면 confirm_requested/qa_requested/live_requested 단계에서 PUT(strGeneratedQuery) → 403
+    // 쿼리 수정 권한: my_dashboard.query_edit 없으면 qa_requested/live_requested 단계에서 PUT(strGeneratedQuery) → 403
     it('query_edit 없이 쿼리 수정 PUT → 403', async () => {
       const N_ROLE_DBA = 2;
       const backup = fnGetPermissionsByRoleId(N_ROLE_DBA);
@@ -1211,9 +1340,8 @@ describe('API 전체 테스트', () => {
 
       const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`);
       const arr = list.body?.arrInstances ?? [];
-      const inConfirm = arr.find((i: { strStatus: string }) => i.strStatus === 'confirm_requested');
       const inQaReq = arr.find((i: { strStatus: string }) => i.strStatus === 'qa_requested');
-      const id = (inConfirm ?? inQaReq ?? arr[0])?.nId;
+      const id = (inQaReq ?? arr[0])?.nId;
       if (!id) {
         fnSetPermissionsForRole(N_ROLE_DBA, backup);
         return;
@@ -1262,9 +1390,9 @@ describe('API 전체 테스트', () => {
       const patchRes = await request(app)
         .patch(`/api/event-instances/${nTargetId}/status`)
         .set('Authorization', `Bearer ${strGmToken}`)
-        .send({ strNextStatus: 'confirm_requested', strComment: 'query-edit 테스트 컨펌 요청' });
+        .send({ strNextStatus: 'qa_requested', strComment: 'query-edit 테스트 QA 요청' });
       expect(patchRes.status).toBe(200);
-      expect(patchRes.body?.objInstance?.strStatus).toBe('confirm_requested');
+      expect(patchRes.body?.objInstance?.strStatus).toBe('qa_requested');
       const getRes = await request(app).get(`/api/event-instances/${nTargetId}`).set('Authorization', `Bearer ${token}`);
       const strBefore = getRes.body?.objInstance?.strGeneratedQuery ?? 'SELECT 1;';
       const strAfter = `${strBefore}\n-- test-edit`;

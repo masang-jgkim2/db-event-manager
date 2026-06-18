@@ -77,6 +77,33 @@ const fnPost = async <T>(strPath: string, strToken: string, body: unknown) => {
   return { res, obj };
 };
 
+const fnPatch = async <T>(strPath: string, strToken: string, body: unknown) => {
+  const res = await fetch(`${STR_API}${strPath}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${strToken}` },
+    body: JSON.stringify(body),
+  });
+  const obj = (await res.json()) as T;
+  return { res, obj };
+};
+
+/** D1: 이벤트 생성 전 템플릿 DBA 승인 보장 */
+const fnEnsureTemplateDbaConfirmed = async (nTplId: number, strAdminToken: string) => {
+  const objEvents = await fnGet<{ arrEvents?: Array<{ nId: number; strStatus?: string }> }>('/events', strAdminToken);
+  const strStatus = (objEvents.arrEvents || []).find((e) => e.nId === nTplId)?.strStatus ?? 'dba_confirmed';
+  if (strStatus === 'dba_confirmed') return;
+
+  if (strStatus === 'template_created') {
+    const { res } = await fnPatch(`/events/${nTplId}/status`, strAdminToken, { strNextStatus: 'confirm_requested' });
+    if (!res.ok) throw new Error(`템플릿 리뷰 요청 실패 #${nTplId}`);
+    console.log(`[seed-e2e] 템플릿 #${nTplId} → confirm_requested`);
+  }
+
+  const { res: resConf } = await fnPatch(`/events/${nTplId}/status`, strAdminToken, { strNextStatus: 'dba_confirmed' });
+  if (!resConf.ok) throw new Error(`템플릿 DBA 승인 실패 #${nTplId}`);
+  console.log(`[seed-e2e] 템플릿 #${nTplId} → dba_confirmed`);
+};
+
 const fnPickProduct = async (strToken: string) => {
   const obj = await fnGet<{ arrProducts?: IProduct[] }>('/products', strToken);
   const arr = obj.arrProducts || [];
@@ -135,6 +162,8 @@ const fnMain = async () => {
   } else {
     console.log(`[seed-e2e] 기존 템플릿 #${nTemplateId} ${STR_TEMPLATE_LABEL}`);
   }
+
+  await fnEnsureTemplateDbaConfirmed(nTemplateId, strAdminToken);
 
   const dtPast = new Date(Date.now() - 3600000).toISOString();
   const objConfig: Record<string, unknown> = {

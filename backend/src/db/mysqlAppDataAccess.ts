@@ -112,6 +112,26 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_created_by, n_created_by_user_id');
   }
 
+  const [tplStatusCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template' AND COLUMN_NAME = 'str_status'`,
+  );
+  if (Number((tplStatusCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template
+       ADD COLUMN str_status VARCHAR(32) NOT NULL DEFAULT 'dba_confirmed'
+         COMMENT 'template_created|confirm_requested|dba_confirmed' AFTER dt_created_at,
+       ADD COLUMN json_status_logs JSON NOT NULL COMMENT 'ITemplateStatusLog[]' AFTER str_status,
+       ADD COLUMN json_creator JSON NULL COMMENT 'objCreator' AFTER json_status_logs,
+       ADD COLUMN json_confirmer JSON NULL COMMENT 'objConfirmer' AFTER json_creator,
+       ADD KEY idx_event_template_status (str_status)`,
+    );
+    await pool.query(
+      `UPDATE event_template SET json_status_logs = '[]' WHERE json_status_logs IS NULL`,
+    ).catch(() => { /* NOT NULL DEFAULT handled */ });
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_status, json_status_logs, json_creator, json_confirmer');
+  }
+
   const [userEmailCol] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'str_email'`,

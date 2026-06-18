@@ -3,6 +3,31 @@ import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } f
 import { arrDbConnections } from './dbConnections';
 import { fnIsMysqlStore } from './dataStore';
 
+/** 템플릿 워크플로: 등록 → 쿼리 리뷰 요청 → DBA 리뷰 완료 */
+export type TTemplateStatus =
+  | 'template_created'
+  | 'confirm_requested'
+  | 'dba_confirmed';
+
+export interface ITemplateStageActor {
+  strDisplayName: string;
+  nUserId: number;
+  strUserId: string;
+  dtProcessedAt: string;
+}
+
+import type { IQueryEditLog } from '../utils/queryEditLog';
+
+export interface ITemplateStatusLog {
+  strStatus: TTemplateStatus;
+  strChangedBy: string;
+  nChangedByUserId: number;
+  strComment?: string;
+  dtChangedAt: string;
+  /** DBA 리뷰 중 쿼리 직접 수정 diff */
+  objQueryEdit?: IQueryEditLog;
+}
+
 /** 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
 export interface IQueryTemplateItem {
   nDbConnectionId: number;
@@ -27,7 +52,39 @@ export interface IEventTemplate {
   /** 생성 시 로그인 사용자 표시명 */
   strCreatedBy?: string;
   nCreatedByUserId?: number;
+  strStatus: TTemplateStatus;
+  arrStatusLogs: ITemplateStatusLog[];
+  objCreator?: ITemplateStageActor | null;
+  objConfirmer?: ITemplateStageActor | null;
 }
+
+const ARR_TEMPLATE_STATUS: TTemplateStatus[] = ['template_created', 'confirm_requested', 'dba_confirmed'];
+
+/** 레거시 행·미설정 → 기존 템플릿은 DBA 리뷰 완료로 간주 */
+export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEventTemplate, 'nId'>): IEventTemplate => {
+  const strStatus =
+    raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
+  return {
+    nId: raw.nId,
+    nProductId: raw.nProductId ?? 0,
+    strProductName: raw.strProductName ?? '',
+    strEventLabel: raw.strEventLabel ?? '',
+    strDescription: raw.strDescription ?? '',
+    strCategory: raw.strCategory ?? '',
+    strType: raw.strType ?? '',
+    strInputFormat: raw.strInputFormat ?? 'item_number',
+    strDefaultItems: raw.strDefaultItems ?? '',
+    strQueryTemplate: raw.strQueryTemplate ?? '',
+    arrQueryTemplates: raw.arrQueryTemplates,
+    dtCreatedAt: raw.dtCreatedAt ?? new Date().toISOString(),
+    strCreatedBy: raw.strCreatedBy,
+    nCreatedByUserId: raw.nCreatedByUserId,
+    strStatus,
+    arrStatusLogs: Array.isArray(raw.arrStatusLogs) ? raw.arrStatusLogs : [],
+    objCreator: raw.objCreator ?? null,
+    objConfirmer: raw.objConfirmer ?? null,
+  };
+};
 
 const STR_FILE = 'events.json';
 
@@ -56,8 +113,8 @@ const fnMigrateToQuerySets = (raw: IEventTemplate[]): IEventTemplate[] =>
   fnMigrateToQuerySetsWithConnections(raw, arrDbConnections);
 
 const rawEvents = fnLoadJson<IEventTemplate>(STR_FILE, []);
-const migrated = fnMigrateToQuerySets(rawEvents);
-const bNeedSave = migrated.some((e, i) => e !== rawEvents[i]);
+const migrated = fnMigrateToQuerySets(rawEvents).map((e) => fnNormalizeEventTemplate(e));
+const bNeedSave = migrated.some((e, i) => e !== rawEvents[i] || e.strStatus !== rawEvents[i]?.strStatus);
 if (bNeedSave) fnSaveJson(STR_FILE, migrated);
 
 export const arrEvents: IEventTemplate[] = migrated;
@@ -68,7 +125,7 @@ export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
   if (fnIsMysqlStore()) return false;
   const arrRaw = fnReadJsonArrayFromDisk<IEventTemplate>(STR_FILE);
   if (!arrRaw?.length) return false;
-  const arrMigrated = fnMigrateToQuerySets(arrRaw);
+  const arrMigrated = fnMigrateToQuerySets(arrRaw).map((e) => fnNormalizeEventTemplate(e));
   arrEvents.length = 0;
   arrEvents.push(...arrMigrated);
   console.log(`[events] 메모리 비어 ${STR_FILE}에서 ${arrMigrated.length}건 재로드`);
@@ -85,3 +142,7 @@ export const fnSaveEvents = () => {
 
 export const fnGetNextEventId = (): number =>
   arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;
+
+/** D1: 이벤트 생성 허용 — 템플릿 DBA 리뷰 완료만 */
+export const fnIsTemplateReadyForInstance = (objTemplate: Pick<IEventTemplate, 'strStatus'>): boolean =>
+  objTemplate.strStatus === 'dba_confirmed';

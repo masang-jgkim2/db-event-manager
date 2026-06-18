@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { IEventTemplate } from '../types';
-import { fnApiGetEvents, fnApiCreateEvent, fnApiUpdateEvent, fnApiDeleteEvent } from '../api/eventApi';
+import type { IEventTemplate, TTemplateStatus } from '../types';
+import { fnApiGetEvents, fnApiCreateEvent, fnApiUpdateEvent, fnApiDeleteEvent, fnApiPatchEventStatus, fnApiUpdateEventQuery } from '../api/eventApi';
 
 let promiseFetchEvents: Promise<void> | null = null;
 let nLastEventsSuccessAt = 0;
@@ -16,8 +16,10 @@ interface IEventStore {
   bLoading: boolean;
   fnFetchEvents: () => Promise<void>;
   fnAddEvent: (objEvent: Omit<IEventTemplate, 'nId' | 'dtCreatedAt'>) => Promise<IStoreResult>;
-  fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => Promise<IStoreResult>;
+  fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => Promise<IStoreResult & { bReapprovalRequired?: boolean }>;
   fnDeleteEvent: (nId: number) => Promise<IStoreResult>;
+  fnPatchEventStatus: (nId: number, strNextStatus: TTemplateStatus, strComment?: string) => Promise<IStoreResult & { objEvent?: IEventTemplate }>;
+  fnUpdateEventQuery: (nId: number, objQuery: Record<string, unknown>) => Promise<IStoreResult & { objEvent?: IEventTemplate }>;
 }
 
 export const useEventStore = create<IEventStore>((set, get) => ({
@@ -64,11 +66,14 @@ export const useEventStore = create<IEventStore>((set, get) => ({
   fnUpdateEvent: async (nId, objEvent) => {
     try {
       const result = await fnApiUpdateEvent(nId, objEvent as any);
-      if (result.bSuccess) {
+      if (result.bSuccess && result.objEvent) {
         set((state) => ({
-          arrEvents: state.arrEvents.map((e) => (e.nId === nId ? result.objEvent : e)),
+          arrEvents: state.arrEvents.map((e) => (e.nId === nId ? result.objEvent as IEventTemplate : e)),
         }));
-        return { bSuccess: true, strMessage: '쿼리 템플릿이 수정되었습니다.' };
+        const strMessage = result.bReapprovalRequired
+          ? '쿼리·세트가 변경되어 DBA 재승인이 필요합니다.'
+          : '쿼리 템플릿이 수정되었습니다.';
+        return { bSuccess: true, strMessage, bReapprovalRequired: result.bReapprovalRequired };
       }
       return { bSuccess: false, strMessage: result.strMessage || '수정에 실패했습니다.' };
     } catch (error: any) {
@@ -84,6 +89,37 @@ export const useEventStore = create<IEventStore>((set, get) => ({
         return { bSuccess: true, strMessage: '쿼리 템플릿이 삭제되었습니다.' };
       }
       return { bSuccess: false, strMessage: result.strMessage || '삭제에 실패했습니다.' };
+    } catch (error: any) {
+      return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
+    }
+  },
+
+  fnPatchEventStatus: async (nId, strNextStatus, strComment) => {
+    try {
+      const result = await fnApiPatchEventStatus(nId, strNextStatus, strComment);
+      if (result.bSuccess && result.objEvent) {
+        set((state) => ({
+          arrEvents: state.arrEvents.map((e) => (e.nId === nId ? result.objEvent : e)),
+        }));
+        return { bSuccess: true, strMessage: '상태가 변경되었습니다.', objEvent: result.objEvent };
+      }
+      return { bSuccess: false, strMessage: result.strMessage || '상태 변경에 실패했습니다.' };
+    } catch (error: any) {
+      return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
+    }
+  },
+
+  fnUpdateEventQuery: async (nId, objQuery) => {
+    try {
+      const result = await fnApiUpdateEventQuery(nId, objQuery);
+      if (result.bSuccess && result.objEvent) {
+        const objEvent = result.objEvent as IEventTemplate;
+        set((state) => ({
+          arrEvents: state.arrEvents.map((e) => (e.nId === nId ? objEvent : e)),
+        }));
+        return { bSuccess: true, strMessage: '쿼리가 수정되었습니다.', objEvent };
+      }
+      return { bSuccess: false, strMessage: result.strMessage || '쿼리 수정에 실패했습니다.' };
     } catch (error: any) {
       return { bSuccess: false, strMessage: error?.message || '네트워크 오류가 발생했습니다.' };
     }
