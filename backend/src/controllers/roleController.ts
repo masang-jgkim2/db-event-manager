@@ -88,13 +88,10 @@ export const fnUpdateRole = async (req: Request, res: Response): Promise<void> =
 
     const { strDisplayName, strDescription, arrPermissions } = req.body;
 
-    if (objRole.bIsSystem) {
-      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
-    } else {
-      if (strDisplayName !== undefined) objRole.strDisplayName = strDisplayName;
-      if (strDescription !== undefined) objRole.strDescription = strDescription;
-      if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
-    }
+    // 시스템 역할도 표시명·설명 수정 가능 (strCode는 변경 불가)
+    if (strDisplayName !== undefined) objRole.strDisplayName = strDisplayName;
+    if (strDescription !== undefined) objRole.strDescription = strDescription;
+    if (Array.isArray(arrPermissions)) fnSaveRoleAndPermissions(nId, arrPermissions as TPermission[]);
     objRole.dtUpdatedAt = new Date().toISOString();
     fnSaveRoles();
 
