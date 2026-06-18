@@ -12,7 +12,7 @@ router.use(fnAuthMiddleware);
 // GET: 보기 권한. POST/PUT/DELETE: 해당 액션 권한
 router.get('/', fnRequireAnyPermission('role.view'), fnGetRoles);
 router.post('/', fnRequireAnyPermission('role.create'), fnCreateRole);
-router.put('/:id', fnRequireAnyPermission('role.edit'), fnUpdateRole);
+router.put('/:id', fnRequireAnyPermission('role.edit', 'role.edit_permissions'), fnUpdateRole);
 router.delete('/:id', fnRequireAnyPermission('role.delete'), fnDeleteRole);
 
 export default router;
