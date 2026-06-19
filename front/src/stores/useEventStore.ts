@@ -19,7 +19,7 @@ interface IEventStore {
   fnUpdateEvent: (nId: number, objEvent: Partial<IEventTemplate>) => Promise<IStoreResult & { bReapprovalRequired?: boolean }>;
   fnDeleteEvent: (nId: number) => Promise<IStoreResult>;
   fnPatchEventStatus: (nId: number, strNextStatus: TTemplateStatus, strComment?: string) => Promise<IStoreResult & { objEvent?: IEventTemplate }>;
-  fnUpdateEventQuery: (nId: number, objQuery: Record<string, unknown>) => Promise<IStoreResult & { objEvent?: IEventTemplate }>;
+  fnUpdateEventQuery: (nId: number, objQuery: Record<string, unknown>) => Promise<IStoreResult & { objEvent?: IEventTemplate; bReapprovalRequired?: boolean }>;
 }
 
 export const useEventStore = create<IEventStore>((set, get) => ({
@@ -117,7 +117,10 @@ export const useEventStore = create<IEventStore>((set, get) => ({
         set((state) => ({
           arrEvents: state.arrEvents.map((e) => (e.nId === nId ? objEvent : e)),
         }));
-        return { bSuccess: true, strMessage: '쿼리가 수정되었습니다.', objEvent };
+        const strMessage = result.bReapprovalRequired
+          ? '쿼리가 변경되어 쿼리 리뷰 요청 상태로 되돌아갔습니다.'
+          : '쿼리가 수정되었습니다.';
+        return { bSuccess: true, strMessage, objEvent, bReapprovalRequired: result.bReapprovalRequired };
       }
       return { bSuccess: false, strMessage: result.strMessage || '쿼리 수정에 실패했습니다.' };
     } catch (error: any) {

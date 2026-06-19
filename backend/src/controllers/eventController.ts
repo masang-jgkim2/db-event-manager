@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import {
   arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty,
+  fnResolveTemplateStatus,
   type IEventTemplate, type ITemplateStageActor, type TTemplateStatus,
 } from '../data/events';
 import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances } from '../data/eventInstances';
@@ -32,6 +33,23 @@ const fnMakeTemplateActor = (req: Request): ITemplateStageActor => ({
   strUserId: req.user?.strUserId || '',
   dtProcessedAt: new Date().toISOString(),
 });
+
+/** D2: 승인 완료 템플릿 쿼리·세트 변경 시 재리뷰 요청으로 되돌림 */
+const fnRevertTemplateToReapproval = (
+  objTpl: IEventTemplate,
+  objActor: ITemplateStageActor,
+  strComment: string,
+): void => {
+  objTpl.strStatus = 'confirm_requested';
+  objTpl.objConfirmer = null;
+  objTpl.arrStatusLogs.push({
+    strStatus: 'confirm_requested',
+    strChangedBy: objActor.strDisplayName,
+    nChangedByUserId: objActor.nUserId,
+    strComment,
+    dtChangedAt: objActor.dtProcessedAt,
+  });
+};
 
 const fnIsPermanentlyRemoved = (e: { bPermanentlyRemoved?: boolean } | undefined): boolean =>
   Boolean(e?.bPermanentlyRemoved);
@@ -152,12 +170,13 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     }
 
     const objTpl = arrEvents[nIndex];
+    const strTplStatus = fnResolveTemplateStatus(objTpl);
     const bQueryFieldsInBody = fnBodyHasTemplateQueryFields(req.body);
     const objMergedQuery = fnMergeTemplateQueryFromBody(objTpl, req.body);
     const bQueryWouldChange = bQueryFieldsInBody && fnTemplateQueryBodyChanged(objTpl, objMergedQuery);
 
     // 리뷰 대기 중 쿼리·세트는 전용 API만 허용
-    if (objTpl.strStatus === 'confirm_requested' && bQueryWouldChange) {
+    if (strTplStatus === 'confirm_requested' && bQueryWouldChange) {
       res.status(400).json({
         bSuccess: false,
         strMessage: '쿼리 리뷰 대기 중에는 쿼리·세트를 이 경로로 수정할 수 없습니다. DBA 쿼리 수정 기능을 사용하세요.',
@@ -192,18 +211,9 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
 
     // D2: 승인 완료 후 쿼리·세트 변경 → 재리뷰 요청 상태로 되돌림
     let bReapprovalRequired = false;
-    if (objTpl.strStatus === 'dba_confirmed' && bQueryWouldChange) {
+    if (strTplStatus === 'dba_confirmed' && bQueryWouldChange) {
       const objActor = fnMakeTemplateActor(req);
-      const dtNow = new Date().toISOString();
-      arrEvents[nIndex].strStatus = 'confirm_requested';
-      arrEvents[nIndex].objConfirmer = null;
-      arrEvents[nIndex].arrStatusLogs.push({
-        strStatus: 'confirm_requested',
-        strChangedBy: objActor.strDisplayName,
-        nChangedByUserId: objActor.nUserId,
-        strComment: '승인 후 쿼리·세트 변경 — DBA 재승인 필요',
-        dtChangedAt: dtNow,
-      });
+      fnRevertTemplateToReapproval(arrEvents[nIndex], objActor, '승인 후 쿼리·세트 변경 — DBA 재승인 필요');
       bReapprovalRequired = true;
       console.log(`[쿼리 템플릿] D2 재승인 | #${nId} | dba_confirmed → confirm_requested`);
     }
@@ -235,8 +245,9 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    if (objTpl.strStatus !== 'confirm_requested') {
-      res.status(400).json({ bSuccess: false, strMessage: '쿼리 리뷰 대기 상태에서만 DBA 쿼리 수정이 가능합니다.' });
+    const strTplStatus = fnResolveTemplateStatus(objTpl);
+    if (strTplStatus !== 'confirm_requested' && strTplStatus !== 'dba_confirmed') {
+      res.status(400).json({ bSuccess: false, strMessage: '쿼리 리뷰 대기 또는 승인 완료 상태에서만 DBA 쿼리 수정이 가능합니다.' });
       return;
     }
 
@@ -279,14 +290,22 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
     }
 
     const objActor = fnMakeTemplateActor(req);
-    objTpl.arrStatusLogs.push({
-      strStatus: 'confirm_requested',
-      strChangedBy: objActor.strDisplayName,
-      nChangedByUserId: objActor.nUserId,
-      strComment: 'DBA 쿼리 리뷰 중 수정',
-      dtChangedAt: new Date().toISOString(),
-      objQueryEdit,
-    });
+    let bReapprovalRequired = false;
+    if (strTplStatus === 'dba_confirmed') {
+      fnRevertTemplateToReapproval(objTpl, objActor, '승인 후 DBA 쿼리 수정 — DBA 재승인 필요');
+      bReapprovalRequired = true;
+      console.log(`[쿼리 템플릿] D2 재승인 | #${nId} | dba_confirmed → confirm_requested (query API)`);
+    } else {
+      objTpl.arrStatusLogs.push({
+        strStatus: 'confirm_requested',
+        strChangedBy: objActor.strDisplayName,
+        nChangedByUserId: objActor.nUserId,
+        strComment: 'DBA 쿼리 리뷰 중 수정',
+        dtChangedAt: objActor.dtProcessedAt,
+        objQueryEdit,
+      });
+      console.log(`[쿼리 템플릿] DBA 쿼리 수정 | #${nId} | confirm_requested 유지`);
+    }
 
     fnSaveEvents();
     if (fnIsMysqlStore()) {
@@ -299,8 +318,7 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       }
     }
 
-    console.log(`[쿼리 템플릿] DBA 쿼리 수정 | #${nId} | confirm_requested 유지`);
-    res.json({ bSuccess: true, objEvent: objTpl });
+    res.json({ bSuccess: true, objEvent: objTpl, bReapprovalRequired });
   } catch (error) {
     console.error('쿼리 템플릿 DBA 쿼리 수정 오류:', error);
     res.status(500).json({ bSuccess: false, strMessage: '서버 오류가 발생했습니다.' });
