@@ -379,7 +379,6 @@ const EventPage = () => {
       return (
         <Button
           key={strNextStatus}
-          type="primary"
           icon={Icon ? <Icon /> : undefined}
           loading={bLoading}
           onClick={() => void fnHandleTemplateStatusChange(objRecord.nId, strNextStatus)}
@@ -394,14 +393,14 @@ const EventPage = () => {
     }
     if (bCanConfirm && (strStatus === 'confirm_requested' || strStatus === 'dba_confirmed')) {
       arrButtons.push(
-        <Button
-          key="query-edit"
-          icon={<CodeOutlined />}
-          loading={bSavingQueryEdit && objQueryEditTemplate?.nId === objRecord.nId}
-          onClick={() => fnOpenTemplateQueryEdit(objRecord)}
-        >
-          쿼리 수정
-        </Button>,
+        <Tooltip key="query-edit" title="쿼리 수정">
+          <Button
+            type="text"
+            icon={<CodeOutlined />}
+            loading={bSavingQueryEdit && objQueryEditTemplate?.nId === objRecord.nId}
+            onClick={() => fnOpenTemplateQueryEdit(objRecord)}
+          />
+        </Tooltip>,
       );
     }
     if (bCanConfirm && strStatus === 'confirm_requested') {
