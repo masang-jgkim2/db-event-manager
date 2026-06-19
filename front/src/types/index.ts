@@ -193,22 +193,34 @@ export function fnFormatPermissionErrorMessage(strMessage: string): string {
   return strMessage;
 }
 
-/** 레거시 권한 → 세분화 권한으로 확장 (역할 편집 폼 초기값용) */
+/** 레거시 권한 → 세분화 권한 (백엔드 roles.ts OBJ_EXPAND와 동기화) */
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
   'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete', 'event_template.request_confirm', 'event_template.confirm'],
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
+  'instance.create': ['instance.view'],
+  'my_dashboard.request_confirm': ['event_template.request_confirm'],
+  'my_dashboard.confirm': ['event_template.confirm'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
-  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.view', 'instance.create'],
   'my_dashboard.delete': ['my_dashboard.delete_any'],
   'my_dashboard.delete_instance': ['my_dashboard.delete_any'],
 };
+
+/** admin 역할 — 로그인 시 fnExpandPermissions 보너스 (역할 편집 폼 표시용) */
+const ARR_ADMIN_ROLE_FORM_BONUS: string[] = [
+  'dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any',
+  'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve',
+  'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions',
+  'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test',
+  'system.save_test_seed', 'activity.view', 'activity.clear',
+];
+
 export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
   const setOut = new Set<string>(arrRaw);
   arrRaw.forEach((p) => {
@@ -216,6 +228,22 @@ export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
     if (exp) exp.forEach((e) => setOut.add(e));
   });
   return Array.from(setOut);
+}
+
+/** 역할 편집 폼 체크박스 — 저장값 + 레거시 확장 + admin 보너스 (로그인 effective와 동일 표시) */
+export function fnExpandPermissionsForRoleFormDisplay(arrRaw: string[], strRoleCode?: string): TPermission[] {
+  const setOut = new Set<string>(fnExpandLegacyToGranular(arrRaw));
+  if (strRoleCode === 'admin') {
+    ARR_ADMIN_ROLE_FORM_BONUS.forEach((p) => setOut.add(p));
+  }
+  return Array.from(setOut) as TPermission[];
+}
+
+/** 체크박스 UI에 없는 저장 권한 — 저장 시 유실 방지용 */
+export function fnGetOrphanRolePermissions(arrRaw: string[]): string[] {
+  const setGroup = new Set(ARR_PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.value)));
+  const setLegacy = new Set(Object.keys(OBJ_LEGACY_EXPAND));
+  return arrRaw.filter((p) => !setGroup.has(p) && !setLegacy.has(p));
 }
 
 // =============================================
