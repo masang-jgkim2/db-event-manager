@@ -60,6 +60,10 @@ export interface IEventTemplate {
 
 const ARR_TEMPLATE_STATUS: TTemplateStatus[] = ['template_created', 'confirm_requested', 'dba_confirmed'];
 
+/** API·D2 판별용 — 미설정 시 dba_confirmed (레거시 템플릿) */
+export const fnResolveTemplateStatus = (raw: Pick<IEventTemplate, 'strStatus'>): TTemplateStatus =>
+  raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
+
 /** 레거시 행·미설정 → 기존 템플릿은 DBA 리뷰 완료로 간주 */
 export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEventTemplate, 'nId'>): IEventTemplate => {
   const strStatus =

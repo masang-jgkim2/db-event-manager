@@ -57,7 +57,7 @@ export const fnApiUpdateEvent = async (nId: number, objData: Record<string, unkn
 export const fnApiUpdateEventQuery = async (nId: number, objData: Record<string, unknown>) => {
   try {
     const response = await apiClient.put(`/events/${nId}/query`, objData);
-    return response.data as { bSuccess: boolean; objEvent?: Record<string, unknown>; strMessage?: string };
+    return response.data as { bSuccess: boolean; objEvent?: Record<string, unknown>; bReapprovalRequired?: boolean; strMessage?: string };
   } catch (error: unknown) {
     return fnCatchApiError(error, '쿼리 수정에 실패했습니다.');
   }

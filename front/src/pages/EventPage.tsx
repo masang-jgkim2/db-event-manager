@@ -392,7 +392,7 @@ const EventPage = () => {
     if (bCanRequestConfirm && strStatus === 'template_created') {
       arrButtons.push(fnRenderActionButton('confirm_requested'));
     }
-    if (bCanConfirm && strStatus === 'confirm_requested') {
+    if (bCanConfirm && (strStatus === 'confirm_requested' || strStatus === 'dba_confirmed')) {
       arrButtons.push(
         <Button
           key="query-edit"
@@ -403,6 +403,8 @@ const EventPage = () => {
           쿼리 수정
         </Button>,
       );
+    }
+    if (bCanConfirm && strStatus === 'confirm_requested') {
       arrButtons.push(fnRenderActionButton('dba_confirmed'));
     }
     return arrButtons;
@@ -685,7 +687,11 @@ const EventPage = () => {
         : { strQueryTemplate: strQueryEditValue.trim(), strDefaultItems: objQueryEditTemplate.strDefaultItems ?? '' };
       const result = await fnUpdateEventQuery(objQueryEditTemplate.nId, payload);
       if (result.bSuccess) {
-        messageApi.success(result.strMessage);
+        messageApi.success(
+          result.bReapprovalRequired
+            ? '쿼리가 변경되어 쿼리 리뷰 요청 상태로 되돌아갔습니다.'
+            : result.strMessage,
+        );
         setBQueryEditOpen(false);
         if (nSelectedTemplateId === objQueryEditTemplate.nId && result.objEvent) {
           setObjQueryEditTemplate(result.objEvent);
@@ -1126,7 +1132,11 @@ const EventPage = () => {
               type="info"
               showIcon
               message={`템플릿: ${objQueryEditTemplate.strEventLabel}`}
-              description="수정 이력이 진행 로그에 diff와 함께 기록됩니다. 템플릿 상태는 유지됩니다."
+              description={
+                fnResolveTemplateStatus(objQueryEditTemplate) === 'dba_confirmed'
+                  ? '승인 완료 템플릿입니다. 쿼리를 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 세트 추가·삭제는 «수정» 모달을 사용하세요.'
+                  : '수정 이력이 진행 로그에 diff와 함께 기록됩니다. 템플릿 상태는 유지됩니다.'
+              }
             />
             {(objQueryEditTemplate.arrQueryTemplates?.filter(
               (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,

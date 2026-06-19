@@ -819,6 +819,41 @@ describe('API 전체 테스트', () => {
         .send({ strNextStatus: 'dba_confirmed' });
     });
 
+    it('D2: dba_confirmed 템플릿 PUT /query → confirm_requested 재승인', async () => {
+      const res = await request(app)
+        .put(`/api/events/${nEventTemplateId}/query`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          arrQueryTemplates: [
+            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1ViaQueryApi, {{items}} AS Items;' },
+            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+          ],
+          strQueryTemplate: '',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.bReapprovalRequired).toBe(true);
+      expect(res.body.objEvent?.strStatus).toBe('confirm_requested');
+    });
+
+    it('D2: dba_confirmed 세트 삭제 → confirm_requested 재승인', async () => {
+      await request(app)
+        .patch(`/api/events/${nEventTemplateId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'dba_confirmed' });
+      const res = await request(app)
+        .put(`/api/events/${nEventTemplateId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          arrQueryTemplates: [
+            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS OnlySet, {{items}} AS Items;' },
+          ],
+          strQueryTemplate: '',
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.bReapprovalRequired).toBe(true);
+      expect(res.body.objEvent?.strStatus).toBe('confirm_requested');
+    });
+
     it('confirm_requested 중 PUT /api/events/:id 쿼리 변경 → 400', async () => {
       const resCreate = await request(app)
         .post('/api/events')
