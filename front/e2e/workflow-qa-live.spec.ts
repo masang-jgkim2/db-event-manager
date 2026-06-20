@@ -2,10 +2,11 @@ import { test, expect } from '@playwright/test';
 import { STR_DBA_PASS, STR_DBA_USER, STR_GM_PASS, STR_GM_USER, fnE2eLogin } from './helpers/auth';
 import {
   fnClickRowAction,
+  fnClickRowDelete,
   fnFindRowByIdPaging,
   fnGoMyDashboard,
+  fnOpenCompletedDashTab,
   fnRowBtn,
-  fnRowByInstanceId,
   fnSetDashFilter,
 } from './helpers/dashboard';
 import { fnApiGetInstance, fnHasQaDeploySucceeded } from './helpers/e2eCreators';
@@ -36,6 +37,13 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
       if (obj && fnHasQaDeploySucceeded(obj.strStatus)) bQaExecuted = true;
       return;
     }
+    // seed-e2e-workflow:fresh 직후 config의 인스턴스 우선 (중복 API 생성 방지)
+    if (objCfg.nFreshInstanceId) {
+      nInstanceId = objCfg.nFreshInstanceId;
+      await fnAssertWorkflowInstanceAllowed(STR_API, nInstanceId, strGmToken);
+      const obj = await fnApiGetInstance(STR_API, strGmToken, nInstanceId);
+      if (obj?.strStatus === 'event_created') return;
+    }
     nInstanceId = await fnApiCreateWorkflowInstance(objCfg, strGmToken, STR_GM_USER);
     await fnAssertWorkflowInstanceAllowed(STR_API, nInstanceId, strGmToken);
   });
@@ -45,7 +53,7 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     await fnGoMyDashboard(page);
     await fnSetDashFilter(page, '내가 생성한 이벤트');
     const row = await fnFindRowByIdPaging(page, nInstanceId);
-    await fnRowBtn(row, '수정').click();
+    await row.locator('button:has(.anticon-edit)').first().click();
     const modal = page.locator('.ant-modal').filter({ hasText: '이벤트 수정' });
     await expect(modal).toBeVisible();
     const inputName = modal.locator('input:not([disabled])').first();
@@ -118,5 +126,18 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     test.skip(!bQaExecuted, 'LIVE 실행 단계 미완료');
     await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
     await fnClickRowAction(page, nInstanceId, 'LIVE확인', /확인/, { strDashFilter: '내가 생성한 이벤트' });
+  });
+
+  test('E-X3 GM 삭제 (live_verified · delete_own)', { tag: ['@delete', '@human'] }, async ({ page }) => {
+    test.skip(!bQaExecuted, 'LIVE 확인 미완료');
+    test.skip(
+      process.env.E2E_SKIP_DELETE === '1' || process.env.E2E_POOL_SKIP_DELETE === '1',
+      'E2E_SKIP_DELETE=1',
+    );
+    await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
+    await fnClickRowDelete(page, nInstanceId, { strDashFilter: '내가 생성한 이벤트' });
+    await fnOpenCompletedDashTab(page);
+    const row = await fnFindRowByIdPaging(page, nInstanceId);
+    await expect(row.getByText(/삭제됨/)).toBeVisible({ timeout: 15000 });
   });
 });
