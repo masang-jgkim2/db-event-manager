@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Typography,
   Button,
@@ -19,21 +19,32 @@ import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
 import { DqpmTag } from '../components/DqpmTag';
 import type { TTagVariant } from '../styles/tagPalette';
-import { PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, AppstoreOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, AppstoreOutlined,
+  ExclamationCircleOutlined,
+} from '@ant-design/icons';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IProduct, IService, TPermission } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
+import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 
 const { TextArea } = Input;
+const { Text } = Typography;
+
+/** 프로덕트명 비교용 정규화 */
+const fnNormalizeProductName = (strName: string | undefined): string =>
+  (strName ?? '').trim();
 
 const ProductPage = () => {
   const { token } = theme.useToken();
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditProduct, setObjEditProduct] = useState<IProduct | null>(null);
+  const [bSaving, setBSaving] = useState(false);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  const strFormName = Form.useWatch('strName', form);
 
   const arrProducts = useProductStore((s) => s.arrProducts);
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
@@ -52,6 +63,50 @@ const ProductPage = () => {
   useEffect(() => { fnFetchProducts(); }, [fnFetchProducts]);
   useAutoRefresh(fnFetchProducts);
 
+  const fnFindNameDuplicateInList = useCallback((
+    strName: string | undefined,
+    nExcludeId?: number,
+  ): IProduct | undefined => {
+    const strNorm = fnNormalizeProductName(strName);
+    if (!strNorm) return undefined;
+    return arrProducts.find(
+      (p) => p.nId !== nExcludeId && fnNormalizeProductName(p.strName) === strNorm,
+    );
+  }, [arrProducts]);
+
+  const objNameDuplicate = useMemo(() => {
+    if (!bModalOpen) return undefined;
+    return fnFindNameDuplicateInList(strFormName, objEditProduct?.nId);
+  }, [bModalOpen, strFormName, objEditProduct?.nId, fnFindNameDuplicateInList]);
+
+  const fnOpenExistingFromNameDuplicate = () => {
+    if (!objNameDuplicate) return;
+    fnOpenModal(objNameDuplicate);
+  };
+
+  const nodeNameDuplicateHint = objNameDuplicate ? (
+    <span style={{ fontSize: 12 }}>
+      <ExclamationCircleOutlined style={{ marginRight: 4, color: token.colorWarning }} />
+      <span style={{ color: token.colorWarning }}>이미 등록된 프로덕트명</span>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {' '}(#{objNameDuplicate.nId} · {objNameDuplicate.strDbType.toUpperCase()})
+      </Text>
+      {bCanEdit ? (
+        <>
+          {' · '}
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, height: 'auto', fontSize: 12 }}
+            onClick={fnOpenExistingFromNameDuplicate}
+          >
+            수정
+          </Button>
+        </>
+      ) : null}
+    </span>
+  ) : undefined;
+
   // 모달 열기
   const fnOpenModal = (objProduct?: IProduct) => {
     if (objProduct) {
@@ -65,13 +120,16 @@ const ProductPage = () => {
   };
 
   const fnCloseModal = () => {
+    if (bSaving) return;
     setBModalOpen(false);
     setObjEditProduct(null);
     form.resetFields();
   };
 
-  // 저장 처리
+  // 저장 처리 — antd 6 Modal onOk는 항상 닫히므로 footer 버튼에서만 호출
   const fnHandleSave = async () => {
+    if (objNameDuplicate) return;
+    setBSaving(true);
     try {
       const objValues = await form.validateFields();
       const result = objEditProduct
@@ -86,6 +144,8 @@ const ProductPage = () => {
       }
     } catch {
       // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
+    } finally {
+      setBSaving(false);
     }
   };
 
@@ -111,7 +171,7 @@ const ProductPage = () => {
       render: (str: string) => <ProductNameTag strName={str} />,
     },
     {
-      title: '서비스 범위',
+      title: STR_SERVICE_SCOPE_LABEL,
       dataIndex: 'arrServices',
       key: 'arrServices',
       render: (arrServices: IService[]) => (
@@ -170,7 +230,7 @@ const ProductPage = () => {
       <CrudPageShell
         strTitle="프로덕트 관리"
         nodeIcon={<AppstoreOutlined />}
-        nodeDescription="게임·서비스 단위 프로덕트와 국내/해외 서비스 약어를 등록합니다. DB 종류(MSSQL/MySQL)는 프로덕트 단위로 고정됩니다."
+        nodeDescription="게임·서비스 단위 프로덕트와 서비스 구분 약자(FH/KR, LH/KR, DK/KR, DK/G 등)를 등록합니다. DB 종류(MSSQL/MySQL)는 프로덕트 단위로 고정됩니다."
         nodeExtra={
           bCanCreate ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
@@ -191,12 +251,24 @@ const ProductPage = () => {
       <Modal
         title={objEditProduct ? '프로덕트 수정' : '프로덕트 추가'}
         open={bModalOpen}
-        onOk={fnHandleSave}
         onCancel={fnCloseModal}
-        okText={objEditProduct ? '수정' : '등록'}
-        cancelText="취소"
+        footer={(
+          <Space>
+            <Button onClick={fnCloseModal} disabled={bSaving}>취소</Button>
+            <Button
+              type="primary"
+              loading={bSaving}
+              disabled={!!objNameDuplicate}
+              onClick={() => void fnHandleSave()}
+            >
+              {objEditProduct ? '수정' : '등록'}
+            </Button>
+          </Space>
+        )}
         width={640}
         destroyOnClose
+        maskClosable={!bSaving}
+        closable={!bSaving}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>
@@ -205,6 +277,8 @@ const ProductPage = () => {
                 name="strName"
                 label="프로덕트명"
                 rules={[{ required: true, message: '프로덕트명을 입력해주세요.' }]}
+                validateStatus={objNameDuplicate ? 'warning' : undefined}
+                help={nodeNameDuplicateHint}
               >
                 <Input placeholder="예: DK온라인" />
               </Form.Item>
@@ -228,14 +302,14 @@ const ProductPage = () => {
             <TextArea rows={2} placeholder="프로덕트에 대한 간단한 설명" />
           </Form.Item>
 
-          {/* 서비스 범위 (동적 추가) */}
+          {/* 서비스 구분 (동적 추가) */}
           <Form.List
             name="arrServices"
             rules={[
               {
                 validator: async (_, arrServices) => {
                   if (!arrServices || arrServices.length === 0) {
-                    return Promise.reject(new Error('서비스 범위를 최소 1개 추가해주세요.'));
+                    return Promise.reject(new Error(`${STR_SERVICE_SCOPE_LABEL}을(를) 최소 1개 추가해주세요.`));
                   }
                 },
               },
@@ -244,7 +318,10 @@ const ProductPage = () => {
             {(fields, { add, remove }, { errors }) => (
               <>
                 <div style={{ marginBottom: 8 }}>
-                  <Typography.Text strong>서비스 범위</Typography.Text>
+                  <Typography.Text strong>{STR_SERVICE_SCOPE_LABEL}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    FH/KR, LH/KR, DK/KR, DK/G …
+                  </Typography.Text>
                 </div>
                 {fields.map(({ key, name, ...restField }) => (
                   <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
@@ -265,7 +342,7 @@ const ProductPage = () => {
                         rules={[{ required: true, message: '범위 선택' }]}
                         style={{ marginBottom: 0 }}
                       >
-                        <Select placeholder="서비스 범위">
+                        <Select placeholder="플랫폼 (국내·스팀 등)">
                           {ARR_REGION_OPTIONS.map((strRegion) => (
                             <Select.Option key={strRegion} value={strRegion}>
                               {strRegion}
@@ -283,7 +360,7 @@ const ProductPage = () => {
                   </Row>
                 ))}
                 <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                  서비스 범위 추가
+                  {STR_SERVICE_SCOPE_LABEL} 추가
                 </Button>
                 <Form.ErrorList errors={errors} />
               </>

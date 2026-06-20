@@ -14,6 +14,7 @@ import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
 import { fnRelationalWriteFullFromMemory } from '../db/mysqlRelationalSync';
 import { fnNormalizeConnections } from './dbConnections';
 import { fnMigrateToQuerySetsWithConnections } from './events';
+import type { IRoleRowJson } from '../db/mysqlRelationalSync';
 
 const B_SKIP_RECONCILE =
   process.env.DATA_MYSQL_SKIP_JSON_RECONCILE === '1'
@@ -148,6 +149,7 @@ export const fnReconcileMetaJsonWithMysql = async (
   const { arrDbConnections } = await import('./dbConnections');
   const { arrUsers } = await import('./users');
   const { arrUserRoles } = await import('./userRoles');
+  const { arrRoles } = await import('./roles');
 
   const arrDetails: IMetaReconcileSummary['arrDetails'] = [];
   const setMirrorFiles = new Set<string>();
@@ -219,6 +221,24 @@ export const fnReconcileMetaJsonWithMysql = async (
     fnLogMergeStats('dbConnections', stats);
   }
 
+  // roles — JSON에만 있는 역할(예: E2E 프로브) 병합 후 user_roles FK 보장
+  const arrJsonRoles = fnReadJsonArrayFromDiskRaw<IRoleRowJson>('roles.json') ?? [];
+  if (arrJsonRoles.length > 0) {
+    const { arrMerged, stats } = fnMergeByNId(
+      arrRoles,
+      arrJsonRoles,
+      (r) => Math.max(fnParseMs(r.dtUpdatedAt), fnParseMs(r.dtCreatedAt)),
+    );
+    arrDetails.push({ strEntity: 'roles', stats });
+    if (stats.bChanged) {
+      arrRoles.length = 0;
+      arrRoles.push(...arrMerged);
+      setMirrorFiles.add('roles.json');
+      bAnyChanged = true;
+    }
+    fnLogMergeStats('roles', stats);
+  }
+
   // users — JSON에만 있는 nId만 추가(기존 행 덮어쓰지 않음)
   const arrJsonUsers = fnReadJsonArrayFromDiskRaw<IUserRow>('users.json') ?? [];
   if (arrJsonUsers.length > 0) {
@@ -238,15 +258,22 @@ export const fnReconcileMetaJsonWithMysql = async (
     'userRoles.json',
   ) ?? [];
   if (arrJsonUr.length > 0) {
+    const setRoleIds = new Set(arrRoles.map((r) => r.nId));
+    const setUserIds = new Set(arrUsers.map((u) => u.nId));
     const setKey = new Set(arrUserRoles.map((ur) => `${ur.nUserId}:${ur.nRoleId}`));
     let nAdded = 0;
     for (const ur of arrJsonUr) {
       const strKey = `${ur.nUserId}:${ur.nRoleId}`;
-      if (!setKey.has(strKey)) {
-        arrUserRoles.push(ur);
-        setKey.add(strKey);
-        nAdded += 1;
+      if (setKey.has(strKey)) continue;
+      if (!setUserIds.has(ur.nUserId) || !setRoleIds.has(ur.nRoleId)) {
+        console.warn(
+          `[DataStore] JSON↔MySQL 동기화 | userRoles | FK 미충족 스킵 | user=${ur.nUserId} role=${ur.nRoleId}`,
+        );
+        continue;
       }
+      arrUserRoles.push(ur);
+      setKey.add(strKey);
+      nAdded += 1;
     }
     if (nAdded > 0) {
       setMirrorFiles.add('userRoles.json');
@@ -277,6 +304,9 @@ export const fnReconcileMetaJsonWithMysql = async (
   if (setMirrorFiles.has('users.json')) {
     fnMirrorJsonToDisk('users.json', arrUsers);
     fnMirrorJsonToDisk('userRoles.json', arrUserRoles);
+  }
+  if (setMirrorFiles.has('roles.json')) {
+    fnMirrorJsonToDisk('roles.json', arrRoles);
   }
 
   console.log('[DataStore] JSON↔MySQL 동기화 완료 | MySQL·미러 반영');

@@ -19,6 +19,7 @@ import {
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
+import { InstanceServiceScopeCell } from '../components/InstanceServiceScopeCell';
 import CrudListToolbar from '../components/CrudListToolbar';
 import QueryEditDiffView from '../components/QueryEditDiffView';
 import SqlLineNumberArea from '../components/SqlLineNumberArea';
@@ -38,6 +39,7 @@ import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefaul
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
+import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
 import { useDesignSystem } from '../styles/DesignSystemContext';
@@ -182,7 +184,7 @@ const ARR_DASHBOARD_CARD_ROWS: ICardLabelRow[] =
     ? objDefaultListOpts.arrCardRows
     : [
         { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
-        { strLabel: '서비스', strFieldPath: 'strServiceAbbr', strRender: 'text' },
+        { strLabel: STR_SERVICE_SCOPE_LABEL, strFieldPath: 'strServiceAbbr', strRender: 'service_scope', strEmpty: '-' },
         { strLabel: '반영 일시', strFieldPath: 'dtDeployDate', strRender: 'datetime_short' },
         { strLabel: '생성자', strFieldPath: 'strCreatedBy', strEmpty: '-' },
       ];
@@ -1658,9 +1660,17 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     {
       title: '프로덕트',
       key: 'product',
-      width: 140,
+      width: 120,
       render: (_: unknown, r: IEventInstance) => (
-        <ProductNameTag strName={`${r.strProductName} (${r.strServiceAbbr})`} />
+        <ProductNameTag strName={r.strProductName} />
+      ),
+    },
+    {
+      title: STR_SERVICE_SCOPE_LABEL,
+      key: 'strServiceScope',
+      width: 130,
+      render: (_: unknown, r: IEventInstance) => (
+        <InstanceServiceScopeCell strServiceAbbr={r.strServiceAbbr} />
       ),
     },
     {
@@ -1965,7 +1975,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       )}
                     </Descriptions.Item>
                     <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
-                    <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
+                    <Descriptions.Item label="프로덕트">{objDetail.strProductName}</Descriptions.Item>
+                    <Descriptions.Item label={STR_SERVICE_SCOPE_LABEL}>
+                      <InstanceServiceScopeCell strServiceAbbr={objDetail.strServiceAbbr} />
+                    </Descriptions.Item>
                     <Descriptions.Item label="종류"><DqpmTag color="blue">{objDetail.strCategory}</DqpmTag></Descriptions.Item>
                     <Descriptions.Item label="유형"><DqpmTag color="red">{objDetail.strType}</DqpmTag></Descriptions.Item>
                     {objDetail.strAlloLink && (
@@ -2201,7 +2214,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="middle">
             <div>
               <Text strong>프로덕트</Text>
-              <Input value={`${objEditInstance.strProductName} (${objEditInstance.strServiceAbbr} / ${objEditInstance.strServiceRegion})`} disabled style={{ marginTop: 4 }} />
+              <Input value={objEditInstance.strProductName} disabled style={{ marginTop: 4 }} />
+            </div>
+            <div>
+              <Text strong>{STR_SERVICE_SCOPE_LABEL}</Text>
+              <div style={{ marginTop: 4 }}>
+                <InstanceServiceScopeCell strServiceAbbr={objEditInstance.strServiceAbbr} />
+              </div>
             </div>
             <div>
               <Text strong>이벤트 이름</Text>

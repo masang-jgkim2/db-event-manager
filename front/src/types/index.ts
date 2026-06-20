@@ -301,10 +301,11 @@ export interface IAuthStore {
 // 프로덕트 관련
 // =============================================
 
-// 서비스 범위 (프로덕트 하위)
+// 국가/플랫폼 (프로덕트 하위 — FH/KR, LH/KR, DK/KR, DK/G …)
 export interface IService {
-  strAbbr: string;     // 약자 (예: DK/KR, AO/EU)
-  strRegion: string;   // 서비스 범위 (국내, 스팀, 글로벌, 유럽, 일본)
+  nServiceId?: number;  // backfill·생성 후 필수
+  strAbbr: string;     // 약자 (예: FH/KR, LH/KR, DK/KR, DK/G)
+  strRegion: string;   // 플랫폼 (국내, 스팀, 글로벌, 유럽, 일본)
 }
 
 // 프로덕트 (게임/서비스)
@@ -313,7 +314,7 @@ export interface IProduct {
   strName: string;          // 프로덕트명 (예: DK온라인)
   strDescription: string;
   strDbType: 'mysql' | 'mssql' | 'postgresql';
-  arrServices: IService[];  // 서비스 범위 목록
+  arrServices: IService[];  // 국가/플랫폼 목록
   dtCreatedAt: string;
 }
 
@@ -504,6 +505,10 @@ export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;
+  /** products.arrServices[].strAbbr — denormalized */
+  strServiceAbbr?: string;
+  /** product_service.n_id — NULL=공통 fallback */
+  nServiceId?: number | null;
   strKind: TDbConnectionKind;
   strEnv: 'dev' | 'qa' | 'live';
   strDbType: 'mssql' | 'mysql';
@@ -560,6 +565,7 @@ export interface IEventInstance {
   nId: number;
   nEventTemplateId: number;
   nProductId: number;
+  nServiceId?: number;
   strEventLabel: string;
   strProductName: string;
   strServiceAbbr: string;

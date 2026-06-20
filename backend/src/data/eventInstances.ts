@@ -78,6 +78,8 @@ export interface IEventInstance {
   // 템플릿 정보
   nEventTemplateId: number;
   nProductId: number;               // DB 접속 정보 조회용 (추가)
+  /** 생성 시 product_service FK — 대시보드 표시는 strServiceAbbr 스냅샷 */
+  nServiceId?: number;
   strEventLabel: string;
   strProductName: string;
   strServiceAbbr: string;
@@ -121,7 +123,6 @@ export interface IEventInstance {
 
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
-import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 
 const STR_FILE = 'eventInstances.json';
 
@@ -165,18 +166,27 @@ export const fnReloadEventInstancesFromDiskIfEmpty = (): boolean => {
 };
 
 export const fnSaveEventInstances = () => {
-  fnSaveJson(STR_FILE, arrEventInstances);
-  // mysql 모드: 정규 테이블 반영 + 운영 확인용 eventInstances.json 미러
   if (fnIsMysqlStore()) {
     fnMirrorJsonToDisk(STR_FILE, arrEventInstances);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const {
+      fnScheduleMysqlEventInstanceReplace,
+      fnCancelMysqlDocFlushForFiles,
+    } = require('../db/mysqlDocPersist') as typeof import('../db/mysqlDocPersist');
+    fnCancelMysqlDocFlushForFiles(['eventInstances.json']);
+    fnScheduleMysqlEventInstanceReplace();
+    return;
   }
+  fnSaveJson(STR_FILE, arrEventInstances);
 };
 
 /** 메모리 저장 후 MySQL doc flush까지 대기 (재시작 전 유실 방지) */
 export const fnCommitEventInstancesToStore = async (): Promise<void> => {
   fnSaveEventInstances();
   if (fnIsMysqlStore()) {
-    await fnAwaitMysqlDocFlush();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { fnAwaitMysqlEventInstanceFlush } = require('../db/mysqlDocPersist') as typeof import('../db/mysqlDocPersist');
+    await fnAwaitMysqlEventInstanceFlush();
   }
 };
 

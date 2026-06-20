@@ -1,9 +1,12 @@
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
+import { fnEnsureAllProductsServiceIds } from '../utils/serviceId';
 
 // 프로덕트 데이터 저장소
 
 export interface IService {
+  /** 불변 식별자 — backfill·생성 후 필수 (product_service.n_id) */
+  nServiceId?: number;
   strAbbr: string;
   strRegion: string;
 }
@@ -27,7 +30,7 @@ const ARR_SEED: IProduct[] = [
     strName: '출조낚시왕',
     strDescription: '낚시 게임',
     strDbType: 'mysql',
-    arrServices: [{ strAbbr: 'FH', strRegion: '국내' }],
+    arrServices: [{ nServiceId: 1001, strAbbr: 'FH/KR', strRegion: '국내' }],
     dtCreatedAt: new Date().toISOString(),
   },
   {
@@ -36,8 +39,8 @@ const ARR_SEED: IProduct[] = [
     strDescription: 'MMORPG',
     strDbType: 'mysql',
     arrServices: [
-      { strAbbr: 'DK/KR', strRegion: '국내' },
-      { strAbbr: 'DK/G', strRegion: '스팀' },
+      { nServiceId: 2001, strAbbr: 'DK/KR', strRegion: '국내' },
+      { nServiceId: 2002, strAbbr: 'DK/G', strRegion: '스팀' },
     ],
     dtCreatedAt: new Date().toISOString(),
   },
@@ -46,7 +49,7 @@ const ARR_SEED: IProduct[] = [
     strName: '콜오브카오스',
     strDescription: '전략 게임',
     strDbType: 'mysql',
-    arrServices: [{ strAbbr: 'CC', strRegion: '국내' }],
+    arrServices: [{ nServiceId: 3001, strAbbr: 'CC/KR', strRegion: '국내' }],
     dtCreatedAt: new Date().toISOString(),
   },
   {
@@ -54,7 +57,7 @@ const ARR_SEED: IProduct[] = [
     strName: '아스다스토리',
     strDescription: 'MMORPG',
     strDbType: 'mysql',
-    arrServices: [{ strAbbr: 'AD/G', strRegion: '글로벌' }],
+    arrServices: [{ nServiceId: 4001, strAbbr: 'AD/G', strRegion: '글로벌' }],
     dtCreatedAt: new Date().toISOString(),
   },
   {
@@ -63,9 +66,9 @@ const ARR_SEED: IProduct[] = [
     strDescription: '비행 슈팅 MMORPG',
     strDbType: 'mysql',
     arrServices: [
-      { strAbbr: 'AO/KR', strRegion: '국내' },
-      { strAbbr: 'AO/EU', strRegion: '유럽' },
-      { strAbbr: 'AO/JP', strRegion: '일본' },
+      { nServiceId: 5001, strAbbr: 'AO/KR', strRegion: '국내' },
+      { nServiceId: 5002, strAbbr: 'AO/EU', strRegion: '유럽' },
+      { nServiceId: 5003, strAbbr: 'AO/JP', strRegion: '일본' },
     ],
     dtCreatedAt: new Date().toISOString(),
   },
@@ -74,7 +77,7 @@ const ARR_SEED: IProduct[] = [
     strName: '라그하임',
     strDescription: 'MMORPG',
     strDbType: 'mysql',
-    arrServices: [{ strAbbr: 'LH', strRegion: '국내' }],
+    arrServices: [{ nServiceId: 6001, strAbbr: 'LH/KR', strRegion: '국내' }],
     dtCreatedAt: new Date().toISOString(),
   },
   {
@@ -82,12 +85,16 @@ const ARR_SEED: IProduct[] = [
     strName: '스키드러시',
     strDescription: '레이싱 게임',
     strDbType: 'mysql',
-    arrServices: [{ strAbbr: 'SR', strRegion: '국내' }],
+    arrServices: [{ nServiceId: 7001, strAbbr: 'SR', strRegion: '국내' }],
     dtCreatedAt: new Date().toISOString(),
   },
 ];
 
 export const arrProducts: IProduct[] = fnLoadJson<IProduct>(STR_FILE, ARR_SEED);
+if (fnEnsureAllProductsServiceIds(arrProducts)) {
+  fnSaveJson(STR_FILE, arrProducts);
+  console.log('[products] arrServices nServiceId backfill | products.json 저장');
+}
 
 /** 메모리가 비어 있고 디스크에 건수가 있으면 products.json에서 다시 채움 */
 export const fnReloadProductsFromDiskIfEmpty = (): boolean => {
@@ -105,3 +112,17 @@ export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
 
 export const fnGetNextProductId = (): number =>
   arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;
+
+export const fnNormalizeProductName = (strName: string | undefined): string =>
+  (strName ?? '').trim();
+
+export const fnFindProductByName = (
+  strName: string,
+  nExcludeId?: number,
+): IProduct | undefined => {
+  const strNorm = fnNormalizeProductName(strName);
+  if (!strNorm) return undefined;
+  return arrProducts.find(
+    (p) => p.nId !== nExcludeId && fnNormalizeProductName(p.strName) === strNorm,
+  );
+};

@@ -4,7 +4,7 @@ import {
   fnReloadEventInstancesFromDiskIfEmpty,
   TEventStatus, IStageActor, IEventInstance,
 } from '../data/eventInstances';
-import { fnResolveExecuteConnection } from '../data/dbConnections';
+import { fnResolveExecuteConnection, fnFindConnectionById, fnHasEnvConnectionForKindAndService, fnHasEnvConnectionForService } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents, fnIsTemplateReadyForInstance } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -14,6 +14,7 @@ import { IQueryExecutionResult, IDbConnection } from '../types';
 import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
 import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
 import { fnBuildMssqlGrantScriptForSql } from '../utils/grantScriptFromSql';
+import { fnResolveConnectionServiceFields } from '../utils/serviceId';
 const STR_MSG_INSTANCE_MYSQL_FAIL =
   '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.';
 
@@ -145,7 +146,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
   try {
     const {
       nEventTemplateId, nProductId, strEventLabel, strProductName,
-      strServiceAbbr, strServiceRegion, strCategory, strType,
+      strServiceAbbr, strServiceRegion, strCategory, strType, nServiceId,
       strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets,
       dtDeployDate, dtQaDeployDate, dtLiveDeployDate, strAlloLink,
       arrDeployScope: arrReqScope, strCreatedBy,
@@ -187,6 +188,54 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    const nProdId = Number(nProductId) || 0;
+    const objProduct = arrProducts.find((p) => p.nId === nProdId);
+    const objSvcResolved = fnResolveConnectionServiceFields(objProduct, nServiceId, strServiceAbbr);
+    if ('strError' in objSvcResolved) {
+      res.status(400).json({ bSuccess: false, strMessage: objSvcResolved.strError });
+      return;
+    }
+    const strInstSvc = String(objSvcResolved.strServiceAbbr ?? strServiceAbbr ?? '').trim();
+    const nInstSvcId = objSvcResolved.nServiceId;
+    const strResolvedProductName =
+      objProduct?.strName ?? String(strProductName ?? objTemplate.strProductName ?? '').trim();
+    const strResolvedServiceRegion =
+      String(strServiceRegion ?? '').trim()
+      || objProduct?.arrServices?.find(
+        (s) => (nInstSvcId != null && s.nServiceId === nInstSvcId) || s.strAbbr === strInstSvc,
+      )?.strRegion
+      || '';
+    for (const strScopeEnv of arrDeployScope) {
+      if (!fnHasEnvConnectionForService(nProdId, strInstSvc, strScopeEnv, nInstSvcId)) {
+        res.status(400).json({
+          bSuccess: false,
+          strMessage:
+            `${strScopeEnv.toUpperCase()} DB 접속 정보가 없습니다. ` +
+            (strInstSvc ? `서비스 구분「${strInstSvc}」` : '해당 프로덕트') +
+            `에 ${strScopeEnv.toUpperCase()} 접속을 등록·활성화해주세요.`,
+        });
+        return;
+      }
+    }
+    const arrTargetsRaw = Array.isArray(arrExecutionTargets) ? arrExecutionTargets : [];
+    if (arrTargetsRaw.length > 0 && strInstSvc) {
+      for (const strScopeEnv of arrDeployScope) {
+        for (const t of arrTargetsRaw) {
+          const objTplConn = fnFindConnectionById(Number(t.nDbConnectionId));
+          const strKind = objTplConn?.strKind ?? 'GAME';
+          if (!fnHasEnvConnectionForKindAndService(nProdId, strInstSvc, strScopeEnv, strKind, nInstSvcId)) {
+            res.status(400).json({
+              bSuccess: false,
+              strMessage:
+                `쿼리 세트(${strKind})에 ${strScopeEnv.toUpperCase()} DB 접속이 없습니다. ` +
+                `서비스 구분「${strInstSvc}」·종류「${strKind}」 접속을 등록해주세요.`,
+            });
+            return;
+          }
+        }
+      }
+    }
+
     const objCreator: IStageActor = {
       strDisplayName: strCreatedBy || req.user?.strDisplayName || req.user?.strUserId || '',
       nUserId: req.user?.nId || 0,
@@ -199,9 +248,10 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       nEventTemplateId,
       nProductId: Number(nProductId) || 0,
       strEventLabel: strEventLabel || '',
-      strProductName: strProductName || '',
-      strServiceAbbr: strServiceAbbr || '',
-      strServiceRegion: strServiceRegion || '',
+      strProductName: strResolvedProductName,
+      nServiceId: nInstSvcId,
+      strServiceAbbr: strInstSvc,
+      strServiceRegion: strResolvedServiceRegion,
       strCategory: strCategory || '',
       strType: strType || '',
       strEventName,
@@ -528,7 +578,9 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       const objDbConn = fnResolveExecuteConnection(
         nProductId,
         strEnv,
-        objInstance.arrExecutionTargets![0].nDbConnectionId
+        objInstance.arrExecutionTargets![0].nDbConnectionId,
+        objInstance.strServiceAbbr,
+        objInstance.nServiceId,
       );
       if (!objDbConn) {
         res.status(400).json({
@@ -577,7 +629,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
       for (let i = 0; i < objInstance.arrExecutionTargets!.length; i++) {
         const t = objInstance.arrExecutionTargets![i];
-        const objConn = fnResolveExecuteConnection(nProductId, strEnv, t.nDbConnectionId);
+        const objConn = fnResolveExecuteConnection(
+          nProductId,
+          strEnv,
+          t.nDbConnectionId,
+          objInstance.strServiceAbbr,
+          objInstance.nServiceId,
+        );
         if (!objConn) {
           const strMsg = `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} DB 접속을 해석할 수 없습니다. (접속 ID: ${t.nDbConnectionId}, 프로덕트·환경·활성 상태를 확인하세요.)`;
           const objFailResult: IQueryExecutionResult = {
@@ -709,7 +767,13 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       }
     } else {
       // 레거시: arrExecutionTargets 없음 — GAME 종류 활성 접속으로 strGeneratedQuery 실행
-      const objDbConn = fnResolveExecuteConnection(nProductId, strEnv);
+      const objDbConn = fnResolveExecuteConnection(
+        nProductId,
+        strEnv,
+        undefined,
+        objInstance.strServiceAbbr,
+        objInstance.nServiceId,
+      );
       if (!objDbConn) {
         res.status(400).json({
           bSuccess: false,

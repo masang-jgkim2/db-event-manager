@@ -55,12 +55,16 @@ export interface IRelationalImportPayload {
   bAllowStubTemplates?: boolean;
 }
 
-const ARR_TABLES_DELETE_ORDER = [
+const ARR_EVENT_INSTANCE_TABLES_DELETE_ORDER = [
   'event_instance_stage_actor',
   'event_instance_status_log',
   'event_instance_execution_target',
   'event_instance_deploy_scope',
   'event_instance',
+] as const;
+
+const ARR_TABLES_DELETE_ORDER = [
+  ...ARR_EVENT_INSTANCE_TABLES_DELETE_ORDER,
   'event_template_query_set',
   'event_template',
   'db_connection',
@@ -110,152 +114,22 @@ const fnClearAllRelational = async (conn: PoolConnection): Promise<void> => {
   await conn.query('SET FOREIGN_KEY_CHECKS=1');
 };
 
-const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload): Promise<void> => {
-  const { arrProducts, arrDbConnections, arrEvents, arrEventInstances } = p;
-
-  for (const prod of arrProducts) {
-    const strDt = fnToMysqlDatetime6Required(prod.dtCreatedAt, new Date().toISOString());
-    await conn.execute(
-      `INSERT INTO product (n_id, str_name, str_description, str_db_type, dt_created_at, dt_updated_at)
-       VALUES (?,?,?,?,?,?)`,
-      [
-        prod.nId,
-        prod.strName,
-        prod.strDescription ?? '',
-        prod.strDbType,
-        strDt,
-        strDt,
-      ],
-    );
-    let nSort = 0;
-    for (const svc of prod.arrServices ?? []) {
-      await conn.execute(
-        `INSERT INTO product_service (n_product_id, n_sort, str_abbr, str_region) VALUES (?,?,?,?)`,
-        [prod.nId, nSort, svc.strAbbr, svc.strRegion],
-      );
-      nSort += 1;
-    }
+const fnClearEventInstanceTablesRelational = async (conn: PoolConnection): Promise<void> => {
+  for (const strTable of ARR_EVENT_INSTANCE_TABLES_DELETE_ORDER) {
+    await conn.query(`DELETE FROM \`${strTable}\``);
   }
+};
 
-  for (const u of p.arrUsers) {
-    const strDt = fnToMysqlDatetime6Required(u.dtCreatedAt, new Date().toISOString());
-    await conn.execute(
-      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at) VALUES (?,?,?,?,?,?,?)`,
-      [
-        u.nId,
-        u.strUserId,
-        u.strPassword,
-        u.strDisplayName,
-        u.strEmail ?? null,
-        u.strStatus ?? 'active',
-        strDt,
-      ],
-    );
-  }
-
-  for (const r of p.arrRoles) {
-    await conn.execute(
-      `INSERT INTO roles (n_id, str_code, str_display_name, str_description, b_is_system, dt_created_at, dt_updated_at)
-       VALUES (?,?,?,?,?,?,?)`,
-      [
-        r.nId,
-        r.strCode,
-        r.strDisplayName,
-        r.strDescription ?? '',
-        fnTiny(r.bIsSystem),
-        fnToMysqlDatetime6Required(r.dtCreatedAt, new Date().toISOString()),
-        fnToMysqlDatetime6Required(r.dtUpdatedAt, r.dtCreatedAt),
-      ],
-    );
-  }
-
-  for (const ur of p.arrUserRoles) {
-    await conn.execute(`INSERT INTO user_roles (n_user_id, n_role_id) VALUES (?,?)`, [
-      ur.nUserId,
-      ur.nRoleId,
-    ]);
-  }
-
-  for (const rp of p.arrRolePermissions) {
-    const strP = String(rp.strPermission).slice(0, 191);
-    await conn.execute(
-      `INSERT INTO role_permissions (n_role_id, str_permission) VALUES (?,?)`,
-      [rp.nRoleId, strP],
-    );
-  }
-
-  for (const c of arrDbConnections) {
-    await conn.execute(
-      `INSERT INTO db_connection (
-        n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
-        str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        c.nId,
-        c.nProductId,
-        c.strProductName,
-        c.strKind,
-        c.strEnv,
-        c.strDbType,
-        c.strHost,
-        c.nPort,
-        c.strDatabase,
-        c.strUser,
-        fnEncryptDbConnPasswordForDisk(c.strPassword),
-        fnTiny(c.bIsActive),
-        fnToMysqlDatetime6Required(c.dtCreatedAt, new Date().toISOString()),
-        fnToMysqlDatetime6Required(c.dtUpdatedAt, c.dtCreatedAt),
-      ],
-    );
-  }
-
-  for (const e of arrEvents) {
-    const nCreatorUserId = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? e.nCreatedByUserId : null;
-    await conn.execute(
-      `INSERT INTO event_template (
-        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
-        str_status, json_status_logs, json_creator, json_confirmer
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        e.nId,
-        e.nProductId,
-        e.strProductName,
-        e.strEventLabel,
-        e.strDescription ?? null,
-        e.strCategory,
-        e.strType,
-        e.strInputFormat,
-        e.strDefaultItems || null,
-        e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
-        e.strCreatedBy?.trim() || null,
-        nCreatorUserId,
-        fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
-        e.strStatus ?? 'dba_confirmed',
-        JSON.stringify(e.arrStatusLogs ?? []),
-        e.objCreator ? JSON.stringify(e.objCreator) : null,
-        e.objConfirmer ? JSON.stringify(e.objConfirmer) : null,
-      ],
-    );
-    const arrSets = e.arrQueryTemplates?.length ? e.arrQueryTemplates : [];
-    if (arrSets.length) {
-      let nSort = 0;
-      for (const q of arrSets) {
-        const nConn = fnResolveDbConnId(e.nProductId, q.nDbConnectionId, arrDbConnections);
-        if (nConn <= 0) continue;
-        await conn.execute(
-          `INSERT INTO event_template_query_set (n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template)
-           VALUES (?,?,?,?,?)`,
-          [e.nId, nSort, nConn, q.strDefaultItems ?? null, q.strQueryTemplate ?? ''],
-        );
-        nSort += 1;
-      }
-    }
-  }
-
+/** event_instance 및 자식 테이블만 INSERT (스텁 템플릿은 bAllowStubTemplates=true 일 때만) */
+const fnInsertEventInstancesRelational = async (
+  conn: PoolConnection,
+  arrEventInstances: IEventInstance[],
+  arrEvents: IEventTemplate[],
+  arrDbConnections: IDbConnection[],
+  bAllowStubTemplates: boolean,
+): Promise<void> => {
   const setEventTemplateIds = new Set(arrEvents.map((e) => e.nId));
-  // JSON→MySQL 최초 적재 시에만: 인스턴스 FK용 스텁 템플릿 (일상 flush 시 삭제 템플릿이 되살아나지 않도록)
-  if (p.bAllowStubTemplates) {
+  if (bAllowStubTemplates) {
     const arrMissingTplIds = [
       ...new Set(
         arrEventInstances
@@ -309,15 +183,16 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     );
     await conn.execute(
       `INSERT INTO event_instance (
-        n_id, n_event_template_id, n_product_id, str_event_label, str_product_name, str_service_abbr, str_service_region,
+        n_id, n_event_template_id, n_product_id, n_service_id, str_event_label, str_product_name, str_service_abbr, str_service_region,
         str_category, str_type, str_event_name, str_input_values, str_generated_query, dt_deploy_date,
         dt_qa_deploy_date, dt_live_deploy_date, str_allo_link, str_status, str_created_by, n_created_by_user_id,
         dt_created_at, b_permanently_removed, dt_permanently_removed_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         inst.nId,
         inst.nEventTemplateId,
         inst.nProductId,
+        inst.nServiceId ?? null,
         inst.strEventLabel,
         inst.strProductName,
         inst.strServiceAbbr,
@@ -402,6 +277,145 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
       );
     }
   }
+};
+
+const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload): Promise<void> => {
+  const { arrProducts, arrDbConnections, arrEvents, arrEventInstances } = p;
+
+  for (const prod of arrProducts) {
+    const strDt = fnToMysqlDatetime6Required(prod.dtCreatedAt, new Date().toISOString());
+    await conn.execute(
+      `INSERT INTO product (n_id, str_name, str_description, str_db_type, dt_created_at, dt_updated_at)
+       VALUES (?,?,?,?,?,?)`,
+      [
+        prod.nId,
+        prod.strName,
+        prod.strDescription ?? '',
+        prod.strDbType,
+        strDt,
+        strDt,
+      ],
+    );
+    let nSort = 0;
+    for (const svc of prod.arrServices ?? []) {
+      const nSvcId = Number(svc.nServiceId);
+      if (!nSvcId) continue;
+      await conn.execute(
+        `INSERT INTO product_service (n_id, n_product_id, n_sort, str_abbr, str_region) VALUES (?,?,?,?,?)`,
+        [nSvcId, prod.nId, nSort, svc.strAbbr, svc.strRegion],
+      );
+      nSort += 1;
+    }
+  }
+
+  for (const u of p.arrUsers) {
+    const strDt = fnToMysqlDatetime6Required(u.dtCreatedAt, new Date().toISOString());
+    await conn.execute(
+      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at) VALUES (?,?,?,?,?,?,?)`,
+      [
+        u.nId,
+        u.strUserId,
+        u.strPassword,
+        u.strDisplayName,
+        u.strEmail ?? null,
+        u.strStatus ?? 'active',
+        strDt,
+      ],
+    );
+  }
+
+  for (const r of p.arrRoles) {
+    await conn.execute(
+      `INSERT INTO roles (n_id, str_code, str_display_name, str_description, b_is_system, dt_created_at, dt_updated_at)
+       VALUES (?,?,?,?,?,?,?)`,
+      [
+        r.nId,
+        r.strCode,
+        r.strDisplayName,
+        r.strDescription ?? '',
+        fnTiny(r.bIsSystem),
+        fnToMysqlDatetime6Required(r.dtCreatedAt, new Date().toISOString()),
+        fnToMysqlDatetime6Required(r.dtUpdatedAt, r.dtCreatedAt),
+      ],
+    );
+  }
+
+  for (const ur of p.arrUserRoles) {
+    await conn.execute(`INSERT INTO user_roles (n_user_id, n_role_id) VALUES (?,?)`, [
+      ur.nUserId,
+      ur.nRoleId,
+    ]);
+  }
+
+  for (const rp of p.arrRolePermissions) {
+    const strP = String(rp.strPermission).slice(0, 191);
+    await conn.execute(
+      `INSERT INTO role_permissions (n_role_id, str_permission) VALUES (?,?)`,
+      [rp.nRoleId, strP],
+    );
+  }
+
+  for (const c of arrDbConnections) {
+    await conn.execute(
+      `INSERT INTO db_connection (
+        n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
+        str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      fnDbConnectionRowParams(c),
+    );
+  }
+
+  for (const e of arrEvents) {
+    const nCreatorUserId = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? e.nCreatedByUserId : null;
+    await conn.execute(
+      `INSERT INTO event_template (
+        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+        str_status, json_status_logs, json_creator, json_confirmer
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        e.nId,
+        e.nProductId,
+        e.strProductName,
+        e.strEventLabel,
+        e.strDescription ?? null,
+        e.strCategory,
+        e.strType,
+        e.strInputFormat,
+        e.strDefaultItems || null,
+        e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
+        e.strCreatedBy?.trim() || null,
+        nCreatorUserId,
+        fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
+        e.strStatus ?? 'dba_confirmed',
+        JSON.stringify(e.arrStatusLogs ?? []),
+        e.objCreator ? JSON.stringify(e.objCreator) : null,
+        e.objConfirmer ? JSON.stringify(e.objConfirmer) : null,
+      ],
+    );
+    const arrSets = e.arrQueryTemplates?.length ? e.arrQueryTemplates : [];
+    if (arrSets.length) {
+      let nSort = 0;
+      for (const q of arrSets) {
+        const nConn = fnResolveDbConnId(e.nProductId, q.nDbConnectionId, arrDbConnections);
+        if (nConn <= 0) continue;
+        await conn.execute(
+          `INSERT INTO event_template_query_set (n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template)
+           VALUES (?,?,?,?,?)`,
+          [e.nId, nSort, nConn, q.strDefaultItems ?? null, q.strQueryTemplate ?? ''],
+        );
+        nSort += 1;
+      }
+    }
+  }
+
+  await fnInsertEventInstancesRelational(
+    conn,
+    arrEventInstances,
+    arrEvents,
+    arrDbConnections,
+    Boolean(p.bAllowStubTemplates),
+  );
 
   for (const log of p.arrActivityLogs) {
     await conn.execute(
@@ -518,6 +532,32 @@ export const fnRelationalWriteFullFromMemory = async (pool: Pool): Promise<void>
   });
 };
 
+/** event_instance* 테이블만 치환 — 전체 메타 스냅샷 FK 오류와 분리 */
+export const fnRelationalReplaceEventInstancesOnly = async (pool: Pool): Promise<void> => {
+  const { arrDbConnections } = await import('../data/dbConnections');
+  const { arrEvents } = await import('../data/events');
+  const { arrEventInstances } = await import('../data/eventInstances');
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await fnClearEventInstanceTablesRelational(conn);
+    await fnInsertEventInstancesRelational(
+      conn,
+      [...arrEventInstances],
+      [...arrEvents],
+      [...arrDbConnections],
+      false,
+    );
+    await conn.commit();
+    console.log(`[DATA_MYSQL] event_instance 치환 완료 | ${arrEventInstances.length}건`);
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
 const fnJsonVal = (raw: unknown): unknown => {
   if (raw == null) return null;
   if (typeof raw === 'string') return JSON.parse(raw);
@@ -529,28 +569,38 @@ const fnJsonVal = (raw: unknown): unknown => {
 export const fnRelationalLoadProducts = async (pool: Pool): Promise<IProduct[]> => {
   const [prows] = await pool.query<RowDataPacket[]>('SELECT n_id, str_name, str_description, str_db_type, dt_created_at FROM product ORDER BY n_id');
   const [srows] = await pool.query<RowDataPacket[]>(
-    'SELECT n_product_id, n_sort, str_abbr, str_region FROM product_service ORDER BY n_product_id, n_sort',
+    'SELECT n_id, n_product_id, n_sort, str_abbr, str_region FROM product_service ORDER BY n_product_id, n_sort',
   );
-  const mapSvc = new Map<number, Array<{ strAbbr: string; strRegion: string }>>();
+  const mapSvc = new Map<number, Array<{ nServiceId: number; strAbbr: string; strRegion: string }>>();
   for (const s of srows) {
     const nPid = Number(s.n_product_id);
     if (!mapSvc.has(nPid)) mapSvc.set(nPid, []);
-    mapSvc.get(nPid)!.push({ strAbbr: String(s.str_abbr), strRegion: String(s.str_region) });
+    mapSvc.get(nPid)!.push({
+      nServiceId: Number(s.n_id),
+      strAbbr: String(s.str_abbr),
+      strRegion: String(s.str_region),
+    });
   }
   return (prows as RowDataPacket[]).map((r) => ({
     nId: Number(r.n_id),
     strName: String(r.str_name),
     strDescription: r.str_description != null ? String(r.str_description) : '',
     strDbType: String(r.str_db_type),
-    arrServices: mapSvc.get(Number(r.n_id)) ?? [],
+    arrServices: (mapSvc.get(Number(r.n_id)) ?? []).map((svc) => ({
+      nServiceId: svc.nServiceId,
+      strAbbr: svc.strAbbr,
+      strRegion: svc.strRegion,
+    })),
     dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
   }));
 };
 
-const fnDbConnectionRowParams = (c: IDbConnection): (string | number | boolean)[] => [
+const fnDbConnectionRowParams = (c: IDbConnection): (string | number | boolean | null)[] => [
   c.nId,
   c.nProductId,
   c.strProductName,
+  c.nServiceId ?? null,
+  (c.strServiceAbbr ?? '').trim() || null,
   c.strKind,
   c.strEnv,
   c.strDbType,
@@ -571,12 +621,14 @@ export const fnUpsertDbConnectionRowToMysql = async (
 ): Promise<void> => {
   await pool.execute(
     `INSERT INTO db_connection (
-      n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
+      n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
       str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON DUPLICATE KEY UPDATE
       n_product_id = VALUES(n_product_id),
       str_product_name = VALUES(str_product_name),
+      n_service_id = VALUES(n_service_id),
+      str_service_abbr = VALUES(str_service_abbr),
       str_kind = VALUES(str_kind),
       str_env = VALUES(str_env),
       str_db_type = VALUES(str_db_type),
@@ -628,12 +680,14 @@ export const fnSyncDbConnectionsOnlyToMysql = async (
     for (const c of arrRows) {
       await conn.execute(
         `INSERT INTO db_connection (
-          n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
+          n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
           str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON DUPLICATE KEY UPDATE
           n_product_id = VALUES(n_product_id),
           str_product_name = VALUES(str_product_name),
+          n_service_id = VALUES(n_service_id),
+          str_service_abbr = VALUES(str_service_abbr),
           str_kind = VALUES(str_kind),
           str_env = VALUES(str_env),
           str_db_type = VALUES(str_db_type),
@@ -677,7 +731,7 @@ export const fnSyncDbConnectionsOnlyToMysql = async (
 
 export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConnection[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT n_id, n_product_id, str_product_name, str_kind, str_env, str_db_type, str_host, n_port,
+    `SELECT n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
             str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
      FROM db_connection ORDER BY n_id`,
   );
@@ -685,6 +739,8 @@ export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConn
     nId: Number(r.n_id),
     nProductId: Number(r.n_product_id),
     strProductName: String(r.str_product_name),
+    nServiceId: r.n_service_id != null ? Number(r.n_service_id) : null,
+    strServiceAbbr: r.str_service_abbr != null ? String(r.str_service_abbr) : undefined,
     strKind: r.str_kind as IDbConnection['strKind'],
     strEnv: r.str_env as IDbConnection['strEnv'],
     strDbType: r.str_db_type as IDbConnection['strDbType'],
@@ -853,6 +909,7 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
       nId,
       nEventTemplateId: Number(r.n_event_template_id),
       nProductId: Number(r.n_product_id),
+      nServiceId: r.n_service_id != null ? Number(r.n_service_id) : undefined,
       strEventLabel: String(r.str_event_label),
       strProductName: String(r.str_product_name),
       strServiceAbbr: String(r.str_service_abbr),

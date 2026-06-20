@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { ProductNameTag } from './ProductNameTag';
+import { InstanceServiceScopeCell } from './InstanceServiceScopeCell';
 import { fnGetInstanceValueByPath } from '../utils/dashboardInstanceField';
 
 const { Text } = Typography;
@@ -77,6 +78,8 @@ export function InstanceCardLabelRows({
       );
     } else if (strRender === 'tag') {
       elValue = <ProductNameTag strName={String(objRaw)} />;
+    } else if (strRender === 'service_scope') {
+      elValue = <InstanceServiceScopeCell strServiceAbbr={objInstance.strServiceAbbr} />;
     } else {
       elValue = <span>{String(objRaw)}</span>;
     }
