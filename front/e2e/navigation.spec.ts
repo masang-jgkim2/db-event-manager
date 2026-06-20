@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { STR_ADMIN_PASS, STR_ADMIN_USER, fnE2eLogin } from './helpers/auth';
+import { fnClickSidebarMenu } from './helpers/menu';
 
 test.describe('메뉴 클릭으로 페이지 이동', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
@@ -38,7 +39,7 @@ test.describe('메뉴 클릭으로 페이지 이동', { tag: '@smoke' }, () => {
   });
 
   test('사용자 메뉴 클릭 시 사용자 목록 페이지가 보인다', async ({ page }) => {
-    await page.getByRole('menuitem', { name: '사용자' }).click();
+    await fnClickSidebarMenu(page, '사용자');
     await expect(page).toHaveURL('/users');
     await expect(page.getByText(/사용자/i).first()).toBeVisible({ timeout: 5000 });
   });
