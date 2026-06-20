@@ -128,7 +128,7 @@ const fnCreateEventViaUI = async (page, objCfg) => {
   await page.locator('.ant-select').first().click();
   await page.locator('.ant-select-item-option').filter({ hasText: objCfg.strProductName }).first().click();
   await page.waitForTimeout(400);
-  const svc = page.locator('.ant-card').filter({ hasText: '국내/해외' }).locator('.ant-select');
+  const svc = page.locator('.ant-card').filter({ hasText: '국가/플랫폼' }).locator('.ant-select');
   await svc.click();
   await page.locator('.ant-select-item-option').filter({ hasText: objCfg.strServiceAbbr }).first().click();
   await page.waitForTimeout(400);
