@@ -6,6 +6,8 @@ import {
 } from '../data/events';
 import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances } from '../data/eventInstances';
 import { arrProducts } from '../data/products';
+import { fnFindConnectionById } from '../data/dbConnections';
+import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 import type { TPermission } from '../types';
@@ -91,6 +93,25 @@ export const fnGetEventInstancesByTemplate = async (req: Request, res: Response)
 };
 
 // 쿼리 템플릿 추가 (관리자)
+const fnValidateTemplateQueryConnections = (
+  nProductId: number,
+  arrQueryTemplates?: IQueryTemplateItem[],
+): string | null => {
+  if (!Array.isArray(arrQueryTemplates)) return null;
+  for (const objSet of arrQueryTemplates) {
+    const nConnId = Number(objSet.nDbConnectionId);
+    if (!nConnId) return '연결 DB를 선택해주세요.';
+    const objConn = fnFindConnectionById(nConnId);
+    if (!objConn || objConn.nProductId !== nProductId) {
+      return `연결 DB(#${nConnId})가 선택한 프로덕트와 일치하지 않습니다.`;
+    }
+    if (!objConn.bIsActive) {
+      return `연결 DB(#${nConnId})가 비활성 상태입니다.`;
+    }
+  }
+  return null;
+};
+
 export const fnCreateEvent = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -106,6 +127,15 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
 
     // 프로덕트명 조회
     const objProduct = arrProducts.find((p) => p.nId === nProductId);
+
+    const arrSets = Array.isArray(arrQueryTemplates) ? arrQueryTemplates : undefined;
+    if (arrSets?.length) {
+      const strConnErr = fnValidateTemplateQueryConnections(Number(nProductId), arrSets);
+      if (strConnErr) {
+        res.status(400).json({ bSuccess: false, strMessage: strConnErr });
+        return;
+      }
+    }
 
     const nCreatorUserId = req.user?.nId && req.user.nId > 0 ? req.user.nId : undefined;
     const strCreatorName = req.user?.strDisplayName?.trim() || req.user?.strUserId?.trim() || '';
@@ -189,6 +219,17 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       'strCategory', 'strType', 'strInputFormat',
       'strDefaultItems', 'strQueryTemplate', 'arrQueryTemplates',
     ];
+
+    const nProductIdForConn = req.body.nProductId !== undefined
+      ? Number(req.body.nProductId)
+      : objTpl.nProductId;
+    if (Array.isArray(req.body.arrQueryTemplates) && req.body.arrQueryTemplates.length > 0) {
+      const strConnErr = fnValidateTemplateQueryConnections(nProductIdForConn, req.body.arrQueryTemplates);
+      if (strConnErr) {
+        res.status(400).json({ bSuccess: false, strMessage: strConnErr });
+        return;
+      }
+    }
 
     for (const key of fields) {
       if (req.body[key] !== undefined) {

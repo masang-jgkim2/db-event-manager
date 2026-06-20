@@ -4,6 +4,12 @@
 import request from 'supertest';
 import app from '../app';
 import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
+import {
+  fnFindReadyTemplateForProduct,
+  fnPrimaryServiceAbbr,
+  fnPruneEphemeralTestProducts,
+  fnUniqueApiTestName,
+} from './helpers/apiTestFixtures';
 import { arrRolePermissions, fnSetPermissionsForRole, fnGetPermissionsByRoleId } from '../data/rolePermissions';
 import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
@@ -25,6 +31,7 @@ describe('API 전체 테스트', () => {
   let strDbaToken: string;
 
   beforeAll(async () => {
+    fnPruneEphemeralTestProducts();
     await fnEnsureRoleTestUsers();
   });
 
@@ -357,14 +364,15 @@ describe('API 전체 테스트', () => {
     });
 
     it('product.create 또는 product.manage 있으면 POST /api/products → 200', async () => {
+      const strName = fnUniqueApiTestName('테스트프로덕트');
       const res = await request(app)
         .post('/api/products')
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
-          strName: '테스트프로덕트',
+          strName,
           strDescription: '권한테스트',
           strDbType: 'mysql',
-          arrServices: [{ strAbbr: 'T', strRegion: 'R' }],
+          arrServices: [{ strAbbr: 'T', strRegion: '국내' }],
         });
       expect(res.status).toBe(200);
     });
@@ -916,7 +924,14 @@ describe('API 전체 테스트', () => {
     });
 
     it('다중 세트로 이벤트 인스턴스 생성 (arrExecutionTargets 2건)', async () => {
+      // D2 재승인 테스트 이후 confirm_requested일 수 있음 — 인스턴스 생성 전 DBA 승인 복구
+      await request(app)
+        .patch(`/api/events/${nEventTemplateId}/status`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({ strNextStatus: 'dba_confirmed' });
+
       const dtDeploy = new Date(Date.now() + 86400000).toISOString();
+      const strSvc = fnPrimaryServiceAbbr(nProductId) || 'FH/KR';
       const res = await request(app)
         .post('/api/event-instances')
         .set('Authorization', `Bearer ${strGmToken}`)
@@ -925,7 +940,7 @@ describe('API 전체 테스트', () => {
           nProductId,
           strEventLabel: '다중세트 테스트 이벤트',
           strProductName: '출조낚시왕',
-          strServiceAbbr: 'FH',
+          strServiceAbbr: strSvc,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1151,14 +1166,15 @@ describe('API 전체 테스트', () => {
     let nInstanceId: number;
     let nEventTemplateId: number;
     let nProductId: number;
+    let strServiceAbbr: string;
+    let strProductName: string;
 
     beforeAll(async () => {
-      const products = await request(app).get('/api/products').set('Authorization', `Bearer ${strAdminToken}`);
-      const events = await request(app).get('/api/events').set('Authorization', `Bearer ${strAdminToken}`);
-      const p = products.body?.arrProducts?.[0];
-      const e = events.body?.arrEvents?.[0];
-      nProductId = p?.nId ?? 1;
-      nEventTemplateId = e?.nId ?? 1;
+      nProductId = 1;
+      strServiceAbbr = fnPrimaryServiceAbbr(nProductId) || 'FH/KR';
+      strProductName = arrProducts.find((p) => p.nId === nProductId)?.strName ?? '출조낚시왕';
+      const objTpl = fnFindReadyTemplateForProduct(nProductId);
+      nEventTemplateId = objTpl?.nId ?? arrEvents.find((e) => e.nProductId === nProductId)?.nId ?? 1;
     });
 
     it('POST /api/event-instances → 200 (GM 권한)', async () => {
@@ -1169,12 +1185,12 @@ describe('API 전체 테스트', () => {
           nEventTemplateId,
           nProductId,
           strEventLabel: '테스트',
-          strProductName: '테스트프로덕트',
-          strServiceAbbr: 'T',
+          strProductName,
+          strServiceAbbr,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
-          strEventName: '[T] 테스트 이벤트',
+          strEventName: `[${strServiceAbbr}] 테스트 이벤트`,
           strInputValues: '1,2,3',
           strGeneratedQuery: 'SELECT 1;',
           dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
@@ -1188,11 +1204,24 @@ describe('API 전체 테스트', () => {
     });
 
     it('D1: DBA 리뷰 미완료(template_created) 템플릿으로 POST /api/event-instances → 400', async () => {
+      const strPermTestName = fnUniqueApiTestName('테스트프로덕트');
+      const createPermProduct = await request(app)
+        .post('/api/products')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          strName: strPermTestName,
+          strDescription: 'D1차단',
+          strDbType: 'mysql',
+          arrServices: [{ strAbbr: 'T', strRegion: '국내' }],
+        });
+      expect(createPermProduct.status).toBe(200);
+      const nPermProductId = createPermProduct.body.objProduct.nId as number;
+
       const createTpl = await request(app)
         .post('/api/events')
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
-          nProductId,
+          nProductId: nPermProductId,
           strEventLabel: 'D1차단테스트',
           strDescription: 'D1',
           strCategory: '아이템',
@@ -1209,9 +1238,9 @@ describe('API 전체 테스트', () => {
         .set('Authorization', `Bearer ${strGmToken}`)
         .send({
           nEventTemplateId: createTpl.body.objEvent.nId,
-          nProductId,
+          nProductId: nPermProductId,
           strEventLabel: 'D1차단테스트',
-          strProductName: '테스트프로덕트',
+          strProductName: strPermTestName,
           strServiceAbbr: 'T',
           strServiceRegion: '국내',
           strCategory: '아이템',
@@ -1327,19 +1356,19 @@ describe('API 전체 테스트', () => {
     });
 
     it('DELETE /api/event-instances/:id (진행 중 인스턴스, admin 삭제 권한) → 200', async () => {
-      const products = await request(app).get('/api/products').set('Authorization', `Bearer ${strAdminToken}`);
-      const events = await request(app).get('/api/events').set('Authorization', `Bearer ${strAdminToken}`);
-      const p = products.body?.arrProducts?.[0];
-      const e = events.body?.arrEvents?.[0];
+      const nDelProductId = 1;
+      const strDelSvc = fnPrimaryServiceAbbr(nDelProductId) || 'FH/KR';
+      const strDelProductName = arrProducts.find((p) => p.nId === nDelProductId)?.strName ?? '출조낚시왕';
+      const objDelTpl = fnFindReadyTemplateForProduct(nDelProductId);
       const createRes = await request(app)
         .post('/api/event-instances')
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
-          nEventTemplateId: e?.nId ?? 1,
-          nProductId: p?.nId ?? 1,
+          nEventTemplateId: objDelTpl?.nId ?? 1,
+          nProductId: nDelProductId,
           strEventLabel: 'DEL테스트',
-          strProductName: p?.strName ?? '테스트',
-          strServiceAbbr: 'T',
+          strProductName: strDelProductName,
+          strServiceAbbr: strDelSvc,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1402,6 +1431,7 @@ describe('API 전체 테스트', () => {
       expect(loginRes.status).toBe(200);
       expect(loginRes.body.user?.arrPermissions).toContain('my_dashboard.query_edit');
 
+      const strQueryEditSvc = fnPrimaryServiceAbbr(1) || 'FH/KR';
       const createRes = await request(app)
         .post('/api/event-instances')
         .set('Authorization', `Bearer ${strGmToken}`)
@@ -1409,9 +1439,9 @@ describe('API 전체 테스트', () => {
           nEventTemplateId: 1,
           nProductId: 1,
           strEventLabel: 'test',
-          strProductName: 'test',
-          strServiceAbbr: 'FH',
-          strServiceRegion: 'KR',
+          strProductName: '출조낚시왕',
+          strServiceAbbr: strQueryEditSvc,
+          strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '삭제',
           strEventName: '[FH] query-edit-test',
