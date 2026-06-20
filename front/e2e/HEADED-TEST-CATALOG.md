@@ -1,5 +1,8 @@
 # DQPM Headed E2E 테스트 카탈로그
 
+> **페이지별 통합 계획(SSOT)**: [docs/E2E-PAGE-TEST-PLAN.md](../../docs/E2E-PAGE-TEST-PLAN.md) — 기능 추가 시 매트릭스 한 줄 먼저 갱신.  
+> 본 파일은 **카탈로그 ID·풀 번호·probe 명령** 부록이다.
+
 **하이브리드 운영**: Playwright **자동 검증** + 본 문서 **수동 체크리스트**를 함께 씁니다.
 
 | 모드 | 표기 | 의미 |

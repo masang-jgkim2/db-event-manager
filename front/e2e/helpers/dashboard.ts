@@ -80,8 +80,13 @@ export const fnOpenCompletedDashTab = async (page: Page) => {
 };
 
 /** 영구 삭제 — Popconfirm 「삭제」 */
-export const fnClickRowDelete = async (page: Page, nId: number) => {
+export const fnClickRowDelete = async (
+  page: Page,
+  nId: number,
+  objOpts?: { strDashFilter?: string },
+) => {
   await fnGoMyDashboard(page);
+  if (objOpts?.strDashFilter) await fnSetDashFilter(page, objOpts.strDashFilter);
   const row = await fnFindRowByIdPaging(page, nId);
   await expect(fnRowBtn(row, '삭제')).toBeVisible({ timeout: 15000 });
   await fnRowBtn(row, '삭제').click();

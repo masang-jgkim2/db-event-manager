@@ -16,6 +16,7 @@ alwaysApply: false
 
 ## 실행 절차
 
+0. 시나리오·페이지 매트릭스: `docs/E2E-PAGE-TEST-PLAN.md`
 1. `GET http://localhost:4000/api/health` — 실패 시 smoke 생략, «백엔드·프론트 기동 후 smoke 가능» 한 줄 안내.
 2. `cd front` 후 smoke:
 
