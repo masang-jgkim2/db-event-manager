@@ -11,6 +11,7 @@
     "test:e2e": "playwright test --project=chromium",
     "test:e2e:smoke": "playwright test --project=smoke",
     "test:smoke": "powershell -NoProfile -File scripts/run-smoke.ps1",
+    "test:e2e:human": "playwright test --project=smoke && playwright test --project=workflow",
     "test:e2e:workflow": "playwright test --project=workflow",
     "test:e2e:result-ui": "playwright test --project=result-ui",
     "test:e2e:pool": "playwright test --project=workflow-pool",
@@ -19,6 +20,7 @@
     "test:e2e:headed": "playwright test --project=chromium --headed",
     "test:e2e:smoke:headed": "playwright test --project=smoke --headed",
     "probe:dba01": "node scripts/probe-select-result-ui.mjs",
+    "probe:asda": "node scripts/probe-asda-workflow.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

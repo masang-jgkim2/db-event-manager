@@ -92,7 +92,7 @@ const OBJ_CARD_LABELS: Record<TDashboardCardId, string> = {
   product: '프로덕트',
   eventTemplate: '쿼리 템플릿',
   instance: '이벤트 인스턴스',
-  service: '서비스(국내/해외)',
+  service: '국가/플랫폼',
   dbConnection: 'DB 접속',
   user: '사용자',
   role: '역할',
@@ -2126,7 +2126,7 @@ const DashboardPage = () => {
                 {strId === 'service' && (
                   <DashboardCardContent
                     icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('service'))}
-                    title="서비스(국내/해외)"
+                    title="국가/플랫폼"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
                       {arrProducts.reduce((n, p) => n + p.arrServices.length, 0)}개

@@ -147,6 +147,6 @@ export const fnSaveEvents = () => {
 export const fnGetNextEventId = (): number =>
   arrEvents.length > 0 ? Math.max(...arrEvents.map((e) => e.nId)) + 1 : 1;
 
-/** D1: 이벤트 생성 허용 — 템플릿 DBA 리뷰 완료만 */
+/** D1: 이벤트 생성 허용 — 템플릿 DBA 리뷰 완료만 (레거시 미설정 포함) */
 export const fnIsTemplateReadyForInstance = (objTemplate: Pick<IEventTemplate, 'strStatus'>): boolean =>
-  objTemplate.strStatus === 'dba_confirmed';
+  fnResolveTemplateStatus(objTemplate) === 'dba_confirmed';

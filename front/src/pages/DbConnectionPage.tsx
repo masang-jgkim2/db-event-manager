@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 import {
   Typography, Card, Space, Button, Modal,
@@ -8,6 +8,7 @@ import {
 import {
   PlusOutlined, DeleteOutlined, EditOutlined,
   CheckCircleOutlined, CloseCircleOutlined,
+  ExclamationCircleOutlined,
   DatabaseOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
@@ -26,6 +27,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
 import { fnSemanticColor } from '../styles/semanticColors';
+import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 
 const { Text } = Typography;
 
@@ -79,6 +81,7 @@ const DbConnectionPage = () => {
   const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
   const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
   const [mapMonitorStatus, setMapMonitorStatus] = useState<Record<number, TMonitorStatus>>({});
+  const [bSaving, setBSaving] = useState(false);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
   const objSelectedRowRef = useRef<IDbConnection | null>(null);
@@ -87,6 +90,14 @@ const DbConnectionPage = () => {
   arrConnectionsRef.current = arrConnections;
 
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const nFormProductId = Form.useWatch('nProductId', form);
+  const nFormServiceId = Form.useWatch('nServiceId', form);
+  const strFormEnv = Form.useWatch('strEnv', form);
+  const strFormKind = Form.useWatch('strKind', form);
+  const objFormProduct = useMemo(
+    () => arrProducts.find((p) => p.nId === (objEditConn?.nProductId ?? nFormProductId)),
+    [arrProducts, objEditConn?.nProductId, nFormProductId],
+  );
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
   const fnHas = (p: TPermission) => arrPermissions.includes(p);
   const bCanCreate = fnHas('db_connection.create') || fnHas('db.manage');
@@ -118,10 +129,15 @@ const DbConnectionPage = () => {
   const fnOpenModal = (objConn?: IDbConnection) => {
     if (objConn) {
       setObjEditConn(objConn);
+      const objProd = arrProducts.find((p) => p.nId === objConn.nProductId);
+      const nSvcId =
+        objConn.nServiceId
+        ?? objProd?.arrServices.find((s) => s.strAbbr === (objConn.strServiceAbbr ?? '').trim())?.nServiceId;
       form.setFieldsValue({
         ...objConn,
+        nServiceId: nSvcId,
         strKind: objConn.strKind || 'GAME',
-        strPassword: '',  // 비밀번호는 재입력 요구
+        strPassword: '',
       });
     } else {
       setObjEditConn(null);
@@ -136,10 +152,85 @@ const DbConnectionPage = () => {
     form.setFieldValue('nPort', strDbType === 'mssql' ? 1433 : 3306);
   };
 
-  // 저장 — 성공/중복/오류를 구분해 표시, 성공 시에만 모달 닫힘
-  const fnHandleSave = async () => {
+  /** 프로덕트·서비스 구분·환경·접속 종류 조합 중복 (슬롯당 1건) */
+  const fnFindScopeDuplicateInList = useCallback((
+    nProductId: number | undefined,
+    strEnv: string | undefined,
+    strKind: string | undefined,
+    nServiceId: number | undefined | null,
+    nExcludeId?: number,
+  ): IDbConnection | undefined => {
+    if (!nProductId || !strEnv) return undefined;
+    const nSvc = Number(nServiceId) || 0;
+    const strKindNorm = (strKind ?? 'GAME') as TDbConnectionKind;
+    return arrConnections.find(
+      (c) =>
+        c.nId !== nExcludeId &&
+        c.nProductId === nProductId &&
+        c.strEnv === strEnv &&
+        (c.strKind ?? 'GAME') === strKindNorm &&
+        (nSvc > 0 ? Number(c.nServiceId) === nSvc : !(c.nServiceId ?? 0) && !(c.strServiceAbbr ?? '').trim()),
+    );
+  }, [arrConnections]);
+
+  const objScopeDuplicate = useMemo(() => {
+    if (!bModalOpen) return undefined;
+    const nProductId = objEditConn?.nProductId ?? nFormProductId;
+    const strEnv = objEditConn?.strEnv ?? strFormEnv;
+    const strKind = strFormKind ?? 'GAME';
+    return fnFindScopeDuplicateInList(
+      nProductId,
+      strEnv,
+      strKind,
+      nFormServiceId,
+      objEditConn?.nId,
+    );
+  }, [
+    bModalOpen,
+    objEditConn,
+    nFormProductId,
+    strFormEnv,
+    strFormKind,
+    nFormServiceId,
+    fnFindScopeDuplicateInList,
+  ]);
+
+  const fnOpenExistingFromScopeDuplicate = () => {
+    if (!objScopeDuplicate) return;
+    fnOpenModal(objScopeDuplicate);
+    setObjSelectedRow(objScopeDuplicate);
+  };
+
+  const nodeScopeDuplicateHint = objScopeDuplicate ? (
+    <span style={{ fontSize: 12 }}>
+      <ExclamationCircleOutlined style={{ marginRight: 4, color: token.colorWarning }} />
+      <span style={{ color: token.colorWarning }}>이미 등록된 접속</span>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        {' '}(#{objScopeDuplicate.nId} · {objScopeDuplicate.strHost}:{objScopeDuplicate.nPort}/{objScopeDuplicate.strDatabase})
+      </Text>
+      {bCanEdit ? (
+        <>
+          {' · '}
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, height: 'auto', fontSize: 12 }}
+            onClick={fnOpenExistingFromScopeDuplicate}
+          >
+            수정
+          </Button>
+        </>
+      ) : null}
+    </span>
+  ) : undefined;
+
+  // 저장 — antd 6 Modal onOk는 항상 닫히므로 footer 버튼에서만 호출
+  const fnHandleSave = async (): Promise<void> => {
+    if (objScopeDuplicate) return;
+    setBSaving(true);
     try {
       const objValues = await form.validateFields();
+
       const result = objEditConn
         ? await fnApiUpdateDbConnection(objEditConn.nId, objValues)
         : await fnApiCreateDbConnection(objValues);
@@ -172,19 +263,31 @@ const DbConnectionPage = () => {
         } else {
           void fnLoad();
         }
-      } else if ((result as any).strErrorCode === 'DUPLICATE') {
-        // 중복 등록 시 warning 아이콘으로 구분
-        messageApi.warning(result.strMessage);
-      } else {
-        messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
+        return;
       }
+
+      if ((result as { strErrorCode?: string }).strErrorCode === 'DUPLICATE') {
+        messageApi.warning(result.strMessage || '동일한 접속 정보가 이미 있습니다.');
+        return;
+      }
+
+      messageApi.error(result.strMessage || (objEditConn ? '수정에 실패했습니다.' : '등록에 실패했습니다.'));
     } catch (err: unknown) {
-      const strMsg =
-        err && typeof err === 'object' && 'errorFields' in err
-          ? ''
-          : (err as Error)?.message;
+      if (err && typeof err === 'object' && 'errorFields' in err) {
+        return;
+      }
+      const strMsg = (err as Error)?.message;
       if (strMsg) messageApi.error(strMsg);
+    } finally {
+      setBSaving(false);
     }
+  };
+
+  const fnCloseModal = () => {
+    if (bSaving) return;
+    setBModalOpen(false);
+    form.resetFields();
+    setObjEditConn(null);
   };
 
   // 삭제
@@ -354,7 +457,29 @@ const DbConnectionPage = () => {
       title: '프로덕트',
       key: 'product',
       width: 120,
-      render: (_: unknown, r: IDbConnection) => <ProductNameTag strName={r.strProductName} />,
+      render: (_: unknown, r: IDbConnection) => {
+        const strDisplayName =
+          arrProducts.find((p) => p.nId === r.nProductId)?.strName ?? r.strProductName;
+        return <ProductNameTag strName={strDisplayName} />;
+      },
+    },
+    {
+      title: STR_SERVICE_SCOPE_LABEL,
+      key: 'serviceScope',
+      width: 110,
+      render: (_: unknown, r: IDbConnection) => {
+        const strLabel = fnFormatDbConnectionCountryPlatform(r.strServiceAbbr);
+        const bUnset = !(r.strServiceAbbr ?? '').trim();
+        return bUnset ? (
+          <Tooltip title="등록 시점에 약자 미입력 — 수정에서 FH/KR, DK/KR, DK/G 등을 지정해주세요">
+            <DqpmTag tone="warning" style={{ fontSize: 11 }}>
+              {strLabel}
+            </DqpmTag>
+          </Tooltip>
+        ) : (
+          <DqpmTag tone="service">{strLabel}</DqpmTag>
+        );
+      },
     },
     {
       title: '환경',
@@ -534,6 +659,15 @@ const DbConnectionPage = () => {
           ) : undefined
         }
       >
+        {arrConnections.some((c) => !(c.strServiceAbbr ?? '').trim()) ? (
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 12 }}
+            message={`${STR_SERVICE_SCOPE_LABEL} 미지정 접속이 있습니다`}
+            description={`기존 등록분은 약자(FH/KR, LH/KR, DK/KR, DK/G 등)가 비어 있을 수 있습니다. 「전체(미지정)」는 모든 ${STR_SERVICE_SCOPE_LABEL} fallback용입니다. 서비스별 DB가 다르면 수정에서 약자를 지정해주세요.`}
+          />
+        ) : null}
         <AppTable
           strTableId="db_connections"
           dataSource={arrConnections}
@@ -560,14 +694,35 @@ const DbConnectionPage = () => {
       <Modal
         title={objEditConn ? 'DB 접속 정보 수정' : 'DB 접속 정보 추가'}
         open={bModalOpen}
-        onOk={fnHandleSave}
-        onCancel={() => { setBModalOpen(false); form.resetFields(); setObjEditConn(null); }}
-        okText={objEditConn ? '수정' : '등록'}
-        cancelText="취소"
+        onCancel={fnCloseModal}
+        footer={(
+          <Space>
+            <Button onClick={fnCloseModal} disabled={bSaving}>취소</Button>
+            <Button
+              type="primary"
+              loading={bSaving}
+              disabled={!!objScopeDuplicate}
+              onClick={() => void fnHandleSave()}
+            >
+              {objEditConn ? '수정' : '등록'}
+            </Button>
+          </Space>
+        )}
         width={520}
         destroyOnClose
+        maskClosable={!bSaving}
+        closable={!bSaving}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          {objEditConn && !(objEditConn.nServiceId ?? 0) && !(objEditConn.strServiceAbbr ?? '').trim() ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message={`${STR_SERVICE_SCOPE_LABEL} 미지정`}
+              description="이 접속은 약자 없이 등록되어 있습니다. DK/KR·DK/G 등 해당 DB에 맞는 약자를 선택해 저장해주세요."
+            />
+          ) : null}
           {/* 프로덕트 선택 (추가 시에만) */}
           {!objEditConn && (
             <Form.Item
@@ -582,6 +737,24 @@ const DbConnectionPage = () => {
               </Select>
             </Form.Item>
           )}
+
+          <Form.Item
+            name="nServiceId"
+            label={STR_SERVICE_SCOPE_LABEL}
+            extra="FH/KR, LH/KR, DK/KR, DK/G 등 프로덕트에 등록된 서비스. 비우면 전체(미지정·fallback)."
+          >
+            <Select
+              allowClear
+              placeholder={objFormProduct ? '서비스 선택 (예: DK/KR, DK/G)' : '먼저 프로덕트를 선택하세요'}
+              disabled={!objFormProduct}
+            >
+              {(objFormProduct?.arrServices ?? []).map((s) => (
+                <Select.Option key={s.nServiceId ?? s.strAbbr} value={s.nServiceId}>
+                  {fnFormatCountryPlatformOption(s)}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
 
           {/* 환경 선택 (추가 시에만) */}
           {!objEditConn && (
@@ -609,6 +782,8 @@ const DbConnectionPage = () => {
             name="strKind"
             label="접속 종류"
             rules={[{ required: true, message: '종류를 선택해주세요.' }]}
+            validateStatus={objScopeDuplicate ? 'warning' : undefined}
+            help={nodeScopeDuplicateHint}
           >
             <Select placeholder="종류 선택">
               {ARR_DB_CONNECTION_KINDS.map((k) => (
