@@ -150,3 +150,73 @@ export const fnGetNextEventId = (): number =>
 /** D1: 이벤트 생성 허용 — 템플릿 DBA 리뷰 완료만 (레거시 미설정 포함) */
 export const fnIsTemplateReadyForInstance = (objTemplate: Pick<IEventTemplate, 'strStatus'>): boolean =>
   fnResolveTemplateStatus(objTemplate) === 'dba_confirmed';
+
+/** 인스턴스 FK용 — events.json에 없는 nEventTemplateId 스텁 1건 */
+export const fnBuildStubEventTemplateFromInstance = (
+  nTplId: number,
+  inst: {
+    nProductId: number;
+    strProductName: string;
+    strEventLabel: string;
+    strCategory: string;
+    strType: string;
+    dtCreatedAt: string;
+    strCreatedBy?: string;
+    nCreatedByUserId?: number;
+  },
+): IEventTemplate => ({
+  nId: nTplId,
+  nProductId: inst.nProductId,
+  strProductName: inst.strProductName,
+  strEventLabel: inst.strEventLabel,
+  strDescription: 'events.json에 해당 템플릿 없음 — 인스턴스 FK 보존 스텁',
+  strCategory: inst.strCategory,
+  strType: inst.strType,
+  strInputFormat: 'raw',
+  strDefaultItems: '',
+  strQueryTemplate: '',
+  dtCreatedAt: inst.dtCreatedAt,
+  strCreatedBy: inst.strCreatedBy,
+  nCreatedByUserId: inst.nCreatedByUserId,
+  strStatus: 'dba_confirmed',
+  arrStatusLogs: [],
+  objCreator: null,
+  objConfirmer: null,
+});
+
+/** 인스턴스가 참조하는 템플릿이 arrEvents에 없으면 스텁 추가 — MySQL full flush FK 방지 */
+export const fnEnsureEventTemplatesForInstances = (
+  arrEvents: IEventTemplate[],
+  arrEventInstances: readonly {
+    nEventTemplateId: number;
+    nProductId: number;
+    strProductName: string;
+    strEventLabel: string;
+    strCategory: string;
+    strType: string;
+    dtCreatedAt: string;
+    strCreatedBy?: string;
+    nCreatedByUserId?: number;
+  }[],
+): number => {
+  const setIds = new Set(arrEvents.map((e) => e.nId));
+  const arrMissing = [
+    ...new Set(
+      arrEventInstances
+        .map((i) => i.nEventTemplateId)
+        .filter((nId) => Number.isFinite(nId) && nId > 0 && !setIds.has(nId)),
+    ),
+  ];
+  if (!arrMissing.length) return 0;
+
+  for (const nTplId of arrMissing) {
+    const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
+    if (!inst) continue;
+    arrEvents.push(fnBuildStubEventTemplateFromInstance(nTplId, inst));
+    setIds.add(nTplId);
+  }
+  console.warn(
+    `[events] 인스턴스 FK 보존 | 누락 템플릿 ${arrMissing.length}건 스텁 추가 | nId=${arrMissing.join(',')}`,
+  );
+  return arrMissing.length;
+};
