@@ -6,7 +6,7 @@ import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { IDbConnection } from '../types';
 import type { IProduct } from '../data/products';
 import type { IEventTemplate, IQueryTemplateItem } from '../data/events';
-import { fnNormalizeEventTemplate } from '../data/events';
+import { fnNormalizeEventTemplate, fnEnsureEventTemplatesForInstances } from '../data/events';
 import type {
   IEventInstance,
   IExecutionTarget,
@@ -120,59 +120,20 @@ const fnClearEventInstanceTablesRelational = async (conn: PoolConnection): Promi
   }
 };
 
-/** event_instance 및 자식 테이블만 INSERT (스텁 템플릿은 bAllowStubTemplates=true 일 때만) */
+/** event_instance 및 자식 테이블만 INSERT (event_template 행은 이미 존재해야 함) */
 const fnInsertEventInstancesRelational = async (
   conn: PoolConnection,
   arrEventInstances: IEventInstance[],
   arrEvents: IEventTemplate[],
   arrDbConnections: IDbConnection[],
-  bAllowStubTemplates: boolean,
 ): Promise<void> => {
   const setEventTemplateIds = new Set(arrEvents.map((e) => e.nId));
-  if (bAllowStubTemplates) {
-    const arrMissingTplIds = [
-      ...new Set(
-        arrEventInstances
-          .map((i) => i.nEventTemplateId)
-          .filter((nId) => Number.isFinite(nId) && nId > 0 && !setEventTemplateIds.has(nId)),
-      ),
-    ];
-    if (arrMissingTplIds.length > 0) {
-      console.warn(
-        `[DATA_MYSQL] events.json 에 없는 n_event_template_id | ${arrMissingTplIds.join(',')} | 스텁 event_template 삽입`,
+  for (const inst of arrEventInstances) {
+    const nTpl = inst.nEventTemplateId;
+    if (nTpl > 0 && !setEventTemplateIds.has(nTpl)) {
+      throw new Error(
+        `[DATA_MYSQL] event_instance #${inst.nId} → event_template #${nTpl} 없음 | fnEnsureEventTemplatesForInstances 선행 필요`,
       );
-    }
-    for (const nTplId of arrMissingTplIds) {
-      const inst = arrEventInstances.find((i) => i.nEventTemplateId === nTplId);
-      if (!inst) continue;
-      const nStubCreatorId = inst.nCreatedByUserId && inst.nCreatedByUserId > 0 ? inst.nCreatedByUserId : null;
-      await conn.execute(
-        `INSERT INTO event_template (
-          n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
-          str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
-          str_status, json_status_logs, json_creator, json_confirmer
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [
-          nTplId,
-          inst.nProductId,
-          inst.strProductName,
-          inst.strEventLabel,
-          'events.json에 해당 템플릿 없음 — 인스턴스 기준 스텁',
-          inst.strCategory,
-          inst.strType,
-          'raw',
-          null,
-          null,
-          inst.strCreatedBy?.trim() || null,
-          nStubCreatorId,
-          fnToMysqlDatetime6Required(inst.dtCreatedAt, new Date().toISOString()),
-          'dba_confirmed',
-          '[]',
-          null,
-          null,
-        ],
-      );
-      setEventTemplateIds.add(nTplId);
     }
   }
 
@@ -281,6 +242,8 @@ const fnInsertEventInstancesRelational = async (
 
 const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload): Promise<void> => {
   const { arrProducts, arrDbConnections, arrEvents, arrEventInstances } = p;
+
+  fnEnsureEventTemplatesForInstances(arrEvents, arrEventInstances);
 
   for (const prod of arrProducts) {
     const strDt = fnToMysqlDatetime6Required(prod.dtCreatedAt, new Date().toISOString());
@@ -414,7 +377,6 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     arrEventInstances,
     arrEvents,
     arrDbConnections,
-    Boolean(p.bAllowStubTemplates),
   );
 
   for (const log of p.arrActivityLogs) {
@@ -507,7 +469,7 @@ export const fnRelationalReplaceFullFromImportPayload = async (
 export const fnRelationalWriteFullFromMemory = async (pool: Pool): Promise<void> => {
   const { arrProducts } = await import('../data/products');
   const { arrDbConnections } = await import('../data/dbConnections');
-  const { arrEvents } = await import('../data/events');
+  const { arrEvents, fnSaveEvents, fnEnsureEventTemplatesForInstances } = await import('../data/events');
   const { arrEventInstances } = await import('../data/eventInstances');
   const { arrUsers } = await import('../data/users');
   const { arrRoles } = await import('../data/roles');
@@ -515,6 +477,10 @@ export const fnRelationalWriteFullFromMemory = async (pool: Pool): Promise<void>
   const { arrRolePermissions } = await import('../data/rolePermissions');
   const { arrActivityLogs } = await import('../data/activityLogs');
   const { fnGetUserUiRootForMysql } = await import('../data/userUiPreferences');
+
+  if (fnEnsureEventTemplatesForInstances(arrEvents, arrEventInstances) > 0) {
+    fnSaveEvents();
+  }
 
   const objUserUi = fnGetUserUiRootForMysql();
 
@@ -546,7 +512,6 @@ export const fnRelationalReplaceEventInstancesOnly = async (pool: Pool): Promise
       [...arrEventInstances],
       [...arrEvents],
       [...arrDbConnections],
-      false,
     );
     await conn.commit();
     console.log(`[DATA_MYSQL] event_instance 치환 완료 | ${arrEventInstances.length}건`);
