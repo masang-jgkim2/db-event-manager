@@ -30,6 +30,24 @@ const objBaseInstance = (): IEventInstance => ({
   dtCreatedAt: '2026-01-01T00:00:00.000Z',
 });
 
+const ARR_SLACK_WEBHOOK_ENV_KEYS = [
+  'SLACK_WEBHOOK_URL_DBA',
+  'SLACK_WEBHOOK_URL_LIVE',
+  'SLACK_WEBHOOK_URL_GZ',
+  'SLACK_WEBHOOK_URL_ND',
+  'SLACK_WEBHOOK_URL_NX',
+  'SLACK_WEBHOOK_URL_LH',
+  'SLACK_WEBHOOK_URL_MV',
+  'SLACK_WEBHOOK_URL_SR',
+  'SLACK_WEBHOOK_URL_AD',
+  'SLACK_WEBHOOK_URL_AO',
+  'SLACK_WEBHOOK_URL_FH',
+  'SLACK_WEBHOOK_URL_CC',
+  'SLACK_WEBHOOK_URL_KR',
+  'SLACK_WEBHOOK_URL_PT',
+  'SLACK_WEBHOOK_URL_DK',
+] as const;
+
 describe('slackNotifier', () => {
   const fnOriginalFetch = global.fetch;
   let fnFetchMock: jest.Mock;
@@ -39,12 +57,9 @@ describe('slackNotifier', () => {
     fnFetchMock = jest.fn().mockResolvedValue({ ok: true, text: async () => 'ok' });
     global.fetch = fnFetchMock as typeof fetch;
     delete process.env.SLACK_NOTIFICATIONS_ENABLED;
-    delete process.env.SLACK_WEBHOOK_URL_DBA;
-    delete process.env.SLACK_WEBHOOK_URL_LIVE;
-    delete process.env.SLACK_WEBHOOK_URL_MV;
-    delete process.env.SLACK_WEBHOOK_URL_GZ;
-    delete process.env.SLACK_WEBHOOK_URL_AD;
-    delete process.env.SLACK_WEBHOOK_URL_SR;
+    for (const strKey of ARR_SLACK_WEBHOOK_ENV_KEYS) {
+      delete process.env[strKey];
+    }
     delete process.env.SLACK_NOTIFY_DBA_STATUSES;
     delete process.env.SLACK_NOTIFY_PRODUCT_STATUSES;
     delete process.env.DQPM_PUBLIC_BASE_URL;
@@ -117,13 +132,23 @@ describe('slackNotifier', () => {
     expect(fnFetchMock).not.toHaveBeenCalled();
   });
 
-  it('프로덕트 약어에 따라 MV/GZ/AD 채널을 고른다', async () => {
+  it('프로덕트 약어 접두사에 따라 GM 채널을 고른다', async () => {
     const { fnResolveProductSlackChannel } = await import('../services/slackNotifier');
+    expect(fnResolveProductSlackChannel('GZ/KR')).toBe('gz');
+    expect(fnResolveProductSlackChannel('ND/KR')).toBe('nd');
+    expect(fnResolveProductSlackChannel('NX/KR')).toBe('nx');
+    expect(fnResolveProductSlackChannel('LH/KR')).toBe('lh');
     expect(fnResolveProductSlackChannel('MV/KR')).toBe('mv');
-    expect(fnResolveProductSlackChannel('GZ')).toBe('gz');
-    expect(fnResolveProductSlackChannel('AD/G')).toBe('ad');
     expect(fnResolveProductSlackChannel('SR')).toBe('sr');
-    expect(fnResolveProductSlackChannel('DK/KR')).toBeNull();
+    expect(fnResolveProductSlackChannel('AD/G')).toBe('ad');
+    expect(fnResolveProductSlackChannel('AO/KR')).toBe('ao');
+    expect(fnResolveProductSlackChannel('FH/KR')).toBe('fh');
+    expect(fnResolveProductSlackChannel('CC/KR')).toBe('cc');
+    expect(fnResolveProductSlackChannel('KR/KR')).toBe('kr');
+    expect(fnResolveProductSlackChannel('PT/KR')).toBe('pt');
+    expect(fnResolveProductSlackChannel('DK/KR')).toBe('dk');
+    expect(fnResolveProductSlackChannel('DK/G')).toBe('dk');
+    expect(fnResolveProductSlackChannel('UNKNOWN/KR')).toBeNull();
   });
 
   it('AD/G QA 반영 완료는 ad 프로덕트 채널만으로 보낸다', async () => {
@@ -151,6 +176,18 @@ describe('slackNotifier', () => {
     );
     expect(fnFetchMock).toHaveBeenCalledTimes(1);
     expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/sr');
+  });
+
+  it('DK QA 반영 완료는 dk GM 채널로 보낸다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_DK = 'https://hooks.slack.com/services/dk';
+    const { fnNotifySlackInstanceUpdate } = await import('../services/slackNotifier');
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strStatus: 'qa_deployed' },
+      true,
+    );
+    expect(fnFetchMock).toHaveBeenCalledTimes(1);
+    expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dk');
   });
 
   it('DK QA 반영 요청은 DBA 채널만으로 보낸다', async () => {
