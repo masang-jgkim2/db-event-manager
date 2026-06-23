@@ -1,9 +1,10 @@
 /** Slack Incoming Webhook POST — 채널별 URL은 환경 변수로 분리 */
 
-/** DBA·live + 프로덕트 서비스 약어 접두사(GZ, DK, …)별 GM 채널 */
-export type TSlackWebhookChannel =
-  | 'dba'
-  | 'live'
+/** DBA 공통 채널 */
+export type TSlackDbaChannel = 'dba';
+
+/** 프로덕트 GM 채널 — strServiceAbbr 접두사(GZ, DK, …) */
+export type TSlackProductChannel =
   | 'gz'
   | 'nd'
   | 'nx'
@@ -18,9 +19,10 @@ export type TSlackWebhookChannel =
   | 'pt'
   | 'dk';
 
+export type TSlackWebhookChannel = TSlackDbaChannel | TSlackProductChannel;
+
 const ENV_CHANNEL_URL: Record<TSlackWebhookChannel, string> = {
   dba: 'SLACK_WEBHOOK_URL_DBA',
-  live: 'SLACK_WEBHOOK_URL_LIVE',
   gz: 'SLACK_WEBHOOK_URL_GZ',
   nd: 'SLACK_WEBHOOK_URL_ND',
   nx: 'SLACK_WEBHOOK_URL_NX',

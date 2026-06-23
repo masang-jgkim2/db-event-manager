@@ -19,6 +19,22 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 - **`.env` 로드**: `src/loadEnv.ts`가 `backend/.env` 절대경로로 `dotenv.config` — `cwd`가 repo 루트여도 동일. `app.ts`·`index.ts`보다 먼저 import(호이스트로 `ACTIVITY_LOG_ENABLED` 등이 늦게 먹는 문제 방지).
 - **Windows 로컬 스크립트(저장소 루트)**: `start.bat`·`stop.bat`(배치는 ASCII만 — cmd UTF-8 깨짐 방지), `kill-dev-ports.bat` — `4000`·`5173` LISTEN 프로세스 강제 종료.
 
+## QA/LIVE 배포 (GitLab MR — direct push 금지)
+
+상세: `docs/DEPLOYMENT.md`
+
+```
+작업 브랜치 ──MR──▶ qa (validate_job만) ──MR──▶ release/0.0.1 ──▶ QA CodeDeploy 자동
+release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_live ▶수동
+```
+
+- **`qa` MR 머지 ≠ QA 배포** — EC2 반영은 **`release/0.0.1` MR** 후에만.
+- **Slack·시크릿** — git 미포함. EC2 `shared/backend.env` 수동 + `restart dqpm-backend`.
+- QA 릴리스 브랜치: **`release/0.0.1`만** (`release/0.0.2` 등 사용 안 함).
+- MR → `qa`: `validate_job`. MR → `release/0.0.1`: `build_qa` + `deploy_to_qa`.
+- LIVE: `main` 머지 후 GitLab **`deploy_to_live` ▶ 수동 클릭**.
+- 에이전트: `git push gitlab qa|release/*|main` 하지 않음 — MR URL만 안내.
+
 ## MSSQL / MySQL 이중 실행
 
 - **실행 진입점**: `fnExecuteQueryWithText`만 사용 (`queryExecutor.ts`). `strDbType`으로 드라이버 분기, 풀은 접속 `nId`별 캐시.

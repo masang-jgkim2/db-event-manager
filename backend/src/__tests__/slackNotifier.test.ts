@@ -32,7 +32,6 @@ const objBaseInstance = (): IEventInstance => ({
 
 const ARR_SLACK_WEBHOOK_ENV_KEYS = [
   'SLACK_WEBHOOK_URL_DBA',
-  'SLACK_WEBHOOK_URL_LIVE',
   'SLACK_WEBHOOK_URL_GZ',
   'SLACK_WEBHOOK_URL_ND',
   'SLACK_WEBHOOK_URL_NX',

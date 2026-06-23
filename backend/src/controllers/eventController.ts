@@ -483,7 +483,9 @@ export const fnUpdateEventStatus = async (req: Request, res: Response): Promise<
     }
 
     console.log(`[쿼리 템플릿] 상태 변경 | #${nId} | ${objTpl.strStatus}`);
-    fnNotifySlackTemplateStatus(objTpl);
+    if (strNextStatus === 'confirm_requested') {
+      fnNotifySlackTemplateStatus(objTpl);
+    }
     res.json({ bSuccess: true, objEvent: objTpl });
   } catch (error) {
     console.error('쿼리 템플릿 상태 변경 오류:', error);
