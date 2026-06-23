@@ -5,6 +5,7 @@ import {
   fnGetSlackWebhookUrl,
   fnIsSlackNotificationsEnabled,
   fnPostSlackIncomingWebhook,
+  type TSlackProductChannel,
   type TSlackWebhookChannel,
 } from './slackIncomingWebhook';
 
@@ -18,19 +19,16 @@ const OBJ_STATUS_LABEL: Record<TEventStatus, string> = {
   live_verified: '완료',
 };
 
-/** DBA 채널 — 모든 프로덕트 QA·LIVE 반영 요청 */
 const ARR_DBA_NOTIFY_STATUSES_DEFAULT: readonly TEventStatus[] = [
   'qa_requested',
   'live_requested',
 ];
 
-/** 프로덕트 GM 채널 — 해당 프로덕트 QA·LIVE 반영 완료 */
 const ARR_PRODUCT_NOTIFY_STATUSES_DEFAULT: readonly TEventStatus[] = [
   'qa_deployed',
   'live_deployed',
 ];
 
-/** DBA 채널 — 쿼리 템플릿 리뷰 요청 */
 const ARR_DBA_TEMPLATE_NOTIFY_STATUSES_DEFAULT: readonly TTemplateStatus[] = [
   'confirm_requested',
 ];
@@ -55,20 +53,30 @@ const OBJ_PRODUCT_SLACK_TITLE: Partial<Record<TEventStatus, string>> = {
   live_deployed: 'LIVE 반영 완료',
 };
 
+/** strServiceAbbr 접두사 → GM Slack 채널 (예: AD/G → ad, DK/KR → dk) */
+const MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL: Record<string, TSlackProductChannel> = {
+  GZ: 'gz',
+  ND: 'nd',
+  NX: 'nx',
+  LH: 'lh',
+  MV: 'mv',
+  SR: 'sr',
+  AD: 'ad',
+  AO: 'ao',
+  FH: 'fh',
+  CC: 'cc',
+  KR: 'kr',
+  PT: 'pt',
+  DK: 'dk',
+};
+
 const fnGetStatusLabel = (strStatus: TEventStatus, bPermanentlyRemoved?: boolean): string => (
   bPermanentlyRemoved ? '영구 삭제' : (OBJ_STATUS_LABEL[strStatus] ?? strStatus)
 );
 
-const fnBuildPublicDashboardUrl = (nInstanceId: number): string | null => {
+const fnGetPublicBaseUrl = (): string | null => {
   const strBase = process.env.DQPM_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
-  if (!strBase) return null;
-  return `${strBase}/my-dashboard?nInstanceId=${nInstanceId}`;
-};
-
-const fnBuildPublicTemplateUrl = (nTemplateId: number): string | null => {
-  const strBase = process.env.DQPM_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
-  if (!strBase) return null;
-  return `${strBase}/events?nTemplateId=${nTemplateId}`;
+  return strBase || null;
 };
 
 const fnParseNotifyStatuses = <T extends string>(
@@ -108,34 +116,63 @@ export const fnShouldNotifySlackDbaTemplateChannel = (strStatus: TTemplateStatus
   fnParseDbaTemplateNotifyStatuses().includes(strStatus)
 );
 
-/** strServiceAbbr 접두사 → GM Slack 채널 (예: AD/G → ad, DK/KR → dk) */
-const MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL: Record<string, TSlackWebhookChannel> = {
-  GZ: 'gz',
-  ND: 'nd',
-  NX: 'nx',
-  LH: 'lh',
-  MV: 'mv',
-  SR: 'sr',
-  AD: 'ad',
-  AO: 'ao',
-  FH: 'fh',
-  CC: 'cc',
-  KR: 'kr',
-  PT: 'pt',
-  DK: 'dk',
-};
-
-export const fnResolveProductSlackChannel = (strServiceAbbr: string): TSlackWebhookChannel | null => {
+export const fnResolveProductSlackChannel = (strServiceAbbr: string): TSlackProductChannel | null => {
   const strPrefix = strServiceAbbr.trim().toUpperCase().split('/')[0];
   if (!strPrefix) return null;
   return MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL[strPrefix] ?? null;
 };
 
-const fnGetSlackTitle = (strChannel: TSlackWebhookChannel, strStatus: TEventStatus): string => {
+const fnGetInstanceSlackTitle = (strChannel: TSlackWebhookChannel, strStatus: TEventStatus): string => {
   if (strChannel === 'dba') {
     return OBJ_DBA_SLACK_TITLE[strStatus] ?? '이벤트 상태 변경';
   }
   return OBJ_PRODUCT_SLACK_TITLE[strStatus] ?? '이벤트 상태 변경';
+};
+
+type TSlackBlockKitOpts = {
+  strTitle: string;
+  strSubjectLabel: string;
+  strName: string;
+  strStatusLabel: string;
+  strProductName?: string;
+  nId: number;
+  strButtonText?: string;
+  strButtonUrl?: string | null;
+};
+
+const fnBuildSlackBlockKitPayload = (objOpts: TSlackBlockKitOpts): Record<string, unknown> => {
+  const strProduct = objOpts.strProductName ? ` · ${objOpts.strProductName}` : '';
+  const strFallback = `${objOpts.strTitle}: ${objOpts.strName}${strProduct} → ${objOpts.strStatusLabel}`;
+  const arrBlocks: Record<string, unknown>[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: objOpts.strTitle, emoji: true },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*${objOpts.strSubjectLabel}*\n${objOpts.strName}` },
+        { type: 'mrkdwn', text: `*상태*\n${objOpts.strStatusLabel}` },
+        ...(objOpts.strProductName
+          ? [{ type: 'mrkdwn', text: `*프로덕트*\n${objOpts.strProductName}` }]
+          : []),
+        { type: 'mrkdwn', text: `*ID*\n#${objOpts.nId}` },
+      ],
+    },
+  ];
+  if (objOpts.strButtonText && objOpts.strButtonUrl) {
+    arrBlocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: objOpts.strButtonText, emoji: true },
+          url: objOpts.strButtonUrl,
+        },
+      ],
+    });
+  }
+  return { text: strFallback, blocks: arrBlocks };
 };
 
 export const fnBuildSlackInstancePayload = (
@@ -145,88 +182,34 @@ export const fnBuildSlackInstancePayload = (
     'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
   >,
 ): Record<string, unknown> => {
-  const strName = objInstance.strEventName || `이벤트 #${objInstance.nId}`;
-  const strStatusLabel = fnGetStatusLabel(objInstance.strStatus, objInstance.bPermanentlyRemoved);
-  const strProduct = objInstance.strProductName ? ` · ${objInstance.strProductName}` : '';
-  const strFallback = `${strTitle}: ${strName}${strProduct} → ${strStatusLabel}`;
-  const strDashboardUrl = fnBuildPublicDashboardUrl(objInstance.nId);
-
-  const arrBlocks: Record<string, unknown>[] = [
-    {
-      type: 'header',
-      text: { type: 'plain_text', text: strTitle, emoji: true },
-    },
-    {
-      type: 'section',
-      fields: [
-        { type: 'mrkdwn', text: `*이벤트*\n${strName}` },
-        { type: 'mrkdwn', text: `*상태*\n${strStatusLabel}` },
-        ...(objInstance.strProductName
-          ? [{ type: 'mrkdwn', text: `*프로덕트*\n${objInstance.strProductName}` }]
-          : []),
-        { type: 'mrkdwn', text: `*ID*\n#${objInstance.nId}` },
-      ],
-    },
-  ];
-
-  if (strDashboardUrl) {
-    arrBlocks.push({
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: '나의 대시보드에서 보기', emoji: true },
-          url: strDashboardUrl,
-        },
-      ],
-    });
-  }
-
-  return { text: strFallback, blocks: arrBlocks };
+  const strBase = fnGetPublicBaseUrl();
+  return fnBuildSlackBlockKitPayload({
+    strTitle,
+    strSubjectLabel: '이벤트',
+    strName: objInstance.strEventName || `이벤트 #${objInstance.nId}`,
+    strStatusLabel: fnGetStatusLabel(objInstance.strStatus, objInstance.bPermanentlyRemoved),
+    strProductName: objInstance.strProductName,
+    nId: objInstance.nId,
+    strButtonText: '나의 대시보드에서 보기',
+    strButtonUrl: strBase ? `${strBase}/my-dashboard?nInstanceId=${objInstance.nId}` : null,
+  });
 };
 
 export const fnBuildSlackTemplatePayload = (
   strTitle: string,
   objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'>,
 ): Record<string, unknown> => {
-  const strName = objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`;
-  const strStatusLabel = OBJ_TEMPLATE_STATUS_LABEL[objTpl.strStatus] ?? objTpl.strStatus;
-  const strProduct = objTpl.strProductName ? ` · ${objTpl.strProductName}` : '';
-  const strFallback = `${strTitle}: ${strName}${strProduct} → ${strStatusLabel}`;
-  const strTemplateUrl = fnBuildPublicTemplateUrl(objTpl.nId);
-
-  const arrBlocks: Record<string, unknown>[] = [
-    {
-      type: 'header',
-      text: { type: 'plain_text', text: strTitle, emoji: true },
-    },
-    {
-      type: 'section',
-      fields: [
-        { type: 'mrkdwn', text: `*템플릿*\n${strName}` },
-        { type: 'mrkdwn', text: `*상태*\n${strStatusLabel}` },
-        ...(objTpl.strProductName
-          ? [{ type: 'mrkdwn', text: `*프로덕트*\n${objTpl.strProductName}` }]
-          : []),
-        { type: 'mrkdwn', text: `*ID*\n#${objTpl.nId}` },
-      ],
-    },
-  ];
-
-  if (strTemplateUrl) {
-    arrBlocks.push({
-      type: 'actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: '쿼리 템플릿에서 보기', emoji: true },
-          url: strTemplateUrl,
-        },
-      ],
-    });
-  }
-
-  return { text: strFallback, blocks: arrBlocks };
+  const strBase = fnGetPublicBaseUrl();
+  return fnBuildSlackBlockKitPayload({
+    strTitle,
+    strSubjectLabel: '템플릿',
+    strName: objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`,
+    strStatusLabel: OBJ_TEMPLATE_STATUS_LABEL[objTpl.strStatus] ?? objTpl.strStatus,
+    strProductName: objTpl.strProductName,
+    nId: objTpl.nId,
+    strButtonText: '쿼리 템플릿에서 보기',
+    strButtonUrl: strBase ? `${strBase}/events?nTemplateId=${objTpl.nId}` : null,
+  });
 };
 
 const fnPostSlackPayloadToChannel = (
@@ -246,15 +229,14 @@ const fnSendSlackToChannel = (
     'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
   >,
 ): void => {
-  const objPayload = fnBuildSlackInstancePayload(strTitle, objInstance);
-  fnPostSlackPayloadToChannel(strChannel, objPayload);
+  fnPostSlackPayloadToChannel(strChannel, fnBuildSlackInstancePayload(strTitle, objInstance));
 };
 
 const fnSendSlackForInstance = (objInstance: IEventInstance): void => {
   if (fnShouldNotifySlackDbaChannel(objInstance.strStatus)) {
     fnSendSlackToChannel(
       'dba',
-      fnGetSlackTitle('dba', objInstance.strStatus),
+      fnGetInstanceSlackTitle('dba', objInstance.strStatus),
       objInstance,
     );
   }
@@ -265,7 +247,7 @@ const fnSendSlackForInstance = (objInstance: IEventInstance): void => {
   ) {
     fnSendSlackToChannel(
       strProductChannel,
-      fnGetSlackTitle(strProductChannel, objInstance.strStatus),
+      fnGetInstanceSlackTitle(strProductChannel, objInstance.strStatus),
       objInstance,
     );
   }
@@ -273,7 +255,6 @@ const fnSendSlackForInstance = (objInstance: IEventInstance): void => {
 
 export const fnNotifySlackInstanceCreated = (objInstance: IEventInstance): void => {
   if (!fnIsSlackNotificationsEnabled()) return;
-  // 생성 직후는 event_created — DBA 요청 상태가 아니면 전송하지 않음
   fnSendSlackForInstance(objInstance);
 };
 
@@ -294,6 +275,5 @@ export const fnNotifySlackTemplateStatus = (
   if (!fnIsSlackNotificationsEnabled()) return;
   if (!fnShouldNotifySlackDbaTemplateChannel(objTpl.strStatus)) return;
   const strTitle = OBJ_TEMPLATE_DBA_SLACK_TITLE[objTpl.strStatus] ?? '쿼리 템플릿 상태 변경';
-  const objPayload = fnBuildSlackTemplatePayload(strTitle, objTpl);
-  fnPostSlackPayloadToChannel('dba', objPayload);
+  fnPostSlackPayloadToChannel('dba', fnBuildSlackTemplatePayload(strTitle, objTpl));
 };
