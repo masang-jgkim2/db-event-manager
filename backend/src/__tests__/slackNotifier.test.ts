@@ -62,6 +62,7 @@ describe('slackNotifier', () => {
     }
     delete process.env.SLACK_NOTIFY_DBA_STATUSES;
     delete process.env.SLACK_NOTIFY_PRODUCT_STATUSES;
+    delete process.env.SLACK_NOTIFY_DBA_TEMPLATE_STATUSES;
     delete process.env.DQPM_PUBLIC_BASE_URL;
   });
 
@@ -198,5 +199,37 @@ describe('slackNotifier', () => {
     fnNotifySlackInstanceUpdate(objBaseInstance(), true);
     expect(fnFetchMock).toHaveBeenCalledTimes(1);
     expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dba');
+  });
+
+  it('쿼리 템플릿 confirm_requested 시 DBA 채널로 Block Kit payload 를 보낸다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_DBA = 'https://hooks.slack.com/services/dba';
+    process.env.DQPM_PUBLIC_BASE_URL = 'https://dqpm.example.com';
+    const { fnNotifySlackTemplateStatus } = await import('../services/slackNotifier');
+    fnNotifySlackTemplateStatus({
+      nId: 7,
+      strEventLabel: '6월 이벤트 템플릿',
+      strProductName: 'DK온라인',
+      strStatus: 'confirm_requested',
+    });
+    expect(fnFetchMock).toHaveBeenCalledTimes(1);
+    expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dba');
+    const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(objBody.blocks?.[0]?.text?.text).toBe('쿼리 리뷰 요청');
+    const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].url).toBe('https://dqpm.example.com/events?nTemplateId=7');
+  });
+
+  it('쿼리 템플릿 dba_confirmed 는 Slack 을 보내지 않는다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_DBA = 'https://hooks.slack.com/services/dba';
+    const { fnNotifySlackTemplateStatus } = await import('../services/slackNotifier');
+    fnNotifySlackTemplateStatus({
+      nId: 7,
+      strEventLabel: '템플릿',
+      strProductName: 'DK온라인',
+      strStatus: 'dba_confirmed',
+    });
+    expect(fnFetchMock).not.toHaveBeenCalled();
   });
 });
