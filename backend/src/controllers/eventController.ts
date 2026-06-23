@@ -18,6 +18,7 @@ import {
   fnSnapshotTemplateQueryBefore,
   fnTemplateQueryBodyChanged,
 } from '../utils/queryEditLog';
+import { fnNotifySlackTemplateStatus } from '../services/slackNotifier';
 
 const OBJ_TEMPLATE_TRANSITIONS: Partial<Record<TTemplateStatus, { strNextStatus: TTemplateStatus; strPermission: TPermission }[]>> = {
   template_created: [{ strNextStatus: 'confirm_requested', strPermission: 'event_template.request_confirm' }],
@@ -269,6 +270,9 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
         return;
       }
     }
+    if (bReapprovalRequired) {
+      fnNotifySlackTemplateStatus(arrEvents[nIndex]);
+    }
     res.json({ bSuccess: true, objEvent: arrEvents[nIndex], bReapprovalRequired });
   } catch (error) {
     console.error('쿼리 템플릿 수정 오류:', error);
@@ -359,6 +363,9 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       }
     }
 
+    if (bReapprovalRequired) {
+      fnNotifySlackTemplateStatus(objTpl);
+    }
     res.json({ bSuccess: true, objEvent: objTpl, bReapprovalRequired });
   } catch (error) {
     console.error('쿼리 템플릿 DBA 쿼리 수정 오류:', error);
@@ -476,6 +483,7 @@ export const fnUpdateEventStatus = async (req: Request, res: Response): Promise<
     }
 
     console.log(`[쿼리 템플릿] 상태 변경 | #${nId} | ${objTpl.strStatus}`);
+    fnNotifySlackTemplateStatus(objTpl);
     res.json({ bSuccess: true, objEvent: objTpl });
   } catch (error) {
     console.error('쿼리 템플릿 상태 변경 오류:', error);
