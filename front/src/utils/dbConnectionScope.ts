@@ -1,7 +1,11 @@
-import type { IEventTemplate, IDbConnection, IProduct, TDbConnectionKind } from '../types';
+import type { IEventTemplate, IDbConnection, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
 
-type TProductServiceLookup = Pick<IProduct, 'nId' | 'arrServices'>;
+/** product.arrServices 조회용 — arrServices 생략 가능 */
+export type TProductServiceLookup = {
+  nId: number;
+  arrServices?: ReadonlyArray<Pick<IService, 'nServiceId' | 'strAbbr'>>;
+};
 
 /** 접속 행 서비스 약자 — strServiceAbbr 없으면 nServiceId→product.arrServices */
 export const fnResolveConnectionServiceAbbr = (
