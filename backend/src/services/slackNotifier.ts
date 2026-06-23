@@ -1,3 +1,4 @@
+import type { IEventTemplate, TTemplateStatus } from '../data/events';
 import type { IEventInstance, TEventStatus } from '../data/eventInstances';
 import { fnShouldSkipEventInstanceProgressNotification } from './eventInstanceNotificationEligibility';
 import {
@@ -29,6 +30,21 @@ const ARR_PRODUCT_NOTIFY_STATUSES_DEFAULT: readonly TEventStatus[] = [
   'live_deployed',
 ];
 
+/** DBA 채널 — 쿼리 템플릿 리뷰 요청 */
+const ARR_DBA_TEMPLATE_NOTIFY_STATUSES_DEFAULT: readonly TTemplateStatus[] = [
+  'confirm_requested',
+];
+
+const OBJ_TEMPLATE_STATUS_LABEL: Record<TTemplateStatus, string> = {
+  template_created: '등록',
+  confirm_requested: '쿼리 리뷰 요청',
+  dba_confirmed: 'DBA 리뷰 완료',
+};
+
+const OBJ_TEMPLATE_DBA_SLACK_TITLE: Partial<Record<TTemplateStatus, string>> = {
+  confirm_requested: '쿼리 리뷰 요청',
+};
+
 const OBJ_DBA_SLACK_TITLE: Partial<Record<TEventStatus, string>> = {
   qa_requested: 'QA 반영 요청',
   live_requested: 'LIVE 반영 요청',
@@ -49,16 +65,22 @@ const fnBuildPublicDashboardUrl = (nInstanceId: number): string | null => {
   return `${strBase}/my-dashboard?nInstanceId=${nInstanceId}`;
 };
 
-const fnParseNotifyStatuses = (
+const fnBuildPublicTemplateUrl = (nTemplateId: number): string | null => {
+  const strBase = process.env.DQPM_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
+  if (!strBase) return null;
+  return `${strBase}/events?nTemplateId=${nTemplateId}`;
+};
+
+const fnParseNotifyStatuses = <T extends string>(
   strEnvKey: string,
-  arrDefault: readonly TEventStatus[],
-): readonly TEventStatus[] => {
+  arrDefault: readonly T[],
+): readonly T[] => {
   const strRaw = process.env[strEnvKey]?.trim();
   if (!strRaw) return arrDefault;
   const arrParsed = strRaw
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean) as TEventStatus[];
+    .filter(Boolean) as T[];
   return arrParsed.length > 0 ? arrParsed : arrDefault;
 };
 
@@ -70,12 +92,20 @@ const fnParseProductNotifyStatuses = (): readonly TEventStatus[] => (
   fnParseNotifyStatuses('SLACK_NOTIFY_PRODUCT_STATUSES', ARR_PRODUCT_NOTIFY_STATUSES_DEFAULT)
 );
 
+const fnParseDbaTemplateNotifyStatuses = (): readonly TTemplateStatus[] => (
+  fnParseNotifyStatuses('SLACK_NOTIFY_DBA_TEMPLATE_STATUSES', ARR_DBA_TEMPLATE_NOTIFY_STATUSES_DEFAULT)
+);
+
 export const fnShouldNotifySlackDbaChannel = (strStatus: TEventStatus): boolean => (
   fnParseDbaNotifyStatuses().includes(strStatus)
 );
 
 export const fnShouldNotifySlackProductChannel = (strStatus: TEventStatus): boolean => (
   fnParseProductNotifyStatuses().includes(strStatus)
+);
+
+export const fnShouldNotifySlackDbaTemplateChannel = (strStatus: TTemplateStatus): boolean => (
+  fnParseDbaTemplateNotifyStatuses().includes(strStatus)
 );
 
 /** strServiceAbbr 접두사 → GM Slack 채널 (예: AD/G → ad, DK/KR → dk) */
@@ -155,6 +185,59 @@ export const fnBuildSlackInstancePayload = (
   return { text: strFallback, blocks: arrBlocks };
 };
 
+export const fnBuildSlackTemplatePayload = (
+  strTitle: string,
+  objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'>,
+): Record<string, unknown> => {
+  const strName = objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`;
+  const strStatusLabel = OBJ_TEMPLATE_STATUS_LABEL[objTpl.strStatus] ?? objTpl.strStatus;
+  const strProduct = objTpl.strProductName ? ` · ${objTpl.strProductName}` : '';
+  const strFallback = `${strTitle}: ${strName}${strProduct} → ${strStatusLabel}`;
+  const strTemplateUrl = fnBuildPublicTemplateUrl(objTpl.nId);
+
+  const arrBlocks: Record<string, unknown>[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: strTitle, emoji: true },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*템플릿*\n${strName}` },
+        { type: 'mrkdwn', text: `*상태*\n${strStatusLabel}` },
+        ...(objTpl.strProductName
+          ? [{ type: 'mrkdwn', text: `*프로덕트*\n${objTpl.strProductName}` }]
+          : []),
+        { type: 'mrkdwn', text: `*ID*\n#${objTpl.nId}` },
+      ],
+    },
+  ];
+
+  if (strTemplateUrl) {
+    arrBlocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '쿼리 템플릿에서 보기', emoji: true },
+          url: strTemplateUrl,
+        },
+      ],
+    });
+  }
+
+  return { text: strFallback, blocks: arrBlocks };
+};
+
+const fnPostSlackPayloadToChannel = (
+  strChannel: TSlackWebhookChannel,
+  objPayload: Record<string, unknown>,
+): void => {
+  const strWebhookUrl = fnGetSlackWebhookUrl(strChannel);
+  if (!strWebhookUrl) return;
+  void fnPostSlackIncomingWebhook(strWebhookUrl, objPayload);
+};
+
 const fnSendSlackToChannel = (
   strChannel: TSlackWebhookChannel,
   strTitle: string,
@@ -163,10 +246,8 @@ const fnSendSlackToChannel = (
     'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
   >,
 ): void => {
-  const strWebhookUrl = fnGetSlackWebhookUrl(strChannel);
-  if (!strWebhookUrl) return;
   const objPayload = fnBuildSlackInstancePayload(strTitle, objInstance);
-  void fnPostSlackIncomingWebhook(strWebhookUrl, objPayload);
+  fnPostSlackPayloadToChannel(strChannel, objPayload);
 };
 
 const fnSendSlackForInstance = (objInstance: IEventInstance): void => {
@@ -204,4 +285,15 @@ export const fnNotifySlackInstanceUpdate = (
   if (fnShouldSkipEventInstanceProgressNotification(objInstance)) return;
   if (!bNotifyStatusProgress) return;
   fnSendSlackForInstance(objInstance);
+};
+
+/** 쿼리 템플릿 confirm_requested 등 — DBA Slack 채널 */
+export const fnNotifySlackTemplateStatus = (
+  objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'>,
+): void => {
+  if (!fnIsSlackNotificationsEnabled()) return;
+  if (!fnShouldNotifySlackDbaTemplateChannel(objTpl.strStatus)) return;
+  const strTitle = OBJ_TEMPLATE_DBA_SLACK_TITLE[objTpl.strStatus] ?? '쿼리 템플릿 상태 변경';
+  const objPayload = fnBuildSlackTemplatePayload(strTitle, objTpl);
+  fnPostSlackPayloadToChannel('dba', objPayload);
 };
