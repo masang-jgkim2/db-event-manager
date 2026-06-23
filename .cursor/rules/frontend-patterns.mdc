@@ -39,7 +39,10 @@ front/src/
 
 - **원칙**: 해당 권한이 있을 때만 버튼/관리 컬럼 노출. 없으면 버튼 숨김(API도 동일 권한으로 403).
 - **페이지 접근**: `PermissionRoute`에 보기 권한만 지정. 예: `product.view`, `user.view`, `role.view`, `db_connection.view`|`db.manage`, `event_template.view`, `instance.view`|`instance.create`.
-- **DB 접속 정보 페이지**: 「연결」열 표시 = `db_connection.view`|`db.manage`. 자동 점검·행 펼침 시 테스트 실행 = `db_connection.test`|`db.manage`(백엔드 `POST …/test` 동일). 저장 성공 시 `objDbConnection`으로 목록만 갱신(전체 `fnLoad` 생략). 10초마다 전 행 연결 테스트(원격 MySQL은 느릴 수 있음).
+- **DB 접속 정보 페이지**: … 모달·테이블에 **서비스 구분** `strServiceAbbr`(FH/KR, DK/KR, DK/G 등; 비우면 `전체(미지정)` fallback). UI 라벨 상수 `STR_SERVICE_SCOPE_LABEL` (`utils/countryPlatformLabel.ts`).
+- **프로덕트 페이지**: `arrServices` 목록·모달 — 동일 **서비스 구분** 라벨.
+- **쿼리 템플릿 (`EventPage`)**: 목록 **서비스 구분** 컬럼 = 세트 연결 DB의 `strServiceAbbr` 집계(템플릿 자체 필드 없음). 모달 필터·연결 DB picker는 `fnFilterConnectionsForTemplatePicker`.
+- **QueryPage (D1)**: Step2 **서비스 구분** — 약자(FH/KR, LH/KR, DK/KR, DK/G) 주 표기, QA/LIVE 접속 없는 항목 disabled. Step4 **DB 접속 미리보기**(`fnBuildInstanceConnectionPreview`). 생성 payload는 `nProductId`만(프로덕트명 서버 derive).
 - **회원 가입·승인**: `/register`(공개), 로그인 403 `pending_approval`/`rejected`/`no_roles` → `LoginPage` 안내. `UserPage` «승인 대기» 탭·승인/거절 = `user.approve`|`user.manage`; 역할 선택 UI에서 `guest` 제외.
 
 ```typescript
@@ -117,7 +120,7 @@ export const fnApiGetProducts = () => apiClient.get('/products');
 - **탭**: 진행(미숨김·미삭제) vs **완료·숨김**(로컬 숨김 또는 `bPermanentlyRemoved`). 서버 삭제는 복원·보이기 불가.
 - **필터**: Segmented 대신 **Select** 드롭다운.
 - **보기 전환**: 테이블(행) ↔ 카드 보기. 전환 시 페이드 아웃→전환→페이드 인, `nViewMinHeight`/`viewContentRef`로 높이 고정 후 해제해 번쩍임 완화. 카드 보기는 동일 데이터를 Row/Col/Card 그리드로 표시, 클릭 시 `InstanceStepper`.
-- **카드 본문(라벨←필드)**: `InstanceCardLabelRows` + `OBJ_DEFAULT_DASHBOARD_LAYOUT`의 `instance_list.objOptions.arrCardRows`(비우면 폴백 행). 상세는 `docs/DASHBOARD-LAYOUT-SPEC.md`, `front/src/types/dashboardLayout.ts`.
+- **카드 본문(라벨←필드)**: `InstanceCardLabelRows` + `OBJ_DEFAULT_DASHBOARD_LAYOUT`의 `instance_list.objOptions.arrCardRows`(비우면 폴백 행). **프로덕트** / **서비스 구분**(`STR_SERVICE_SCOPE_LABEL`) 분리·스냅샷 필드(`strProductName`, `strServiceAbbr`/`strServiceRegion`). 카드 `strRender: service_scope`. 상세는 `docs/DASHBOARD-LAYOUT-SPEC.md`, `front/src/types/dashboardLayout.ts`.
 - **재요청 UX**: QA 확인 / LIVE 확인 시 Popconfirm(취소·확인·재요청 버튼). 굳굳 설정의 **재미 모드** 켜면 재요청은 **롱프레스**(`RequestWithLongPressButton`)로만 동작.
 - **테이블**: `AppTable`. **번호** `fnMakeIndexColumn(55)` 최좌측 — 헤더 `번호`, 값 기본 PK `nId`(2번째 인자로 다른 키), PK 없으면 순번 폴백. 확장 `expandable.columnWidth: 24`.
 - **SQL 클립보드**: `copy` 이벤트에서 `clipboardData.setData('text/plain')` → `execCommand('copy')` → `clipboard.writeText` 후 가능하면 `readText`로 검증(불일치 시 성공 토스트 금지). `onMouseDown` + `preventDefault` 금지.

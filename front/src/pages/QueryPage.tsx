@@ -741,7 +741,6 @@ const QueryPage = () => {
                     <DqpmTag tone={objStatusCfg.strTagVariant} style={{ fontSize: 11, margin: 0 }}>
                       {objStatusCfg.strLabel}
                     </DqpmTag>
-                    <DqpmTag color="purple">템플릿 번호 {objSelectedEvent.nId}</DqpmTag>
                     {arrValidSets.length >= 2 && (
                       <DqpmTag color="blue">다중 쿼리 ({arrValidSets.length}세트)</DqpmTag>
                     )}

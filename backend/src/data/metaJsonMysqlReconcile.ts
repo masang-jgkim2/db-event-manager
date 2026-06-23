@@ -286,6 +286,12 @@ export const fnReconcileMetaJsonWithMysql = async (
     return { bAnyChanged: false, arrDetails };
   }
 
+  const { fnEnsureEventTemplatesForInstances, fnSaveEvents } = await import('./events');
+  if (fnEnsureEventTemplatesForInstances(arrEvents, arrEventInstances) > 0) {
+    fnSaveEvents();
+    setMirrorFiles.add('events.json');
+  }
+
   await fnRelationalWriteFullFromMemory(objPool);
 
   if (setMirrorFiles.has('eventInstances.json')) {

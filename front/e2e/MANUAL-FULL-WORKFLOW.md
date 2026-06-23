@@ -1,5 +1,7 @@
 # 수동 체크리스트 — 가입 ~ LIVE 확인 (§I)
 
+> 페이지별 통합 계획: [docs/E2E-PAGE-TEST-PLAN.md](../../docs/E2E-PAGE-TEST-PLAN.md)
+
 Playwright가 대신하지 **않는** 구간입니다. 배포 전·월 1회 **headed**로 따라 하세요.
 
 `npm run test:e2e:ui` → 이 파일을 옆에 두고 진행.

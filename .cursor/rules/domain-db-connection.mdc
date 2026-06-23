@@ -29,12 +29,18 @@ alwaysApply: false
 - **금지**: `DELETE FROM db_connection` 전체 치환 → `event_instance_execution_target`·`event_template_query_set` **FK RESTRICT**.
 - **금지**: `fnAwaitInFlightMysqlDocFlush` / `fnRelationalWriteFullFromMemory` on db 접속 CUD(인스턴스 전체 스냅샷 대기).
 - **금지**: `fnSaveJson('dbConnections.json')` 예약(전체 메타 flush 트리거).
-- **중복**: 프로덕트 + env + kind + **host + DB명** (샤드 DB 여러 건 허용).
+- **중복**: 프로덕트 + **strServiceAbbr(비움=공통)** + env + kind + **host + DB명** (샤드 DB 여러 건 허용).
 - **삭제**: `fnDeleteDbConnectionRowFromMysql` + 참조 검사 → 409.
 
 ## 연결 테스트 SQL
 
 - MySQL **4.x**: `@@hostname` 없음 — 레거시 분기에서 `VERSION()`, `USER()`, `NOW()`만.
+
+## 서비스 범위(프로젝트)
+
+- `IDbConnection.strServiceAbbr` — `products.arrServices[].strAbbr`와 일치. **NULL/비움** = 프로덕트 공통 fallback.
+- 실행: `fnResolveExecuteConnection(..., strServiceAbbr)` — 인스턴스 Step2 값. 서비스 전용 없으면 공통; **DK/KR 전용은 DK/G에 매칭 안 됨**.
+- 이벤트 생성·실행 전 `fnHasEnvConnectionForService` / `fnHasEnvConnectionForKindAndService`로 QA/LIVE·WEB/GAME 검증.
 
 ## 코드 위치
 
