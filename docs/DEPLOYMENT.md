@@ -4,12 +4,30 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 
 ## 환경 매핑
 
-| 환경 | 프론트 | 백엔드 API | 브랜치 |
-|------|--------|------------|--------|
-| QA   | https://qa-db.masanggames.co.kr | https://qa-db-api.masanggames.co.kr | `release/*`, `hotfix/*` (자동) |
+| 환경 | 프론트 | 백엔드 API | 배포 트리거 브랜치 |
+|------|--------|------------|-------------------|
+| QA   | https://qa-db.masanggames.co.kr | https://qa-db-api.masanggames.co.kr | **`release/0.0.1`** (`release/*`·`hotfix/*` push → 자동) |
 | LIVE | https://db.masanggames.co.kr    | https://db-api.masanggames.co.kr    | `main` (수동 승인) |
 
-- 빌드 검증만 도는 브랜치: `qa`, 그리고 `qa`를 타겟으로 한 MR
+- **QA 배포용 릴리스 브랜치**: `release/0.0.1` (현재). `release/0.0.2` 등 다른 release 브랜치는 사용하지 않음.
+- **빌드 검증만**: `qa` 브랜치 push, 또는 **`qa`를 타겟으로 한 MR** (`validate_job`)
+
+## 브랜치·MR 절차 (QA 반영)
+
+**direct push 금지** — `qa`, `release/*`는 GitLab 보호 브랜치. 반드시 MR로 merge.
+
+```
+작업 브랜치 ──MR──▶ qa          (validate_job: backend/front 빌드)
+       qa ──MR──▶ release/0.0.1 (merge 후 push → build_qa + deploy_to_qa)
+```
+
+| 단계 | 소스 | 타겟 | CI |
+|------|------|------|-----|
+| 1. 통합 | `feat/*`, `fix/*` 등 | **`qa`** | MR 파이프라인 `validate_job` |
+| 2. QA 배포 | **`qa`** | **`release/0.0.1`** | `release/0.0.1` push → S3 + CodeDeploy QA |
+
+- 에이전트·로컬에서 `git push gitlab qa` / `git push gitlab release/0.0.1` **하지 않음** — MR URL만 안내.
+- `release/0.0.1` merge 후 QA EC2 `dqpm-backend` 재시작은 CodeDeploy `application-start.sh`가 처리.
 
 ## 서버 디렉토리 구조
 

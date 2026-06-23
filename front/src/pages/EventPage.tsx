@@ -54,6 +54,7 @@ import {
   fnListTemplateServiceScopeAbbrs,
   fnMergeTemplatePickerConnections,
   fnResolveConnectionServiceAbbr,
+  type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
 
 const { Text } = Typography;
@@ -136,7 +137,7 @@ type TQueryTemplatesTabContentProps = {
   add: (defaultValue?: unknown, insertIndex?: number) => void;
   remove: (index: number | number[]) => void;
   arrConnectionsByProduct: IDbConnection[];
-  arrProducts: Array<{ nId: number; arrServices?: Array<{ nServiceId?: number; strAbbr: string; strRegion: string }> }>;
+  arrProducts: readonly TProductServiceLookup[];
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
