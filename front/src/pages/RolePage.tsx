@@ -1,20 +1,27 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Typography, Card, Tag, Space, Button, Modal,
-  Form, Input, Checkbox, Popconfirm, message, Alert, Divider,
+  Typography, Card, Space, Button, Modal,
+  Form, Input, Checkbox, Popconfirm, message, Tooltip,
+  Row, Col, Collapse,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn, type TAppColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
 import {
   fnApiGetRoles, fnApiCreateRole, fnApiUpdateRole, fnApiDeleteRole,
 } from '../api/roleApi';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
-import { ARR_PERMISSION_GROUPS } from '../types';
+import { DqpmTag } from '../components/DqpmTag';
+import {
+  ARR_PERMISSION_GROUPS,
+  fnExpandPermissionsForRoleFormDisplay,
+  fnGetOrphanRolePermissions,
+} from '../types';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const RolePage = () => {
   const [arrRoles, setArrRoles] = useState<IRole[]>([]);
@@ -23,6 +30,8 @@ const RolePage = () => {
   const [objEditRole, setObjEditRole] = useState<IRole | null>(null);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  /** 체크박스 UI에 없는 저장 권한 — 저장 시 병합 */
+  const arrOrphanPermsRef = useRef<string[]>([]);
 
   // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
@@ -47,19 +56,22 @@ const RolePage = () => {
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
 
-  // 추가/수정 모달 열기 — 저장된 권한만 폼에 반영 (확장하지 않음. 제외한 권한이 다시 체크되지 않도록)
+  // 추가/수정 모달 — 표시는 로그인 effective와 동일(레거시 manage·admin 보너스 확장)
   const fnOpenModal = (objRole?: IRole) => {
     if (objRole) {
       setObjEditRole(objRole);
-      const arrPerms = Array.isArray(objRole.arrPermissions) ? [...objRole.arrPermissions] : [];
+      const arrRaw = Array.isArray(objRole.arrPermissions) ? [...objRole.arrPermissions] : [];
+      arrOrphanPermsRef.current = fnGetOrphanRolePermissions(arrRaw);
+      const arrDisplay = fnExpandPermissionsForRoleFormDisplay(arrRaw, objRole.strCode);
       form.setFieldsValue({
         strCode: objRole.strCode,
         strDisplayName: objRole.strDisplayName,
         strDescription: objRole.strDescription,
-        arrPermissions: arrPerms,
+        arrPermissions: arrDisplay,
       });
     } else {
       setObjEditRole(null);
+      arrOrphanPermsRef.current = [];
       form.resetFields();
     }
     setBModalOpen(true);
@@ -69,6 +81,11 @@ const RolePage = () => {
   const fnHandleSave = async () => {
     try {
       const objValues = await form.validateFields();
+      if (objEditRole && arrOrphanPermsRef.current.length > 0) {
+        objValues.arrPermissions = [
+          ...new Set([...(objValues.arrPermissions as string[]), ...arrOrphanPermsRef.current]),
+        ];
+      }
 
       let result;
       if (objEditRole) {
@@ -132,14 +149,18 @@ const RolePage = () => {
       key: 'bIsSystem',
       width: 80,
       render: (v: boolean) => v
-        ? <Tag color="blue" icon={<SafetyCertificateOutlined />}>시스템</Tag>
-        : <Tag color="default">커스텀</Tag>,
+        ? <DqpmTag color="blue" icon={<SafetyCertificateOutlined />}>시스템</DqpmTag>
+        : <DqpmTag color="default">커스텀</DqpmTag>,
     },
     {
-      title: '권한 수',
+      title: '적용 권한',
       key: 'permCount',
-      width: 80,
-      render: (_: unknown, r: IRole) => <Tag color="green">{r.arrPermissions.length}개</Tag>,
+      width: 88,
+      render: (_: unknown, r: IRole) => (
+        <DqpmTag color="green">
+          {fnExpandPermissionsForRoleFormDisplay(r.arrPermissions, r.strCode).length}개
+        </DqpmTag>
+      ),
     },
     ...(bCanEditPermissions || bCanEdit || bCanDelete
       ? [{
@@ -150,14 +171,14 @@ const RolePage = () => {
             <Space>
               {r.bIsSystem
                 ? bCanEditPermissions && (
-                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-                      권한
-                    </Button>
+                    <Tooltip title="수정">
+                      <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(r)} />
+                    </Tooltip>
                   )
                 : bCanEdit && (
-                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-                      수정
-                    </Button>
+                    <Tooltip title="수정">
+                      <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(r)} />
+                    </Tooltip>
                   )}
               {!r.bIsSystem && bCanDelete && (
                 <Popconfirm
@@ -167,7 +188,9 @@ const RolePage = () => {
                   okText="삭제"
                   cancelText="취소"
                 >
-                  <Button size="small" danger icon={<DeleteOutlined />} />
+                  <Tooltip title="삭제">
+                    <Button type="text" danger icon={<DeleteOutlined />} />
+                  </Tooltip>
                 </Popconfirm>
               )}
             </Space>
@@ -180,16 +203,18 @@ const RolePage = () => {
     <>
       {contextHolder}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>역할 권한</Title>
-        {bCanCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-            새로운 역할
-          </Button>
-        )}
-      </div>
-
-      <Card>
+      <CrudPageShell
+        strTitle="역할 권한"
+        nodeIcon={<SafetyCertificateOutlined />}
+        nodeDescription="역할별 세분화 권한을 설정합니다. 시스템 역할은 삭제·코드 변경이 불가하며, 역할명·설명·권한을 수정할 수 있습니다."
+        nodeExtra={
+          bCanCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+              새로운 역할
+            </Button>
+          ) : undefined
+        }
+      >
         <AppTable
           strTableId="roles"
           dataSource={arrRoles}
@@ -198,90 +223,134 @@ const RolePage = () => {
           pagination={false}
           strEmptyText="등록된 역할이 없습니다."
         />
-      </Card>
+      </CrudPageShell>
 
       {/* 추가/수정 모달 */}
       <Modal
-        title={objEditRole ? (objEditRole.bIsSystem ? '시스템 역할 권한 수정' : '역할 수정') : '새로운 역할 추가'}
+        title={objEditRole ? (objEditRole.bIsSystem ? '시스템 역할 수정' : '역할 수정') : '새로운 역할 추가'}
         open={bModalOpen}
         onOk={fnHandleSave}
-        onCancel={() => { setBModalOpen(false); form.resetFields(); setObjEditRole(null); }}
+        onCancel={() => {
+          setBModalOpen(false);
+          form.resetFields();
+          setObjEditRole(null);
+          arrOrphanPermsRef.current = [];
+        }}
         okText={objEditRole ? '수정' : '생성'}
         cancelText="취소"
-        width={680}
+        width={780}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          {/* 시스템 역할 경고 */}
-          {objEditRole?.bIsSystem && (
-            <Alert
-              type="info"
-              showIcon
-              message="시스템 기본 역할은 권한만 수정할 수 있습니다."
-              style={{ marginBottom: 16 }}
-            />
-          )}
-
-          {/* 역할 코드 (신규 추가 시에만) */}
-          {!objEditRole && (
-            <Form.Item
-              name="strCode"
-              label="역할 코드"
-              rules={[
-                { required: true, message: '역할 코드를 입력해주세요.' },
-                { pattern: /^[a-z_]+$/, message: '소문자와 밑줄(_)만 사용 가능합니다.' },
-              ]}
-            >
-              <Input placeholder="예: custom_operator (소문자, 밑줄만)" />
-            </Form.Item>
-          )}
-
-          {/* 역할명 */}
-          {(!objEditRole || !objEditRole.bIsSystem) && (
-            <Form.Item
-              name="strDisplayName"
-              label="역할명"
-              rules={[{ required: true, message: '역할명을 입력해주세요.' }]}
-            >
-              <Input placeholder="예: 커스텀 운영자" />
-            </Form.Item>
-          )}
-
-          {/* 설명 */}
-          {(!objEditRole || !objEditRole.bIsSystem) && (
-            <Form.Item name="strDescription" label="설명">
-              <Input.TextArea rows={2} placeholder="이 역할에 대한 설명" />
-            </Form.Item>
-          )}
-
-          <Divider />
-
-          {/* 권한 설정 — 세분화 그룹별 (보기/생성/수정/삭제 등) */}
-          <Form.Item
-            name="arrPermissions"
-            label={
-              <Space>
-                <Text strong>권한 설정</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>(이 역할이 수행할 수 있는 기능)</Text>
-              </Space>
-            }
-          >
-            <Checkbox.Group style={{ width: '100%' }}>
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                {ARR_PERMISSION_GROUPS.map((group) => (
-                  <Card key={group.groupLabel} size="small" title={group.groupLabel} style={{ marginBottom: 0 }}>
-                    <Space wrap size="small">
-                      {group.permissions.map((p) => (
-                        <Checkbox key={p.value} value={p.value}>
-                          <Text style={{ fontSize: 13 }}>{p.label}</Text>
-                        </Checkbox>
-                      ))}
-                    </Space>
-                  </Card>
-                ))}
-              </Space>
-            </Checkbox.Group>
-          </Form.Item>
+        <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
+          <Collapse
+            defaultActiveKey={['basic', 'permissions']}
+            items={[
+              {
+                key: 'basic',
+                label: '기본 정보',
+                children: (
+                  <>
+                    {objEditRole?.bIsSystem && (
+                      <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
+                        시스템 기본 역할은 역할 코드를 변경할 수 없습니다. 역할명·설명만 수정할 수 있습니다.
+                      </Text>
+                    )}
+                    <Row gutter={16}>
+                      {!objEditRole ? (
+                        <Col span={12}>
+                          <Form.Item
+                            name="strCode"
+                            label="역할 코드"
+                            rules={[
+                              { required: true, message: '역할 코드를 입력해주세요.' },
+                              { pattern: /^[a-z_]+$/, message: '소문자와 밑줄(_)만 사용 가능합니다.' },
+                            ]}
+                          >
+                            <Input placeholder="예: custom_operator" />
+                          </Form.Item>
+                        </Col>
+                      ) : (
+                        <Col span={12}>
+                          <Form.Item label="역할 코드">
+                            <Input value={objEditRole.strCode} disabled />
+                          </Form.Item>
+                        </Col>
+                      )}
+                      <Col span={12}>
+                        <Form.Item
+                          name="strDisplayName"
+                          label="역할명"
+                          rules={[{ required: true, message: '역할명을 입력해주세요.' }]}
+                        >
+                          <Input placeholder={objEditRole?.bIsSystem ? '예: GM' : '예: 커스텀 운영자'} />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Row gutter={16}>
+                      <Col span={24}>
+                        <Form.Item name="strDescription" label="설명">
+                          <Input.TextArea rows={2} placeholder="이 역할에 대한 설명" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    {objEditRole && (
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item label="타입">
+                            {objEditRole.bIsSystem
+                              ? <DqpmTag color="blue" icon={<SafetyCertificateOutlined />}>시스템</DqpmTag>
+                              : <DqpmTag color="default">커스텀</DqpmTag>}
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item label="적용 권한">
+                            <DqpmTag color="green">
+                              {fnExpandPermissionsForRoleFormDisplay(objEditRole.arrPermissions, objEditRole.strCode).length}개
+                            </DqpmTag>
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: 'permissions',
+                label: (
+                  <Space size={8}>
+                    <span>권한 설정</span>
+                    <Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                      이 역할이 수행할 수 있는 기능
+                    </Text>
+                  </Space>
+                ),
+                children: (
+                  <>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                      체크 항목·개수는 로그인 시 실제 적용되는 권한과 동일합니다.
+                    </Text>
+                    <Form.Item name="arrPermissions" style={{ marginBottom: 0 }}>
+                    <Checkbox.Group style={{ width: '100%' }}>
+                      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                        {ARR_PERMISSION_GROUPS.map((group) => (
+                          <Card key={group.groupLabel} size="small" title={group.groupLabel} style={{ marginBottom: 0 }}>
+                            <Space wrap size="small">
+                              {group.permissions.map((p) => (
+                                <Checkbox key={p.value} value={p.value}>
+                                  <Text style={{ fontSize: 13 }}>{p.label}</Text>
+                                </Checkbox>
+                              ))}
+                            </Space>
+                          </Card>
+                        ))}
+                      </Space>
+                    </Checkbox.Group>
+                  </Form.Item>
+                  </>
+                ),
+              },
+            ]}
+          />
         </Form>
       </Modal>
     </>

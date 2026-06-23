@@ -1,15 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { STR_ADMIN_PASS, STR_ADMIN_USER, fnE2eLogin } from './helpers/auth';
+import { fnClickSidebarMenu } from './helpers/menu';
 
-const STR_E2E_USER = process.env.E2E_USER_ID || 'admin';
-const STR_E2E_PASSWORD = process.env.E2E_PASSWORD || 'admin123';
-
-test.describe('메뉴 클릭으로 페이지 이동', () => {
+test.describe('메뉴 클릭으로 페이지 이동', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByPlaceholder('아이디').fill(STR_E2E_USER);
-    await page.getByPlaceholder('비밀번호').fill(STR_E2E_PASSWORD);
-    await page.getByRole('button', { name: '로그인' }).click();
-    await expect(page.getByRole('menuitem').first()).toBeVisible({ timeout: 10000 });
+    await fnE2eLogin(page, STR_ADMIN_USER, STR_ADMIN_PASS);
   });
 
   test('대시보드 메뉴 클릭 시 대시보드 페이지가 보인다', async ({ page }) => {
@@ -44,7 +39,7 @@ test.describe('메뉴 클릭으로 페이지 이동', () => {
   });
 
   test('사용자 메뉴 클릭 시 사용자 목록 페이지가 보인다', async ({ page }) => {
-    await page.getByRole('menuitem', { name: '사용자' }).click();
+    await fnClickSidebarMenu(page, '사용자');
     await expect(page).toHaveURL('/users');
     await expect(page.getByText(/사용자/i).first()).toBeVisible({ timeout: 5000 });
   });

@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fnIsMysqlStore } from './dataStore';
-import { fnScheduleMysqlDocReplace } from '../db/mysqlDocPersist';
 
 /** DATA_DIR 있으면 cwd 기준 절대경로. 없으면 이 파일 기준 backend/data (실행 cwd와 무관) */
 function fnResolveDataDir(): string {
@@ -84,6 +83,9 @@ export const fnMirrorJsonToDisk = <T>(strFilename: string, arrData: T[]): void =
 // 배열을 JSON 파일에 저장 (동기 쓰기 — 데이터 유실 방지)
 export const fnSaveJson = <T>(strFilename: string, arrData: T[]): void => {
   if (fnIsMysqlStore()) {
+    // mysqlDocPersist는 data 모듈을 끌어와 순환 참조가 남 — 최초 MySQL 저장 시에만 로드
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { fnScheduleMysqlDocReplace } = require('../db/mysqlDocPersist') as typeof import('../db/mysqlDocPersist');
     fnScheduleMysqlDocReplace(strFilename, arrData as unknown[]);
     return;
   }

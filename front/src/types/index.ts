@@ -1,3 +1,5 @@
+import type { TTagVariant } from '../styles/tagPalette';
+
 // =============================================
 // 권한 코드 (백엔드 types와 동기 — JWT arrPermissions 전부)
 // =============================================
@@ -5,7 +7,8 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
-  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.manage'
+  | 'event_template.request_confirm' | 'event_template.confirm'
+  | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
   | 'my_dashboard.view' | 'my_dashboard.detail' | 'my_dashboard.edit' | 'my_dashboard.request_confirm' | 'my_dashboard.query_edit' | 'my_dashboard.confirm'
@@ -33,11 +36,14 @@ export const OBJ_PERMISSION_LABELS: Record<TPermission, string> = {
   'event_template.edit': '쿼리 템플릿 수정',
   'event_template.delete': '쿼리 템플릿 삭제',
   'event_template.manage': '쿼리 템플릿 관리 (CRUD)',
+  'event_template.request_confirm': '템플릿 쿼리 리뷰 요청',
+  'event_template.confirm': '템플릿 DBA 리뷰 완료',
   'user.view': '사용자 조회',
   'user.create': '사용자 생성',
   'user.edit': '사용자 수정',
   'user.delete': '사용자 삭제',
   'user.reset_password': '비밀번호 초기화',
+  'user.approve': '가입 승인',
   'user.manage': '사용자 관리',
   'role.view': '역할 조회',
   'role.create': '역할 생성',
@@ -106,6 +112,8 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'event_template.create', label: '생성' },
     { value: 'event_template.edit', label: '수정' },
     { value: 'event_template.delete', label: '삭제' },
+    { value: 'event_template.request_confirm', label: '쿼리 리뷰 요청' },
+    { value: 'event_template.confirm', label: 'DBA 리뷰 완료' },
   ]},
   { groupLabel: 'DB 접속 정보', permissions: [
     { value: 'db_connection.view', label: '보기' },
@@ -120,6 +128,7 @@ export const ARR_PERMISSION_GROUPS: IPermissionGroup[] = [
     { value: 'user.edit', label: '수정' },
     { value: 'user.delete', label: '삭제' },
     { value: 'user.reset_password', label: '비밀번호 초기화' },
+    { value: 'user.approve', label: '가입 승인' },
   ]},
   { groupLabel: '역할 권한', permissions: [
     { value: 'role.view', label: '보기' },
@@ -184,22 +193,34 @@ export function fnFormatPermissionErrorMessage(strMessage: string): string {
   return strMessage;
 }
 
-/** 레거시 권한 → 세분화 권한으로 확장 (역할 편집 폼 초기값용) */
+/** 레거시 권한 → 세분화 권한 (백엔드 roles.ts OBJ_EXPAND와 동기화) */
 const OBJ_LEGACY_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
-  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
-  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete', 'event_template.request_confirm', 'event_template.confirm'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
+  'instance.create': ['instance.view'],
+  'my_dashboard.request_confirm': ['event_template.request_confirm'],
+  'my_dashboard.confirm': ['event_template.confirm'],
   'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
   'instance.approve_live': ['my_dashboard.request_live', 'my_dashboard.request_live_rereq'],
   'instance.execute_live': ['my_dashboard.execute_live'],
   'instance.verify_live': ['my_dashboard.verify_live'],
-  'instance.create': ['my_dashboard.edit', 'my_dashboard.request_confirm', 'instance.view', 'instance.create'],
   'my_dashboard.delete': ['my_dashboard.delete_any'],
   'my_dashboard.delete_instance': ['my_dashboard.delete_any'],
 };
+
+/** admin 역할 — 로그인 시 fnExpandPermissions 보너스 (역할 편집 폼 표시용) */
+const ARR_ADMIN_ROLE_FORM_BONUS: string[] = [
+  'dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any',
+  'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve',
+  'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions',
+  'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test',
+  'system.save_test_seed', 'activity.view', 'activity.clear',
+];
+
 export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
   const setOut = new Set<string>(arrRaw);
   arrRaw.forEach((p) => {
@@ -207,6 +228,22 @@ export function fnExpandLegacyToGranular(arrRaw: string[]): string[] {
     if (exp) exp.forEach((e) => setOut.add(e));
   });
   return Array.from(setOut);
+}
+
+/** 역할 편집 폼 체크박스 — 저장값 + 레거시 확장 + admin 보너스 (로그인 effective와 동일 표시) */
+export function fnExpandPermissionsForRoleFormDisplay(arrRaw: string[], strRoleCode?: string): TPermission[] {
+  const setOut = new Set<string>(fnExpandLegacyToGranular(arrRaw));
+  if (strRoleCode === 'admin') {
+    ARR_ADMIN_ROLE_FORM_BONUS.forEach((p) => setOut.add(p));
+  }
+  return Array.from(setOut) as TPermission[];
+}
+
+/** 체크박스 UI에 없는 저장 권한 — 저장 시 유실 방지용 */
+export function fnGetOrphanRolePermissions(arrRaw: string[]): string[] {
+  const setGroup = new Set(ARR_PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.value)));
+  const setLegacy = new Set(Object.keys(OBJ_LEGACY_EXPAND));
+  return arrRaw.filter((p) => !setGroup.has(p) && !setLegacy.has(p));
 }
 
 // =============================================
@@ -230,8 +267,11 @@ export interface IUser {
   nId: number;
   strUserId: string;
   strDisplayName: string;
+  strEmail?: string | null;
+  strStatus?: string;
   arrRoles: string[];           // 역할 코드 배열 (멀티 역할)
   arrPermissions: TPermission[];
+  mapRoleDisplayNames?: Record<string, string>; // 역할 코드 → 표시명 (헤더·태그용)
 }
 
 export interface ILoginRequest {
@@ -244,6 +284,7 @@ export interface ILoginResponse {
   strToken?: string;
   user?: IUser;
   strMessage?: string;
+  strErrorCode?: string;
 }
 
 export interface IAuthStore {
@@ -260,19 +301,20 @@ export interface IAuthStore {
 // 프로덕트 관련
 // =============================================
 
-// 서비스 범위 (프로덕트 하위)
+// 국가/플랫폼 (프로덕트 하위 — FH/KR, LH/KR, DK/KR, DK/G …)
 export interface IService {
-  strAbbr: string;     // 약자 (예: DK/KR, AO/EU)
-  strRegion: string;   // 서비스 범위 (국내, 스팀, 글로벌, 유럽, 일본)
+  nServiceId?: number;  // backfill·생성 후 필수
+  strAbbr: string;     // 약자 (예: FH/KR, LH/KR, DK/KR, DK/G)
+  strRegion: string;   // 플랫폼 (국내, 스팀, 글로벌, 유럽, 일본)
 }
 
 // 프로덕트 (게임/서비스)
 export interface IProduct {
   nId: number;
-  strName: string;          // 프로젝트명 (예: DK온라인)
+  strName: string;          // 프로덕트명 (예: DK온라인)
   strDescription: string;
   strDbType: 'mysql' | 'mssql' | 'postgresql';
-  arrServices: IService[];  // 서비스 범위 목록
+  arrServices: IService[];  // 국가/플랫폼 목록
   dtCreatedAt: string;
 }
 
@@ -307,6 +349,24 @@ export interface IQueryTemplateItem {
   strQueryTemplate: string;
 }
 
+// 쿼리 템플릿 워크플로
+export type TTemplateStatus =
+  | 'template_created'
+  | 'confirm_requested'
+  | 'dba_confirmed';
+
+export const ARR_TEMPLATE_STATUSES: TTemplateStatus[] = [
+  'template_created',
+  'confirm_requested',
+  'dba_confirmed',
+];
+
+export const OBJ_TEMPLATE_STATUS_CONFIG: Record<TTemplateStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  template_created:   { strLabel: '템플릿 등록',   strTagVariant: 'muted' },
+  confirm_requested:  { strLabel: '쿼리 리뷰 요청', strTagVariant: 'tone3' },
+  dba_confirmed:      { strLabel: 'DBA 리뷰 완료', strTagVariant: 'tone4' },
+};
+
 // 쿼리 템플릿
 export interface IEventTemplate {
   nId: number;
@@ -323,6 +383,17 @@ export interface IEventTemplate {
   dtCreatedAt: string;
   strCreatedBy?: string;
   nCreatedByUserId?: number;
+  strStatus?: TTemplateStatus;
+  arrStatusLogs?: Array<{
+    strStatus: TTemplateStatus;
+    strChangedBy: string;
+    nChangedByUserId: number;
+    strComment?: string;
+    dtChangedAt: string;
+    objQueryEdit?: IQueryEditLog;
+  }>;
+  objCreator?: { strDisplayName: string; nUserId: number; strUserId: string; dtProcessedAt: string } | null;
+  objConfirmer?: { strDisplayName: string; nUserId: number; strUserId: string; dtProcessedAt: string } | null;
 }
 
 // =============================================
@@ -331,16 +402,15 @@ export interface IEventTemplate {
 
 // 단일 서버 쿼리(한 환경) vs 다중 서버 쿼리(QA+LIVE) — DEV는 UI 선택 불가(백엔드 차단)
 export type TDeployScope = 'qa' | 'live';
-export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strColor: string }[] = [
-  { value: 'qa',   label: 'QA',   strColor: 'orange' },
-  { value: 'live', label: 'LIVE', strColor: 'red' },
+
+export const ARR_DEPLOY_SCOPE_OPTIONS: { value: TDeployScope; label: string; strTagVariant: TTagVariant }[] = [
+  { value: 'qa',   label: 'QA',   strTagVariant: 'tone6' },
+  { value: 'live', label: 'LIVE', strTagVariant: 'tone9' },
 ];
 
-// 이벤트 상태 워크플로
+// 이벤트 상태 워크플로 (7단계)
 export type TEventStatus =
   | 'event_created'       // 운영자 이벤트 생성 (수정 가능)
-  | 'confirm_requested'   // 운영자 컨펌 요청 (수정 불가)
-  | 'dba_confirmed'       // DBA 컨펌 확인
   | 'qa_requested'        // 운영자 QA 반영 요청
   | 'qa_deployed'         // DBA QA 반영
   | 'qa_verified'         // 운영자 QA 확인
@@ -348,17 +418,38 @@ export type TEventStatus =
   | 'live_deployed'       // DBA LIVE 반영
   | 'live_verified';      // 운영자 LIVE 확인 (완료)
 
+/** Phase 3 이전 인스턴스 상태 — 진행 이력 표시용 */
+export type TLegacyInstanceStatus = 'confirm_requested' | 'dba_confirmed';
+
+export type TInstanceStatusLogStatus = TEventStatus | TLegacyInstanceStatus;
+
 // 상태 라벨/색상 — 나의 대시보드 권한 이름과 동일 (작성 중→생성, 완료 유지)
-export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strColor: string }> = {
-  event_created:      { strLabel: '생성',            strColor: 'default' },
-  confirm_requested:  { strLabel: '컨펌 요청',       strColor: 'blue' },
-  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strColor: 'cyan' },
-  qa_requested:       { strLabel: 'QA 반영 요청',   strColor: 'geekblue' },
-  qa_deployed:        { strLabel: 'QA 반영 실행',    strColor: 'orange' },
-  qa_verified:        { strLabel: 'QA 확인',        strColor: 'gold' },
-  live_requested:     { strLabel: 'LIVE 반영 요청',  strColor: 'magenta' },
-  live_deployed:      { strLabel: 'LIVE 반영 실행',  strColor: 'volcano' },
-  live_verified:      { strLabel: '완료',            strColor: 'green' },
+export const OBJ_STATUS_CONFIG: Record<TEventStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  event_created:      { strLabel: '생성',            strTagVariant: 'muted' },
+  qa_requested:       { strLabel: 'QA 반영 요청',   strTagVariant: 'tone5' },
+  qa_deployed:        { strLabel: 'QA 반영 실행',    strTagVariant: 'tone6' },
+  qa_verified:        { strLabel: 'QA 확인',        strTagVariant: 'tone7' },
+  live_requested:     { strLabel: 'LIVE 반영 요청',  strTagVariant: 'tone8' },
+  live_deployed:      { strLabel: 'LIVE 반영 실행',  strTagVariant: 'tone2' },
+  live_verified:      { strLabel: '완료',            strTagVariant: 'success' },
+};
+
+/** 레거시 인스턴스 상태 라벨 (이력·알림 표시) */
+export const OBJ_LEGACY_INSTANCE_STATUS_CONFIG: Record<TLegacyInstanceStatus, { strLabel: string; strTagVariant: TTagVariant }> = {
+  confirm_requested:  { strLabel: '컨펌 요청',       strTagVariant: 'tone3' },
+  dba_confirmed:      { strLabel: 'DBA 컨펌 완료',   strTagVariant: 'tone4' },
+};
+
+export const fnGetInstanceStatusConfig = (
+  strStatus: string,
+): { strLabel: string; strTagVariant: TTagVariant } | undefined => {
+  if (strStatus in OBJ_STATUS_CONFIG) {
+    return OBJ_STATUS_CONFIG[strStatus as TEventStatus];
+  }
+  if (strStatus in OBJ_LEGACY_INSTANCE_STATUS_CONFIG) {
+    return OBJ_LEGACY_INSTANCE_STATUS_CONFIG[strStatus as TLegacyInstanceStatus];
+  }
+  return undefined;
 };
 
 // 프로세스 진행에 따른 현재 환경 (QA / LIVE / DEV 중 하나만 표시)
@@ -366,21 +457,27 @@ export type TDisplayEnv = 'DEV' | 'QA' | 'LIVE';
 export const fnGetDisplayEnv = (strStatus: TEventStatus): TDisplayEnv | null => {
   if (strStatus.startsWith('live_')) return 'LIVE';
   if (strStatus.startsWith('qa_')) return 'QA';
-  if (strStatus === 'event_created' || strStatus === 'confirm_requested' || strStatus === 'dba_confirmed') return 'DEV';
+  if (strStatus === 'event_created') return 'DEV';
   return null;
 };
 
-export const OBJ_DISPLAY_ENV_COLOR: Record<TDisplayEnv, string> = {
-  DEV: 'default',
-  QA: 'orange',
-  LIVE: 'red',
+export const OBJ_DISPLAY_ENV_TAG: Record<TDisplayEnv, TTagVariant> = {
+  DEV: 'muted',
+  QA: 'tone6',
+  LIVE: 'tone9',
 };
+
+/** @deprecated OBJ_DISPLAY_ENV_TAG 사용 */
+export const OBJ_DISPLAY_ENV_COLOR = OBJ_DISPLAY_ENV_TAG;
 
 // 쿼리 개별 실행 결과
 export interface IQueryPartResult {
   nIndex: number;
   strQuery: string;
   nAffectedRows: number;
+  arrResultColumns?: string[];
+  arrResultRows?: Record<string, string | number | boolean | null>[];
+  bResultTruncated?: boolean;
   /** 다중 실행 세트일 때만 */
   nSetIndex?: number;
   nSetTotal?: number;
@@ -408,6 +505,10 @@ export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;
+  /** products.arrServices[].strAbbr — denormalized */
+  strServiceAbbr?: string;
+  /** product_service.n_id — NULL=공통 fallback */
+  nServiceId?: number | null;
   strKind: TDbConnectionKind;
   strEnv: 'dev' | 'qa' | 'live';
   strDbType: 'mssql' | 'mysql';
@@ -434,7 +535,7 @@ export interface IQueryEditLog {
 
 // 상태 변경 이력
 export interface IStatusLog {
-  strStatus: TEventStatus;
+  strStatus: TInstanceStatusLogStatus;
   strChangedBy: string;
   nChangedByUserId: number;
   strComment: string;
@@ -464,6 +565,7 @@ export interface IEventInstance {
   nId: number;
   nEventTemplateId: number;
   nProductId: number;
+  nServiceId?: number;
   strEventLabel: string;
   strProductName: string;
   strServiceAbbr: string;

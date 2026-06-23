@@ -5,6 +5,7 @@ import {
   fnNotifyWebPushInstanceStatusChanged,
   fnNotifyWebPushInstanceUpdated,
 } from './webPushNotifier';
+import { fnNotifySlackInstanceCreated, fnNotifySlackInstanceUpdate } from './slackNotifier';
 import { fnIsInAppNotificationsPersisted } from '../data/userNotifications';
 import { fnShouldSkipEventInstanceProgressNotification } from './eventInstanceNotificationEligibility';
 
@@ -71,6 +72,7 @@ export const fnBroadcastInstanceCreated = (objInstance: IEventInstance): void =>
     }
   }
   fnNotifyWebPushInstanceCreated(objInstance);
+  fnNotifySlackInstanceCreated(objInstance);
   if (fnIsInAppNotificationsPersisted()) {
     void import('./inAppNotificationNotifier').then((m) => m.fnNotifyInAppInstanceCreated(objInstance));
   }
@@ -122,6 +124,7 @@ export const fnBroadcastInstanceUpdate = (
   }
   if (fnShouldSkipEventInstanceProgressNotification(objInstance)) return;
   fnNotifyWebPushInstanceUpdated(objInstance);
+  fnNotifySlackInstanceUpdate(objInstance, bNotifyStatusProgress);
   if (bNotifyStatusProgress) {
     fnNotifyWebPushInstanceStatusChanged(setInvolvedUserIds, objStatusUpdate);
   }

@@ -9,10 +9,11 @@ node_modules/
 # Build
 dist/
 
-# 환경변수 (VITE_API_URL 같은 빌드 변수는 CI에서 주입)
-.env
-.env.local
-.env.*.local
+# Playwright E2E
+playwright-report/
+test-results/
+.env.e2e.local
+scripts/probe-*.png
 
 # mkcert dev TLS (front/.env VITE_DEV_SSL_*)
 certs/
@@ -25,3 +26,6 @@ certs/
 *.njsproj
 *.sln
 *.sw?
+
+*storybook.log
+storybook-static

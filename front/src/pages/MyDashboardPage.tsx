@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Typography, Card, Tag, Space, Button, Modal,
+  Typography, Card, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
   Segmented, Select, Descriptions, Alert, Spin, Divider, Progress, DatePicker,
   Steps, Checkbox, Tooltip, theme as antdTheme, Collapse, Tabs,
@@ -10,14 +10,20 @@ import { Link, useSearchParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
   EyeOutlined, CheckOutlined, ClockCircleOutlined,
-  SyncOutlined, CheckCircleOutlined, SafetyCertificateOutlined,
+  SyncOutlined, CheckCircleOutlined,
   RocketOutlined, CopyOutlined, UserOutlined, EditOutlined,
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
-  TableOutlined, AppstoreOutlined, LinkOutlined,
+  TableOutlined, AppstoreOutlined, LinkOutlined, DashboardOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
+import CrudPageShell from '../components/CrudPageShell';
+import { ProductNameTag } from '../components/ProductNameTag';
+import { InstanceServiceScopeCell } from '../components/InstanceServiceScopeCell';
+import CrudListToolbar from '../components/CrudListToolbar';
 import QueryEditDiffView from '../components/QueryEditDiffView';
+import SqlLineNumberArea from '../components/SqlLineNumberArea';
+import QueryResultSetTable from '../components/QueryResultSetTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
@@ -27,17 +33,27 @@ import type {
   IEventInstance, TEventStatus, IStageActor,
   IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission,
 } from '../types';
-import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage } from '../types';
+import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage, fnGetInstanceStatusConfig } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { OBJ_DEFAULT_DASHBOARD_LAYOUT } from '../constants/dashboardLayoutDefault';
 import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve';
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
+import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
+import { DqpmTag } from '../components/DqpmTag';
+import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import { fnStatusTimelineColor } from '../styles/workflowTimelineColors';
+import {
+  fnSemanticColor,
+  fnSemanticFilledButtonStyle,
+  fnSemanticStatisticStyle,
+} from '../styles/semanticColors';
 import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 // 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
@@ -168,7 +184,7 @@ const ARR_DASHBOARD_CARD_ROWS: ICardLabelRow[] =
     ? objDefaultListOpts.arrCardRows
     : [
         { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
-        { strLabel: '서비스', strFieldPath: 'strServiceAbbr', strRender: 'text' },
+        { strLabel: STR_SERVICE_SCOPE_LABEL, strFieldPath: 'strServiceAbbr', strRender: 'service_scope', strEmpty: '-' },
         { strLabel: '반영 일시', strFieldPath: 'dtDeployDate', strRender: 'datetime_short' },
         { strLabel: '생성자', strFieldPath: 'strCreatedBy', strEmpty: '-' },
       ];
@@ -237,7 +253,7 @@ const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLab
   return (
     <Space size={4}>
       <Text style={{ fontSize: 12 }}>{strLabel}:</Text>
-      <Tag icon={<UserOutlined />} color="blue" style={{ fontSize: 11 }}>{objActor.strDisplayName}</Tag>
+      <DqpmTag icon={<UserOutlined />} color="blue" style={{ fontSize: 11 }}>{objActor.strDisplayName}</DqpmTag>
       <Text type="secondary" style={{ fontSize: 11 }}>{new Date(objActor.dtProcessedAt).toLocaleString('ko-KR')}</Text>
     </Space>
   );
@@ -251,12 +267,17 @@ const fnBuildQueryResultCollapseItems = (
 ): NonNullable<CollapseProps['items']> => {
   const bGroupBySet = arr.some((r) => r.nSetIndex != null && r.nSetTotal != null);
 
-  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => ({
+  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => {
+    const nResultRows = r.arrResultRows?.length ?? 0;
+    const bHasResultSet = nResultRows > 0;
+    return {
     key: `${strKeyPrefix}-q${r.nIndex}`,
     label: (
       <Space>
         <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-        <Tag color="green">{r.nAffectedRows}건 처리</Tag>
+        <DqpmTag color="green">
+          {bHasResultSet ? `${nResultRows}행 조회` : `${r.nAffectedRows}건 처리`}
+        </DqpmTag>
       </Space>
     ),
     children: (
@@ -276,9 +297,11 @@ const fnBuildQueryResultCollapseItems = (
           </Button>
         </div>
         <div style={strQueryBlockStyle}>{r.strQuery}</div>
+        <QueryResultSetTable objPart={r} />
       </Space>
     ),
-  });
+  };
+  };
 
   if (!bGroupBySet) {
     return arr.map((r) => fnOneQueryPanel(r, 'flat'));
@@ -321,17 +344,28 @@ const fnBuildQueryResultCollapseItems = (
   }));
 };
 
+/** 다중 세트 실행 실패 시 오류 메시지에서 실패한 세트 번호(1-based) 추출 */
+const fnParseFailedSetIndex = (strError?: string): number | null => {
+  const m = strError?.match(/쿼리 세트\s*(\d+)/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 // 쿼리 실행 결과 모달 — 상세 모달과 동일하게 Collapse로 실행 요약·쿼리별 접기/펼치기
 const ExecutionResultModal = ({
   bOpen,
   objResult,
   strEnv,
+  arrExecutionTargets,
   onClose,
   messageApi,
 }: {
   bOpen: boolean;
   objResult: IQueryExecutionResult | null;
   strEnv: 'qa' | 'live';
+  /** 다중 세트 실패 시 DBA 쿼리 수정 모달과 동일한 탭 UI */
+  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
   onClose: () => void;
   /** useMessage() 인스턴스 — 모달 위에 토스트가 뜨도록 필수 */
   messageApi: TMessageLike;
@@ -341,26 +375,77 @@ const ExecutionResultModal = ({
 
   const fnCopySql = (str: string | undefined) => fnCopyTextToClipboard(str, messageApi);
 
-  const strQueryBlockStyle: React.CSSProperties = {
+  const strQueryBlockStyle: React.CSSProperties = fnCodeSurfaceStyle(token, 11, {
     padding: '8px 12px',
-    background: token.colorFillTertiary,
     borderRadius: token.borderRadiusSM,
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: token.colorText,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-all',
     maxHeight: 220,
     overflow: 'auto',
-  };
+  });
+
+  const bMultiSetFail = !objResult.bSuccess && (arrExecutionTargets?.length ?? 0) > 0;
+  const nFailedSetIndex = fnParseFailedSetIndex(objResult.strError);
+
+  const fnRenderReadonlySqlBlock = (strQuery: string, objExtraStyle?: React.CSSProperties) => (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+        <Button
+          type="default"
+          htmlType="button"
+          size="small"
+          icon={<CopyOutlined />}
+          onClick={() => fnCopySql(strQuery)}
+        >
+          복사
+        </Button>
+      </div>
+      <SqlLineNumberArea
+        strValue={strQuery}
+        bReadOnly
+        nFontSize={13}
+        nMinRows={10}
+        nMaxRows={25}
+        objStyle={objExtraStyle}
+      />
+    </div>
+  );
+
+  const nodeAttemptedQuerySetTabs = bMultiSetFail ? (
+    <Tabs
+      type="card"
+      items={arrExecutionTargets!.map((t, idx) => {
+        const nSetNo = idx + 1;
+        const bFailed = nFailedSetIndex === nSetNo;
+        return {
+          key: String(idx),
+          label: (
+            <Space size={6}>
+              <span>{`쿼리 세트 ${nSetNo}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`}</span>
+              {bFailed ? <DqpmTag color="red">실패</DqpmTag> : null}
+            </Space>
+          ),
+          children: (
+            <Space direction="vertical" style={{ width: '100%' }} size={4}>
+              <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
+              {fnRenderReadonlySqlBlock(
+                t.strQuery,
+                bFailed ? { border: `1px solid ${fnSemanticColor('error', token)}` } : undefined,
+              )}
+            </Space>
+          ),
+        };
+      })}
+    />
+  ) : null;
 
   return (
     <Modal
       title={
         <Space>
           {objResult.bSuccess
-            ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} />
-            : <ExclamationCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />
+            ? <CheckCircleOutlined style={{ color: fnSemanticColor('success', token), fontSize: 18 }} />
+            : <ExclamationCircleOutlined style={{ color: fnSemanticColor('error', token), fontSize: 18 }} />
           }
           <span>{strEnv.toUpperCase()} 쿼리 실행 {objResult.bSuccess ? '완료' : '실패'}</span>
         </Space>
@@ -394,7 +479,7 @@ const ExecutionResultModal = ({
                           title="총 처리 건수"
                           value={objResult.nTotalAffectedRows}
                           suffix="건"
-                          valueStyle={{ color: '#1890ff', fontSize: 22 }}
+                          valueStyle={fnSemanticStatisticStyle('info', token)}
                         />
                       </Col>
                       <Col span={8}>
@@ -402,7 +487,7 @@ const ExecutionResultModal = ({
                           title="실행 시간"
                           value={objResult.nElapsedMs}
                           suffix="ms"
-                          valueStyle={{ color: '#52c41a', fontSize: 22 }}
+                          valueStyle={fnSemanticStatisticStyle('success', token)}
                         />
                       </Col>
                       <Col span={8}>
@@ -485,7 +570,7 @@ const ExecutionResultModal = ({
                       {objResult.strError}
                     </Text>
                     {objResult.strRollbackMsg && (
-                      <Text strong style={{ color: '#1890ff' }}>✓ {objResult.strRollbackMsg}</Text>
+                      <Text strong style={{ color: fnSemanticColor('info', token) }}>✓ {objResult.strRollbackMsg}</Text>
                     )}
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       시도 시각: {new Date(objResult.dtExecutedAt).toLocaleString('ko-KR')}
@@ -494,34 +579,21 @@ const ExecutionResultModal = ({
                   </Space>
                 ),
               },
-              ...(objResult.strExecutedQuery
+              ...(!bMultiSetFail && objResult.strExecutedQuery
                 ? [{
                     key: 'attempted-query',
                     label: '실행 시도 쿼리',
                     children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size={4}>
                         <Text type="secondary" style={{ fontSize: 11 }}>오류 원인 파악용</Text>
-                        <div style={{ textAlign: 'right' }}>
-                          <Button
-                            type="default"
-                            htmlType="button"
-                            size="small"
-                            icon={<CopyOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              fnCopySql(objResult.strExecutedQuery);
-                            }}
-                          >
-                            복사
-                          </Button>
-                        </div>
-                        <div style={strQueryBlockStyle}>{objResult.strExecutedQuery}</div>
+                        {fnRenderReadonlySqlBlock(objResult.strExecutedQuery)}
                       </Space>
                     ),
                   }]
                 : []),
             ]}
           />
+          {nodeAttemptedQuerySetTabs}
         </Space>
       )}
     </Modal>
@@ -536,9 +608,7 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
 
   // OBJ_STATUS_CONFIG 기준으로 라벨 사용 (간소화 표시 일원화)
   const arrSteps: { strStatus: TEventStatus; strLabel: string; strSubLabel: string }[] = [
-    { strStatus: 'event_created',     strLabel: OBJ_STATUS_CONFIG.event_created.strLabel,     strSubLabel: '' },
-    { strStatus: 'confirm_requested', strLabel: OBJ_STATUS_CONFIG.confirm_requested.strLabel, strSubLabel: '' },
-    { strStatus: 'dba_confirmed',     strLabel: OBJ_STATUS_CONFIG.dba_confirmed.strLabel,     strSubLabel: '' },
+    { strStatus: 'event_created', strLabel: OBJ_STATUS_CONFIG.event_created.strLabel, strSubLabel: '' },
   ];
 
   if (bHasQa) {
@@ -584,36 +654,43 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
         <Space size={4}>
           {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
             const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-            return opt ? <Tag key={s} color={opt.strColor} style={{ fontSize: 11 }}>{opt.label}</Tag> : null;
+            return opt ? <DqpmTag key={s} tone={opt.strTagVariant} style={{ fontSize: 11 }}>{opt.label}</DqpmTag> : null;
           })}
         </Space>
         <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
         <Space size={4}>
           {fnRenderStatusIcon(objInstance.strStatus, 12)}
-          <Tag color={OBJ_STATUS_CONFIG[objInstance.strStatus].strColor} style={{ fontSize: 11 }}>
+          <DqpmTag tone={OBJ_STATUS_CONFIG[objInstance.strStatus].strTagVariant} style={{ fontSize: 11 }}>
             {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
-          </Tag>
+          </DqpmTag>
         </Space>
       </div>
       <Steps
         current={nStep}
         status={bFinished ? 'finish' : 'process'}
         size="small"
-        items={arrSteps.map((s, nIdx) => ({
-          icon: fnRenderStatusIcon(s.strStatus, 16),
+        items={arrSteps.map((s, nIdx) => {
+          const bActive = nIdx <= nStep;
+          const strIconColor = bActive
+            ? fnStatusTimelineColor(s.strStatus)
+            : token.colorTextQuaternary;
+          return {
+          icon: fnRenderStatusIcon(s.strStatus, 16, String(strIconColor)),
           title: s.strLabel,
           status: ((): 'wait' | 'finish' | 'process' => {
             if (nIdx < nStep) return 'finish';
             if (nIdx === nStep) return bFinished ? 'finish' : 'process';
             return 'wait';
           })(),
-        }))}
+        };
+        })}
       />
     </div>
   );
 };
 
 const MyDashboardPage = () => {
+  const { objTag } = useDesignSystem();
   const [searchParams, setSearchParams] = useSearchParams();
   const strDeepLinkInstanceId = searchParams.get('nId') ?? searchParams.get('nInstanceId');
 
@@ -660,11 +737,32 @@ const MyDashboardPage = () => {
   const [objExecResult, setObjExecResult] = useState<IQueryExecutionResult | null>(null);
   const [strExecEnv, setStrExecEnv] = useState<'qa' | 'live'>('qa');
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
+  /** 실행 실패 모달 — 다중 세트 탭용 (DBA 쿼리 수정과 동일 레이아웃) */
+  const [arrExecModalTargets, setArrExecModalTargets] = useState<
+    Array<{ nDbConnectionId: number; strQuery: string }> | undefined
+  >(undefined);
   // QA/LIVE 확인 팝업 — 팝업 안에 취소 / 확인 / 재요청 버튼
   const [objConfirmModal, setObjConfirmModal] = useState<{ nId: number; strType: 'qa' | 'live' } | null>(null);
 
   const [messageApi, contextHolder] = message.useMessage();
   const { token } = antdTheme.useToken();
+
+  const objSqlPreBlock = React.useMemo(
+    () => fnCodeSurfaceStyle(token, 11, {
+      padding: '6px 10px',
+      borderRadius: token.borderRadiusSM,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-all',
+      maxHeight: 180,
+      overflow: 'auto',
+    }),
+    [token],
+  );
+  const objSqlTaEditable13 = React.useMemo(() => fnCodeSurfaceStyle(token, 13), [token]);
+  const objSqlTaEditable13Mt = React.useMemo(
+    () => fnCodeSurfaceStyle(token, 13, { marginTop: 4 }),
+    [token],
+  );
 
   const user = useAuthStore((s) => s.user);
   const arrPermissions = user?.arrPermissions || [];
@@ -849,6 +947,9 @@ const MyDashboardPage = () => {
     setNDisplayPercent(0);
     refExecProgress.current = { completed: 0, total: Math.max(1, nTotal) };
     setStrExecEnv(strEnv);
+    setArrExecModalTargets(
+      r.arrExecutionTargets?.length ? r.arrExecutionTargets.map((t) => ({ ...t })) : undefined,
+    );
     type TExecResult = {
       bSuccess: boolean;
       strMessage?: string;
@@ -1016,15 +1117,14 @@ const MyDashboardPage = () => {
   };
 
   // 클립보드 복사
-  const fnCopy = (str: string) => {
+  const fnCopy = (str: string | undefined) => {
     fnCopyTextToClipboard(str, messageApi);
   };
 
   // 통계 — 항상 전체 목록(arrAllInstances) 기준으로 계산해 필터 변경과 무관하게 실시간 반영
   // 상태별 "다음 액션 가능" 권한 — 내 처리 대기 건수·버튼 노출은 권한만 사용
   const OBJ_ACTION_PERMISSIONS: Partial<Record<TEventStatus, TPermission[]>> = {
-    event_created: ['my_dashboard.request_confirm'],
-    confirm_requested: ['my_dashboard.confirm'],
+    event_created: ['my_dashboard.request_qa', 'my_dashboard.request_live'],
     qa_requested: ['my_dashboard.execute_qa', 'instance.execute_qa'],
     qa_deployed: ['my_dashboard.verify_qa', 'my_dashboard.request_qa_rereq', 'my_dashboard.request_live'],
     live_requested: ['my_dashboard.execute_live', 'instance.execute_live'],
@@ -1046,6 +1146,9 @@ const MyDashboardPage = () => {
 
   // 액션 버튼 렌더링 (권한 + 상태 + 쿼리 실행 대상 기반)
   const fnRenderActions = (r: IEventInstance) => {
+    const objLiveBtnStyle = fnSemanticFilledButtonStyle('magenta', token);
+    const objQaExecuteBtnStyle = fnSemanticFilledButtonStyle('warning', token);
+    const objLiveVerifiedBtnStyle = fnSemanticFilledButtonStyle('success', token);
     const arrButtons = [];
 
     // 링크 복사 — 권한 무관, 항상 표시
@@ -1080,7 +1183,7 @@ const MyDashboardPage = () => {
     }
 
     // 쿼리 수정 — my_dashboard.query_edit 권한만 사용
-    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['confirm_requested', 'qa_requested', 'live_requested'];
+    const ARR_QUERY_EDIT_STATUS: TEventStatus[] = ['qa_requested', 'live_requested'];
     if (fnHasPermission('my_dashboard.query_edit') && ARR_QUERY_EDIT_STATUS.includes(r.strStatus)) {
       arrButtons.push(
         <Tooltip key="query-edit" title="쿼리 직접 수정 (DBA)">
@@ -1091,45 +1194,18 @@ const MyDashboardPage = () => {
       );
     }
 
-    // 생성(event_created): 이벤트 수정/컨펌 요청은 해당 권한 있을 때만 버튼 노출
+    // 생성(event_created): 수정 + QA/LIVE 요청
     const bCanEdit = fnHasPermission('my_dashboard.edit');
-    const bCanRequestConfirm = fnHasPermission('my_dashboard.request_confirm');
-    if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && (bCanEdit || bCanRequestConfirm)) {
-      if (bCanEdit) {
-        arrButtons.push(
-          <Button key="edit" size="small" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)}>수정</Button>
-        );
-      }
-      if (bCanRequestConfirm) {
-        arrButtons.push(
-          <PopconfirmWithSkip
-            key="req-confirm"
-            actionKey="confirm_requested"
-            title="컨펌을 요청하시겠습니까? 요청 후 수정이 불가합니다."
-            okText="요청"
-            cancelText="취소"
-            onConfirm={() => fnHandleAction(r.nId, 'confirm_requested', '컨펌 요청')}
-          >
-            <Button size="small" type="primary" icon={<SendOutlined />}>컨펌 요청</Button>
-          </PopconfirmWithSkip>
-        );
-      }
-    }
-
-    // DBA 컨펌 — my_dashboard.confirm 권한만 사용
-    if (r.strStatus === 'confirm_requested' && fnHasPermission('my_dashboard.confirm')) {
+    if (r.strStatus === 'event_created' && r.nCreatedByUserId === user?.nId && bCanEdit) {
       arrButtons.push(
-        <Popconfirm key="confirm" title="컨펌 처리하시겠습니까?" okText="확인" cancelText="취소"
-          onConfirm={() => fnHandleAction(r.nId, 'dba_confirmed', 'DBA 컨펌')}>
-          <Button size="small" type="primary" icon={<SafetyCertificateOutlined />}>컨펌</Button>
-        </Popconfirm>
+        <Tooltip key="edit" title="수정">
+          <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenEdit(r)} />
+        </Tooltip>,
       );
     }
 
-    // dba_confirmed 이후 → 쿼리 실행 대상에 따라 QA 요청 또는 LIVE 요청 (단일 권한)
-    if (r.strStatus === 'dba_confirmed') {
+    if (r.strStatus === 'event_created') {
       if (bHasQa && fnHasPermission('my_dashboard.request_qa')) {
-        // QA 포함: QA 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="qa-req"
@@ -1143,7 +1219,6 @@ const MyDashboardPage = () => {
           </PopconfirmWithSkip>
         );
       } else if (!bHasQa && bHasLive && fnHasPermission('my_dashboard.request_live')) {
-        // LIVE만(단일 서버): QA 스킵 → LIVE 쿼리 실행 요청
         arrButtons.push(
           <PopconfirmWithSkip
             key="live-req-skip"
@@ -1158,7 +1233,7 @@ const MyDashboardPage = () => {
             cancelText="취소"
             onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
+              <Button size="small" style={objLiveBtnStyle} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
           </PopconfirmWithSkip>
         );
       }
@@ -1177,12 +1252,12 @@ const MyDashboardPage = () => {
           }
           okText="실행"
           cancelText="취소"
-          okButtonProps={{ danger: false, style: { background: '#faad14', border: 'none' } }}
+          okButtonProps={{ danger: false, style: objQaExecuteBtnStyle }}
           onConfirm={() => fnHandleExecute(r, 'qa')}
         >
           <Button
             size="small"
-            style={{ background: '#faad14', border: 'none', color: '#fff' }}
+            style={objQaExecuteBtnStyle}
             icon={bExecuting === r.nId ? <Spin size="small" /> : <ThunderboltOutlined />}
             disabled={bExecuting !== null}
           >
@@ -1253,7 +1328,7 @@ const MyDashboardPage = () => {
             rerequestTitle="QA 쿼리 실행 재요청을 하시겠습니까?"
             rerequestDescription="QA 확인 결과 데이터에 문제가 있을 때, DBA가 다시 QA 쿼리 실행할 수 있도록 요청합니다."
             onRerequestConfirm={() => fnHandleAction(r.nId, 'qa_requested', 'QA 쿼리 실행 재요청')}
-            primaryButtonStyle={{ background: '#eb2f96', border: 'none', color: '#fff' }}
+            primaryButtonStyle={objLiveBtnStyle}
             primaryIcon={<SendOutlined />}
             rerequestIcon={<SyncOutlined />}
             okText="요청"
@@ -1272,7 +1347,7 @@ const MyDashboardPage = () => {
               cancelText="취소"
               onConfirm={() => fnHandleAction(r.nId, 'live_requested', 'LIVE 쿼리 실행 요청')}
             >
-              <Button size="small" style={{ background: '#eb2f96', border: 'none', color: '#fff' }} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
+              <Button size="small" style={objLiveBtnStyle} icon={<SendOutlined />}>LIVE 쿼리 실행 요청</Button>
             </PopconfirmWithSkip>
           );
         }
@@ -1300,7 +1375,7 @@ const MyDashboardPage = () => {
           key="live-execute"
           title={
             <Space direction="vertical" size={4}>
-              <Text strong style={{ color: '#ff4d4f' }}>⚠ LIVE DB에 쿼리를 실행하시겠습니까?</Text>
+              <Text strong style={{ color: fnSemanticColor('error', token) }}>⚠ LIVE DB에 쿼리를 실행하시겠습니까?</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>운영 DB에 직접 반영됩니다. 오류 시 롤백됩니다.</Text>
             </Space>
           }
@@ -1356,7 +1431,7 @@ const MyDashboardPage = () => {
         >
           <Button
             size="small"
-            style={{ background: '#52c41a', border: 'none', color: '#fff' }}
+            style={objLiveVerifiedBtnStyle}
             icon={<CheckCircleOutlined />}
             onClick={() => setObjConfirmModal({ nId: r.nId, strType: 'live' })}
           >
@@ -1404,6 +1479,94 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     }
 
     return <Space wrap>{arrButtons}</Space>;
+  };
+
+  // 숨기기·삭제·복원 — 테이블 「관리」열·카드 보기 공용
+  const fnRenderManageActions = (r: IEventInstance) => {
+    const bCanDelete = fnCanDeleteInstanceRow(r);
+    if (r.bPermanentlyRemoved) {
+      return <DqpmTag color="red">삭제됨 · 복원 불가</DqpmTag>;
+    }
+    if (!setHiddenIds.has(r.nId)) {
+      return (
+        <Space wrap size="small">
+          <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
+            <PopconfirmWithSkip
+              actionKey="hide_instance"
+              title="이 이벤트를 숨기시겠습니까?"
+              description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
+              okText="숨기기"
+              cancelText="취소"
+              onConfirm={() => fnHideInstance(r.nId)}
+              disabled={r.strStatus !== 'live_verified'}
+            >
+              <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
+                숨기기
+              </Button>
+            </PopconfirmWithSkip>
+          </Tooltip>
+          {bCanDelete && (
+            <Popconfirm
+              title="이벤트를 삭제할까요?"
+              description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
+              okText="삭제"
+              okButtonProps={{ danger: true }}
+              cancelText="취소"
+              onConfirm={async () => {
+                const objRes = await fnStoreDeleteInstance(r.nId);
+                if (objRes.bSuccess) {
+                  messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
+                  setStrDashTab('completed');
+                } else {
+                  fnNotifyError(
+                    messageApi,
+                    '이벤트 삭제 실패',
+                    fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                    { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                  );
+                }
+              }}
+            >
+              <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+            </Popconfirm>
+          )}
+        </Space>
+      );
+    }
+    return (
+      <Space wrap size="small">
+        <Tooltip title="진행중 탭으로 복원">
+          <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
+            보이기
+          </Button>
+        </Tooltip>
+        {bCanDelete && (
+          <Popconfirm
+            title="이벤트를 삭제할까요?"
+            description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
+            okText="삭제"
+            okButtonProps={{ danger: true }}
+            cancelText="취소"
+            onConfirm={async () => {
+              const objRes = await fnStoreDeleteInstance(r.nId);
+              if (objRes.bSuccess) {
+                messageApi.success('삭제되었습니다.');
+                setStrDashTab('completed');
+              } else {
+                fnNotifyError(
+                  messageApi,
+                  '이벤트 삭제 실패',
+                  fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
+                  { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
+                );
+              }
+            }}
+          >
+            <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
+          </Popconfirm>
+        )}
+      </Space>
+    );
   };
 
   // 탭 (진행중 / 완료·숨김)
@@ -1485,7 +1648,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
   const arrDisplayInstances = strDashTab === 'active' ? arrActiveInstances : arrCompletedInstances;
 
-  // 테이블 컬럼 — 번호(nId) + 헤더·액션 정리
+  // 테이블 컬럼 — 번호(nId) + 워크플로·관리 열 분리
   const arrColumns: ColumnsType<IEventInstance> = [
     fnMakeIndexColumn<IEventInstance>(55),
     {
@@ -1497,8 +1660,18 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     {
       title: '프로덕트',
       key: 'product',
-      width: 140,
-      render: (_: unknown, r: IEventInstance) => <Tag>{r.strProductName} ({r.strServiceAbbr})</Tag>,
+      width: 120,
+      render: (_: unknown, r: IEventInstance) => (
+        <ProductNameTag strName={r.strProductName} />
+      ),
+    },
+    {
+      title: STR_SERVICE_SCOPE_LABEL,
+      key: 'strServiceScope',
+      width: 130,
+      render: (_: unknown, r: IEventInstance) => (
+        <InstanceServiceScopeCell strServiceAbbr={r.strServiceAbbr} />
+      ),
     },
     {
       title: '반영 일시',
@@ -1520,7 +1693,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       render: (_: unknown, r: IEventInstance) => {
         const env = fnGetDisplayEnv(r.strStatus);
         const scope = env ?? 'DEV';
-        return <Tag color={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</Tag>;
+        return <DqpmTag tone={OBJ_DISPLAY_ENV_COLOR[scope]}>{scope}</DqpmTag>;
       },
     },
     {
@@ -1531,102 +1704,25 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       render: (s: TEventStatus) => (
         <Space size={4}>
           {fnRenderStatusIcon(s, 12)}
-          <Tag color={OBJ_STATUS_CONFIG[s].strColor}>{OBJ_STATUS_CONFIG[s].strLabel}</Tag>
+          <DqpmTag tone={OBJ_STATUS_CONFIG[s].strTagVariant}>{OBJ_STATUS_CONFIG[s].strLabel}</DqpmTag>
         </Space>
       ),
     },
     {
-      title: '액션',
-      key: 'actions',
-      width: 420,
-      render: (_: unknown, r: IEventInstance) => {
-        const bCanDelete = fnCanDeleteInstanceRow(r);
-        return (
-          <Space wrap size="small" align="start">
-            {fnRenderActions(r)}
-            <Divider type="vertical" style={{ margin: '0 4px' }} />
-            {r.bPermanentlyRemoved ? (
-              <Tag color="red">삭제됨 · 복원 불가</Tag>
-            ) : !setHiddenIds.has(r.nId) ? (
-              <>
-                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                  <PopconfirmWithSkip
-                    actionKey="hide_instance"
-                    title="이 이벤트를 숨기시겠습니까?"
-                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                    okText="숨기기"
-                    cancelText="취소"
-                    onConfirm={() => fnHideInstance(r.nId)}
-                    disabled={r.strStatus !== 'live_verified'}
-                  >
-                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>
-                      숨기기
-                    </Button>
-                  </PopconfirmWithSkip>
-                </Tooltip>
-                {bCanDelete && (
-                  <Popconfirm
-                    title="이벤트를 삭제할까요?"
-                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
-                    okText="삭제"
-                    okButtonProps={{ danger: true }}
-                    cancelText="취소"
-                    onConfirm={async () => {
-                      const objRes = await fnStoreDeleteInstance(r.nId);
-                      if (objRes.bSuccess) {
-                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
-                        setStrDashTab('completed');
-                      } else {
-                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                      }
-                    }}
-                  >
-                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                  </Popconfirm>
-                )}
-              </>
-            ) : (
-              <>
-                <Tooltip title="진행중 탭으로 복원">
-                  <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>
-                    보이기
-                  </Button>
-                </Tooltip>
-                {bCanDelete && (
-                  <Popconfirm
-                    title="이벤트를 삭제할까요?"
-                    description="숨김 상태와 무관하게 복원할 수 없습니다. 완료·숨김 탭에만 남습니다."
-                    okText="삭제"
-                    okButtonProps={{ danger: true }}
-                    cancelText="취소"
-                    onConfirm={async () => {
-                      const objRes = await fnStoreDeleteInstance(r.nId);
-                      if (objRes.bSuccess) {
-                        messageApi.success('삭제되었습니다.');
-                        setStrDashTab('completed');
-                      } else {
-                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                      }
-                    }}
-                  >
-                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                  </Popconfirm>
-                )}
-              </>
-            )}
-          </Space>
-        );
-      },
+      title: '워크플로',
+      key: 'actions_workflow',
+      width: 320,
+      render: (_: unknown, r: IEventInstance) => (
+        <div onClick={(e) => e.stopPropagation()}>{fnRenderActions(r)}</div>
+      ),
+    },
+    {
+      title: '관리',
+      key: 'actions_manage',
+      width: 140,
+      render: (_: unknown, r: IEventInstance) => (
+        <div onClick={(e) => e.stopPropagation()}>{fnRenderManageActions(r)}</div>
+      ),
     },
   ];
 
@@ -1642,81 +1738,120 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
     <>
       {contextHolder}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <Title level={4} style={{ margin: 0 }}>나의 대시보드</Title>
-        {bFunMode && (
-          <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
-            <Tag color="orange">재미 모드</Tag>
-          </Tooltip>
-        )}
-      </div>
-
-      {/* 통계 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="전체" value={nTotal} suffix="건" prefix={<ClockCircleOutlined />} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="내 처리 대기" value={nMyAction} suffix="건" prefix={<SyncOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="진행 중" value={nInProgress} suffix="건" prefix={<RocketOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
-        </Col>
-        <Col xs={12} sm={6}>
-          <Card><Statistic title="완료" value={nCompleted} suffix="건" prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
-        </Col>
-      </Row>
-
-      {/* 탭 + 필터 + 목록 */}
-      <Card>
-        {/* 탭 — 전체 이벤트 / 완료 이벤트 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <Segmented
-            options={[
-              { label: `진행중 (${arrActiveInstances.length})`, value: 'active' },
-              { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
-            ]}
-            value={strDashTab}
-            onChange={(v) => {
-              const strNext = v as 'active' | 'completed';
-              setStrDashTab(strNext);
-              // 다른 탭에 없는 행이 선택된 채로 남으면 테이블·탭 상태가 꼬일 수 있음
-              if (strNext === 'active' && objSelectedRow
-                && !arrActiveInstances.some((e) => e.nId === objSelectedRow.nId)) {
-                setObjSelectedRow(null);
-                setObjDetail(null);
-                setBDetailOpen(false);
-              }
-              if (strNext === 'completed' && objSelectedRow
-                && !arrCompletedInstances.some((e) => e.nId === objSelectedRow.nId)) {
-                setObjSelectedRow(null);
-                setObjDetail(null);
-                setBDetailOpen(false);
-              }
-            }}
-          />
-          <Space size="middle">
-            {/* 진행중 탭일 때 필터 — 드롭다운 */}
-            {strDashTab === 'active' && (
-              <Select
-                options={arrFilterOptions}
-                value={strFilter}
-                onChange={(v) => fnSetFilter(v ?? 'all')}
-                style={{ minWidth: 180 }}
-                size="middle"
+      <CrudPageShell
+        strTitle="나의 대시보드"
+        nodeIcon={<DashboardOutlined />}
+        nodeDescription="행을 클릭하면 워크플로 단계가 펼쳐집니다. 진행중·완료·숨김은 아래에서 전환하고, 진행중일 때만 필터·보기 방식을 바꿀 수 있습니다."
+        nodeExtra={
+          bFunMode ? (
+            <Tooltip title="버튼을 2~3초 길게 누르면 재요청으로 전환됩니다. (QA/LIVE 확인 버튼 포함)">
+              <DqpmTag color="orange">재미 모드</DqpmTag>
+            </Tooltip>
+          ) : undefined
+        }
+        nodeToolbar={(
+          <CrudListToolbar
+            nodeLeft={(
+              <Segmented
+                options={[
+                  { label: `진행중 (${arrActiveInstances.length})`, value: 'active' },
+                  { label: `완료·숨김 (${arrCompletedInstances.length})`, value: 'completed' },
+                ]}
+                value={strDashTab}
+                onChange={(v) => {
+                  const strNext = v as 'active' | 'completed';
+                  setStrDashTab(strNext);
+                  if (strNext === 'active' && objSelectedRow
+                    && !arrActiveInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                    setObjSelectedRow(null);
+                    setObjDetail(null);
+                    setBDetailOpen(false);
+                  }
+                  if (strNext === 'completed' && objSelectedRow
+                    && !arrCompletedInstances.some((e) => e.nId === objSelectedRow.nId)) {
+                    setObjSelectedRow(null);
+                    setObjDetail(null);
+                    setBDetailOpen(false);
+                  }
+                }}
               />
             )}
-            {/* 테이블 / 카드 보기 전환 — 드롭다운 우측 (전환 중 연타 무시) */}
-            <Tooltip title={strViewTransition !== 'idle' ? '전환 중…' : strViewMode === 'table' ? '카드 보기' : '테이블(행) 보기'}>
-              <Button
-                type={strViewMode === 'table' ? 'default' : 'primary'}
-                icon={strViewMode === 'table' ? <AppstoreOutlined /> : <TableOutlined />}
-                onClick={fnToggleViewMode}
-                disabled={strViewTransition !== 'idle'}
-              />
-            </Tooltip>
-          </Space>
-        </div>
+            nodeRight={(
+              <Space size="middle">
+                {strDashTab === 'active' && (
+                  <Select
+                    options={arrFilterOptions}
+                    value={strFilter}
+                    onChange={(v) => fnSetFilter(v ?? 'all')}
+                    style={{ minWidth: 180 }}
+                    size="middle"
+                  />
+                )}
+                <Tooltip title={strViewTransition !== 'idle' ? '전환 중…' : strViewMode === 'table' ? '카드 보기' : '테이블(행) 보기'}>
+                  <Button
+                    type={strViewMode === 'table' ? 'default' : 'primary'}
+                    icon={strViewMode === 'table' ? <AppstoreOutlined /> : <TableOutlined />}
+                    onClick={fnToggleViewMode}
+                    disabled={strViewTransition !== 'idle'}
+                  />
+                </Tooltip>
+              </Space>
+            )}
+          />
+        )}
+        nodeAboveCard={(
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="stretch">
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="전체"
+                  value={nTotal}
+                  suffix="건"
+                  prefix={<ClockCircleOutlined />}
+                  valueStyle={{ fontSize: 22, lineHeight: 1.2, color: token.colorText }}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="내 처리 대기"
+                  value={nMyAction}
+                  suffix="건"
+                  prefix={<SyncOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('warning', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="진행 중"
+                  value={nInProgress}
+                  suffix="건"
+                  prefix={<RocketOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('info', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} sm={6} style={{ display: 'flex' }}>
+              <Card bordered={false} style={{ width: '100%' }}>
+                <Statistic
+                  title="완료"
+                  value={nCompleted}
+                  suffix="건"
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={fnSemanticStatisticStyle('success', token)}
+                  styles={{ title: { minHeight: 22 } }}
+                />
+              </Card>
+            </Col>
+          </Row>
+        )}
+      >
         <div
           ref={viewContentRef}
           style={{
@@ -1739,8 +1874,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
             expandedRowRender: (r) => <InstanceStepper objInstance={r} />,
-            expandIcon: () => null,
-            columnWidth: 24, // 펼침 컬럼을 작게만 표시 (제거하지 않음)
+            showExpandColumn: false,
             rowExpandable: () => true,
           }}
           // 완료(live_verified) 행 또는 숨겨진 행: 흐릿하게 표시
@@ -1771,13 +1905,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Space wrap size={4}>
                         <span style={{ fontWeight: 600 }}>{r.strEventName}</span>
                         {fnGetDisplayEnv(r.strStatus) && (
-                          <Tag color={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</Tag>
+                          <DqpmTag tone={OBJ_DISPLAY_ENV_COLOR[fnGetDisplayEnv(r.strStatus)!]}>{fnGetDisplayEnv(r.strStatus)}</DqpmTag>
                         )}
                         <Space size={4}>
                           {fnRenderStatusIcon(r.strStatus, 12)}
-                          <Tag color={OBJ_STATUS_CONFIG[r.strStatus].strColor}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</Tag>
+                          <DqpmTag tone={OBJ_STATUS_CONFIG[r.strStatus].strTagVariant}>{OBJ_STATUS_CONFIG[r.strStatus].strLabel}</DqpmTag>
                         </Space>
-                        {r.bPermanentlyRemoved && <Tag color="red">삭제됨</Tag>}
+                        {r.bPermanentlyRemoved && <DqpmTag color="red">삭제됨</DqpmTag>}
                       </Space>
                     }
                     style={{
@@ -1798,88 +1932,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Divider style={{ margin: '8px 0' }} />
                       <Space wrap size="small" onClick={(e) => e.stopPropagation()}>
                         {fnRenderActions(r)}
-                        {(() => {
-                          const bCardCanDelete = fnCanDeleteInstanceRow(r);
-                          if (r.bPermanentlyRemoved) {
-                            return <Tag color="red">삭제됨 · 복원 불가</Tag>;
-                          }
-                          if (!setHiddenIds.has(r.nId)) {
-                            return (
-                              <>
-                                <Tooltip title={r.strStatus === 'live_verified' ? '완료·숨김 탭으로 이동' : '완료 상태에서만 숨길 수 있습니다'}>
-                                  <PopconfirmWithSkip
-                                    actionKey="hide_instance"
-                                    title="이 이벤트를 숨기시겠습니까?"
-                                    description="완료·숨김 탭으로 이동됩니다. 언제든지 복원할 수 있습니다."
-                                    okText="숨기기"
-                                    cancelText="취소"
-                                    onConfirm={() => fnHideInstance(r.nId)}
-                                    disabled={r.strStatus !== 'live_verified'}
-                                  >
-                                    <Button size="small" icon={<EyeInvisibleOutlined />} type="text" disabled={r.strStatus !== 'live_verified'}>숨기기</Button>
-                                  </PopconfirmWithSkip>
-                                </Tooltip>
-                                {bCardCanDelete && (
-                                  <Popconfirm
-                                    title="이벤트를 삭제할까요?"
-                                    description="완료·숨김 탭으로만 남으며 복원은 불가능합니다."
-                                    okText="삭제"
-                                    okButtonProps={{ danger: true }}
-                                    cancelText="취소"
-                                    onConfirm={async () => {
-                                      const objRes = await fnStoreDeleteInstance(r.nId);
-                                      if (objRes.bSuccess) {
-                                        messageApi.success('삭제되었습니다. 완료·숨김 탭에서 확인할 수 있습니다.');
-                                        setStrDashTab('completed');
-                                      } else {
-                                        fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                                      }
-                                    }}
-                                  >
-                                    <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                                  </Popconfirm>
-                                )}
-                              </>
-                            );
-                          }
-                          return (
-                            <>
-                              <Tooltip title="진행중 탭으로 복원">
-                                <Button size="small" icon={<EyeTwoTone />} type="text" onClick={() => fnUnhideInstance(r.nId)}>보이기</Button>
-                              </Tooltip>
-                              {bCardCanDelete && (
-                                <Popconfirm
-                                  title="이벤트를 삭제할까요?"
-                                  description="숨김 상태와 무관하게 복원할 수 없습니다."
-                                  okText="삭제"
-                                  okButtonProps={{ danger: true }}
-                                  cancelText="취소"
-                                  onConfirm={async () => {
-                                    const objRes = await fnStoreDeleteInstance(r.nId);
-                                    if (objRes.bSuccess) {
-                                      messageApi.success('삭제되었습니다.');
-                                      setStrDashTab('completed');
-                                    } else {
-                                      fnNotifyError(
-                          messageApi,
-                          '이벤트 삭제 실패',
-                          fnFormatPermissionErrorMessage(objRes.strMessage || '삭제에 실패했습니다.'),
-                          { strRoute: '/my-dashboard', objQuery: { nInstanceId: r.nId }, strSource: 'page:MyDashboard' },
-                        );
-                                    }
-                                  }}
-                                >
-                                  <Button size="small" danger type="text" icon={<DeleteOutlined />}>삭제</Button>
-                                </Popconfirm>
-                              )}
-                            </>
-                          );
-                        })()}
+                        {fnRenderManageActions(r)}
                       </Space>
                     </Space>
                     {objSelectedRow?.nId === r.nId && (
@@ -1895,7 +1948,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         </div>
         )}
         </div>
-      </Card>
+      </CrudPageShell>
 
       {/* 상세 모달 — 각 섹션 접기/펼치기, 입력값·쿼리는 기본 접힘 */}
       <Modal title="이벤트 상세" open={bDetailOpen} onCancel={() => setBDetailOpen(false)} footer={null} width={780}>
@@ -1922,9 +1975,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       )}
                     </Descriptions.Item>
                     <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
-                    <Descriptions.Item label="프로덕트">{objDetail.strProductName} ({objDetail.strServiceAbbr} / {objDetail.strServiceRegion})</Descriptions.Item>
-                    <Descriptions.Item label="종류"><Tag color="blue">{objDetail.strCategory}</Tag></Descriptions.Item>
-                    <Descriptions.Item label="유형"><Tag color="red">{objDetail.strType}</Tag></Descriptions.Item>
+                    <Descriptions.Item label="프로덕트">{objDetail.strProductName}</Descriptions.Item>
+                    <Descriptions.Item label={STR_SERVICE_SCOPE_LABEL}>
+                      <InstanceServiceScopeCell strServiceAbbr={objDetail.strServiceAbbr} />
+                    </Descriptions.Item>
+                    <Descriptions.Item label="종류"><DqpmTag color="blue">{objDetail.strCategory}</DqpmTag></Descriptions.Item>
+                    <Descriptions.Item label="유형"><DqpmTag color="red">{objDetail.strType}</DqpmTag></Descriptions.Item>
                     {objDetail.strAlloLink && (
                       <Descriptions.Item label="알로 링크" span={2}>
                         <a href={objDetail.strAlloLink} target="_blank" rel="noreferrer">{objDetail.strAlloLink}</a>
@@ -1934,7 +1990,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <Space size={4}>
                         {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
                           const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-                          return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                          return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                         })}
                       </Space>
                     </Descriptions.Item>
@@ -1951,8 +2007,8 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     <Descriptions.Item label="상태">
                       <Space size={4} wrap align="center">
                         {fnRenderStatusIcon(objDetail.strStatus, 14)}
-                        <Tag color={OBJ_STATUS_CONFIG[objDetail.strStatus].strColor}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</Tag>
-                        {objDetail.bPermanentlyRemoved && <Tag color="red">삭제</Tag>}
+                        <DqpmTag tone={OBJ_STATUS_CONFIG[objDetail.strStatus].strTagVariant}>{OBJ_STATUS_CONFIG[objDetail.strStatus].strLabel}</DqpmTag>
+                        {objDetail.bPermanentlyRemoved && <DqpmTag color="red">삭제</DqpmTag>}
                       </Space>
                     </Descriptions.Item>
                   </Descriptions>
@@ -1964,7 +2020,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 children: (
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <ActorTag objActor={objDetail.objCreator} strLabel="생성자" />
-                    <ActorTag objActor={objDetail.objConfirmer} strLabel="컨펌자" />
+                    {objDetail.objConfirmer && (
+                      <ActorTag objActor={objDetail.objConfirmer} strLabel="DBA 컨펌 (레거시)" />
+                    )}
                     <ActorTag objActor={objDetail.objQaRequester} strLabel="QA 쿼리 실행 요청자" />
                     <ActorTag objActor={objDetail.objQaDeployer} strLabel="QA 쿼리 실행자" />
                     <ActorTag objActor={objDetail.objQaVerifier} strLabel="QA확인자" />
@@ -1997,8 +2055,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
                                 <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
                               </div>
-                              <TextArea value={t.strQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                                style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                              <SqlLineNumberArea
+                                strValue={t.strQuery}
+                                bReadOnly
+                                nFontSize={12}
+                                nMinRows={4}
+                                nMaxRows={15}
+                              />
                             </div>
                           </Space>
                         ),
@@ -2023,8 +2086,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                           <div style={{ textAlign: 'right' }}>
                             <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
                           </div>
-                          <TextArea value={objDetail.strGeneratedQuery} readOnly autoSize={{ minRows: 4, maxRows: 15 }}
-                            style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary, color: token.colorText, border: 'none', borderRadius: token.borderRadius, padding: 12 }} />
+                          <SqlLineNumberArea
+                            strValue={objDetail.strGeneratedQuery}
+                            bReadOnly
+                            nFontSize={12}
+                            nMinRows={4}
+                            nMaxRows={15}
+                          />
                         </Space>
                       ),
                     }]
@@ -2038,16 +2106,18 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       // 서버 이력: 삭제(복원 불가) — 구 이력 '영구 삭제(복원 불가)' 호환
                       const bPermanentDeleteLog = typeof log.strComment === 'string' &&
                         (log.strComment === '삭제(복원 불가)' || log.strComment === '영구 삭제(복원 불가)');
-                      const strTimelineColor = bPermanentDeleteLog ? 'red' : (OBJ_STATUS_CONFIG[log.strStatus]?.strColor || 'gray');
+                      const strTimelineColor = bPermanentDeleteLog
+                        ? objTag.danger
+                        : fnStatusTimelineColor(log.strStatus as TEventStatus);
                       return {
                         color: strTimelineColor,
                         children: (
                         <div>
                           <Space size={4} wrap>
-                            {fnRenderStatusIcon(log.strStatus as TEventStatus, 12)}
-                            <Tag color={OBJ_STATUS_CONFIG[log.strStatus]?.strColor}>{OBJ_STATUS_CONFIG[log.strStatus]?.strLabel}</Tag>
+                            {fnRenderStatusIcon(log.strStatus as TEventStatus, 12, strTimelineColor)}
+                            <DqpmTag tone={fnGetInstanceStatusConfig(log.strStatus)?.strTagVariant}>{fnGetInstanceStatusConfig(log.strStatus)?.strLabel}</DqpmTag>
                             {bPermanentDeleteLog && (
-                              <Tag color="red">삭제</Tag>
+                              <DqpmTag color="red">삭제</DqpmTag>
                             )}
                           </Space>
                           <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
@@ -2080,16 +2150,16 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             <div style={{
                               marginTop: 6,
                               padding: '6px 10px',
-                              background: bExecFail ? token.colorFillAlter : '#f6ffed',
-                              border: `1px solid ${bExecFail ? token.colorErrorBorder : '#b7eb8f'}`,
+                              background: bExecFail ? token.colorFillAlter : token.colorSuccessBg,
+                              border: `1px solid ${bExecFail ? token.colorErrorBorder : token.colorSuccessBorder}`,
                               borderRadius: 4,
                             }}>
                               <Space direction="vertical" size={4} style={{ width: '100%' }}>
                                 <Space wrap>
-                                  <Tag color={objEx.strEnv === 'qa' ? 'orange' : 'red'}>
+                                  <DqpmTag color={objEx.strEnv === 'qa' ? 'orange' : 'red'}>
                                     {objEx.strEnv.toUpperCase()}
-                                  </Tag>
-                                  {bExecFail && <Tag color="error">실패</Tag>}
+                                  </DqpmTag>
+                                  {bExecFail && <DqpmTag color="error">실패</DqpmTag>}
                                   <Text style={{ fontSize: 12 }}>처리 {objEx.nTotalAffectedRows}건</Text>
                                   <Divider type="vertical" />
                                   <Text type="secondary" style={{ fontSize: 11 }}>{objEx.nElapsedMs}ms</Text>
@@ -2101,6 +2171,18 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                 )}
                                 {bExecFail && objEx.strError && (
                                   <Text type="danger" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>{objEx.strError}</Text>
+                                )}
+                                {!bExecFail && objEx.arrQueryResults && objEx.arrQueryResults.length > 0 && (
+                                  <Collapse
+                                    size="small"
+                                    bordered={false}
+                                    style={{ background: 'transparent', width: '100%' }}
+                                    items={fnBuildQueryResultCollapseItems(
+                                      objEx.arrQueryResults,
+                                      objSqlPreBlock,
+                                      fnCopy,
+                                    )}
+                                  />
                                 )}
                               </Space>
                             </div>
@@ -2120,7 +2202,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
       {/* 수정 모달 */}
       <Modal
-        title="이벤트 수정 (컨펌 요청 전)"
+        title="이벤트 수정"
         open={bEditOpen}
         onOk={fnSaveEdit}
         onCancel={() => setBEditOpen(false)}
@@ -2132,7 +2214,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="middle">
             <div>
               <Text strong>프로덕트</Text>
-              <Input value={`${objEditInstance.strProductName} (${objEditInstance.strServiceAbbr} / ${objEditInstance.strServiceRegion})`} disabled style={{ marginTop: 4 }} />
+              <Input value={objEditInstance.strProductName} disabled style={{ marginTop: 4 }} />
+            </div>
+            <div>
+              <Text strong>{STR_SERVICE_SCOPE_LABEL}</Text>
+              <div style={{ marginTop: 4 }}>
+                <InstanceServiceScopeCell strServiceAbbr={objEditInstance.strServiceAbbr} />
+              </div>
             </div>
             <div>
               <Text strong>이벤트 이름</Text>
@@ -2155,7 +2243,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               <Space style={{ marginBottom: 4 }}>
                 <Text strong>반영 범위</Text>
                 {objEditInstance.strStatus !== 'event_created' && (
-                  <Tag color="warning" style={{ fontSize: 11 }}>컨펌 요청 후 수정 불가</Tag>
+                  <DqpmTag color="warning" style={{ fontSize: 11 }}>생성 단계에서만 수정 가능</DqpmTag>
                 )}
               </Space>
               <div style={{ marginTop: 4 }}>
@@ -2171,7 +2259,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   >
                     {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
                       <Checkbox key={opt.value} value={opt.value}>
-                        <Tag color={opt.strColor} style={{ marginRight: 0 }}>{opt.label}</Tag>
+                        <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
                       </Checkbox>
                     ))}
                   </Checkbox.Group>
@@ -2179,7 +2267,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Space size={4}>
                     {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
                       const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-                      return opt ? <Tag key={s} color={opt.strColor}>{opt.label}</Tag> : null;
+                      return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                     })}
                   </Space>
                 )}
@@ -2230,6 +2318,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       label: `세트 ${idx + 1} 입력값`,
                       children: (
                         <TextArea
+                          className={STR_CODE_BLOCK_CLASS}
                           value={arrEditInputValues[idx] ?? ''}
                           onChange={(e) => {
                             const next = [...arrEditInputValues];
@@ -2238,7 +2327,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                             setArrEditInputValues(next);
                           }}
                           rows={4}
-                          style={{ fontFamily: 'monospace', fontSize: 13 }}
+                          style={objSqlTaEditable13}
                         />
                       ),
                     }))}
@@ -2255,11 +2344,12 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       key: String(idx),
                       label: `쿼리 세트 ${idx + 1}`,
                       children: (
-                        <TextArea
-                          value={t.strQuery}
-                          readOnly
-                          rows={6}
-                          style={{ fontFamily: 'monospace', fontSize: 12, background: token.colorFillTertiary }}
+                        <SqlLineNumberArea
+                          strValue={t.strQuery}
+                          bReadOnly
+                          nFontSize={12}
+                          nMinRows={6}
+                          nMaxRows={18}
                         />
                       ),
                     }))}
@@ -2273,10 +2363,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
                 </Space>
                 <TextArea
+                  className={STR_CODE_BLOCK_CLASS}
                   value={strEditInputValues}
                   onChange={(e) => setStrEditInputValues(e.target.value)}
                   rows={5}
-                  style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 4 }}
+                  style={objSqlTaEditable13Mt}
                 />
               </div>
             )}
@@ -2293,9 +2384,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             {objQueryEditInstance && (
               <Space size={4}>
                 {fnRenderStatusIcon(objQueryEditInstance.strStatus, 12)}
-                <Tag color={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strColor}>
+                <DqpmTag tone={OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strTagVariant}>
                   {OBJ_STATUS_CONFIG[objQueryEditInstance.strStatus].strLabel}
-                </Tag>
+                </DqpmTag>
               </Space>
             )}
           </Space>
@@ -2327,17 +2418,18 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
                         <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
                       </div>
-                      <Input.TextArea
-                        value={arrQueryEditValues[idx] ?? ''}
-                        onChange={(e) => {
+                      <SqlLineNumberArea
+                        strValue={arrQueryEditValues[idx] ?? ''}
+                        fnOnChange={(strNext) => {
                           const next = [...arrQueryEditValues];
                           while (next.length <= idx) next.push('');
-                          next[idx] = e.target.value;
+                          next[idx] = strNext;
                           setArrQueryEditValues(next);
                         }}
-                        autoSize={{ minRows: 10, maxRows: 25 }}
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}
-                        placeholder="SQL 쿼리를 입력하세요..."
+                        nFontSize={13}
+                        nMinRows={10}
+                        nMaxRows={25}
+                        strPlaceholder="SQL 쿼리를 입력하세요..."
                       />
                     </div>
                   ),
@@ -2348,12 +2440,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
                 </div>
-                <Input.TextArea
-                  value={strQueryEditValue}
-                  onChange={(e) => setStrQueryEditValue(e.target.value)}
-                  autoSize={{ minRows: 10, maxRows: 25 }}
-                  style={{ fontFamily: 'monospace', fontSize: 13 }}
-                  placeholder="SQL 쿼리를 입력하세요..."
+                <SqlLineNumberArea
+                  strValue={strQueryEditValue}
+                  fnOnChange={setStrQueryEditValue}
+                  nFontSize={13}
+                  nMinRows={10}
+                  nMaxRows={25}
+                  strPlaceholder="SQL 쿼리를 입력하세요..."
                 />
               </>
             )}
@@ -2366,7 +2459,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         bOpen={bExecResultOpen}
         objResult={objExecResult}
         strEnv={strExecEnv}
-        onClose={() => setBExecResultOpen(false)}
+        arrExecutionTargets={arrExecModalTargets}
+        onClose={() => {
+          setBExecResultOpen(false);
+          setArrExecModalTargets(undefined);
+        }}
         messageApi={messageApi}
       />
 
@@ -2398,7 +2495,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 <Progress
                   percent={nDisplayPercent}
                   status={nDisplayPercent >= 100 ? 'success' : 'active'}
-                  trailColor="#f0f0f0"
+                  trailColor={token.colorFillSecondary}
                   strokeColor={nDisplayPercent >= 100 ? token.colorSuccess : token.colorPrimary}
                   showInfo={false}
                   style={{ marginTop: 0 }}

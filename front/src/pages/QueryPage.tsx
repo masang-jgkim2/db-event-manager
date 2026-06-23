@@ -11,12 +11,12 @@ import {
   Col,
   message,
   Space,
-  Tag,
   Steps,
   Result,
   Alert,
   Checkbox,
   Tabs,
+  theme,
 } from 'antd';
 import {
   CodeOutlined,
@@ -31,11 +31,28 @@ import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
+import { DqpmTag } from '../components/DqpmTag';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IService, TDeployScope } from '../types';
-import { ARR_DEPLOY_SCOPE_OPTIONS } from '../types';
+import type { IEventTemplate, IService, TDeployScope, TTemplateStatus } from '../types';
+import { ARR_DEPLOY_SCOPE_OPTIONS, OBJ_TEMPLATE_STATUS_CONFIG } from '../types';
 import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
+import {
+  fnBuildInstanceConnectionPreview,
+  fnFormatConnectionEndpoint,
+  fnHasEnvConnectionForKindAndService,
+  fnHasEnvConnectionForService,
+  fnServiceHasAnyDeployConnection,
+} from '../utils/dbConnectionScope';
+import {
+  fnFormatCountryPlatformAbbr,
+  fnFormatCountryPlatformMessage,
+  fnFormatCountryPlatformRegion,
+  STR_SERVICE_SCOPE_LABEL,
+} from '../utils/countryPlatformLabel';
+import { useDesignSystem } from '../styles/DesignSystemContext';
+import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle } from '../styles/queryEditorTokens';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -43,11 +60,45 @@ const { TextArea } = Input;
 // 다중 세트 입력값을 서버의 strInputValues 한 필드에 저장할 때 사용하는 구분자
 const MULTI_INPUT_DELIMITER = '\u0001';
 
+const fnResolveTemplateStatus = (obj: IEventTemplate): TTemplateStatus =>
+  obj.strStatus ?? 'dba_confirmed';
+
+/** 리뷰 미완료 템플릿 선택 시 Alert 문구 */
+const fnBuildTemplateReviewAlert = (
+  obj: IEventTemplate,
+): { strType: 'info' | 'warning'; strMessage: string; strDescription: string } | null => {
+  const strStatus = fnResolveTemplateStatus(obj);
+  if (strStatus === 'dba_confirmed') return null;
+
+  const objLastLog = [...(obj.arrStatusLogs ?? [])]
+    .reverse()
+    .find((log) => log.strStatus === strStatus);
+  const strComment = objLastLog?.strComment?.trim();
+
+  if (strStatus === 'template_created') {
+    return {
+      strType: 'info',
+      strMessage: '템플릿 등록됨 — 쿼리 리뷰 요청 전',
+      strDescription:
+        strComment
+        || '쿼리 템플릿 메뉴에서 「쿼리 리뷰 요청」을 진행해주세요. DBA 리뷰 완료 후 이벤트 생성이 가능합니다.',
+    };
+  }
+
+  return {
+    strType: 'info',
+    strMessage: '쿼리 리뷰 요청 중 — DBA 검토 대기',
+    strDescription:
+      strComment
+      || 'DBA가 쿼리 리뷰를 완료하면 이벤트 생성 단계로 진행할 수 있습니다.',
+  };
+};
+
 const QueryPage = () => {
   const navigate = useNavigate();
   // 선택 상태
   const [nSelectedProductId, setNSelectedProductId] = useState<number | null>(null);
-  const [strSelectedAbbr, setStrSelectedAbbr] = useState<string | null>(null);
+  const [nSelectedServiceId, setNSelectedServiceId] = useState<number | null>(null);
   const [nSelectedEventId, setNSelectedEventId] = useState<number | null>(null);
 
   // 입력 상태
@@ -78,6 +129,29 @@ const QueryPage = () => {
   const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
   const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
   const user = useAuthStore((s) => s.user);
+  const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
+  const bIsDark = useThemeStore((s) => s.strMode === 'dark');
+  const { token } = theme.useToken();
+  const { objTypoRoles } = useDesignSystem();
+  const objSqlInputStyle = useMemo(
+    () => fnCodeSurfaceStyle(token, objTypoRoles.code.nFontSize),
+    [token, objTypoRoles.code.nFontSize],
+  );
+  const objSqlFormInputStyle = useMemo(
+    () => ({
+      ...objSqlInputStyle,
+      marginTop: 8,
+    }),
+    [objSqlInputStyle],
+  );
+  const objSqlReadonlyStyle = useMemo(
+    () => fnSqlEditorReadonlyStyle(objTypoRoles.code.nFontSize),
+    [objTypoRoles.code.nFontSize],
+  );
+  const strSubmitGradient = useMemo(() => {
+    const arrP = fnGenPalette(strPrimaryColor, bIsDark);
+    return `linear-gradient(135deg, ${strPrimaryColor} 0%, ${arrP[7]} 100%)`;
+  }, [strPrimaryColor, bIsDark]);
 
   // 페이지 진입 시 한 effect에서 목록 로드(StrictMode 이중 effect 시에도 스토어 dedupe로 GET 완화)
   useEffect(() => {
@@ -98,21 +172,39 @@ const QueryPage = () => {
 
   // 선택된 서비스
   const objSelectedService = useMemo((): IService | null => {
-    if (!objSelectedProduct || !strSelectedAbbr) return null;
-    return objSelectedProduct.arrServices.find((s) => s.strAbbr === strSelectedAbbr) || null;
-  }, [objSelectedProduct, strSelectedAbbr]);
+    if (!objSelectedProduct || nSelectedServiceId == null) return null;
+    return objSelectedProduct.arrServices.find((s) => s.nServiceId === nSelectedServiceId) || null;
+  }, [objSelectedProduct, nSelectedServiceId]);
 
-  // 선택된 프로덕트에 해당하는 이벤트 필터
-  const arrFilteredEvents = useMemo(() => {
+  const strSelectedAbbr = objSelectedService?.strAbbr ?? null;
+
+  // 프로덕트별 템플릿 전체 표시 — DBA 리뷰 완료 건 우선 정렬, 생성은 bTemplateReady 로만 허용
+  const arrProductTemplates = useMemo(() => {
     if (!nSelectedProductId) return [];
-    return arrEvents.filter((e) => e.nProductId === nSelectedProductId);
+    return arrEvents
+      .filter((e) => e.nProductId === nSelectedProductId)
+      .sort((a, b) => {
+        const bAReady = fnResolveTemplateStatus(a) === 'dba_confirmed' ? 0 : 1;
+        const bBReady = fnResolveTemplateStatus(b) === 'dba_confirmed' ? 0 : 1;
+        if (bAReady !== bBReady) return bAReady - bBReady;
+        return b.nId - a.nId;
+      });
   }, [nSelectedProductId, arrEvents]);
+
+  const nReadyTemplateCount = useMemo(
+    () => arrProductTemplates.filter((e) => fnResolveTemplateStatus(e) === 'dba_confirmed').length,
+    [arrProductTemplates],
+  );
 
   // 선택된 쿼리 템플릿
   const objSelectedEvent: IEventTemplate | null = useMemo(() => {
     if (!nSelectedEventId) return null;
     return arrEvents.find((e) => e.nId === nSelectedEventId) || null;
   }, [nSelectedEventId, arrEvents]);
+
+  const bTemplateReady = objSelectedEvent
+    ? fnResolveTemplateStatus(objSelectedEvent) === 'dba_confirmed'
+    : false;
 
   // 유효한 쿼리 세트 (세트 2개 이상 = 다중, 1개 = 단일)
   const arrSets = useMemo(() => {
@@ -121,28 +213,80 @@ const QueryPage = () => {
   }, [objSelectedEvent]);
   const bMultiQuery = arrSets.length >= 2;
 
-  // 이벤트 생성 시 QA/LIVE 체크 가능 여부: 해당 프로덕트에 해당 env DB 접속이 있는지. 목록 미로드 시 둘 다 선택 가능
+  // 이벤트 생성 시 QA/LIVE 체크: 프로덕트 + 서비스 범위 + (다중 세트 시) 종류별
   const bHasQaConnection = useMemo(() => {
     if (arrDbConnections.length === 0) return true;
-    if (!nSelectedProductId) return true;
-    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'qa' && c.bIsActive);
-  }, [nSelectedProductId, arrDbConnections]);
+    if (!nSelectedProductId || nSelectedServiceId == null) return true;
+    if (arrSets.length > 0) {
+      return arrSets.every((s) => {
+        const objConn = arrDbConnections.find((c) => c.nId === s.nDbConnectionId);
+        const strKind = objConn?.strKind ?? 'GAME';
+        return fnHasEnvConnectionForKindAndService(
+          arrDbConnections,
+          nSelectedProductId,
+          strSelectedAbbr ?? '',
+          'qa',
+          strKind,
+          nSelectedServiceId,
+        );
+      });
+    }
+    return fnHasEnvConnectionForService(
+      arrDbConnections,
+      nSelectedProductId,
+      strSelectedAbbr ?? '',
+      'qa',
+      nSelectedServiceId,
+    );
+  }, [nSelectedProductId, nSelectedServiceId, strSelectedAbbr, arrDbConnections, arrSets]);
   const bHasLiveConnection = useMemo(() => {
     if (arrDbConnections.length === 0) return true;
-    if (!nSelectedProductId) return true;
-    return arrDbConnections.some((c) => c.nProductId === nSelectedProductId && c.strEnv === 'live' && c.bIsActive);
-  }, [nSelectedProductId, arrDbConnections]);
+    if (!nSelectedProductId || nSelectedServiceId == null) return true;
+    if (arrSets.length > 0) {
+      return arrSets.every((s) => {
+        const objConn = arrDbConnections.find((c) => c.nId === s.nDbConnectionId);
+        const strKind = objConn?.strKind ?? 'GAME';
+        return fnHasEnvConnectionForKindAndService(
+          arrDbConnections,
+          nSelectedProductId,
+          strSelectedAbbr ?? '',
+          'live',
+          strKind,
+          nSelectedServiceId,
+        );
+      });
+    }
+    return fnHasEnvConnectionForService(
+      arrDbConnections,
+      nSelectedProductId,
+      strSelectedAbbr ?? '',
+      'live',
+      nSelectedServiceId,
+    );
+  }, [nSelectedProductId, nSelectedServiceId, strSelectedAbbr, arrDbConnections, arrSets]);
 
-  // 프로덕트 선택 시: 쿼리 실행 대상에서 해당 프로덕트에 없는 env 제거
+  // 프로덕트·서비스 선택 시: 쿼리 실행 대상에서 접속 없는 env 제거
   useEffect(() => {
-    if (nSelectedProductId == null) return;
+    if (nSelectedProductId == null || nSelectedServiceId == null) return;
     setArrDeployScope((prev) => {
       const next = prev.filter((env) =>
         (env === 'qa' && bHasQaConnection) || (env === 'live' && bHasLiveConnection)
       );
       return next.length > 0 ? next : (bHasQaConnection ? ['qa'] : bHasLiveConnection ? ['live'] : []);
     });
-  }, [nSelectedProductId, bHasQaConnection, bHasLiveConnection]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nSelectedProductId, nSelectedServiceId, bHasQaConnection, bHasLiveConnection]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const arrConnectionPreview = useMemo(() => {
+    if (!nSelectedProductId || nSelectedServiceId == null || !objSelectedEvent) return [];
+    return fnBuildInstanceConnectionPreview(
+      arrDbConnections,
+      nSelectedProductId,
+      strSelectedAbbr ?? '',
+      arrDeployScope,
+      arrSets,
+      nSelectedServiceId,
+    );
+  }, [nSelectedProductId, nSelectedServiceId, strSelectedAbbr, objSelectedEvent, arrDeployScope, arrSets, arrDbConnections]);
 
   // 현재 스텝
   const nCurrentStep = useMemo(() => {
@@ -164,7 +308,7 @@ const QueryPage = () => {
   // === 선택 핸들러 ===
   const fnHandleProductChange = (nId: number) => {
     setNSelectedProductId(nId);
-    setStrSelectedAbbr(null);
+    setNSelectedServiceId(null);
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
@@ -175,15 +319,24 @@ const QueryPage = () => {
     setStrAlloLink('');
     setStrGeneratedQuery('');
 
-    // 서비스가 1개뿐이면 자동 선택
+    // 서비스가 1개뿐이고 QA/LIVE 접속이 있으면 자동 선택
     const objProduct = arrProducts.find((p) => p.nId === nId);
     if (objProduct && objProduct.arrServices.length === 1) {
-      setStrSelectedAbbr(objProduct.arrServices[0].strAbbr);
+      const objSvc = objProduct.arrServices[0];
+      const bCanAuto =
+        arrDbConnections.length === 0 ||
+        fnServiceHasAnyDeployConnection(
+          arrDbConnections,
+          nId,
+          objSvc.strAbbr,
+          objSvc.nServiceId,
+        );
+      if (bCanAuto && objSvc.nServiceId != null) setNSelectedServiceId(objSvc.nServiceId);
     }
   };
 
-  const fnHandleServiceChange = (strAbbr: string) => {
-    setStrSelectedAbbr(strAbbr);
+  const fnHandleServiceChange = (nServiceId: number) => {
+    setNSelectedServiceId(nServiceId);
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
@@ -237,6 +390,11 @@ const QueryPage = () => {
   const fnGenerateQuery = async () => {
     if (!objSelectedEvent) return;
 
+    if (!bTemplateReady) {
+      messageApi.warning('DBA 리뷰가 완료된 쿼리 템플릿만 이벤트를 생성할 수 있습니다.');
+      return;
+    }
+
     // 반영 날짜 필수 체크 — QA 또는 LIVE 중 해당 범위의 날짜가 있어야 함
     const bNeedQa = arrDeployScope.includes('qa');
     const bNeedLive = arrDeployScope.includes('live');
@@ -251,11 +409,19 @@ const QueryPage = () => {
 
     // 쿼리 실행 대상(QA/LIVE) 선택 시 해당 프로덕트에 그 env DB 접속이 있는지 검사
     if (arrDeployScope.includes('qa') && !bHasQaConnection) {
-      messageApi.warning('QA를 선택하려면 해당 프로덕트에 QA DB 접속 정보를 등록·활성화해주세요.');
+      messageApi.warning(
+        strSelectedAbbr
+          ? `${fnFormatCountryPlatformMessage(strSelectedAbbr)}에 QA DB 접속(템플릿 종류별)을 등록·활성화해주세요.`
+          : 'QA를 선택하려면 해당 프로덕트에 QA DB 접속 정보를 등록·활성화해주세요.',
+      );
       return;
     }
     if (arrDeployScope.includes('live') && !bHasLiveConnection) {
-      messageApi.warning('LIVE를 선택하려면 해당 프로덕트에 LIVE DB 접속 정보를 등록·활성화해주세요.');
+      messageApi.warning(
+        strSelectedAbbr
+          ? `${fnFormatCountryPlatformMessage(strSelectedAbbr)}에 LIVE DB 접속(템플릿 종류별)을 등록·활성화해주세요.`
+          : 'LIVE를 선택하려면 해당 프로덕트에 LIVE DB 접속 정보를 등록·활성화해주세요.',
+      );
       return;
     }
 
@@ -306,8 +472,8 @@ const QueryPage = () => {
       const objPayload: Record<string, unknown> = {
         nEventTemplateId: objSelectedEvent.nId,
         nProductId: objSelectedProduct?.nId || 0,
+        nServiceId: nSelectedServiceId ?? undefined,
         strEventLabel: objSelectedEvent.strEventLabel,
-        strProductName: objSelectedProduct?.strName || '',
         strServiceAbbr: strSelectedAbbr || '',
         strServiceRegion: objSelectedService?.strRegion || '',
         strCategory: objSelectedEvent.strCategory,
@@ -352,7 +518,7 @@ const QueryPage = () => {
   // 전체 초기화
   const fnReset = () => {
     setNSelectedProductId(null);
-    setStrSelectedAbbr(null);
+    setNSelectedServiceId(null);
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
@@ -395,8 +561,8 @@ const QueryPage = () => {
   }
   const bCanCreate = arrUserPermissions.includes('instance.create');
 
-  // 이벤트가 없을 때
-  if (arrProducts.length === 0 || arrEvents.length === 0) {
+  // 프로덕트 없으면 진입 차단 (템플릿은 리뷰 대기 포함 전체 노출)
+  if (arrProducts.length === 0) {
     return (
       <>
         {contextHolder}
@@ -406,11 +572,11 @@ const QueryPage = () => {
         <Card>
           <Result
             status="info"
-            title="등록된 이벤트가 없습니다"
+            title="등록된 프로덕트가 없습니다"
             subTitle={
               arrUserRoles.includes('admin')
                 ? '먼저 프로덕트와 쿼리 템플릿을 등록해주세요.'
-                : '관리자에게 이벤트 등록을 요청해주세요.'
+                : '관리자에게 프로덕트 등록을 요청해주세요.'
             }
           />
         </Card>
@@ -436,7 +602,7 @@ const QueryPage = () => {
           current={nCurrentStep}
           items={[
             { title: '프로덕트' },
-            { title: '국내/해외' },
+            { title: STR_SERVICE_SCOPE_LABEL },
             { title: '쿼리 템플릿' },
             { title: '값 입력' },
             { title: '생성 완료', icon: strGeneratedQuery ? <CheckCircleOutlined /> : undefined },
@@ -467,35 +633,62 @@ const QueryPage = () => {
             </Select>
           </Card>
 
-          {/* STEP 2: 국내/해외 선택 */}
+          {/* STEP 2: 서비스 구분 선택 */}
           {objSelectedProduct && (
-            <Card title="2. 국내/해외 선택" size="small" style={{ marginTop: 12 }}>
+            <Card title={`2. ${STR_SERVICE_SCOPE_LABEL} 선택`} size="small" style={{ marginTop: 12 }}>
               <Select
                 style={{ width: '100%' }}
-                placeholder="국내/해외를 선택하세요"
+                placeholder={`${STR_SERVICE_SCOPE_LABEL} 약자를 선택하세요 (예: DK/KR, DK/G)`}
                 onChange={fnHandleServiceChange}
-                value={strSelectedAbbr}
+                value={nSelectedServiceId}
                 size="large"
               >
                 {objSelectedProduct.arrServices.map((s) => {
-                  // 리전 라벨 매핑: 국내(한국), 글로벌→해외(글로벌), 스팀→해외(스팀)
-                  let strDisplayLabel = s.strRegion;
-                  if (s.strRegion === '국내') strDisplayLabel = '국내(한국)';
-                  else if (s.strRegion === '글로벌') strDisplayLabel = '해외(글로벌)';
-                  else if (s.strRegion === '스팀') strDisplayLabel = '해외(스팀)';
-                  else if (s.strRegion === '유럽') strDisplayLabel = '해외(유럽)';
-                  else if (s.strRegion === '일본') strDisplayLabel = '해외(일본)';
+                  const bHasConn =
+                    arrDbConnections.length === 0 ||
+                    !nSelectedProductId ||
+                    fnServiceHasAnyDeployConnection(
+                      arrDbConnections,
+                      nSelectedProductId,
+                      s.strAbbr,
+                      s.nServiceId,
+                    );
 
                   return (
-                    <Select.Option key={s.strAbbr} value={s.strAbbr}>
-                      {strDisplayLabel}
-                      <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                        {s.strAbbr}
+                    <Select.Option
+                      key={s.nServiceId ?? s.strAbbr}
+                      value={s.nServiceId}
+                      disabled={!bHasConn || s.nServiceId == null}
+                    >
+                      <DqpmTag tone="service" style={{ marginRight: 8 }}>
+                        {fnFormatCountryPlatformAbbr(s.strAbbr)}
+                      </DqpmTag>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {fnFormatCountryPlatformRegion(s.strRegion)}
                       </Text>
+                      {!bHasConn && arrDbConnections.length > 0 ? (
+                        <Text type="danger" style={{ marginLeft: 8, fontSize: 11 }}>
+                          (QA/LIVE DB 접속 없음)
+                        </Text>
+                      ) : null}
                     </Select.Option>
                   );
                 })}
               </Select>
+              {arrDbConnections.length > 0 && nSelectedServiceId != null && !fnServiceHasAnyDeployConnection(
+                arrDbConnections,
+                nSelectedProductId!,
+                strSelectedAbbr ?? '',
+                nSelectedServiceId,
+              ) ? (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginTop: 8 }}
+                  message={`${fnFormatCountryPlatformMessage(strSelectedAbbr ?? '')} QA/LIVE DB 접속 정보가 없습니다.`}
+                  description={`DB 접속 정보에서 프로덕트·${STR_SERVICE_SCOPE_LABEL}(FH/KR, LH/KR, DK/KR, DK/G 등)·환경(QA/LIVE)·종류(GAME/WEB)별로 등록해주세요.`}
+                />
+              ) : null}
             </Card>
           )}
 
@@ -504,51 +697,87 @@ const QueryPage = () => {
             <Card title="3. 쿼리 템플릿 선택" size="small" style={{ marginTop: 12 }}>
               <Select
                 style={{ width: '100%' }}
-                placeholder="쿼리 템플릿을 선택하세요"
+                placeholder={
+                  arrProductTemplates.length > 0
+                    ? '쿼리 템플릿을 선택하세요'
+                    : '이 프로덕트에 등록된 쿼리 템플릿이 없습니다'
+                }
                 onChange={fnHandleEventChange}
                 value={nSelectedEventId}
                 size="large"
+                disabled={arrProductTemplates.length === 0}
+                optionLabelProp="label"
               >
-                {arrFilteredEvents.map((e) => (
+                {arrProductTemplates.map((e) => (
                   <Select.Option
                     key={e.nId}
                     value={e.nId}
                     label={`#${e.nId} ${e.strEventLabel}`}
                   >
                     <Space wrap size={4}>
-                      <Tag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</Tag>
+                      <DqpmTag color="default" style={{ fontSize: 11, margin: 0 }}>#{e.nId}</DqpmTag>
                       <span>{e.strEventLabel}</span>
-                      <Tag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</Tag>
-                      <Tag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</Tag>
+                      <DqpmTag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</DqpmTag>
+                      <DqpmTag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</DqpmTag>
                     </Space>
                   </Select.Option>
                 ))}
               </Select>
-              {objSelectedEvent && (() => {
-                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
-                return (
-                  <Space wrap style={{ marginTop: 8 }}>
-                    <Tag color="purple">템플릿 번호 {objSelectedEvent.nId}</Tag>
-                    {arrValidSets.length >= 2 && (
-                      <Tag color="blue">다중 쿼리 ({arrValidSets.length}세트)</Tag>
-                    )}
-                    {arrValidSets.length === 1 && <Tag>단일 쿼리</Tag>}
-                  </Space>
-                );
-              })()}
-              {objSelectedEvent?.strDescription && (
+              {arrProductTemplates.length > 0 && nReadyTemplateCount === 0 && !objSelectedEvent && (
                 <Alert
-                  message={objSelectedEvent.strDescription}
                   type="info"
                   showIcon
                   style={{ marginTop: 8 }}
+                  message="DBA 리뷰 완료된 템플릿이 없습니다"
+                  description="리뷰 대기 템플릿은 선택·상태 확인만 가능하며, 승인 후 이벤트 생성이 가능합니다."
                 />
               )}
+              {objSelectedEvent && (() => {
+                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+                const strStatus = fnResolveTemplateStatus(objSelectedEvent);
+                const objStatusCfg = OBJ_TEMPLATE_STATUS_CONFIG[strStatus];
+                return (
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <DqpmTag tone={objStatusCfg.strTagVariant} style={{ fontSize: 11, margin: 0 }}>
+                      {objStatusCfg.strLabel}
+                    </DqpmTag>
+                    {arrValidSets.length >= 2 && (
+                      <DqpmTag color="blue">다중 쿼리 ({arrValidSets.length}세트)</DqpmTag>
+                    )}
+                    {arrValidSets.length === 1 && <DqpmTag>단일 쿼리</DqpmTag>}
+                  </Space>
+                );
+              })()}
+              {objSelectedEvent && (() => {
+                const objReviewAlert = fnBuildTemplateReviewAlert(objSelectedEvent);
+                if (objReviewAlert) {
+                  return (
+                    <Alert
+                      type={objReviewAlert.strType}
+                      message={objReviewAlert.strMessage}
+                      description={objReviewAlert.strDescription}
+                      showIcon
+                      style={{ marginTop: 8 }}
+                    />
+                  );
+                }
+                if (objSelectedEvent.strDescription?.trim()) {
+                  return (
+                    <Alert
+                      message={objSelectedEvent.strDescription}
+                      type="info"
+                      showIcon
+                      style={{ marginTop: 8 }}
+                    />
+                  );
+                }
+                return null;
+              })()}
             </Card>
           )}
 
-          {/* STEP 4: 값 입력 */}
-          {objSelectedEvent && (
+          {/* STEP 4: 값 입력 — DBA 승인 완료 템플릿만 */}
+          {objSelectedEvent && bTemplateReady && (
             <Card title="4. 이벤트 정보 입력" size="small" style={{ marginTop: 12 }}>
               <Form layout="vertical">
                 {/* 담당자 (자동) */}
@@ -589,12 +818,12 @@ const QueryPage = () => {
                   label={
                     <Space>
                       반영 범위
-                      <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                      <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                     </Space>
                   }
                   extra={
                     <Text type="secondary" style={{ fontSize: 11 }}>
-                      QA/LIVE 선택 시 해당 프로덕트에 해당 환경 DB 접속이 등록·활성화되어 있어야 합니다. 단일: 한 환경만. 다중: QA 반영 후 LIVE 순으로 실행.
+                      QA/LIVE 선택 시 {STR_SERVICE_SCOPE_LABEL}(FH/KR, LH/KR, DK/KR, DK/G 등)·템플릿 종류(GAME/WEB)별 DB 접속이 등록·활성화되어 있어야 합니다.
                       {arrDbConnections.length === 0 && ' DB 접속 목록 미로드 시 둘 다 선택 가능하며, 실행 단계에서 검사됩니다.'}
                     </Text>
                   }
@@ -616,9 +845,12 @@ const QueryPage = () => {
                           value={opt.value}
                           disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
                         >
-                          <Tag color={opt.strColor}>{opt.label}</Tag>
+                          <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
                           {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
-                            <Text type="secondary" style={{ fontSize: 11 }}> (해당 프로덕트에 {opt.value.toUpperCase()} DB 접속 없음)</Text>
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              {' '}
+                              (서비스·종류별 {opt.value.toUpperCase()} DB 접속 없음)
+                            </Text>
                           ) : null}
                         </Checkbox>
                       ))}
@@ -626,13 +858,64 @@ const QueryPage = () => {
                   </Checkbox.Group>
                 </Form.Item>
 
+                {arrDbConnections.length > 0 && strSelectedAbbr && arrConnectionPreview.length > 0 ? (
+                  <Form.Item
+                    label="DB 접속 미리보기"
+                    extra={
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        템플릿 세트·{STR_SERVICE_SCOPE_LABEL}·반영 범위 기준으로 QA/LIVE 실행 시 연결될 host/DB입니다.
+                      </Text>
+                    }
+                  >
+                    <div
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: token.borderRadius,
+                        border: `1px solid ${token.colorBorderSecondary}`,
+                        background: token.colorFillAlter,
+                      }}
+                    >
+                      {[...new Set(arrConnectionPreview.map((r) => r.nSetIndex))].map((nSetIdx, nMapIdx, arrSetKeys) => {
+                        const arrSetRows = arrConnectionPreview.filter((r) => r.nSetIndex === nSetIdx);
+                        const strKind = arrSetRows[0]?.strKind ?? 'GAME';
+                        return (
+                          <div key={nSetIdx} style={{ marginBottom: nMapIdx < arrSetKeys.length - 1 ? 10 : 0 }}>
+                            {arrSets.length > 1 ? (
+                              <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                세트 {nSetIdx + 1} · {strKind}
+                              </Text>
+                            ) : null}
+                            {arrSetRows.map((row) => (
+                              <div
+                                key={`${nSetIdx}-${row.strEnv}`}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}
+                              >
+                                <DqpmTag tone={row.strEnv === 'qa' ? 'tone3' : 'danger'} style={{ fontSize: 11, margin: 0 }}>
+                                  {row.strEnv.toUpperCase()}
+                                </DqpmTag>
+                                {row.objConn ? (
+                                  <Text style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                                    {fnFormatConnectionEndpoint(row.objConn)}
+                                  </Text>
+                                ) : (
+                                  <Text type="danger" style={{ fontSize: 12 }}>접속 없음</Text>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Form.Item>
+                ) : null}
+
                 {/* QA 반영 날짜 — QA 범위 선택 시 표시 */}
                 {arrDeployScope.includes('qa') && (
                   <Form.Item
                     label={
                       <Space>
                         QA 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 QA 실행 가능</Text>
                       </Space>
                     }
@@ -655,7 +938,7 @@ const QueryPage = () => {
                     label={
                       <Space>
                         LIVE 반영 날짜
-                        <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                        <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
                       </Space>
                     }
@@ -682,7 +965,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && ' — 번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && ' — 문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                     >
@@ -702,7 +985,8 @@ const QueryPage = () => {
                               }}
                               rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
                               placeholder={fnGetInputPlaceholder()}
-                              style={{ fontFamily: 'monospace', fontSize: 13, marginTop: 8 }}
+                              className={STR_CODE_BLOCK_CLASS}
+                              style={objSqlFormInputStyle}
                             />
                           ),
                         }))}
@@ -715,7 +999,7 @@ const QueryPage = () => {
                           {objSelectedEvent.strInputFormat === 'item_number' && '번호'}
                           {objSelectedEvent.strInputFormat === 'item_string' && '문자열'}
                           {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
-                          <Tag color="red" style={{ fontSize: 11 }}>필수</Tag>
+                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                       extra={
@@ -729,7 +1013,8 @@ const QueryPage = () => {
                         onChange={(e) => setStrInputValues(e.target.value)}
                         rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
                         placeholder={fnGetInputPlaceholder()}
-                        style={{ fontFamily: 'monospace', fontSize: 13 }}
+                        className={STR_CODE_BLOCK_CLASS}
+                        style={objSqlInputStyle}
                       />
                     </Form.Item>
                   )
@@ -742,10 +1027,11 @@ const QueryPage = () => {
                   icon={<ThunderboltOutlined />}
                   onClick={fnGenerateQuery}
                   loading={bSubmitting}
+                  disabled={!bTemplateReady}
                   block
                   size="large"
                   style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    background: strSubmitGradient,
                     border: 'none',
                     height: 48,
                     fontWeight: 600,
@@ -802,16 +1088,12 @@ const QueryPage = () => {
                       label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
                       children: (
                         <TextArea
+                          className={`${STR_CODE_BLOCK_CLASS} dqpm-code-block`}
                           value={t.strQuery}
                           readOnly
                           autoSize={{ minRows: 8, maxRows: 20 }}
                           style={{
-                            fontFamily: "'Consolas', 'Monaco', monospace",
-                            fontSize: 12,
-                            background: '#1e1e1e',
-                            color: '#d4d4d4',
-                            border: 'none',
-                            borderRadius: 8,
+                            ...objSqlReadonlyStyle,
                             padding: 12,
                             marginTop: 8,
                           }}
@@ -821,23 +1103,19 @@ const QueryPage = () => {
                   />
                 ) : (
                   <TextArea
+                    className="dqpm-font-mono dqpm-code-block"
                     value={strGeneratedQuery}
                     readOnly
                     autoSize={{ minRows: 10, maxRows: 25 }}
                     style={{
-                      fontFamily: "'Consolas', 'Monaco', monospace",
-                      fontSize: 13,
-                      background: '#1e1e1e',
-                      color: '#d4d4d4',
-                      border: 'none',
-                      borderRadius: 8,
+                      ...objSqlReadonlyStyle,
                       padding: 16,
                     }}
                   />
                 )}
               </>
             ) : (
-              <div style={{ padding: '80px 0', textAlign: 'center', color: '#bfbfbf' }}>
+              <div style={{ padding: '80px 0', textAlign: 'center', color: token.colorTextQuaternary }}>
                 <CodeOutlined style={{ fontSize: 48, marginBottom: 16 }} />
                 <br />
                 왼쪽에서 프로덕트와 이벤트를 선택하고

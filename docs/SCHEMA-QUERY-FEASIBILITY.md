@@ -4,14 +4,14 @@
 
 ---
 
-## 1. 프로젝트(프로덕트) 기준
+## 1. 프로덕트 기준
 
 | 질의 | 가능 여부 | 조회 방법 |
 |------|-----------|-----------|
-| **프로젝트마다 진행 중 / 완료 / 전체 이벤트 수** | 가능 | `event_instances` WHERE `n_product_id` = ?<br>• 진행 중: `str_status` <> 'live_verified' → COUNT<br>• 완료: `str_status` = 'live_verified' → COUNT<br>• 전체: COUNT(*) |
-| **선택된 프로젝트의 이벤트(인스턴스) 모두 보기** | 가능 | `event_instances` WHERE `n_product_id` = ? ORDER BY dt_created_at 등 |
-| **선택된 프로젝트의 실행된 쿼리 모두 보기** | 가능 | `event_instances` (n_product_id) JOIN `instance_status_logs` ON ei.n_id = isl.n_instance_id JOIN `instance_execution_results` ON isl.n_id = ier.n_status_log_id WHERE ei.n_product_id = ? → 실행된 쿼리(성공 건) 목록·상세 |
-| **선택된 프로젝트의 쿼리 성공/실패 확인** | 부분 가능 | • **성공**: `instance_execution_results`에 해당 status_log에 대한 행 존재 여부로 판단 가능.<br>• **실패**: 현재 스키마에는 실패 이력 저장 없음. 실패도 남기려면 `instance_execution_results`에 b_success, str_error 추가 후 실행 시마다 INSERT하거나, 별도 실행 시도 테이블 필요. |
+| **프로덕트마다 진행 중 / 완료 / 전체 이벤트 수** | 가능 | `event_instances` WHERE `n_product_id` = ?<br>• 진행 중: `str_status` <> 'live_verified' → COUNT<br>• 완료: `str_status` = 'live_verified' → COUNT<br>• 전체: COUNT(*) |
+| **선택된 프로덕트의 이벤트(인스턴스) 모두 보기** | 가능 | `event_instances` WHERE `n_product_id` = ? ORDER BY dt_created_at 등 |
+| **선택된 프로덕트의 실행된 쿼리 모두 보기** | 가능 | `event_instances` (n_product_id) JOIN `instance_status_logs` ON ei.n_id = isl.n_instance_id JOIN `instance_execution_results` ON isl.n_id = ier.n_status_log_id WHERE ei.n_product_id = ? → 실행된 쿼리(성공 건) 목록·상세 |
+| **선택된 프로덕트의 쿼리 성공/실패 확인** | 부분 가능 | • **성공**: `instance_execution_results`에 해당 status_log에 대한 행 존재 여부로 판단 가능.<br>• **실패**: 현재 스키마에는 실패 이력 저장 없음. 실패도 남기려면 `instance_execution_results`에 b_success, str_error 추가 후 실행 시마다 INSERT하거나, 별도 실행 시도 테이블 필요. |
 
 ---
 
@@ -74,8 +74,8 @@
 | 구분 | 항목 | 가능 | 비고 |
 |------|------|------|------|
 | 프로덕트 | 진행중/완료/전체 이벤트 수 | 예 | event_instances, n_product_id, str_status |
-| 프로덕트 | 선택 프로젝트 이벤트 모두 보기 | 예 | event_instances WHERE n_product_id |
-| 프로덕트 | 선택 프로젝트 실행된 쿼리 모두 보기 | 예 | event_instances + instance_status_logs + instance_execution_results |
+| 프로덕트 | 선택 프로덕트 이벤트 모두 보기 | 예 | event_instances WHERE n_product_id |
+| 프로덕트 | 선택 프로덕트 실행된 쿼리 모두 보기 | 예 | event_instances + instance_status_logs + instance_execution_results |
 | 프로덕트 | 쿼리 성공/실패 확인 | 부분 | 성공 = execution_results 존재; 실패 = 스키마 보완 필요 |
 | 배포 범위 | 국내·해외 등별 이벤트 보기 | 예 | str_service_region, instance_deploy_scopes.str_env |
 | 쿼리 템플릿 | 누가 만들었는가/수정/삭제 | audit_logs | audit_logs에 event_template CRUD 기록 |

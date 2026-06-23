@@ -17,9 +17,35 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    launchOptions: {
+      slowMo: Number(process.env.E2E_SLOW_MO || process.env.DQPM_SLOW_MO || 0) || undefined,
+    },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      name: 'smoke',
+      use: { ...devices['Desktop Chrome'] },
+      grep: /@smoke/,
+    },
+    {
+      name: 'workflow',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /workflow-qa-live\.spec\.ts/,
+      timeout: 120000,
+    },
+    {
+      name: 'result-ui',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /result-ui\.spec\.ts/,
+      timeout: 90000,
+    },
+    {
+      name: 'workflow-pool',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: /workflow-pool-live-delete\.spec\.ts/,
+      timeout: 120000,
+    },
   ],
   timeout: 30000,
   expect: { timeout: 10000 },

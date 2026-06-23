@@ -1,0 +1,113 @@
+{
+  "strBase": "http://localhost:5173",
+  "nWorkflowId": 162,
+  "nOk": 14,
+  "nSkip": 4,
+  "nFailDb": 1,
+  "arrReport": [
+    {
+      "strId": "GM-A02",
+      "strDesc": "gm01 로그인",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-B01",
+      "strDesc": "대시보드",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-B02",
+      "strDesc": "프로덕트",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-B03",
+      "strDesc": "쿼리 템플릿",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-B08",
+      "strDesc": "이벤트 생성 /query",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-E03",
+      "strDesc": "컨펌 요청 클릭",
+      "strStatus": "ok",
+      "nWorkflowId": 162
+    },
+    {
+      "strId": "GM-A04",
+      "strDesc": "gm01 로그아웃",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "DBA-A02",
+      "strDesc": "dba01 로그인",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "DBA-E04",
+      "strDesc": "DBA 컨펌",
+      "strStatus": "ok",
+      "nWorkflowId": 162
+    },
+    {
+      "strId": "DBA-B",
+      "strDesc": "dba 메뉴(대시보드·프로덕트·템플릿)",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "DBA-A04",
+      "strDesc": "dba01 로그아웃",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-E05",
+      "strDesc": "QA 쿼리 실행 요청",
+      "strStatus": "ok",
+      "nWorkflowId": 162
+    },
+    {
+      "strId": "DBA-E06",
+      "strDesc": "QA 쿼리 실행 모달",
+      "strStatus": "fail-db",
+      "nWorkflowId": 162,
+      "bSuccess": false,
+      "bFail": true,
+      "bSelectRows": false,
+      "strSnippet": "QA 쿼리 실행 실패\n실행 실패\n오류 내용\n실행 시도 쿼리\n확인"
+    },
+    {
+      "strId": "DBA-E-X1",
+      "strDesc": "상세·진행 이력",
+      "strStatus": "ok",
+      "nWorkflowId": 162
+    },
+    {
+      "strId": "DBA-A04",
+      "strDesc": "dba01 로그아웃",
+      "strStatus": "ok"
+    },
+    {
+      "strId": "GM-E07",
+      "strDesc": "QA확인 — 버튼 없음",
+      "strStatus": "skip"
+    },
+    {
+      "strId": "GM-E08",
+      "strDesc": "LIVE 쿼리 실행 요청 — 버튼 없음",
+      "strStatus": "skip"
+    },
+    {
+      "strId": "DBA-E09",
+      "strDesc": "LIVE 쿼리 실행 행 없음",
+      "strStatus": "skip"
+    },
+    {
+      "strId": "GM-E10",
+      "strDesc": "LIVE확인 — 버튼 없음",
+      "strStatus": "skip"
+    }
+  ]
+}

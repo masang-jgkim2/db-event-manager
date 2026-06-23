@@ -4,12 +4,98 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 
 ## 환경 매핑
 
-| 환경 | 프론트 | 백엔드 API | 브랜치 |
-|------|--------|------------|--------|
-| QA   | https://qa-db.masanggames.co.kr | https://qa-db-api.masanggames.co.kr | `release/*`, `hotfix/*` (자동) |
+| 환경 | 프론트 | 백엔드 API | 배포 트리거 브랜치 |
+|------|--------|------------|-------------------|
+| QA   | https://qa-db.masanggames.co.kr | https://qa-db-api.masanggames.co.kr | **`release/0.0.1`** (`release/*`·`hotfix/*` push → 자동) |
 | LIVE | https://db.masanggames.co.kr    | https://db-api.masanggames.co.kr    | `main` (수동 승인) |
 
-- 빌드 검증만 도는 브랜치: `qa`, 그리고 `qa`를 타겟으로 한 MR
+- **QA 배포용 릴리스 브랜치**: `release/0.0.1` (현재). `release/0.0.2` 등 다른 release 브랜치는 사용하지 않음.
+- **빌드 검증만**: `qa` 브랜치 push, 또는 **`qa`를 타겟으로 한 MR** (`validate_job`)
+
+## 브랜치·MR 절차 (QA 반영)
+
+**direct push 금지** — `qa`, `release/*`는 GitLab 보호 브랜치. 반드시 MR로 merge.
+
+```
+작업 브랜치 ──MR──▶ qa          (validate_job: backend/front 빌드)
+       qa ──MR──▶ release/0.0.1 (merge 후 push → build_qa + deploy_to_qa)
+```
+
+| 단계 | 소스 | 타겟 | CI |
+|------|------|------|-----|
+| 1. 통합 | `feat/*`, `fix/*` 등 | **`qa`** | MR 파이프라인 `validate_job` |
+| 2. QA 배포 | **`qa`** | **`release/0.0.1`** | `release/0.0.1` push → S3 + CodeDeploy QA |
+
+- 에이전트·로컬에서 `git push gitlab qa` / `git push gitlab release/0.0.1` **하지 않음** — MR URL만 안내.
+- `release/0.0.1` merge 후 QA EC2 `dqpm-backend` 재시작은 CodeDeploy `application-start.sh`가 처리.
+
+### ⚠️ 자주 헷갈리는 점
+
+| 착각 | 실제 |
+|------|------|
+| `qa`에 MR 머지 = QA 서버 반영됨 | **`qa` MR은 빌드 검증(`validate_job`)만**. QA EC2 배포는 **`release/0.0.1` MR 머지 후**에만 일어남 |
+| `main`에 머지 = QA 배포 | **`main`은 LIVE 전용**. QA와 무관 |
+| GitLab 파이프라인 성공 = Slack 동작 | **Slack·JWT 등은 git에 없음**. EC2 `shared/backend.env` 수동 설정 + (env만 바꿨으면) `systemctl restart dqpm-backend` |
+
+**QA 반영 체크리스트 (코드)**
+
+1. 작업 브랜치 → **`qa` MR** → 머지 (파이프라인 `validate_job` 통과)
+2. **`qa` → `release/0.0.1` MR** → 머지
+3. GitLab **`release/0.0.1` 파이프라인** — `build_qa` → `deploy_to_qa` 성공
+4. https://qa-db.masanggames.co.kr 동작 확인
+
+### shared/backend.env (Slack·시크릿 — git 배포와 별도)
+
+CodeDeploy는 **앱 코드만** 배포한다. `backend/.env`는 **저장소에 없고**, EC2에서만 유지한다.
+
+```
+/masang/masanggames.co.kr/db-manager/shared/backend.env
+  ↓ symlink (배포마다 자동)
+.../current/backend/.env
+```
+
+**Slack·공개 URL 예시** (QA/LIVE 각 EC2에 **별도** 작성, QA URL을 LIVE에 복사 금지):
+
+```env
+SLACK_NOTIFICATIONS_ENABLED=1
+SLACK_WEBHOOK_URL_DBA=https://hooks.slack.com/services/...
+# 프로덕트 GM (GZ, DK, FH, …) — backend/.env.example 참고
+DQPM_PUBLIC_BASE_URL=https://qa-db.masanggames.co.kr   # LIVE: https://db.masanggames.co.kr
+```
+
+| 알림 | 트리거 | 채널 |
+|------|--------|------|
+| 쿼리 템플릿 리뷰 요청 | `confirm_requested` | DBA |
+| 인스턴스 QA/LIVE 반영 **요청** | `qa_requested`, `live_requested` | DBA |
+| 인스턴스 QA/LIVE 반영 **완료** | `qa_deployed`, `live_deployed` | 프로덕트 GM |
+
+env 추가·수정 후: `sudo systemctl restart dqpm-backend`  
+Slack 안 오면: `journalctl -u dqpm-backend -n 100 | grep Slack`
+
+## 브랜치·MR 절차 (LIVE 반영)
+
+**전제:** QA에서 검증 완료 후에만 LIVE로 올린다.
+
+```
+release/0.0.1 ──MR──▶ main     (merge 후 build_live 파이프라인)
+       main 파이프라인 ──▶ deploy_to_live (▶ 수동 클릭) ──▶ LIVE EC2
+```
+
+| 단계 | 소스 | 타겟 | CI |
+|------|------|------|-----|
+| 1. LIVE 코드 반영 | **`release/0.0.1`** (또는 검증된 `qa`) | **`main`** | `main` push → `build_live` |
+| 2. LIVE 배포 | — | — | GitLab에서 **`deploy_to_live` ▶ 수동 실행** → CodeDeploy LIVE |
+
+**LIVE 반영 체크리스트**
+
+1. QA에서 기능·Slack·워크플로 확인 완료
+2. **`release/0.0.1` → `main` MR** 생성 → 머지 (`direct push` 금지)
+3. GitLab **CI/CD → Pipelines** (`main` 브랜치) — `build_live` 성공 확인
+4. 같은 파이프라인에서 **`deploy_to_live` job ▶ Play** 클릭 (자동 배포 아님)
+5. LIVE EC2 `shared/backend.env` — CORS·Slack·`DQPM_PUBLIC_BASE_URL` LIVE 값 확인
+6. https://db.masanggames.co.kr · https://db-api.masanggames.co.kr/api/health 확인
+
+> 초기 LIVE EC2 셋업(nginx·Deployment Group·`backend.env` 최초 작성)은 아래 「LIVE 셋업 시 QA와 다른 점」 참고.
 
 ## 서버 디렉토리 구조
 
@@ -155,16 +241,22 @@ ACTIVITY_LOG_ENABLED=1
 
 > ⚠️ `DB_CONNECTION_PASSWORD_SECRET`은 한 번 정하면 변경 금지 (변경 시 등록된 DB 비밀번호 전부 복호화 불가).
 
-### LIVE 배포 진행 순서
+### LIVE 배포 진행 순서 (최초 1회 셋업)
 
 1. EC2 초기 셋업 1~9번 — QA와 동일 절차, 위 표의 LIVE 값으로 치환
 2. AWS CodeDeploy 콘솔 → Applications → `Internal-db-event-manager` → **Create deployment group**:
    - Name: `live-internal-db-event-manager-group`
    - Tag: `Application=live-internal-ctrlhub-full`
    - 나머지 설정 QA와 동일
-3. `main` 브랜치에 머지 → GitLab 파이프라인에서 `deploy_to_live` 가 **수동 대기 상태(▶)**
-4. GitLab UI에서 `deploy_to_live` 버튼 클릭 → CodeDeploy 실행
-5. 첫 배포 후 admin/admin123 로그인 → **즉시 비밀번호 변경**
+3. `shared/backend.env` LIVE 값 작성 (JWT·CORS·Slack·DATA_MYSQL 등)
+4. 첫 `main` 배포 후 admin/admin123 로그인 → **즉시 비밀번호 변경**
+
+### LIVE 배포 진행 순서 (평상시 — QA 검증 후)
+
+1. GitLab MR: **`release/0.0.1` → `main`** (또는 팀 정책에 맞는 검증 완료 브랜치 → `main`)
+2. `main` 머지 → 파이프라인에서 **`build_live`** (LIVE용 `VITE_API_URL`로 프론트 빌드) → S3 업로드
+3. GitLab 파이프라인 **`deploy_to_live`** — **▶ 수동 클릭** → CodeDeploy `live-internal-db-event-manager-group`
+4. 배포 완료 후 헬스체크·스모크 테스트
 
 ### LIVE에서 자주 빠뜨리는 것
 
@@ -173,10 +265,20 @@ ACTIVITY_LOG_ENABLED=1
 - ❌ LIVE EC2에 IAM Instance Profile 미부착 → CodeDeploy agent에 `Missing credentials` 에러
 - ❌ AWS Deployment Group 이름 오타 → `DeploymentGroupDoesNotExistException`
 
-## 배포 흐름
+## 배포 흐름 (QA — `release/0.0.1`)
 
 ```
-[로컬] git push origin release/0.1.0
+작업 브랜치 ──MR──▶ qa ──MR──▶ release/0.0.1
+                                      ↓
+[GitLab CI] build_qa → S3 → deploy_to_qa (자동)
+                                      ↓
+[CodeDeploy QA EC2] current 심볼릭 swap, dqpm-backend 재시작
+```
+
+상세 (CodeDeploy 단계):
+
+```
+[release/0.0.1 merge]
    ↓
 [GitLab CI] build_qa: backend/front 빌드 → zip → S3 업로드
    ↓
@@ -189,6 +291,18 @@ ACTIVITY_LOG_ENABLED=1
 [AfterInstall]    staging → releases/YYYYMMDD_HHMMSS, .env/data 심볼릭 링크
 [ApplicationStart] current 심볼릭 atomic swap, dqpm-backend 재시작, nginx reload
 [ValidateService] /api/health 200, 프론트 200 확인 → 실패 시 자동 롤백
+```
+
+## 배포 흐름 (LIVE — `main`)
+
+```
+release/0.0.1 ──MR──▶ main
+                         ↓
+[GitLab CI] build_live (VITE_API_URL=https://db-api.masanggames.co.kr) → S3
+                         ↓
+[GitLab CI] deploy_to_live  ← ▶ 수동 승인 필수
+                         ↓
+[CodeDeploy LIVE EC2] QA와 동일 스크립트, LIVE Deployment Group
 ```
 
 ## 평상시 운영 명령 (masang으로 SSH)

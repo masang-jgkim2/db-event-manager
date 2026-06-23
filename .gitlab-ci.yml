@@ -82,9 +82,9 @@ validate_job:
     - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
     - echo "## [backend] install + build"
-    - cd backend && npm ci && npm run build && cd ..
+    - cd backend && npm ci && npm run build; cd ..
     - echo "## [front] install + build (검증용, 산출물은 폐기)"
-    - cd front && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build && cd ..
+    - cd front && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build; cd ..
     - echo "## Build validation OK"
 
   cache:
@@ -109,10 +109,10 @@ build_qa:
     - echo "## Branch:" "${CI_COMMIT_BRANCH}"
     - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
-    - cd backend && npm ci && npm run build && cd ..
-    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build && cd ..
+    - cd backend && npm ci && npm run build; cd ..
+    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_QA} npm run build; cd ..
     - echo "## node_modules 운영용 정리 (devDep 제외)"
-    - cd backend && npm prune --omit=dev && cd ..
+    - cd backend && npm prune --omit=dev; cd ..
     - echo "## Creating deployment package..."
     - |
       zip -r ${ZIP_FILE_NAME} \
@@ -139,9 +139,9 @@ build_live:
     - echo "## Branch:" "${CI_COMMIT_BRANCH}"
     - echo "## Commit:" "${CI_COMMIT_SHORT_SHA}"
     - echo "## =========================================="
-    - cd backend && npm ci && npm run build && cd ..
-    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_LIVE} npm run build && cd ..
-    - cd backend && npm prune --omit=dev && cd ..
+    - cd backend && npm ci && npm run build; cd ..
+    - cd front  && npm ci && VITE_API_URL=${VITE_API_URL_LIVE} npm run build; cd ..
+    - cd backend && npm prune --omit=dev; cd ..
     - |
       zip -r ${ZIP_FILE_NAME} \
         backend/dist backend/node_modules backend/package.json backend/package-lock.json \

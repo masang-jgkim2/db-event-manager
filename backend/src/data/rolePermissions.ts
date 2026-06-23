@@ -14,13 +14,17 @@ const STR_FILE = 'rolePermissions.json';
 const ARR_SEED: IRolePermissionRow[] = [
   ...['product.view','product.manage','event_template.view','event_template.manage','user.manage','db.manage','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.execute_qa','instance.verify_qa','instance.approve_live','instance.execute_live','instance.verify_live','system.save_test_seed','activity.view','activity.clear'].map((strPermission) => ({ nRoleId: 1, strPermission })),
   ...['my_dashboard.view','my_dashboard.detail','my_dashboard.confirm','my_dashboard.execute_qa','my_dashboard.execute_live'].map((strPermission) => ({ nRoleId: 2, strPermission })),
-  ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
-  ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
+  ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','event_template.request_confirm','instance.approve_qa','instance.verify_qa','instance.approve_live','instance.verify_live'].map((strPermission) => ({ nRoleId: 3, strPermission })),
+  ...['product.view','event_template.view','instance.create','my_dashboard.view','my_dashboard.detail','my_dashboard.edit','my_dashboard.request_confirm','event_template.request_confirm'].map((strPermission) => ({ nRoleId: 4, strPermission })),
+  ...['my_dashboard.view'].map((strPermission) => ({ nRoleId: 6, strPermission })),
 ];
 
 // DBA(nRoleId 2) 필수 권한 5개 — 예전 파일에 3개만 있으면 보정
 const N_DBA_ROLE_ID = 2;
-const ARR_DBA_REQUIRED: TPermission[] = ['my_dashboard.view', 'my_dashboard.detail', 'my_dashboard.confirm', 'my_dashboard.execute_qa', 'my_dashboard.execute_live'];
+const ARR_DBA_REQUIRED: TPermission[] = [
+  'my_dashboard.view', 'my_dashboard.detail', 'my_dashboard.confirm', 'my_dashboard.execute_qa', 'my_dashboard.execute_live',
+  'event_template.view', 'event_template.confirm',
+];
 
 const arrLoaded = fnLoadJson<IRolePermissionRow>(STR_FILE, ARR_SEED);
 

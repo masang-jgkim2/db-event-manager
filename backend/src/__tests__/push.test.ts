@@ -1,7 +1,7 @@
 import request from 'supertest';
 import webpush from 'web-push';
 import app from '../app';
-import { fnInitUsers } from '../data/users';
+import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
 import { fnSetUserUiPreferenceEntries } from '../data/userUiPreferences';
 import { arrNotificationSubscriptions } from '../data/notificationSubscriptions';
 import { STR_UI_WEB_PUSH_ENABLED } from '../services/webPushService';
@@ -38,7 +38,7 @@ describe('Web Push API', () => {
     process.env.VAPID_PUBLIC_KEY = STR_TEST_PUBLIC_KEY;
     process.env.VAPID_PRIVATE_KEY = STR_TEST_PRIVATE_KEY;
     process.env.VAPID_SUBJECT = 'mailto:dqpm@test.local';
-    await fnInitUsers();
+    await fnEnsureRoleTestUsers();
     strAdminToken = await fnLoginAs('admin', 'admin123');
     strGmToken = await fnLoginAs('gm01', 'gm123');
     strDbaToken = await fnLoginAs('dba01', 'dba123');
@@ -47,6 +47,17 @@ describe('Web Push API', () => {
   beforeEach(() => {
     arrNotificationSubscriptions.length = 0;
     jest.clearAllMocks();
+  });
+
+  it('GET /api/push/status → 구독·설정 진단', async () => {
+    const res = await request(app)
+      .get('/api/push/status')
+      .set('Authorization', `Bearer ${strAdminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.bSuccess).toBe(true);
+    expect(res.body.bVapidConfigured).toBe(true);
+    expect(typeof res.body.bUserPrefEnabled).toBe('boolean');
+    expect(typeof res.body.nSubscriptionCount).toBe('number');
   });
 
   it('GET /api/push/vapid-public-key → bEnabled·공개키', async () => {

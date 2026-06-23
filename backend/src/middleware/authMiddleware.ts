@@ -2,8 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { IJwtPayload } from '../types';
 import { fnTouchUserPresence } from '../services/userPresence';
-import { fnFindUserByStrUserId } from '../data/users';
-import { fnExpandPermissions, fnGetMergedPermissions } from '../data/roles';
+import { fnFindUserByStrUserId, fnFindUserRowById } from '../data/users';
+import { fnBuildAuthUserPayload } from '../services/authUserResponse';
+import { fnGetUserLoginBlock } from '../types/userStatus';
 
 // Request 확장 - 인증된 사용자 정보 포함
 declare global {
@@ -41,14 +42,18 @@ export const fnAuthMiddleware = (req: Request, res: Response, next: NextFunction
       res.status(401).json({ bSuccess: false, strMessage: '유효하지 않은 토큰입니다.' });
       return;
     }
-    // JWT의 arrPermissions는 발급 시점 고정 — 역할/권한 추가 후에도 동작하도록 매 요청 최신 합집합 반영
-    const arrRaw = fnGetMergedPermissions(objFullUser.arrRoles);
-    const arrPermissions = fnExpandPermissions(arrRaw, objFullUser.arrRoles);
+    const row = fnFindUserRowById(objFullUser.nId);
+    const objBlock = fnGetUserLoginBlock(row?.strStatus, objFullUser.arrRoles, row?.strEmail);
+    if (objBlock) {
+      res.status(403).json({ bSuccess: false, ...objBlock });
+      return;
+    }
+    const objAuthUser = fnBuildAuthUserPayload(objFullUser);
     req.user = {
       ...decoded,
-      strDisplayName: objFullUser.strDisplayName,
-      arrRoles: objFullUser.arrRoles,
-      arrPermissions: arrPermissions as IJwtPayload['arrPermissions'],
+      strDisplayName: objAuthUser.strDisplayName,
+      arrRoles: objAuthUser.arrRoles,
+      arrPermissions: objAuthUser.arrPermissions as IJwtPayload['arrPermissions'],
     };
     // 로그아웃은 직후 fnMarkUserOffline으로 끊음 — 여기서 터치하면 window 내 녹색 잔류
     const bIsLogout = req.method === 'POST' && req.path === '/logout';

@@ -1,15 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { STR_ADMIN_PASS, STR_ADMIN_USER, fnE2eLogin } from './helpers/auth';
 
-const STR_E2E_USER = process.env.E2E_USER_ID || 'admin';
-const STR_E2E_PASSWORD = process.env.E2E_PASSWORD || 'admin123';
-
-test.describe('프로덕트 페이지 — 버튼·모달 클릭', () => {
+test.describe('프로덕트 페이지 — 버튼·모달 클릭', { tag: '@smoke' }, () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-    await page.getByPlaceholder('아이디').fill(STR_E2E_USER);
-    await page.getByPlaceholder('비밀번호').fill(STR_E2E_PASSWORD);
-    await page.getByRole('button', { name: '로그인' }).click();
-    await expect(page.getByRole('menuitem').first()).toBeVisible({ timeout: 10000 });
+    await fnE2eLogin(page, STR_ADMIN_USER, STR_ADMIN_PASS);
     await page.getByRole('menuitem', { name: '프로덕트' }).click();
     await expect(page).toHaveURL('/products');
   });

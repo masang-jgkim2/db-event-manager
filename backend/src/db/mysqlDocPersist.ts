@@ -1,10 +1,13 @@
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from './mysqlAppPool';
-import { fnRelationalWriteFullFromMemory } from './mysqlRelationalSync';
+import { fnRelationalReplaceEventInstancesOnly, fnRelationalWriteFullFromMemory } from './mysqlRelationalSync';
 
 const mapPending = new Map<string, unknown[]>();
 let refTimer: ReturnType<typeof setTimeout> | null = null;
 let refFlushPromise: Promise<void> | null = null;
+
+let refInstanceTimer: ReturnType<typeof setTimeout> | null = null;
+let refInstanceFlushPromise: Promise<void> | null = null;
 
 const fnFlushPending = async (): Promise<void> => {
   refTimer = null;
@@ -29,6 +32,22 @@ const fnFlushPending = async (): Promise<void> => {
   }
 };
 
+const fnFlushEventInstancesPending = async (): Promise<void> => {
+  refInstanceTimer = null;
+  if (!fnIsMysqlStore()) return;
+  const pool = fnGetMysqlAppPool();
+  try {
+    console.log('[DATA_MYSQL] event_instance→MySQL 반영 시작');
+    await fnRelationalReplaceEventInstancesOnly(pool);
+    console.log('[DATA_MYSQL] event_instance→MySQL 반영 완료');
+  } catch (err: unknown) {
+    console.error('[DATA_MYSQL] event_instance 동기화 실패 |', (err as Error)?.message);
+    throw err;
+  } finally {
+    refInstanceFlushPromise = null;
+  }
+};
+
 /** 예약된 전체 치환·진행 중 flush 모두 취소/대기 (사용자 삭제 등 직전) */
 export const fnCancelAllPendingMysqlDocFlush = (): void => {
   if (refTimer != null) {
@@ -36,6 +55,10 @@ export const fnCancelAllPendingMysqlDocFlush = (): void => {
     refTimer = null;
   }
   mapPending.clear();
+  if (refInstanceTimer != null) {
+    clearTimeout(refInstanceTimer);
+    refInstanceTimer = null;
+  }
 };
 
 export const fnAwaitInFlightMysqlDocFlush = async (): Promise<void> => {
@@ -63,6 +86,16 @@ export const fnScheduleMysqlDocReplace = (strFilename: string, arrData: unknown[
   }, 40);
 };
 
+/** event_instance만 치환(전체 스냅샷과 분리) */
+export const fnScheduleMysqlEventInstanceReplace = (): void => {
+  if (refInstanceTimer != null) return;
+  refInstanceTimer = setTimeout(() => {
+    refInstanceFlushPromise = fnFlushEventInstancesPending().catch((err: unknown) => {
+      console.error('[DATA_MYSQL] event_instance 백그라운드 동기화 실패 |', (err as Error)?.message);
+    });
+  }, 40);
+};
+
 /** users·userRoles 저장 시 예약된 전체 치환 취소(fnCommitUserDataStore 전용) */
 export const fnCancelMysqlUserDocFlush = (): void => {
   fnCancelMysqlDocFlushForFiles(['users.json', 'userRoles.json']);
@@ -86,4 +119,17 @@ export const fnAwaitMysqlDocFlush = async (): Promise<void> => {
     refTimer = null;
   }
   await fnFlushPending();
+};
+
+/** event_instance 저장 후 MySQL 반영 대기 */
+export const fnAwaitMysqlEventInstanceFlush = async (): Promise<void> => {
+  if (refInstanceTimer != null) {
+    clearTimeout(refInstanceTimer);
+    refInstanceTimer = null;
+  }
+  if (refInstanceFlushPromise) {
+    await refInstanceFlushPromise;
+    return;
+  }
+  await fnFlushEventInstancesPending();
 };

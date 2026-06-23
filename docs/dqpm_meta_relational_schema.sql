@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS db_connection (
   n_id              INT           NOT NULL PRIMARY KEY COMMENT 'JSON nId',
   n_product_id      INT           NOT NULL,
   str_product_name  VARCHAR(200)  NOT NULL,
+  str_service_abbr  VARCHAR(64)   NULL COMMENT 'products.arrServices[].strAbbr, NULL=공통',
   str_kind          VARCHAR(16)   NOT NULL DEFAULT 'GAME' COMMENT 'GAME|WEB|LOG',
   str_env           VARCHAR(16)   NOT NULL COMMENT 'dev|qa|live',
   str_db_type       VARCHAR(16)   NOT NULL COMMENT 'mssql|mysql',
@@ -86,7 +87,8 @@ CREATE TABLE IF NOT EXISTS db_connection (
   dt_created_at     DATETIME(6)   NOT NULL,
   dt_updated_at     DATETIME(6)   NOT NULL,
   CONSTRAINT fk_db_connection_product FOREIGN KEY (n_product_id) REFERENCES product(n_id) ON DELETE CASCADE,
-  KEY idx_db_connection_product_env (n_product_id, str_env, b_is_active)
+  KEY idx_db_connection_product_env (n_product_id, str_env, b_is_active),
+  KEY idx_db_connection_product_service_env (n_product_id, str_service_abbr, str_env, b_is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='dbConnections.json';
 

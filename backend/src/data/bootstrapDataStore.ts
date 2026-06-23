@@ -7,7 +7,7 @@ import path from 'path';
 import type { RowDataPacket } from 'mysql2/promise';
 import { STR_DATA_DIR } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
-import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnGetMysqlAppPool, fnVerifyMysqlAppPoolConnection } from '../db/mysqlAppPool';
 import {
   fnEnsureMysqlAppSchema,
   fnMysqlCountProducts,
@@ -29,6 +29,7 @@ import type { IActivityLogRow } from './activityLogs';
 import { fnHydrateUserUiPreferencesFromMysql } from './userUiPreferences';
 import { fnIsDbConnPasswordSecretConfigured } from '../services/dbConnectionPasswordCrypto';
 import { fnRelationalWriteFullFromMemory } from '../db/mysqlRelationalSync';
+import { fnReconcileMetaJsonWithMysql } from './metaJsonMysqlReconcile';
 
 const B_SKIP_JSON_IMPORT =
   process.env.DATA_MYSQL_NO_JSON_IMPORT === '1' || process.env.DATA_MYSQL_NO_JSON_IMPORT === 'true';
@@ -94,7 +95,7 @@ export const fnMysqlImportAllFromJsonDisk = async (): Promise<void> => {
   console.log('[DataStore] JSON → MySQL 전체 치환 완료 | 상세 건수는 [DATA_MYSQL] 정규화 적재 완료 로그 참고');
 };
 
-const fnHydrateMemoryFromMysql = async (): Promise<void> => {
+export const fnHydrateMemoryFromMysql = async (): Promise<void> => {
   const pool = fnGetMysqlAppPool();
   console.log('[DataStore] MySQL → 인메모리 하이드레이트 시작 | 정규화 테이블 로드');
   const { arrProducts } = await import('./products');
@@ -159,6 +160,18 @@ const fnHydrateMemoryFromMysql = async (): Promise<void> => {
   );
 };
 
+/** E2E 시드 후 — event_instance만 MySQL에서 인메모리 재로드 (전체 기동 생략) */
+export const fnReloadEventInstancesFromMysql = async (): Promise<number> => {
+  if (!fnIsMysqlStore()) return 0;
+  const pool = fnGetMysqlAppPool();
+  const { arrEventInstances } = await import('./eventInstances');
+  const arrI = (await fnMysqlLoadArrayByFilename(pool, 'eventInstances.json')) as IEventInstance[];
+  arrEventInstances.length = 0;
+  arrEventInstances.push(...arrI);
+  console.log(`[DataStore] event_instance 재로드 | ${arrI.length}건`);
+  return arrI.length;
+};
+
 export const fnBootstrapDataStore = async (): Promise<void> => {
   if (!fnIsMysqlStore()) {
     console.log('[DataStore] DATA_STORE=json | data/*.json');
@@ -166,6 +179,17 @@ export const fnBootstrapDataStore = async (): Promise<void> => {
   }
   console.log('[DataStore] DATA_STORE=mysql | 메타 MySQL');
   const pool = fnGetMysqlAppPool();
+  try {
+    await fnVerifyMysqlAppPoolConnection();
+    console.log('[DataStore] 메타 MySQL 연결 확인 | OK');
+  } catch (err: unknown) {
+    const strMsg = err instanceof Error ? err.message : String(err);
+    console.error(
+      '[DataStore] 메타 MySQL 연결 실패 — backend/.env 의 DATA_MYSQL_* 를 확인하세요. ' +
+        'DB 접속 정보 화면 추가와 별개로, 앱 저장용 dqpm DB 계정이 필요합니다.',
+    );
+    throw new Error(strMsg);
+  }
   await fnEnsureMysqlAppSchema(pool);
   const nProducts = await fnMysqlCountProducts(pool);
   if (nProducts === 0 && !B_SKIP_JSON_IMPORT) {
@@ -174,6 +198,12 @@ export const fnBootstrapDataStore = async (): Promise<void> => {
     console.warn('[DataStore] MySQL 비어 있음 — DATA_MYSQL_NO_JSON_IMPORT 로 JSON 적재 생략');
   }
   await fnHydrateMemoryFromMysql();
+
+  try {
+    await fnReconcileMetaJsonWithMysql(pool);
+  } catch (err: unknown) {
+    console.error('[DataStore] JSON↔MySQL 동기화 실패 — 기동은 계속 |', (err as Error)?.message);
+  }
 
   if (fnIsDbConnPasswordSecretConfigured()) {
     try {

@@ -12,8 +12,6 @@ import type { IUserNotificationRow } from '../data/userNotifications';
 
 const OBJ_STATUS_LABELS: Record<TEventStatus, string> = {
   event_created: '생성',
-  confirm_requested: '컨펌 요청',
-  dba_confirmed: 'DBA 컨펌 완료',
   qa_requested: 'QA 반영 요청',
   qa_deployed: 'QA 반영 실행',
   qa_verified: 'QA 확인',
@@ -22,8 +20,13 @@ const OBJ_STATUS_LABELS: Record<TEventStatus, string> = {
   live_verified: '완료',
 };
 
-const fnStatusLabel = (strStatus: TEventStatus): string => (
-  OBJ_STATUS_LABELS[strStatus] ?? strStatus
+const OBJ_LEGACY_STATUS_LABELS: Record<string, string> = {
+  confirm_requested: '컨펌 요청',
+  dba_confirmed: 'DBA 컨펌 완료',
+};
+
+const fnStatusLabel = (strStatus: TEventStatus | string): string => (
+  OBJ_STATUS_LABELS[strStatus as TEventStatus] ?? OBJ_LEGACY_STATUS_LABELS[strStatus] ?? strStatus
 );
 
 const fnBuildDashboardQuery = (nInstanceId: number) => ({

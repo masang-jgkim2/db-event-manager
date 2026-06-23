@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Badge, Button, Dropdown, Empty, List, Space, Tag, Typography, theme } from 'antd';
+import { Badge, Button, Dropdown, Empty, List, Space, Typography, theme } from 'antd';
+import { DqpmTag } from './DqpmTag';
 import { BellOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
@@ -178,7 +179,7 @@ const NotificationBellDropdown = () => {
                     <List.Item.Meta
                       title={(
                         <Space size={6} wrap>
-                          <Tag color={objLevel.strColor}>{objLevel.strLabel}</Tag>
+                          <DqpmTag color={objLevel.strColor}>{objLevel.strLabel}</DqpmTag>
                           <Text strong={!objItem.bRead}>{objItem.strTitle}</Text>
                         </Space>
                       )}

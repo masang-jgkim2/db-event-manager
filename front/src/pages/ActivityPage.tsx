@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Typography, Card, Tag, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
+  Typography, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
 } from 'antd';
+import { HistoryOutlined } from '@ant-design/icons';
+import CrudPageShell from '../components/CrudPageShell';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -16,8 +18,9 @@ import {
 } from '../api/activityApi';
 import { useActivityLogStream } from '../hooks/useActivityLogStream';
 import { useAuthStore } from '../stores/useAuthStore';
+import { DqpmTag } from '../components/DqpmTag';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 type TCategoryFilter = 'all' | TActivityCategory;
 
@@ -285,7 +288,7 @@ const ActivityPage = () => {
       key: 'strCategory',
       width: 96,
       render: (c: TActivityCategory) => (
-        <Tag color="geekblue">{OBJ_CATEGORY_LABEL[c]}</Tag>
+        <DqpmTag color="geekblue">{OBJ_CATEGORY_LABEL[c]}</DqpmTag>
       ),
     },
     {
@@ -293,7 +296,7 @@ const ActivityPage = () => {
       dataIndex: 'strMethod',
       key: 'strMethod',
       width: 100,
-      render: (m: string) => <Tag color={OBJ_METHOD_COLOR[m] || 'default'}>{m}</Tag>,
+      render: (m: string) => <DqpmTag color={OBJ_METHOD_COLOR[m] || 'default'}>{m}</DqpmTag>,
     },
     {
       title: '경로',
@@ -309,7 +312,7 @@ const ActivityPage = () => {
       width: 88,
       render: (n: number) => {
         const bOk = n >= 200 && n < 400;
-        return <Tag color={bOk ? 'success' : 'error'}>{n}</Tag>;
+        return <DqpmTag color={bOk ? 'success' : 'error'}>{n}</DqpmTag>;
       },
     },
     {
@@ -335,18 +338,17 @@ const ActivityPage = () => {
   return (
     <>
       {contextHolder}
-      <Card>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
-          <Title level={4} style={{ margin: 0 }}>활동</Title>
+      <CrudPageShell
+        strTitle="활동"
+        nodeIcon={<HistoryOutlined />}
+        nodeDescription="HTTP 메서드·경로·응답 코드 기준 기록입니다. 실시간 갱신을 켜 두면 SSE로 신규 로그가 쌓일 때 목록을 다시 불러옵니다. 필터는 시각·활동 분류·HTTP 메서드·행위자·HTTP 상태를 조합해 조회합니다."
+        nodeExtra={(
           <Space align="center" size="small">
             <Text type="secondary" style={{ fontSize: 12 }}>실시간 갱신</Text>
             <Switch checked={bRealtime} onChange={setBRealtime} />
           </Space>
-        </div>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-          HTTP 메서드·경로·응답 코드 기준 기록입니다. 실시간 갱신을 켜 두면 SSE로 신규 로그가 쌓일 때 목록을 다시 불러옵니다. 필터는 시각·활동 분류·HTTP 메서드·행위자·HTTP 상태를 조합해 조회합니다.
-        </Text>
-
+        )}
+      >
         <Form
           form={form}
           layout="vertical"
@@ -425,6 +427,7 @@ const ActivityPage = () => {
         </Form>
 
         <AppTable
+          strTableId="activity_logs"
           rowKey="nId"
           loading={bLoading}
           columns={arrColumns}
@@ -450,7 +453,7 @@ const ActivityPage = () => {
             showTotal={(t) => `${t}건 중 ${Math.min((nPage - 1) * N_PAGE_SIZE + 1, t)}–${Math.min(nPage * N_PAGE_SIZE, t)}`}
           />
         </div>
-      </Card>
+      </CrudPageShell>
     </>
   );
 };

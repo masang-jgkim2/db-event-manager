@@ -26,6 +26,7 @@ const ARR_SEED_ROWS: IRoleRow[] = [
   { nId: 2, strCode: 'dba', strDisplayName: 'DBA', strDescription: 'DB 쿼리 실행 전담', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
   { nId: 3, strCode: 'game_manager', strDisplayName: 'GM', strDescription: '게임 운영 관리자', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
   { nId: 4, strCode: 'game_designer', strDisplayName: '기획자', strDescription: '이벤트 기획 및 생성', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
+  { nId: 6, strCode: 'guest', strDisplayName: '승인 대기(GUEST)', strDescription: '가입 시 부여(로그인은 승인 후)', bIsSystem: true, dtCreatedAt: new Date().toISOString(), dtUpdatedAt: new Date().toISOString() },
 ];
 
 export const arrRoles: IRoleRow[] = fnLoadJson<IRoleRow>(STR_FILE, ARR_SEED_ROWS);
@@ -80,12 +81,13 @@ export const fnGetMergedPermissions = (arrRoleCodes: string[]): string[] => {
 /** 레거시 권한 → 세분화 권한 확장 (클라이언트 응답용). admin 역할 시 대시보드/사용자/역할/DB 접속 세분화 추가 */
 const OBJ_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
-  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
-  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete', 'event_template.request_confirm', 'event_template.confirm'],
+  'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   // instance.create는 이벤트 수정/컨펌 요청 권한을 자동 부여하지 않음 (역할에서 별도 체크한 권한만 적용)
   'instance.create': ['instance.view'],
-  'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
+  'my_dashboard.request_confirm': ['event_template.request_confirm'],
+  'my_dashboard.confirm': ['event_template.confirm'],
   // 쿼리 수정(query_edit)은 별도 권한 — execute_qa만으로는 부여하지 않음
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],
@@ -104,7 +106,7 @@ export const fnExpandPermissions = (arrRaw: string[], arrRoleCodes: string[]): s
     if (arrExp) arrExp.forEach((e) => setOut.add(e));
   });
   if (arrRoleCodes.includes('admin')) {
-    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view', 'activity.clear'].forEach((p) => setOut.add(p));
+    ['dashboard.view', 'my_dashboard.view', 'my_dashboard.edit_any', 'user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve', 'role.view', 'role.create', 'role.edit', 'role.delete', 'role.edit_permissions', 'db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test', 'system.save_test_seed', 'activity.view', 'activity.clear'].forEach((p) => setOut.add(p));
   }
   return Array.from(setOut);
 };
