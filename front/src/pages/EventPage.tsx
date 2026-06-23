@@ -48,7 +48,14 @@ import { fnRenderStatusIcon, fnRenderTemplateStatusIcon, OBJ_TEMPLATE_STATUS_ICO
 import type { TTagVariant } from '../styles/tagPalette';
 import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
-import { fnFilterConnectionsForTemplatePicker, fnListTemplateServiceScopeAbbrs } from '../utils/dbConnectionScope';
+import {
+  fnDeriveTemplateConnFilterAbbr,
+  fnFilterConnectionsForTemplatePicker,
+  fnListTemplateServiceScopeAbbrs,
+  fnMergeTemplatePickerConnections,
+  fnResolveConnectionServiceAbbr,
+  type TProductServiceLookup,
+} from '../utils/dbConnectionScope';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -130,6 +137,7 @@ type TQueryTemplatesTabContentProps = {
   add: (defaultValue?: unknown, insertIndex?: number) => void;
   remove: (index: number | number[]) => void;
   arrConnectionsByProduct: IDbConnection[];
+  arrProducts: readonly TProductServiceLookup[];
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
@@ -139,6 +147,7 @@ const QueryTemplatesTabContent = ({
   add,
   remove,
   arrConnectionsByProduct,
+  arrProducts,
   activeKey,
   setActiveKey,
   justAddedRef,
@@ -182,17 +191,26 @@ const QueryTemplatesTabContent = ({
             extra={`GAME/WEB/LOG 등 DB 종류와 ${STR_SERVICE_SCOPE_LABEL} 기준입니다. QA/LIVE는 이벤트 생성 시 반영 범위에 맞게 자동 연결됩니다.`}
           >
             <Select placeholder={`DB 접속 선택 (종류 · ${STR_SERVICE_SCOPE_LABEL} · 호스트/DB명)`} showSearch optionFilterProp="children">
-              {arrConnectionsByProduct.map((c) => (
+              {arrConnectionsByProduct.map((c) => {
+                const strSvcLabel = fnResolveConnectionServiceAbbr(c, arrProducts);
+                const strTag =
+                  strSvcLabel
+                    ? fnFormatDbConnectionCountryPlatform(strSvcLabel)
+                    : c.nServiceId
+                      ? `#${c.nServiceId}`
+                      : fnFormatDbConnectionCountryPlatform(undefined);
+                return (
                 <Select.Option key={c.nId} value={c.nId}>
                   <Space wrap>
                     <DqpmTag color="blue">{c.strKind || 'GAME'}</DqpmTag>
                     <DqpmTag tone="service" style={{ fontSize: 11 }}>
-                      {fnFormatDbConnectionCountryPlatform(c.strServiceAbbr)}
+                      {strTag}
                     </DqpmTag>
                     <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
                   </Space>
                 </Select.Option>
-              ))}
+                );
+              })}
             </Select>
           </Form.Item>
           <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
@@ -582,7 +600,10 @@ const EventPage = () => {
 
   const fnOpenModal = useCallback((objEvent?: IEventTemplate) => {
     setStrQueryTabsActiveKey('0');
-    setStrTemplateConnFilterAbbr(undefined);
+    const strConnFilter = objEvent
+      ? fnDeriveTemplateConnFilterAbbr(objEvent, arrDbConnections, arrProducts)
+      : undefined;
+    setStrTemplateConnFilterAbbr(strConnFilter);
     if (objEvent) {
       setObjEditEvent(objEvent);
       const bMulti = (objEvent.arrQueryTemplates?.length ?? 0) > 0;
@@ -608,7 +629,7 @@ const EventPage = () => {
       form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
-  }, [form]);
+  }, [form, arrDbConnections, arrProducts]);
 
   const fnCloseModal = () => {
     if (bSavingTemplate) return;
@@ -777,18 +798,26 @@ const EventPage = () => {
     () => arrProducts.find((p) => p.nId === nProductIdWatch),
     [arrProducts, nProductIdWatch],
   );
-  useEffect(() => {
-    setStrTemplateConnFilterAbbr(undefined);
-  }, [nProductIdWatch]);
+  const arrQueryTemplatesWatch = Form.useWatch('arrQueryTemplates', form) as IQueryTemplateItem[] | undefined;
 
   const arrConnectionsByProduct = useMemo(() => {
     if (!nProductIdWatch) return [];
-    return fnFilterConnectionsForTemplatePicker(
+    const arrFiltered = fnFilterConnectionsForTemplatePicker(
       arrDbConnections,
       nProductIdWatch,
       strTemplateConnFilterAbbr,
+      arrProducts,
     );
-  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr]);
+    const arrSelectedIds = (arrQueryTemplatesWatch ?? [])
+      .map((s) => Number(s?.nDbConnectionId))
+      .filter((n) => n > 0);
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrSelectedIds,
+      nProductIdWatch,
+    );
+  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr, arrProducts, arrQueryTemplatesWatch]);
 
   const bShowTemplateConnFilter = !objEditEvent || fnResolveTemplateStatus(objEditEvent) !== 'confirm_requested';
 
@@ -813,7 +842,7 @@ const EventPage = () => {
       key: 'strServiceScope',
       width: 130,
       render: (_: unknown, r: IEventTemplate) => {
-        const arrAbbrs = fnListTemplateServiceScopeAbbrs(r, arrDbConnections);
+        const arrAbbrs = fnListTemplateServiceScopeAbbrs(r, arrDbConnections, arrProducts);
         if (!arrAbbrs.length) {
           return <Text type="secondary">-</Text>;
         }
@@ -821,7 +850,7 @@ const EventPage = () => {
           <Space wrap size={4}>
             {arrAbbrs.map((strAbbr) => (
               <DqpmTag key={strAbbr || '__fallback'} tone="service" style={{ fontSize: 11 }}>
-                {fnFormatDbConnectionCountryPlatform(strAbbr || undefined)}
+                {strAbbr.startsWith('#') ? strAbbr : fnFormatDbConnectionCountryPlatform(strAbbr || undefined)}
               </DqpmTag>
             ))}
           </Space>
@@ -1030,7 +1059,10 @@ const EventPage = () => {
                 label="프로덕트"
                 rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
               >
-                <Select placeholder="프로덕트 선택">
+                <Select
+                  placeholder="프로덕트 선택"
+                  onChange={() => setStrTemplateConnFilterAbbr(undefined)}
+                >
                   {arrProducts.map((p) => (
                     <Select.Option key={p.nId} value={p.nId}>
                       {p.strName}
@@ -1167,6 +1199,7 @@ const EventPage = () => {
                           add={add}
                           remove={remove}
                           arrConnectionsByProduct={arrConnectionsByProduct}
+                          arrProducts={arrProducts}
                           activeKey={strQueryTabsActiveKey}
                           setActiveKey={setStrQueryTabsActiveKey}
                           justAddedRef={bQueryTabsJustAddedRef}

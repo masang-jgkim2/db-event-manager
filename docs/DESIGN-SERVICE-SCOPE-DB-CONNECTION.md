@@ -1,6 +1,6 @@
 # 설계안: 서비스 범위(프로젝트) ↔ DB 접속·이벤트 생성 연동
 
-> **상태**: Draft — **보류** (템플릿 DBA 컨펌 + 이벤트 진행 분리 작업 완료 후 착수)  
+> **상태**: Phase 1 구현됨 (2026-05) — 접속·실행·QueryPage 검증. MyDashboard 컬럼 분리·Step4 접속 미리보기는 미구현.  
 > **관련**: `docs/DESIGN-TEMPLATE-INSTANCE-WORKFLOW-SPLIT.md` (Phase 1~3), `docs/REVIEW-MULTI-SERVER-MULTI-DB.md`  
 > **작성 목적**: 프로덕트 하위 «서비스 범위(프로젝트)»를 DB 접속·쿼리 생성·실행·대시보드에 일관되게 묶는 변경의 검토·범위 정리
 
@@ -13,9 +13,9 @@
 | 영역 | 동작 |
 |------|------|
 | **프로덕트** | `arrServices[]` — `{ strAbbr, strRegion }` (ProductPage «서비스 범위» 컬럼) |
-| **DB 접속** | `nProductId` + `strEnv`(qa/live) + `strKind` — **서비스 무관** |
-| **이벤트 생성** | Step 1 프로덕트, Step 2 «국내/해외» → `strServiceAbbr`/`strServiceRegion` 저장 (**치환·표시만**) |
-| **QA/LIVE 실행** | `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?)` — **서비스 미사용** |
+| **DB 접속** | `nProductId` + `strServiceAbbr?` + `strEnv`(qa/live) + `strKind` — 서비스 전용→공통 fallback |
+| **이벤트 생성** | Step 2 «서비스 범위(프로젝트)» → QA/LIVE·종류별 접속 검증 |
+| **QA/LIVE 실행** | `fnResolveExecuteConnection(..., strServiceAbbr)` — 인스턴스 Step2 값 |
 | **나의 대시보드** | 프로덕트 열: `strProductName (strServiceAbbr)` 혼합 표기 |
 
 쿼리 SQL 자체에 QA/LIVE IP가 들어가지 않음. 환경은 **실행 API `strEnv` + `db_connection.strEnv`** 로 결정.
@@ -164,22 +164,24 @@ QA/LIVE 게임 DB 실행
 
 ### Backend
 
-- [ ] `IDbConnection.strServiceAbbr`, DDL, `mysqlRelationalSync`
-- [ ] `dbConnectionController` — 검증(프로덕트 `arrServices` 포함 여부), 중복 키
-- [ ] `fnResolveExecuteConnection` + `strServiceAbbr` fallback
+- [x] `IDbConnection.strServiceAbbr`, DDL, `mysqlRelationalSync`
+- [x] `dbConnectionController` — 검증(프로덕트 `arrServices` 포함 여부), 중복 키
+- [x] `fnResolveExecuteConnection` + `strServiceAbbr` fallback
 - [ ] (선택) `GET /api/db-connections?nProductId=&strServiceAbbr=` 필터
 
 ### Frontend
 
-- [ ] `DbConnectionPage` — 테이블·모달 «서비스 범위(프로젝트)»
-- [ ] `QueryPage` — Step 2 제목, QA/LIVE 검사, Step 4 접속 미리보기, targets 해석
-- [ ] `EventPage` — 세트별 연결 DB 목록 필터
+- [x] `DbConnectionPage` — 테이블·모달 «서비스 범위(프로젝트)»
+- [x] `QueryPage` — Step 2 제목, QA/LIVE 검사, targets 해석(실행 시 백엔드)
+- [x] `EventPage` — 연결 DB Select에 서비스 범위 라벨
 - [ ] `MyDashboardPage` — 프로덕트 / 서비스 범위 컬럼 분리
+- [ ] `QueryPage` Step 4 접속 미리보기
 - [ ] 공통: `fnFormatServiceScopeLabel(abbr, region)` 유틸 (ProductPage 태그와 동일)
 
 ### 테스트 · 데이터
 
-- [ ] API: 서비스별 QA/LIVE 해석, fallback, 미등록 서비스 400
+- [x] 단위: 서비스별 QA/LIVE 해석, fallback, DK/G vs DK/KR
+- [ ] API 통합: 미등록 서비스 400
 - [ ] (선택) `products.json` 약자 통일 (`FH/KR`, `LH/KR`)
 - [ ] E2E: DK/KR vs DK/G 다른 접속 시 올바른 DB 실행
 

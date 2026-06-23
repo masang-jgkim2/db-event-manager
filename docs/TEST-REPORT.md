@@ -1,5 +1,8 @@
 # 테스트 결과 보고서
 
+> **최신 E2E 통합 계획**: [E2E-PAGE-TEST-PLAN.md](./E2E-PAGE-TEST-PLAN.md) · Playwright 실행은 [front/e2e/README.md](../front/e2e/README.md)  
+> 아래 본문은 2025-03 시점 스냅샷(일부 내용 노후)이다.
+
 작성일: 2025-03-10
 
 ## 0. 자동 API 테스트 (백엔드)

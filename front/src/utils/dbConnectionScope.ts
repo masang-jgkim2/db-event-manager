@@ -1,10 +1,53 @@
-import type { IEventTemplate, IDbConnection, TDbConnectionKind } from '../types';
+import type { IEventTemplate, IDbConnection, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
+
+/** product.arrServices 조회용 — arrServices 생략 가능 */
+export type TProductServiceLookup = {
+  nId: number;
+  arrServices?: ReadonlyArray<Pick<IService, 'nServiceId' | 'strAbbr'>>;
+};
+
+/** 접속 행 서비스 약자 — strServiceAbbr 없으면 nServiceId→product.arrServices */
+export const fnResolveConnectionServiceAbbr = (
+  objConn: Pick<IDbConnection, 'strServiceAbbr' | 'nServiceId' | 'nProductId'>,
+  arrProducts?: readonly TProductServiceLookup[],
+): string => {
+  const strAbbr = fnNormalizeServiceAbbr(objConn.strServiceAbbr);
+  if (strAbbr) return strAbbr;
+  const nSvcId = Number(objConn.nServiceId);
+  if (nSvcId > 0 && arrProducts?.length) {
+    const objProd = arrProducts.find((p) => p.nId === objConn.nProductId);
+    const objSvc = objProd?.arrServices?.find((s) => s.nServiceId === nSvcId);
+    if (objSvc?.strAbbr) return fnNormalizeServiceAbbr(objSvc.strAbbr);
+  }
+  return '';
+};
+
+/** 템플릿 세트 연결 DB → 모달 서비스 필터 복원 (세트가 동일 서비스 1종이면 해당 약자) */
+export const fnDeriveTemplateConnFilterAbbr = (
+  objTemplate: Pick<IEventTemplate, 'arrQueryTemplates'>,
+  arrConnections: IDbConnection[],
+  arrProducts?: readonly TProductServiceLookup[],
+): string | undefined => {
+  const arrSets =
+    objTemplate.arrQueryTemplates?.filter((s) => s.nDbConnectionId && s.nDbConnectionId > 0) ?? [];
+  if (!arrSets.length) return undefined;
+  const setAbbrs = new Set<string>();
+  for (const s of arrSets) {
+    const objConn = arrConnections.find((c) => c.nId === s.nDbConnectionId);
+    if (!objConn) continue;
+    const strResolved = fnResolveConnectionServiceAbbr(objConn, arrProducts);
+    if (strResolved) setAbbrs.add(strResolved);
+  }
+  if (setAbbrs.size === 1) return [...setAbbrs][0];
+  return undefined;
+};
 
 /** 쿼리 템플릿 세트 연결 DB에서 서비스 구분 약자 목록 (중복 제거, 빈값=전체) */
 export const fnListTemplateServiceScopeAbbrs = (
   objTemplate: Pick<IEventTemplate, 'arrQueryTemplates'>,
   arrConnections: IDbConnection[],
+  arrProducts?: readonly TProductServiceLookup[],
 ): string[] => {
   const arrSets =
     objTemplate.arrQueryTemplates?.filter(
@@ -15,10 +58,12 @@ export const fnListTemplateServiceScopeAbbrs = (
   const arrOut: string[] = [];
   for (const s of arrSets) {
     const objConn = arrConnections.find((c) => c.nId === s.nDbConnectionId);
-    const strKey = (objConn?.strServiceAbbr ?? '').trim();
-    if (setSeen.has(strKey)) continue;
-    setSeen.add(strKey);
-    arrOut.push(strKey);
+    if (!objConn) continue;
+    const strKey = fnResolveConnectionServiceAbbr(objConn, arrProducts);
+    const strDedupe = strKey || (objConn.nServiceId ? `#${objConn.nServiceId}` : '');
+    if (!strDedupe || setSeen.has(strDedupe)) continue;
+    setSeen.add(strDedupe);
+    arrOut.push(strKey || strDedupe);
   }
   return arrOut;
 };
@@ -26,10 +71,13 @@ export const fnListTemplateServiceScopeAbbrs = (
 export const fnFormatTemplateServiceScopeCell = (
   objTemplate: Pick<IEventTemplate, 'arrQueryTemplates'>,
   arrConnections: IDbConnection[],
+  arrProducts?: readonly TProductServiceLookup[],
 ): string => {
-  const arrAbbrs = fnListTemplateServiceScopeAbbrs(objTemplate, arrConnections);
+  const arrAbbrs = fnListTemplateServiceScopeAbbrs(objTemplate, arrConnections, arrProducts);
   if (!arrAbbrs.length) return '-';
-  return arrAbbrs.map((a) => fnFormatDbConnectionCountryPlatform(a || undefined)).join(', ');
+  return arrAbbrs
+    .map((a) => (a.startsWith('#') ? a : fnFormatDbConnectionCountryPlatform(a)))
+    .join(', ');
 };
 
 export const fnNormalizeServiceAbbr = (str?: string | null): string => (str ?? '').trim();
@@ -251,17 +299,29 @@ export const fnFilterConnectionsForTemplatePicker = (
   arrConnections: IDbConnection[],
   nProductId: number,
   strServiceAbbr?: string | null,
+  arrProducts?: readonly TProductServiceLookup[],
 ): IDbConnection[] => {
   const strSvc = fnNormalizeServiceAbbr(strServiceAbbr);
+  const objProduct = arrProducts?.find((p) => p.nId === nProductId);
+  const nFilterSvcId =
+    strSvc && objProduct?.arrServices?.length
+      ? objProduct.arrServices.find((s) => fnServiceAbbrsCompatible(s.strAbbr, strSvc))?.nServiceId
+      : undefined;
+  const bHasServiceFilter = Boolean(strSvc) || (nFilterSvcId != null && nFilterSvcId > 0);
   const arrActive = arrConnections.filter(
     (c) =>
       c.nProductId === nProductId &&
       c.bIsActive &&
-      fnConnectionMatchesServiceScope(c, strSvc || undefined),
+      (bHasServiceFilter
+        ? fnConnectionMatchesServiceScope(c, strSvc || undefined, nFilterSvcId)
+        : true),
   );
   const mapBest = new Map<string, IDbConnection>();
   for (const c of arrActive) {
-    const strKey = `${fnNormalizeServiceAbbr(c.strServiceAbbr)}|${c.strKind ?? 'GAME'}`;
+    const strSvcKey =
+      fnResolveConnectionServiceAbbr(c, arrProducts) ||
+      (c.nServiceId ? `sid:${c.nServiceId}` : '_common');
+    const strKey = `${strSvcKey}|${c.strKind ?? 'GAME'}`;
     const objExisting = mapBest.get(strKey);
     if (!objExisting) {
       mapBest.set(strKey, c);
@@ -272,8 +332,29 @@ export const fnFilterConnectionsForTemplatePicker = (
     if (nPri < nExistingPri) mapBest.set(strKey, c);
   }
   return [...mapBest.values()].sort((a, b) => {
-    const strKa = `${fnNormalizeServiceAbbr(a.strServiceAbbr)}|${a.strKind ?? 'GAME'}|${a.strHost}`;
-    const strKb = `${fnNormalizeServiceAbbr(b.strServiceAbbr)}|${b.strKind ?? 'GAME'}|${b.strHost}`;
+    const strKa = `${fnResolveConnectionServiceAbbr(a, arrProducts)}|${a.strKind ?? 'GAME'}|${a.strHost}`;
+    const strKb = `${fnResolveConnectionServiceAbbr(b, arrProducts)}|${b.strKind ?? 'GAME'}|${b.strHost}`;
+    return strKa.localeCompare(strKb);
+  });
+};
+
+/** 연결 DB Select — 필터 결과 + 이미 선택된 접속(다른 env 등) 병합 */
+export const fnMergeTemplatePickerConnections = (
+  arrFiltered: IDbConnection[],
+  arrAllConnections: IDbConnection[],
+  arrSelectedConnIds: number[],
+  nProductId: number,
+): IDbConnection[] => {
+  const mapOut = new Map<number, IDbConnection>();
+  for (const c of arrFiltered) mapOut.set(c.nId, c);
+  for (const nId of arrSelectedConnIds) {
+    if (mapOut.has(nId)) continue;
+    const objConn = arrAllConnections.find((c) => c.nId === nId && c.nProductId === nProductId);
+    if (objConn) mapOut.set(nId, objConn);
+  }
+  return [...mapOut.values()].sort((a, b) => {
+    const strKa = `${a.strKind ?? 'GAME'}|${a.strHost}|${a.nId}`;
+    const strKb = `${b.strKind ?? 'GAME'}|${b.strHost}|${b.nId}`;
     return strKa.localeCompare(strKb);
   });
 };
