@@ -1,14 +1,39 @@
 /** Slack Incoming Webhook POST — 채널별 URL은 환경 변수로 분리 */
 
-export type TSlackWebhookChannel = 'dba' | 'live' | 'mv' | 'gz' | 'ad' | 'sr';
+/** DBA·live + 프로덕트 서비스 약어 접두사(GZ, DK, …)별 GM 채널 */
+export type TSlackWebhookChannel =
+  | 'dba'
+  | 'live'
+  | 'gz'
+  | 'nd'
+  | 'nx'
+  | 'lh'
+  | 'mv'
+  | 'sr'
+  | 'ad'
+  | 'ao'
+  | 'fh'
+  | 'cc'
+  | 'kr'
+  | 'pt'
+  | 'dk';
 
 const ENV_CHANNEL_URL: Record<TSlackWebhookChannel, string> = {
   dba: 'SLACK_WEBHOOK_URL_DBA',
   live: 'SLACK_WEBHOOK_URL_LIVE',
-  mv: 'SLACK_WEBHOOK_URL_MV',
   gz: 'SLACK_WEBHOOK_URL_GZ',
-  ad: 'SLACK_WEBHOOK_URL_AD',
+  nd: 'SLACK_WEBHOOK_URL_ND',
+  nx: 'SLACK_WEBHOOK_URL_NX',
+  lh: 'SLACK_WEBHOOK_URL_LH',
+  mv: 'SLACK_WEBHOOK_URL_MV',
   sr: 'SLACK_WEBHOOK_URL_SR',
+  ad: 'SLACK_WEBHOOK_URL_AD',
+  ao: 'SLACK_WEBHOOK_URL_AO',
+  fh: 'SLACK_WEBHOOK_URL_FH',
+  cc: 'SLACK_WEBHOOK_URL_CC',
+  kr: 'SLACK_WEBHOOK_URL_KR',
+  pt: 'SLACK_WEBHOOK_URL_PT',
+  dk: 'SLACK_WEBHOOK_URL_DK',
 };
 
 export const fnIsSlackNotificationsEnabled = (): boolean => {

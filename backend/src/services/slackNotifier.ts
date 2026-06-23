@@ -23,7 +23,7 @@ const ARR_DBA_NOTIFY_STATUSES_DEFAULT: readonly TEventStatus[] = [
   'live_requested',
 ];
 
-/** 프로덕트 채널(MV/GZ/AD) — 해당 프로덕트 QA·LIVE 반영 완료 */
+/** 프로덕트 GM 채널 — 해당 프로덕트 QA·LIVE 반영 완료 */
 const ARR_PRODUCT_NOTIFY_STATUSES_DEFAULT: readonly TEventStatus[] = [
   'qa_deployed',
   'live_deployed',
@@ -78,14 +78,27 @@ export const fnShouldNotifySlackProductChannel = (strStatus: TEventStatus): bool
   fnParseProductNotifyStatuses().includes(strStatus)
 );
 
-/** 프로덕트 서비스 약어 → Slack 채널 (AD/G → ad, MV/KR → mv, SR → sr) */
+/** strServiceAbbr 접두사 → GM Slack 채널 (예: AD/G → ad, DK/KR → dk) */
+const MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL: Record<string, TSlackWebhookChannel> = {
+  GZ: 'gz',
+  ND: 'nd',
+  NX: 'nx',
+  LH: 'lh',
+  MV: 'mv',
+  SR: 'sr',
+  AD: 'ad',
+  AO: 'ao',
+  FH: 'fh',
+  CC: 'cc',
+  KR: 'kr',
+  PT: 'pt',
+  DK: 'dk',
+};
+
 export const fnResolveProductSlackChannel = (strServiceAbbr: string): TSlackWebhookChannel | null => {
   const strPrefix = strServiceAbbr.trim().toUpperCase().split('/')[0];
-  if (strPrefix === 'MV') return 'mv';
-  if (strPrefix === 'GZ') return 'gz';
-  if (strPrefix === 'AD') return 'ad';
-  if (strPrefix === 'SR') return 'sr';
-  return null;
+  if (!strPrefix) return null;
+  return MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL[strPrefix] ?? null;
 };
 
 const fnGetSlackTitle = (strChannel: TSlackWebhookChannel, strStatus: TEventStatus): string => {
