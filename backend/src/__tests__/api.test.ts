@@ -5,7 +5,9 @@ import request from 'supertest';
 import app from '../app';
 import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
 import {
+  fnApiPatchTemplateDbaConfirmed,
   fnFindReadyTemplateForProduct,
+  fnLoginAdminToken,
   fnPrimaryServiceAbbr,
   fnPruneEphemeralTestProducts,
   fnUniqueApiTestName,
@@ -15,6 +17,7 @@ import { arrProducts } from '../data/products';
 import { arrEvents } from '../data/events';
 import { arrDbConnections } from '../data/dbConnections';
 import { arrEventInstances } from '../data/eventInstances';
+import { fnIsMysqlStore } from '../data/dataStore';
 import type { TPermission } from '../types';
 
 // 테스트용 비밀번호 (users.ts 시드와 동일)
@@ -31,7 +34,7 @@ describe('API 전체 테스트', () => {
   let strDbaToken: string;
 
   beforeAll(async () => {
-    fnPruneEphemeralTestProducts();
+    await fnPruneEphemeralTestProducts();
     await fnEnsureRoleTestUsers();
   });
 
@@ -615,13 +618,19 @@ describe('API 전체 테스트', () => {
   // ─── 프로덕트 추가·수정·삭제 테스트 ─────────────────────────────────────
   describe('프로덕트 CRUD', () => {
     let nProductId: number;
+    let strCrudToken: string;
+
+    beforeAll(async () => {
+      strCrudToken = strAdminToken || (await fnLoginAdminToken(app));
+    });
 
     it('POST /api/products → 200, 생성된 nId 반환', async () => {
+      const strName = fnUniqueApiTestName('테스트프로덕트CRUD');
       const res = await request(app)
         .post('/api/products')
-        .set('Authorization', `Bearer ${strAdminToken}`)
+        .set('Authorization', `Bearer ${strCrudToken}`)
         .send({
-          strName: '테스트프로덕트CRUD',
+          strName,
           strDescription: 'CRUD테스트용',
           strDbType: 'mysql',
           arrServices: [{ strAbbr: 'T1', strRegion: '국내' }],
@@ -635,17 +644,208 @@ describe('API 전체 테스트', () => {
     it('PUT /api/products/:id → 200, 수정 반영', async () => {
       const res = await request(app)
         .put(`/api/products/${nProductId}`)
-        .set('Authorization', `Bearer ${strAdminToken}`)
-        .send({ strDescription: '수정된 설명', strName: '테스트프로덕트CRUD' });
+        .set('Authorization', `Bearer ${strCrudToken}`)
+        .send({ strDescription: '수정된 설명' });
       expect(res.status).toBe(200);
       expect(res.body.objProduct.strDescription).toBe('수정된 설명');
     });
 
-    it('DELETE /api/products/:id → 200', async () => {
+    it('DELETE /api/products/:id → 200, 메모리에서 제거', async () => {
       const res = await request(app)
         .delete(`/api/products/${nProductId}`)
-        .set('Authorization', `Bearer ${strAdminToken}`);
+        .set('Authorization', `Bearer ${strCrudToken}`);
       expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(arrProducts.find((p) => p.nId === nProductId)).toBeUndefined();
+    });
+
+    it('DELETE /api/products/:id — product.delete 없으면 403', async () => {
+      const N_ROLE_GM = 3;
+      const arrBackup = fnGetPermissionsByRoleId(N_ROLE_GM);
+      const withoutDelete = arrBackup.filter(
+        (s) => s !== 'product.delete' && s !== 'product.manage',
+      ) as TPermission[];
+      fnSetPermissionsForRole(N_ROLE_GM, withoutDelete.length ? withoutDelete : ['product.view']);
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ strUserId: 'gm01', strPassword: OBJ_PASSWORDS.gm01 });
+      const res = await request(app)
+        .delete('/api/products/1')
+        .set('Authorization', `Bearer ${loginRes.body.strToken}`);
+      fnSetPermissionsForRole(N_ROLE_GM, arrBackup);
+      expect(res.status).toBe(403);
+    });
+
+    it('DELETE /api/products/:id — 템플릿·인스턴스 참조 시 409 (MySQL)', async () => {
+      if (!fnIsMysqlStore()) return;
+      const nBlockedId =
+        arrEvents[0]?.nProductId
+        ?? arrEventInstances[0]?.nProductId
+        ?? arrProducts[0]?.nId;
+      if (!nBlockedId) return;
+      const nBefore = arrProducts.length;
+      const res = await request(app)
+        .delete(`/api/products/${nBlockedId}`)
+        .set('Authorization', `Bearer ${strCrudToken}`);
+      expect(res.status).toBe(409);
+      expect(res.body.bSuccess).toBe(false);
+      expect(String(res.body.strMessage)).toMatch(/사용 중|삭제할 수 없습니다/);
+      expect(arrProducts.length).toBe(nBefore);
+      expect(arrProducts.some((p) => p.nId === nBlockedId)).toBe(true);
+    });
+  });
+
+  // ─── 삭제 연관: 이벤트 인스턴스 → 쿼리 템플릿 → 프로덕트 ─────────────────
+  describe('프로덕트 삭제 연관 순서 (이벤트 → 템플릿 → 프로덕트)', () => {
+    let strToken: string;
+    let nProductId: number;
+    let strProductName: string;
+    let strServiceAbbr: string;
+    let nDbConnId: number;
+    let nTemplateId: number;
+    let nInstanceId: number;
+
+    beforeAll(async () => {
+      strToken = strAdminToken || (await fnLoginAdminToken(app));
+    });
+
+    it('fixture — 전용 프로덕트·DB접속·템플릿·이벤트 인스턴스 생성', async () => {
+      strProductName = fnUniqueApiTestName('삭제연관프로덕트');
+      strServiceAbbr = 'DL';
+
+      const resProd = await request(app)
+        .post('/api/products')
+        .set('Authorization', `Bearer ${strToken}`)
+        .send({
+          strName: strProductName,
+          strDescription: '삭제 연관 테스트',
+          strDbType: 'mysql',
+          arrServices: [{ strAbbr: strServiceAbbr, strRegion: '테스트' }],
+        });
+      expect(resProd.status).toBe(200);
+      nProductId = resProd.body.objProduct.nId;
+
+      const resConn = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strToken}`)
+        .send({
+          nProductId,
+          strKind: 'GAME',
+          strEnv: 'qa',
+          strDbType: 'mysql',
+          strHost: '127.0.0.1',
+          nPort: 3306,
+          strDatabase: 'test_del_chain',
+          strUser: 'u',
+          strPassword: 'p',
+          strServiceAbbr,
+        });
+      expect(resConn.status).toBe(200);
+      nDbConnId = resConn.body.objDbConnection.nId;
+
+      const resTpl = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strToken}`)
+        .send({
+          nProductId,
+          strEventLabel: '삭제연관템플릿',
+          strDescription: '',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          arrQueryTemplates: [
+            { nDbConnectionId: nDbConnId, strDefaultItems: '1', strQueryTemplate: 'SELECT 1;' },
+          ],
+        });
+      expect(resTpl.status).toBe(200);
+      nTemplateId = resTpl.body.objEvent.nId;
+      await fnApiPatchTemplateDbaConfirmed(app, strToken, nTemplateId);
+
+      const resInst = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strToken}`)
+        .send({
+          nEventTemplateId: nTemplateId,
+          nProductId,
+          strEventLabel: '삭제연관이벤트',
+          strProductName,
+          strServiceAbbr,
+          strServiceRegion: '테스트',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] 삭제 연관 테스트',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtQaDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa'],
+          strCreatedBy: 'admin',
+        });
+      expect(resInst.status).toBe(200);
+      nInstanceId = resInst.body.objInstance.nId;
+    });
+
+    it('인스턴스·템플릿 존재 시 프로덕트 DELETE → 409 (MySQL)', async () => {
+      if (!fnIsMysqlStore()) return;
+      const res = await request(app)
+        .delete(`/api/products/${nProductId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(409);
+      expect(res.body.bSuccess).toBe(false);
+      expect(String(res.body.strMessage)).toMatch(/템플릿|인스턴스|사용 중/);
+      expect(arrProducts.some((p) => p.nId === nProductId)).toBe(true);
+    });
+
+    it('활성 인스턴스 참조 중 템플릿 DELETE → 400', async () => {
+      const res = await request(app)
+        .delete(`/api/events/${nTemplateId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(400);
+      expect(res.body.bSuccess).toBe(false);
+      expect(String(res.body.strMessage)).toMatch(/인스턴스/);
+      expect(arrEvents.some((e) => e.nId === nTemplateId)).toBe(true);
+    });
+
+    it('이벤트 인스턴스 DELETE → 200 (영구 삭제)', async () => {
+      const res = await request(app)
+        .delete(`/api/event-instances/${nInstanceId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.objInstance?.bPermanentlyRemoved).toBe(true);
+    });
+
+    it('인스턴스 영구 삭제 후·템플릿 존재 시 DB접속 DELETE → 409', async () => {
+      const res = await request(app)
+        .delete(`/api/db-connections/${nDbConnId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(409);
+      expect(res.body.bSuccess).toBe(false);
+      expect(String(res.body.strMessage)).toMatch(/템플릿/);
+      expect(arrDbConnections.some((c) => c.nId === nDbConnId)).toBe(true);
+    });
+
+    it('인스턴스 제거 후 템플릿 DELETE → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/events/${nTemplateId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(200);
+      expect(arrEvents.find((e) => e.nId === nTemplateId)).toBeUndefined();
+    });
+
+    it('템플릿 제거 후 DB접속 DELETE → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/db-connections/${nDbConnId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
+      expect(arrDbConnections.find((c) => c.nId === nDbConnId)).toBeUndefined();
+    });
+
+    it('템플릿·DB접속 제거 후 프로덕트 DELETE → 200', async () => {
+      const res = await request(app)
+        .delete(`/api/products/${nProductId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body.bSuccess).toBe(true);
       expect(arrProducts.find((p) => p.nId === nProductId)).toBeUndefined();
     });
   });

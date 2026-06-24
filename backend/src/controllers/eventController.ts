@@ -1,15 +1,17 @@
 import { Request, Response } from 'express';
 import {
   arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty,
-  fnResolveTemplateStatus,
+  fnResolveTemplateStatus, fnCommitEventTemplateDeleteToStore,
   type IEventTemplate, type ITemplateStageActor, type TTemplateStatus,
 } from '../data/events';
-import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances } from '../data/eventInstances';
+import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances, fnCommitEventInstancesToStore, type IEventInstance } from '../data/eventInstances';
 import { arrProducts } from '../data/products';
 import { fnFindConnectionById } from '../data/dbConnections';
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
+import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
 import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
+import { fnGetEventTemplateDeleteBlockReason } from '../db/mysqlRelationalSync';
 import type { TPermission } from '../types';
 import {
   fnBodyHasTemplateQueryFields,
@@ -29,6 +31,9 @@ const OBJ_TEMPLATE_STATUS_PERMISSION: Partial<Record<TTemplateStatus, TPermissio
   confirm_requested: 'event_template.request_confirm',
   dba_confirmed: 'event_template.confirm',
 };
+
+const fnIsTemplatePersistConflict = (strMessage: string): boolean =>
+  strMessage.includes('사용 중') || strMessage.includes('삭제할 수 없습니다') || strMessage.includes('참조');
 
 const fnMakeTemplateActor = (req: Request): ITemplateStageActor => ({
   strDisplayName: req.body?.strActorName || req.user?.strDisplayName || req.user?.strUserId || '',
@@ -396,30 +401,56 @@ export const fnDeleteEvent = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // 영구 삭제된 인스턴스만 이 템플릿을 참조할 때 MySQL FK·스텁 없이 반영되도록 참조 인스턴스 제거
-    let nPurgedRemovedRefs = 0;
+    if (fnIsMysqlStore()) {
+      const pool = fnGetMysqlAppPool();
+      const conn = await pool.getConnection();
+      try {
+        const strMysqlBlock = await fnGetEventTemplateDeleteBlockReason(conn, nId);
+        if (strMysqlBlock) {
+          res.status(400).json({ bSuccess: false, strMessage: strMysqlBlock });
+          return;
+        }
+      } finally {
+        conn.release();
+      }
+    }
+
+    const objRemoved = arrEvents[nIndex];
+    const arrPurgedInstances: IEventInstance[] = [];
     for (let i = arrEventInstances.length - 1; i >= 0; i--) {
       const inst = arrEventInstances[i];
       if (inst.nEventTemplateId === nId && fnIsPermanentlyRemoved(inst)) {
+        arrPurgedInstances.push(inst);
         arrEventInstances.splice(i, 1);
-        nPurgedRemovedRefs += 1;
       }
     }
-    if (nPurgedRemovedRefs > 0) {
-      console.log(`[쿼리 템플릿] 삭제 | nId=${nId} | 영구삭제 인스턴스 ${nPurgedRemovedRefs}건 정리`);
-      fnSaveEventInstances();
+    if (arrPurgedInstances.length > 0) {
+      console.log(`[쿼리 템플릿] 삭제 | nId=${nId} | 영구삭제 인스턴스 ${arrPurgedInstances.length}건 정리`);
     }
 
     arrEvents.splice(nIndex, 1);
-    fnSaveEvents();
-    if (fnIsMysqlStore()) {
-      try {
-        await fnAwaitMysqlDocFlush();
-      } catch (err: unknown) {
-        console.error('[쿼리 템플릿] 삭제 MySQL 반영 실패 |', (err as Error)?.message);
-        res.status(500).json({ bSuccess: false, strMessage: '삭제는 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
-        return;
+    try {
+      if (fnIsMysqlStore()) {
+        if (arrPurgedInstances.length > 0) {
+          await fnCommitEventInstancesToStore();
+        }
+        await fnCommitEventTemplateDeleteToStore(nId);
+      } else {
+        if (arrPurgedInstances.length > 0) fnSaveEventInstances();
+        fnSaveEvents();
       }
+    } catch (errPersist: unknown) {
+      arrEvents.splice(nIndex, 0, objRemoved);
+      for (const inst of arrPurgedInstances.reverse()) {
+        arrEventInstances.push(inst);
+      }
+      const strMessage = (errPersist as Error)?.message ?? '쿼리 템플릿 삭제에 실패했습니다.';
+      console.error('[쿼리 템플릿] 삭제 MySQL 반영 실패 |', strMessage);
+      res.status(fnIsTemplatePersistConflict(strMessage) ? 409 : 500).json({
+        bSuccess: false,
+        strMessage,
+      });
+      return;
     }
     res.json({ bSuccess: true, strMessage: '쿼리 템플릿이 삭제되었습니다.' });
   } catch (error) {

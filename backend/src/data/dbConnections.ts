@@ -4,7 +4,7 @@ import { IDbConnection, TDbConnectionKind } from '../types';
 import { STR_DATA_DIR, fnMirrorJsonToDisk, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
-import { fnCancelMysqlDocFlushForFiles } from '../db/mysqlDocPersist';
+import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
 import {
   fnDeleteDbConnectionRowFromMysql,
   fnRelationalLoadDbConnections,
@@ -109,6 +109,7 @@ export const fnCommitOneDbConnectionToMysql = async (objConn: IDbConnection): Pr
 export const fnCommitDbConnectionDeleteToMysql = async (nId: number): Promise<void> => {
   if (!fnIsMysqlStore()) return;
   fnCancelMysqlDocFlushForFiles(['dbConnections.json']);
+  await fnAwaitInFlightMysqlDocFlush();
   const pool = fnGetMysqlAppPool();
   await fnDeleteDbConnectionRowFromMysql(pool, nId);
   fnMirrorDbConnectionsJson();

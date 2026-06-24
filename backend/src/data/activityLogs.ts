@@ -1,5 +1,9 @@
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnMirrorJsonToDisk } from './jsonStore';
 import { fnBroadcastActivityLog } from '../services/sseBroadcaster';
+import { fnIsMysqlStore } from './dataStore';
+import { fnCancelMysqlDocFlushForFiles } from '../db/mysqlDocPersist';
+import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnReplaceActivityLogsOnly } from '../db/mysqlRelationalSync';
 
 /**
  * HTTP 활동 로그 (인메모리+JSON).
@@ -75,13 +79,27 @@ export const fnRehydrateActivityLogsFromDocs = (arrDocs: IActivityLogRow[]): voi
   nPushCountSinceFlush = 0;
 };
 
-/** 메모리 → JSON 동기 저장(배치 flush·종료 시·전체 삭제 후) */
+/** 메모리 → 저장소 동기 (JSON 파일 또는 MySQL activity_log + 미러) */
+const fnPersistActivityLogs = async (): Promise<void> => {
+  if (!fnIsMysqlStore()) {
+    fnSaveJson(STR_FILE, arrActivityLogs);
+    return;
+  }
+  fnCancelMysqlDocFlushForFiles(['activity_logs.json']);
+  await fnReplaceActivityLogsOnly(fnGetMysqlAppPool(), [...arrActivityLogs]);
+  fnMirrorJsonToDisk(STR_FILE, arrActivityLogs);
+};
+
+/** 메모리 → 저장소 동기 저장(배치 flush·종료 시·전체 삭제 후) */
 export const fnFlushActivityLogsToDisk = (): void => {
   fnCancelActivityLogsFlushTimer();
   if (!bActivityLogsDirty) return;
   bActivityLogsDirty = false;
   nPushCountSinceFlush = 0;
-  fnSaveJson(STR_FILE, arrActivityLogs);
+  void fnPersistActivityLogs().catch((err: unknown) => {
+    console.error('[활동 로그] 저장 실패 |', err);
+    bActivityLogsDirty = true;
+  });
 };
 
 const fnScheduleActivityLogsDebouncedFlush = (): void => {
@@ -247,14 +265,16 @@ export interface IQueryActivityInput {
   nStatusCode?: number;
 }
 
-/** 인메모리·JSON 파일의 활동 로그 전부 제거(복구 불가) */
+/** 인메모리·저장소의 활동 로그 전부 제거(복구 불가) */
 export const fnClearAllActivityLogs = (): void => {
   fnCancelActivityLogsFlushTimer();
   arrActivityLogs.length = 0;
   nNextActivityLogId = 1;
-  bActivityLogsDirty = false;
+  bActivityLogsDirty = true;
   nPushCountSinceFlush = 0;
-  fnSaveJson(STR_FILE, arrActivityLogs);
+  void fnPersistActivityLogs().catch((err: unknown) => {
+    console.error('[활동 로그] 전체 삭제 저장 실패 |', err);
+  });
 };
 
 export const fnQueryActivityLogs = (objQuery: IQueryActivityInput): { arrRows: IActivityLogRow[]; nTotal: number } => {
