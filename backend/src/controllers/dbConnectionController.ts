@@ -11,12 +11,35 @@ import {
   fnReloadDbConnectionsFromDiskIfEmpty,
 } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
+import { arrEvents } from '../data/events';
+import { arrEventInstances } from '../data/eventInstances';
 import { IDbConnection } from '../types';
 import { fnTestDbConnection } from '../db/dbManager';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
-import { fnIsDbConnectionReferencedInMysql } from '../db/mysqlRelationalSync';
+import { fnGetDbConnectionDeleteBlockReason } from '../db/mysqlRelationalSync';
 import { fnResolveConnectionServiceFields } from '../utils/serviceId';
+
+const fnIsPermanentlyRemoved = (e: { bPermanentlyRemoved?: boolean } | undefined): boolean =>
+  Boolean(e?.bPermanentlyRemoved);
+
+const fnGetDbConnectionDeleteBlockReasonFromMemory = (nDbConnectionId: number): string | null => {
+  for (const objTpl of arrEvents) {
+    if (objTpl.arrQueryTemplates?.some((q) => q.nDbConnectionId === nDbConnectionId)) {
+      return '이 DB 접속 정보는 쿼리 템플릿에서 사용 중입니다. 쿼리 템플릿을 먼저 삭제하세요.';
+    }
+  }
+  for (const inst of arrEventInstances) {
+    if (fnIsPermanentlyRemoved(inst)) continue;
+    if (inst.arrExecutionTargets?.some((t) => t.nDbConnectionId === nDbConnectionId)) {
+      return '이 DB 접속 정보는 이벤트 인스턴스에서 사용 중입니다. 이벤트를 영구 삭제한 뒤 다시 시도하세요.';
+    }
+  }
+  return null;
+};
+
+const fnIsDbConnectionPersistConflict = (strMessage: string): boolean =>
+  strMessage.includes('사용 중') || strMessage.includes('삭제할 수 없습니다');
 
 const fnPersistDbConnectionRow = async (objConn: IDbConnection): Promise<void> => {
   fnSaveDbConnections();
@@ -346,14 +369,16 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
       return;
     }
 
+    const strMemBlock = fnGetDbConnectionDeleteBlockReasonFromMemory(nId);
+    if (strMemBlock) {
+      res.status(409).json({ bSuccess: false, strMessage: strMemBlock });
+      return;
+    }
+
     if (fnIsMysqlStore()) {
-      const bReferenced = await fnIsDbConnectionReferencedInMysql(fnGetMysqlAppPool(), nId);
-      if (bReferenced) {
-        res.status(409).json({
-          bSuccess: false,
-          strMessage:
-            '이 DB 접속 정보는 이벤트 인스턴스 또는 쿼리 템플릿에서 사용 중입니다. 참조를 해제한 뒤 삭제해 주세요.',
-        });
+      const strMysqlBlock = await fnGetDbConnectionDeleteBlockReason(fnGetMysqlAppPool(), nId);
+      if (strMysqlBlock) {
+        res.status(409).json({ bSuccess: false, strMessage: strMysqlBlock });
         return;
       }
     }
@@ -364,8 +389,12 @@ export const fnDeleteDbConnection = async (req: Request, res: Response): Promise
       await fnPersistDbConnectionDelete(nId);
     } catch (errPersist: unknown) {
       arrDbConnections.splice(nIndex, 0, objRemoved);
+      const strMessage = fnMysqlPersistErrorMessage(errPersist);
       console.error('[DB 접속] MySQL 반영 실패 |', errPersist);
-      res.status(500).json({ bSuccess: false, strMessage: fnMysqlPersistErrorMessage(errPersist) });
+      res.status(fnIsDbConnectionPersistConflict(strMessage) ? 409 : 500).json({
+        bSuccess: false,
+        strMessage,
+      });
       return;
     }
 

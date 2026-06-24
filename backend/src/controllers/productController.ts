@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
-import { arrProducts, fnFindProductByName, fnGetNextProductId, fnSaveProducts, fnReloadProductsFromDiskIfEmpty } from '../data/products';
+import { arrProducts, fnFindProductByName, fnGetNextProductId, fnCommitProductsToStore, fnReloadProductsFromDiskIfEmpty } from '../data/products';
 import { fnEnsureAllProductsServiceIds, fnEnsureProductServiceIds, fnGetNextServiceId, fnMergeProductServices } from '../utils/serviceId';
 import { fnCascadeProductDisplayName } from '../services/productNameCascade';
+
+const fnIsProductPersistConflict = (strMessage: string): boolean =>
+  strMessage.includes('사용 중') || strMessage.includes('삭제할 수 없습니다');
 
 export const fnGetProducts = async (_req: Request, res: Response): Promise<void> => {
   fnReloadProductsFromDiskIfEmpty();
@@ -44,7 +47,17 @@ export const fnCreateProduct = async (req: Request, res: Response): Promise<void
     fnEnsureProductServiceIds(objNew);
 
     arrProducts.push(objNew);
-    fnSaveProducts();
+    try {
+      await fnCommitProductsToStore();
+    } catch (errPersist: unknown) {
+      arrProducts.pop();
+      console.error('[products] MySQL 반영 실패 |', errPersist);
+      res.status(500).json({
+        bSuccess: false,
+        strMessage: (errPersist as Error)?.message ?? '프로덕트 저장에 실패했습니다.',
+      });
+      return;
+    }
     res.json({ bSuccess: true, objProduct: objNew });
   } catch (error) {
     console.error('프로덕트 생성 오류:', error);
@@ -87,7 +100,16 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
       );
     }
 
-    fnSaveProducts();
+    try {
+      await fnCommitProductsToStore();
+    } catch (errPersist: unknown) {
+      console.error('[products] MySQL 반영 실패 |', errPersist);
+      res.status(500).json({
+        bSuccess: false,
+        strMessage: (errPersist as Error)?.message ?? '프로덕트 저장에 실패했습니다.',
+      });
+      return;
+    }
 
     const strCurrentName = arrProducts[nIndex].strName;
     try {
@@ -113,8 +135,20 @@ export const fnDeleteProduct = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    const objRemoved = arrProducts[nIndex];
     arrProducts.splice(nIndex, 1);
-    fnSaveProducts();
+    try {
+      await fnCommitProductsToStore();
+    } catch (errPersist: unknown) {
+      arrProducts.splice(nIndex, 0, objRemoved);
+      const strMessage = (errPersist as Error)?.message ?? '프로덕트 삭제에 실패했습니다.';
+      console.error('[products] MySQL 삭제 실패 |', strMessage);
+      res.status(fnIsProductPersistConflict(strMessage) ? 409 : 500).json({
+        bSuccess: false,
+        strMessage,
+      });
+      return;
+    }
     res.json({ bSuccess: true, strMessage: '프로덕트가 삭제되었습니다.' });
   } catch (error) {
     console.error('프로덕트 삭제 오류:', error);

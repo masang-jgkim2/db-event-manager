@@ -1,6 +1,9 @@
-import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
 import { fnEnsureAllProductsServiceIds } from '../utils/serviceId';
+import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
+import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnSyncProductsOnlyToMysql } from '../db/mysqlRelationalSync';
 
 // 프로덕트 데이터 저장소
 
@@ -108,7 +111,26 @@ export const fnReloadProductsFromDiskIfEmpty = (): boolean => {
   return true;
 };
 
-export const fnSaveProducts = () => fnSaveJson(STR_FILE, arrProducts);
+/** JSON 모드: 파일 저장. mysql: product·product_service만 반영 + JSON 미러 */
+export const fnCommitProductsToStore = async (): Promise<void> => {
+  if (!fnIsMysqlStore()) {
+    fnSaveJson(STR_FILE, arrProducts);
+    return;
+  }
+  fnCancelMysqlDocFlushForFiles(['products.json']);
+  await fnAwaitInFlightMysqlDocFlush();
+  await fnSyncProductsOnlyToMysql(fnGetMysqlAppPool(), [...arrProducts]);
+  fnMirrorJsonToDisk(STR_FILE, arrProducts);
+};
+
+/** mysql 모드는 fnCommitProductsToStore 사용 — 레거시 호출부·테스트용 */
+export const fnSaveProducts = (): void => {
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrProducts);
+    return;
+  }
+  fnSaveJson(STR_FILE, arrProducts);
+};
 
 export const fnGetNextProductId = (): number =>
   arrProducts.length > 0 ? Math.max(...arrProducts.map((p) => p.nId)) + 1 : 1;

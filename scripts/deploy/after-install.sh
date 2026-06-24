@@ -55,6 +55,7 @@ find "$RELEASE_DIR" -type f -exec chmod 644 {} \;
 find "$RELEASE_DIR" -type d -exec chmod 755 {} \;
 # 스크립트 실행 권한
 chmod 755 "$RELEASE_DIR"/scripts/deploy/*.sh 2>/dev/null || true
+chmod 755 "$RELEASE_DIR"/scripts/install-live-meta-json-seed.sh 2>/dev/null || true
 
 # 릴리스 경로를 ApplicationStart 단계로 전달
 echo "$RELEASE_DIR" > /tmp/codedeploy_release_dir
