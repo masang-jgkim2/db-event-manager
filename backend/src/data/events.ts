@@ -2,6 +2,9 @@ import type { IDbConnection } from '../types';
 import { fnLoadJson, fnSaveJson, fnReadJsonArrayFromDisk, fnMirrorJsonToDisk } from './jsonStore';
 import { arrDbConnections } from './dbConnections';
 import { fnIsMysqlStore } from './dataStore';
+import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
+import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
+import { fnDeleteEventTemplateFromMysql } from '../db/mysqlRelationalSync';
 
 /** 템플릿 워크플로: 등록 → 쿼리 리뷰 요청 → DBA 리뷰 완료 */
 export type TTemplateStatus =
@@ -219,4 +222,16 @@ export const fnEnsureEventTemplatesForInstances = (
     `[events] 인스턴스 FK 보존 | 누락 템플릿 ${arrMissing.length}건 스텁 추가 | nId=${arrMissing.join(',')}`,
   );
   return arrMissing.length;
+};
+
+/** 쿼리 템플릿 삭제 1건 — 전체 메타 스냅샷 없이 event_template·query_set 만 반영 */
+export const fnCommitEventTemplateDeleteToStore = async (nTemplateId: number): Promise<void> => {
+  if (!fnIsMysqlStore()) {
+    fnSaveJson(STR_FILE, arrEvents);
+    return;
+  }
+  fnCancelMysqlDocFlushForFiles(['events.json', 'eventInstances.json']);
+  await fnAwaitInFlightMysqlDocFlush();
+  await fnDeleteEventTemplateFromMysql(fnGetMysqlAppPool(), nTemplateId);
+  fnMirrorJsonToDisk(STR_FILE, arrEvents);
 };

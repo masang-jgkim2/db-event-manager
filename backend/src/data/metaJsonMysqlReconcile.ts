@@ -1,6 +1,8 @@
 /**
- * DATA_STORE=mysql — 디스크 JSON 미러 vs MySQL(인메모리) 불일치 시 최신 쪽으로 병합.
- * 미러만 앞서간 경우(비동기 flush 유실) 기동 시 자동 복구.
+ * DATA_STORE=mysql — 디스크 JSON 미러 vs MySQL(인메모리) 불일치 시 병합.
+ * - eventInstances·events: revision 큰 쪽 (flush 유실 복구)
+ * - products·roles·dbConnections: MySQL 정본, JSON은 MySQL에 없는 nId만 추가
+ * - 기동 마지막: 마스터 JSON 미러가 메모리와 다르면 MySQL→디스크만 갱신
  */
 import type { Pool } from 'mysql2/promise';
 import type { IEventInstance } from './eventInstances';
@@ -35,9 +37,6 @@ export const fnEventInstanceRevisionMs = (obj: IEventInstance): number => {
   }
   return n;
 };
-
-export const fnDbConnectionRevisionMs = (obj: IDbConnection): number =>
-  Math.max(fnParseMs(obj.dtUpdatedAt), fnParseMs(obj.dtCreatedAt));
 
 export interface IMergeByNIdStats {
   nMysql: number;
@@ -115,6 +114,108 @@ export const fnMergeByNId = <T extends { nId: number }>(
   };
 };
 
+/** nId 기준 — MySQL 정본, JSON은 MySQL에 없는 nId만 추가 (동일 ID는 항상 MySQL) */
+export const fnMergeByNIdMysqlAuthoritative = <T extends { nId: number }>(
+  arrMysql: readonly T[],
+  arrJson: readonly T[],
+): { arrMerged: T[]; stats: IMergeByNIdStats } => {
+  const mapMysql = new Map(arrMysql.map((row) => [row.nId, row]));
+  const mapJson = new Map(arrJson.map((row) => [row.nId, row]));
+  const arrIds = [...new Set([...mapMysql.keys(), ...mapJson.keys()])].sort((a, b) => a - b);
+
+  const arrJsonOnly: number[] = [];
+  const arrMysqlOnly: number[] = [];
+  const arrMerged: T[] = [];
+  let bChanged = arrMysql.length !== arrJson.length;
+
+  for (const nId of arrIds) {
+    const rowMysql = mapMysql.get(nId);
+    const rowJson = mapJson.get(nId);
+    if (rowMysql) {
+      arrMerged.push(rowMysql);
+      if (!rowJson) {
+        arrMysqlOnly.push(nId);
+      }
+    } else if (rowJson) {
+      arrMerged.push(rowJson);
+      arrJsonOnly.push(nId);
+      bChanged = true;
+    }
+  }
+
+  if (!bChanged && arrMerged.length === arrMysql.length) {
+    for (let i = 0; i < arrMerged.length; i += 1) {
+      if (arrMerged[i] !== arrMysql[i]) {
+        bChanged = true;
+        break;
+      }
+    }
+  }
+
+  return {
+    arrMerged,
+    stats: {
+      nMysql: arrMysql.length,
+      nJson: arrJson.length,
+      nMerged: arrMerged.length,
+      arrJsonOnly,
+      arrMysqlOnly,
+      arrJsonWon: [],
+      arrMysqlWon: [],
+      bChanged,
+    },
+  };
+};
+
+const fnRefreshMasterJsonMirrorIfStale = <T>(strFilename: string, arrMemory: readonly T[]): boolean => {
+  const arrJson = fnReadJsonArrayFromDiskRaw<T>(strFilename);
+  if (!arrJson?.length) return false;
+  if (JSON.stringify(arrJson) === JSON.stringify(arrMemory)) return false;
+  fnMirrorJsonToDisk(strFilename, [...arrMemory]);
+  console.log(`[DataStore] JSON 미러 갱신 | ${strFilename} | MySQL(메모리)→디스크`);
+  return true;
+};
+
+interface IReconcileMirrorCtx {
+  setMirrorFiles: Set<string>;
+  arrEventInstances: IEventInstance[];
+  arrEvents: IEventTemplate[];
+  arrProducts: IProduct[];
+  arrDbConnections: IDbConnection[];
+  arrUsers: IUserRow[];
+  arrUserRoles: { nUserId: number; nRoleId: number }[];
+  arrRoles: IRoleRowJson[];
+  arrRolePermissions: unknown[];
+}
+
+/** reconcile 후 변경된 엔티티 미러 + 마스터 JSON stale 갱신 */
+const fnApplyReconcileDiskMirrors = (ctx: IReconcileMirrorCtx): void => {
+  if (ctx.setMirrorFiles.has('eventInstances.json')) {
+    fnMirrorJsonToDisk('eventInstances.json', ctx.arrEventInstances);
+  }
+  if (ctx.setMirrorFiles.has('events.json')) {
+    fnMirrorJsonToDisk('events.json', ctx.arrEvents);
+  }
+  if (ctx.setMirrorFiles.has('products.json')) {
+    fnMirrorJsonToDisk('products.json', ctx.arrProducts);
+  }
+  if (ctx.setMirrorFiles.has('dbConnections.json')) {
+    const arrForDisk = ctx.arrDbConnections.map((c) => ({ ...c }));
+    fnMirrorJsonToDisk('dbConnections.json', arrForDisk);
+  }
+  if (ctx.setMirrorFiles.has('users.json')) {
+    fnMirrorJsonToDisk('users.json', ctx.arrUsers);
+    fnMirrorJsonToDisk('userRoles.json', ctx.arrUserRoles);
+  }
+  if (ctx.setMirrorFiles.has('roles.json')) {
+    fnMirrorJsonToDisk('roles.json', ctx.arrRoles);
+    fnMirrorJsonToDisk('rolePermissions.json', ctx.arrRolePermissions);
+  }
+  fnRefreshMasterJsonMirrorIfStale('products.json', ctx.arrProducts);
+  fnRefreshMasterJsonMirrorIfStale('roles.json', ctx.arrRoles);
+  fnRefreshMasterJsonMirrorIfStale('rolePermissions.json', ctx.arrRolePermissions);
+};
+
 const fnLogMergeStats = (strLabel: string, stats: IMergeByNIdStats): void => {
   if (!stats.bChanged) {
     console.log(`[DataStore] JSON↔MySQL 동기화 | ${strLabel} | 일치 (${stats.nMerged}건)`);
@@ -188,11 +289,7 @@ export const fnReconcileMetaJsonWithMysql = async (
 
   const arrJsonProducts = fnReadJsonArrayFromDiskRaw<IProduct>('products.json') ?? [];
   if (arrJsonProducts.length > 0) {
-    const { arrMerged, stats } = fnMergeByNId(
-      arrProducts,
-      arrJsonProducts,
-      (p) => fnParseMs(p.dtCreatedAt),
-    );
+    const { arrMerged, stats } = fnMergeByNIdMysqlAuthoritative(arrProducts, arrJsonProducts);
     arrDetails.push({ strEntity: 'products', stats });
     if (stats.bChanged) {
       arrProducts.length = 0;
@@ -206,11 +303,7 @@ export const fnReconcileMetaJsonWithMysql = async (
   const arrJsonDb = fnReadJsonArrayFromDiskRaw<IDbConnection>('dbConnections.json') ?? [];
   if (arrJsonDb.length > 0) {
     const arrJsonNorm = fnNormalizeConnections(arrJsonDb);
-    const { arrMerged, stats } = fnMergeByNId(
-      arrDbConnections,
-      arrJsonNorm,
-      fnDbConnectionRevisionMs,
-    );
+    const { arrMerged, stats } = fnMergeByNIdMysqlAuthoritative(arrDbConnections, arrJsonNorm);
     arrDetails.push({ strEntity: 'dbConnections', stats });
     if (stats.bChanged) {
       arrDbConnections.length = 0;
@@ -224,11 +317,7 @@ export const fnReconcileMetaJsonWithMysql = async (
   // roles — JSON에만 있는 역할(예: E2E 프로브) 병합 후 user_roles FK 보장
   const arrJsonRoles = fnReadJsonArrayFromDiskRaw<IRoleRowJson>('roles.json') ?? [];
   if (arrJsonRoles.length > 0) {
-    const { arrMerged, stats } = fnMergeByNId(
-      arrRoles,
-      arrJsonRoles,
-      (r) => Math.max(fnParseMs(r.dtUpdatedAt), fnParseMs(r.dtCreatedAt)),
-    );
+    const { arrMerged, stats } = fnMergeByNIdMysqlAuthoritative(arrRoles, arrJsonRoles);
     arrDetails.push({ strEntity: 'roles', stats });
     if (stats.bChanged) {
       arrRoles.length = 0;
@@ -283,6 +372,10 @@ export const fnReconcileMetaJsonWithMysql = async (
   }
 
   if (!bAnyChanged) {
+    const { arrRolePermissions } = await import('./rolePermissions');
+    fnRefreshMasterJsonMirrorIfStale('products.json', arrProducts);
+    fnRefreshMasterJsonMirrorIfStale('roles.json', arrRoles);
+    fnRefreshMasterJsonMirrorIfStale('rolePermissions.json', arrRolePermissions);
     return { bAnyChanged: false, arrDetails };
   }
 
@@ -294,26 +387,18 @@ export const fnReconcileMetaJsonWithMysql = async (
 
   await fnRelationalWriteFullFromMemory(objPool);
 
-  if (setMirrorFiles.has('eventInstances.json')) {
-    fnMirrorJsonToDisk('eventInstances.json', arrEventInstances);
-  }
-  if (setMirrorFiles.has('events.json')) {
-    fnMirrorJsonToDisk('events.json', arrEvents);
-  }
-  if (setMirrorFiles.has('products.json')) {
-    fnMirrorJsonToDisk('products.json', arrProducts);
-  }
-  if (setMirrorFiles.has('dbConnections.json')) {
-    const arrForDisk = arrDbConnections.map((c) => ({ ...c }));
-    fnMirrorJsonToDisk('dbConnections.json', arrForDisk);
-  }
-  if (setMirrorFiles.has('users.json')) {
-    fnMirrorJsonToDisk('users.json', arrUsers);
-    fnMirrorJsonToDisk('userRoles.json', arrUserRoles);
-  }
-  if (setMirrorFiles.has('roles.json')) {
-    fnMirrorJsonToDisk('roles.json', arrRoles);
-  }
+  const { arrRolePermissions } = await import('./rolePermissions');
+  fnApplyReconcileDiskMirrors({
+    setMirrorFiles,
+    arrEventInstances,
+    arrEvents,
+    arrProducts,
+    arrDbConnections,
+    arrUsers,
+    arrUserRoles,
+    arrRoles,
+    arrRolePermissions,
+  });
 
   console.log('[DataStore] JSON↔MySQL 동기화 완료 | MySQL·미러 반영');
   return { bAnyChanged: true, arrDetails };

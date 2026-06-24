@@ -1,6 +1,7 @@
 // 역할 — 정규화: 권한은 rolePermissions.ts에서 조회/저장
 import { IRole, TPermission } from '../types';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnMirrorJsonToDisk } from './jsonStore';
+import { fnIsMysqlStore } from './dataStore';
 import {
   fnDeletePermissionsForRole,
   fnGetPermissionsByRoleId,
@@ -31,7 +32,12 @@ const ARR_SEED_ROWS: IRoleRow[] = [
 
 export const arrRoles: IRoleRow[] = fnLoadJson<IRoleRow>(STR_FILE, ARR_SEED_ROWS);
 
-export const fnSaveRoles = () => fnSaveJson(STR_FILE, arrRoles);
+export const fnSaveRoles = () => {
+  fnSaveJson(STR_FILE, arrRoles);
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrRoles);
+  }
+};
 
 export const fnGetNextRoleId = (): number =>
   arrRoles.length > 0 ? Math.max(...arrRoles.map((r) => r.nId)) + 1 : 1;
