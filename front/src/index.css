@@ -72,6 +72,22 @@ pre.dqpm-code-block {
   color: inherit;
 }
 
+/* 다크 사이드바: 선택·하위 선택 시 부모 SubMenu 제목도 밝게 (Ant dark 기본값보다 선명) */
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-item-selected,
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-item-selected .anticon,
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-submenu-selected > .ant-menu-submenu-title,
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-submenu-selected > .ant-menu-submenu-title .anticon {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* 미선택 메뉴·SubMenu 제목 — 선택 항목 대비 살짝 어둡게 */
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-item:not(.ant-menu-item-selected),
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-item:not(.ant-menu-item-selected) .anticon,
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-submenu:not(.ant-menu-submenu-selected) > .ant-menu-submenu-title,
+.dqpm-layout-sider .ant-menu-dark.ant-menu-inline .ant-menu-submenu:not(.ant-menu-submenu-selected) > .ant-menu-submenu-title .anticon {
+  color: rgba(255, 255, 255, 0.60);
+}
+
 .dqpm-layout-sider .ant-menu-inline .ant-menu-item-group-title,
 .dqpm-layout-sider .ant-menu-inline .ant-menu-submenu-title {
   padding-inline: 10px;

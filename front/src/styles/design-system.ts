@@ -40,13 +40,13 @@ const OBJ_CURSOR_NEUTRAL = {
     strSiderBg: '#F3F3F3',
     strSiderBorder: '#E5E5E5',
     strSiderLogoBorder: '#E5E5E5',
-    strSiderLogoText: 'rgba(0, 0, 0, 0.90)',
+    strSiderLogoText: 'rgba(0, 0, 0, 0.76)',
     strHeaderBg: '#F3F3F3',
     strHeaderBorder: '#E5E5E5',
     strContentPanelBorder: '#E5E5E5',
     strMenuItemHover: 'rgba(0, 0, 0, 0.05)',
     strMenuItemSelected: 'rgba(0, 0, 0, 0.08)',
-    strMenuItemColor: 'rgba(0, 0, 0, 0.68)',
+    strMenuItemColor: 'rgba(0, 0, 0, 0.54)',
     strMenuGroup: 'rgba(0, 0, 0, 0.42)',
     strSegmentedTrack: '#EBEBEB',
     strScrollbarThumb: 'rgba(0, 0, 0, 0.22)',
@@ -60,13 +60,13 @@ const OBJ_CURSOR_NEUTRAL = {
     strSiderBg: '#252526',
     strSiderBorder: 'rgba(255, 255, 255, 0.08)',
     strSiderLogoBorder: 'rgba(255, 255, 255, 0.08)',
-    strSiderLogoText: 'rgba(255, 255, 255, 0.92)',
+    strSiderLogoText: 'rgba(255, 255, 255, 0.78)',
     strHeaderBg: '#252526',
     strHeaderBorder: 'rgba(255, 255, 255, 0.08)',
     strContentPanelBorder: 'rgba(255, 255, 255, 0.08)',
     strMenuItemHover: 'rgba(255, 255, 255, 0.06)',
     strMenuItemSelected: 'rgba(255, 255, 255, 0.10)',
-    strMenuItemColor: 'rgba(255, 255, 255, 0.76)',
+    strMenuItemColor: 'rgba(255, 255, 255, 0.60)',
     strMenuGroup: 'rgba(255, 255, 255, 0.42)',
     strSegmentedTrack: '#2D2D30',
     strScrollbarThumb: 'rgba(255, 255, 255, 0.28)',
@@ -282,16 +282,20 @@ export function fnBuildDesignSystem(
       ? `color-mix(in srgb, ${strPrimary} 14%, ${STR_CURSOR_SITE_CANVAS})`
       : `color-mix(in srgb, ${strPrimary} 12%, #ffffff)`;
 
-  // 사이드바 메뉴 — 선택·호버 배경을 포인트 컬러 틴트로
+  // 사이드바 메뉴 — 선택 시 미선택보다 밝게 (다크: 흰색 강조 / 라이트: 잉크·액센트)
   const strMenuSelectedBg = bDark
-    ? `color-mix(in srgb, ${strPrimary} 28%, ${objCursor.strSiderBg})`
-    : `color-mix(in srgb, ${strPrimary} 18%, ${objCursor.strSiderBg})`;
+    ? `color-mix(in srgb, rgba(255, 255, 255, 0.14) 75%, ${strPrimary} 25%)`
+    : bCursorSiteShell
+      ? `color-mix(in srgb, ${strPrimary} 22%, ${objCursor.strSiderBg})`
+      : `color-mix(in srgb, ${strPrimary} 20%, ${objCursor.strSiderBg})`;
   const strMenuHoverBg = bDark
-    ? `color-mix(in srgb, ${strPrimary} 14%, transparent)`
+    ? `color-mix(in srgb, ${strPrimary} 14%, rgba(255, 255, 255, 0.08))`
     : `color-mix(in srgb, ${strPrimary} 10%, ${objCursor.strSiderBg})`;
   const strMenuSelectedColor = bDark
-    ? `color-mix(in srgb, ${arrP[IDX_PRIMARY]} 92%, #ffffff)`
-    : (bCursorSiteShell ? STR_CURSOR_SITE_ACCENT : arrP[IDX_DARK1]);
+    ? 'rgba(255, 255, 255, 0.95)'
+    : bCursorSiteShell
+      ? STR_CURSOR_SITE_ACCENT
+      : STR_CURSOR_SITE_INK;
 
   // ── Ant Design 컴포넌트 토큰 ─────────────────────────────
   const antdToken: Record<string, unknown> = {
@@ -406,6 +410,7 @@ export function fnBuildDesignSystem(
       activeBarWidth:         0,
       groupTitleColor:        strMenuGroupColor,
       darkItemBg:             'transparent',
+      darkItemColor:          objCursor.strMenuItemColor,
       darkSubMenuItemBg:      'transparent',
       darkItemSelectedBg:     strMenuSelectedBg,
       darkItemSelectedColor:  strMenuSelectedColor,
