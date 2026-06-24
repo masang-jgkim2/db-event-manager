@@ -40,7 +40,7 @@ export const OBJ_CURSOR_TIMELINE = {
   done: '#c08532',
 } as const;
 
-const STR_INK_MUTED = 'rgba(38, 37, 30, 0.55)';
+const STR_INK_MUTED = 'rgba(38, 37, 30, 0.46)';
 const STR_INK_BORDER = 'rgba(38, 37, 30, 0.10)';
 const STR_INK_BORDER_STRONG = 'rgba(38, 37, 30, 0.14)';
 
@@ -76,7 +76,7 @@ export const OBJ_CURSOR_SITE_SHELL: { light: ICursorShellTokens } = {
     strSiderBg: STR_CURSOR_SITE_CANVAS,
     strSiderBorder: STR_INK_BORDER,
     strSiderLogoBorder: STR_INK_BORDER,
-    strSiderLogoText: STR_CURSOR_SITE_INK,
+    strSiderLogoText: STR_CURSOR_SITE_BODY,
     strHeaderBg: STR_CURSOR_SITE_CANVAS,
     strHeaderBorder: STR_INK_BORDER,
     strContentPanelBorder: STR_INK_BORDER,

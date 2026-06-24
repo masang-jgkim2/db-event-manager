@@ -401,7 +401,7 @@ const MainLayout = () => {
             flexShrink: 0,
           }}
         >
-          <DatabaseOutlined style={{ fontSize: ds.objTypo.nLg + 8, color: token.colorPrimary }} />
+          <DatabaseOutlined style={{ fontSize: ds.objTypo.nLg + 8, color: ds.objSider.strLogoText }} />
           {!bCollapsed && (
             <span
               style={{
