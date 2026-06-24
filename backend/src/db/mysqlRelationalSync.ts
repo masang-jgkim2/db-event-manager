@@ -609,13 +609,32 @@ export const fnUpsertDbConnectionRowToMysql = async (
   );
 };
 
+/** DB 접속 삭제 불가 사유 — null 이면 삭제 가능 */
+export const fnGetDbConnectionDeleteBlockReason = async (
+  pool: Pool,
+  nDbConnectionId: number,
+): Promise<string | null> => {
+  const [tplRows] = await pool.query<RowDataPacket[]>(
+    'SELECT 1 AS b FROM event_template_query_set WHERE n_db_connection_id = ? LIMIT 1',
+    [nDbConnectionId],
+  );
+  if ((tplRows as RowDataPacket[]).length > 0) {
+    return '이 DB 접속 정보는 쿼리 템플릿에서 사용 중입니다. 쿼리 템플릿을 먼저 삭제하세요.';
+  }
+  const [instRows] = await pool.query<RowDataPacket[]>(
+    'SELECT 1 AS b FROM event_instance_execution_target WHERE n_db_connection_id = ? LIMIT 1',
+    [nDbConnectionId],
+  );
+  if ((instRows as RowDataPacket[]).length > 0) {
+    return '이 DB 접속 정보는 이벤트 인스턴스에서 사용 중입니다. 이벤트를 영구 삭제한 뒤 다시 시도하세요.';
+  }
+  return null;
+};
+
 /** 삭제 1건 — FK 참조 시 예외 */
 export const fnDeleteDbConnectionRowFromMysql = async (pool: Pool, nId: number): Promise<void> => {
-  if (await fnIsDbConnectionReferencedInMysql(pool, nId)) {
-    throw new Error(
-      `DB 접속 정보 #${nId} 은(는) 이벤트 인스턴스 또는 쿼리 템플릿에서 사용 중이라 삭제할 수 없습니다.`,
-    );
-  }
+  const strBlock = await fnGetDbConnectionDeleteBlockReason(pool, nId);
+  if (strBlock) throw new Error(strBlock);
   await pool.execute('DELETE FROM db_connection WHERE n_id = ?', [nId]);
 };
 
@@ -623,14 +642,76 @@ export const fnDeleteDbConnectionRowFromMysql = async (pool: Pool, nId: number):
 export const fnIsDbConnectionReferencedInMysql = async (
   pool: Pool,
   nDbConnectionId: number,
-): Promise<boolean> => {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT 1 AS b FROM event_instance_execution_target WHERE n_db_connection_id = ? LIMIT 1
-     UNION ALL
-     SELECT 1 FROM event_template_query_set WHERE n_db_connection_id = ? LIMIT 1`,
-    [nDbConnectionId, nDbConnectionId],
+): Promise<boolean> => (await fnGetDbConnectionDeleteBlockReason(pool, nDbConnectionId)) != null;
+
+/** 쿼리 템플릿 삭제 불가 사유 — 활성 인스턴스 참조 시 */
+export const fnGetEventTemplateDeleteBlockReason = async (
+  conn: PoolConnection,
+  nTemplateId: number,
+): Promise<string | null> => {
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `SELECT 1 AS b FROM event_instance
+     WHERE n_event_template_id = ? AND COALESCE(b_permanently_removed, 0) = 0 LIMIT 1`,
+    [nTemplateId],
   );
-  return (rows as RowDataPacket[]).length > 0;
+  if ((rows as RowDataPacket[]).length > 0) {
+    return `쿼리 템플릿 #${nTemplateId} 을(를) 참조하는 활성 이벤트 인스턴스가 있어 삭제할 수 없습니다.`;
+  }
+  return null;
+};
+
+/** 영구 삭제·고아 인스턴스 행 제거 후 템플릿 삭제 */
+const fnDeleteEventInstanceRowsForTemplateConn = async (
+  conn: PoolConnection,
+  nTemplateId: number,
+  bOnlyPermanentlyRemoved: boolean,
+): Promise<void> => {
+  const strFilter = bOnlyPermanentlyRemoved ? 'AND COALESCE(b_permanently_removed, 0) = 1' : '';
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `SELECT n_id FROM event_instance WHERE n_event_template_id = ? ${strFilter}`,
+    [nTemplateId],
+  );
+  for (const objRow of rows as RowDataPacket[]) {
+    const nInstId = Number(objRow.n_id);
+    await conn.execute('DELETE FROM event_instance_stage_actor WHERE n_instance_id = ?', [nInstId]);
+    await conn.execute('DELETE FROM event_instance_status_log WHERE n_instance_id = ?', [nInstId]);
+    await conn.execute('DELETE FROM event_instance_execution_target WHERE n_instance_id = ?', [nInstId]);
+    await conn.execute('DELETE FROM event_instance_deploy_scope WHERE n_instance_id = ?', [nInstId]);
+    await conn.execute('DELETE FROM event_instance WHERE n_id = ?', [nInstId]);
+  }
+};
+
+const fnDeleteEventTemplateRowConn = async (conn: PoolConnection, nTemplateId: number): Promise<void> => {
+  const strBlock = await fnGetEventTemplateDeleteBlockReason(conn, nTemplateId);
+  if (strBlock) throw new Error(strBlock);
+  await fnDeleteEventInstanceRowsForTemplateConn(conn, nTemplateId, true);
+  const [remain] = await conn.query<RowDataPacket[]>(
+    'SELECT 1 AS b FROM event_instance WHERE n_event_template_id = ? LIMIT 1',
+    [nTemplateId],
+  );
+  if ((remain as RowDataPacket[]).length > 0) {
+    throw new Error(
+      `쿼리 템플릿 #${nTemplateId} 을(를) 참조하는 이벤트 인스턴스가 남아 있어 삭제할 수 없습니다.`,
+    );
+  }
+  await conn.execute('DELETE FROM event_template_query_set WHERE n_event_template_id = ?', [nTemplateId]);
+  await conn.execute('DELETE FROM event_template WHERE n_id = ?', [nTemplateId]);
+};
+
+/** event_template·query_set 만 삭제 — 전체 메타 스냅샷 없음 */
+export const fnDeleteEventTemplateFromMysql = async (pool: Pool, nTemplateId: number): Promise<void> => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await fnDeleteEventTemplateRowConn(conn, nTemplateId);
+    await conn.commit();
+    console.log(`[events] MySQL event_template 삭제 | #${nTemplateId}`);
+  } catch (err: unknown) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 };
 
 /** db_connection 행만 UPSERT — 전체 DELETE 금지(FK: event_instance_execution_target 등) */
@@ -686,6 +767,157 @@ export const fnSyncDbConnectionsOnlyToMysql = async (
     }
     await conn.commit();
     console.log(`[dbConnections] MySQL db_connection 동기화 | ${arrRows.length}건`);
+  } catch (err: unknown) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
+/** 프로덕트 삭제 불가 사유 — null 이면 삭제 가능 */
+export const fnGetProductDeleteBlockReason = async (
+  conn: PoolConnection,
+  nProductId: number,
+): Promise<string | null> => {
+  const [tplRows] = await conn.query<RowDataPacket[]>(
+    'SELECT 1 AS b FROM event_template WHERE n_product_id = ? LIMIT 1',
+    [nProductId],
+  );
+  if ((tplRows as RowDataPacket[]).length > 0) {
+    return `프로덕트 #${nProductId} 은(는) 쿼리 템플릿에서 사용 중이라 삭제할 수 없습니다.`;
+  }
+  const [instRows] = await conn.query<RowDataPacket[]>(
+    'SELECT 1 AS b FROM event_instance WHERE n_product_id = ? LIMIT 1',
+    [nProductId],
+  );
+  if ((instRows as RowDataPacket[]).length > 0) {
+    return `프로덕트 #${nProductId} 은(는) 이벤트 인스턴스에서 사용 중이라 삭제할 수 없습니다.`;
+  }
+  const [etqsRows] = await conn.query<RowDataPacket[]>(
+    `SELECT 1 AS b FROM event_template_query_set etqs
+     INNER JOIN db_connection c ON c.n_id = etqs.n_db_connection_id
+     WHERE c.n_product_id = ? LIMIT 1`,
+    [nProductId],
+  );
+  if ((etqsRows as RowDataPacket[]).length > 0) {
+    return `프로덕트 #${nProductId} 의 DB 접속 정보가 쿼리 템플릿에서 사용 중이라 삭제할 수 없습니다.`;
+  }
+  const [eietRows] = await conn.query<RowDataPacket[]>(
+    `SELECT 1 AS b FROM event_instance_execution_target eiet
+     INNER JOIN db_connection c ON c.n_id = eiet.n_db_connection_id
+     WHERE c.n_product_id = ? LIMIT 1`,
+    [nProductId],
+  );
+  if ((eietRows as RowDataPacket[]).length > 0) {
+    return `프로덕트 #${nProductId} 의 DB 접속 정보가 이벤트 인스턴스에서 사용 중이라 삭제할 수 없습니다.`;
+  }
+  return null;
+};
+
+const fnMapMysqlProductDeleteError = (err: unknown): Error => {
+  const objErr = err as { errno?: number; code?: string };
+  if (objErr.errno === 1451 || objErr.code === 'ER_ROW_IS_REFERENCED_2') {
+    return new Error(
+      '프로덕트가 쿼리 템플릿·이벤트·DB 접속 정보에서 사용 중이라 삭제할 수 없습니다.',
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+};
+
+/** product·자식(db_connection·product_service) 명시 삭제 — CASCADE·RESTRICT FK 오류 방지 */
+const fnDeleteProductRowConn = async (conn: PoolConnection, nProductId: number): Promise<void> => {
+  const strBlock = await fnGetProductDeleteBlockReason(conn, nProductId);
+  if (strBlock) throw new Error(strBlock);
+  try {
+    await conn.execute('DELETE FROM db_connection WHERE n_product_id = ?', [nProductId]);
+    await conn.execute('DELETE FROM product_service WHERE n_product_id = ?', [nProductId]);
+    await conn.execute('DELETE FROM product WHERE n_id = ?', [nProductId]);
+  } catch (err: unknown) {
+    throw fnMapMysqlProductDeleteError(err);
+  }
+};
+
+const fnUpsertProductRowConn = async (conn: PoolConnection, prod: IProduct): Promise<void> => {
+  const strDt = fnToMysqlDatetime6Required(prod.dtCreatedAt, new Date().toISOString());
+  await conn.execute(
+    `INSERT INTO product (n_id, str_name, str_description, str_db_type, dt_created_at, dt_updated_at)
+     VALUES (?,?,?,?,?,?)
+     ON DUPLICATE KEY UPDATE
+       str_name = VALUES(str_name),
+       str_description = VALUES(str_description),
+       str_db_type = VALUES(str_db_type),
+       dt_created_at = VALUES(dt_created_at),
+       dt_updated_at = VALUES(dt_updated_at)`,
+    [prod.nId, prod.strName, prod.strDescription ?? '', prod.strDbType, strDt, strDt],
+  );
+  await conn.execute('DELETE FROM product_service WHERE n_product_id = ?', [prod.nId]);
+  let nSort = 0;
+  for (const objSvc of prod.arrServices ?? []) {
+    const nSvcId = Number(objSvc.nServiceId);
+    if (!nSvcId) continue;
+    await conn.execute(
+      `INSERT INTO product_service (n_id, n_product_id, n_sort, str_abbr, str_region) VALUES (?,?,?,?,?)`,
+      [nSvcId, prod.nId, nSort, objSvc.strAbbr, objSvc.strRegion],
+    );
+    nSort += 1;
+  }
+};
+
+/** product·product_service 만 동기화 — 전체 메타 스냅샷 없음 */
+export const fnSyncProductsOnlyToMysql = async (pool: Pool, arrRows: IProduct[]): Promise<void> => {
+  const conn = await pool.getConnection();
+  const setKeepIds = new Set(arrRows.map((p) => p.nId));
+  try {
+    await conn.beginTransaction();
+    for (const objProd of arrRows) {
+      await fnUpsertProductRowConn(conn, objProd);
+    }
+    const [arrProdIds] = await conn.query<RowDataPacket[]>('SELECT n_id FROM product');
+    for (const objRow of arrProdIds as RowDataPacket[]) {
+      const nId = Number(objRow.n_id);
+      if (setKeepIds.has(nId)) continue;
+      await fnDeleteProductRowConn(conn, nId);
+    }
+    await conn.commit();
+    console.log(`[products] MySQL product·product_service 동기화 | ${arrRows.length}건`);
+  } catch (err: unknown) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
+/** activity_log 테이블만 치환 — FK 자식 없음 */
+export const fnReplaceActivityLogsOnly = async (
+  pool: Pool,
+  arrLogs: IActivityLogRow[],
+): Promise<void> => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.execute('DELETE FROM activity_log');
+    for (const log of arrLogs) {
+      await conn.execute(
+        `INSERT INTO activity_log (
+          n_id, dt_at, str_method, str_path, n_status_code, n_actor_user_id, str_actor_user_id, str_category, json_actor_roles
+        ) VALUES (?,?,?,?,?,?,?,?,?)`,
+        [
+          log.nId,
+          fnToMysqlDatetime6Required(log.dtAt, new Date().toISOString()),
+          log.strMethod,
+          log.strPath,
+          log.nStatusCode,
+          log.nActorUserId,
+          log.strActorUserId,
+          log.strCategory,
+          log.arrActorRoles != null ? JSON.stringify(log.arrActorRoles) : null,
+        ],
+      );
+    }
+    await conn.commit();
+    console.log(`[activityLogs] MySQL activity_log 동기화 | ${arrLogs.length}건`);
   } catch (err: unknown) {
     await conn.rollback();
     throw err;

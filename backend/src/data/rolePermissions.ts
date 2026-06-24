@@ -1,7 +1,7 @@
 // 정규화: 역할별 권한 (roles.arr_permissions 분리)
 import type { TPermission } from '../types';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
-import { fnIsJsonStore } from './dataStore';
+import { fnLoadJson, fnSaveJson, fnMirrorJsonToDisk } from './jsonStore';
+import { fnIsJsonStore, fnIsMysqlStore } from './dataStore';
 
 export interface IRolePermissionRow {
   nRoleId: number;
@@ -55,7 +55,12 @@ if (fnMutateRolePermissionBootFixes(arrLoaded) && fnIsJsonStore()) {
 
 export const arrRolePermissions: IRolePermissionRow[] = arrLoaded;
 
-export const fnSaveRolePermissions = () => fnSaveJson(STR_FILE, arrRolePermissions);
+export const fnSaveRolePermissions = () => {
+  fnSaveJson(STR_FILE, arrRolePermissions);
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrRolePermissions);
+  }
+};
 
 /** MySQL 하이드레이트 직후 보강 + 영속화 */
 export const fnApplyRolePermissionBootFixesAfterHydrate = (): void => {

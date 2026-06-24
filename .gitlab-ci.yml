@@ -118,7 +118,7 @@ build_qa:
       zip -r ${ZIP_FILE_NAME} \
         backend/dist backend/node_modules backend/package.json backend/package-lock.json \
         front/dist \
-        appspec.yml scripts/deploy
+        appspec.yml scripts/deploy scripts/live_meta_json_seed scripts/install-live-meta-json-seed.sh
     - ls -lh ${ZIP_FILE_NAME}
     - echo "## Uploading to S3..."
     - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
@@ -146,7 +146,7 @@ build_live:
       zip -r ${ZIP_FILE_NAME} \
         backend/dist backend/node_modules backend/package.json backend/package-lock.json \
         front/dist \
-        appspec.yml scripts/deploy
+        appspec.yml scripts/deploy scripts/live_meta_json_seed scripts/install-live-meta-json-seed.sh
     - ls -lh ${ZIP_FILE_NAME}
     - aws s3 cp ${ZIP_FILE_NAME} s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME} --region ${S3_REGION}
     - echo "## Upload complete:" "s3://${S3_BUCKET}/${PROJECT_NAME}/${ZIP_FILE_NAME}"
