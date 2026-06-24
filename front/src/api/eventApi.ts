@@ -42,9 +42,24 @@ export const fnApiCreateEvent = async (objData: Record<string, unknown>) => {
 export const fnApiUpdateEvent = async (nId: number, objData: Record<string, unknown>) => {
   try {
     const response = await apiClient.put(`/events/${nId}`, objData);
-    return response.data;
+    return response.data as {
+      bSuccess: boolean;
+      objEvent?: Record<string, unknown>;
+      bReapprovalRequired?: boolean;
+      strMessage?: string;
+    };
   } catch (error: any) {
     return fnCatchApiError(error, '수정에 실패했습니다.');
+  }
+};
+
+/** DBA 리뷰 대기 중 쿼리·세트만 수정 */
+export const fnApiUpdateEventQuery = async (nId: number, objData: Record<string, unknown>) => {
+  try {
+    const response = await apiClient.put(`/events/${nId}/query`, objData);
+    return response.data as { bSuccess: boolean; objEvent?: Record<string, unknown>; bReapprovalRequired?: boolean; strMessage?: string };
+  } catch (error: unknown) {
+    return fnCatchApiError(error, '쿼리 수정에 실패했습니다.');
   }
 };
 
@@ -55,5 +70,19 @@ export const fnApiDeleteEvent = async (nId: number) => {
     return response.data;
   } catch (error: any) {
     return fnCatchApiError(error, '삭제에 실패했습니다.');
+  }
+};
+
+/** 쿼리 템플릿 워크플로 상태 전이 */
+export const fnApiPatchEventStatus = async (
+  nId: number,
+  strNextStatus: string,
+  strComment?: string,
+) => {
+  try {
+    const response = await apiClient.patch(`/events/${nId}/status`, { strNextStatus, strComment });
+    return response.data;
+  } catch (error: unknown) {
+    return fnCatchApiError(error, '상태 변경에 실패했습니다.');
   }
 };

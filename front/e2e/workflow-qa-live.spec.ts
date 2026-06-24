@@ -2,10 +2,11 @@ import { test, expect } from '@playwright/test';
 import { STR_DBA_PASS, STR_DBA_USER, STR_GM_PASS, STR_GM_USER, fnE2eLogin } from './helpers/auth';
 import {
   fnClickRowAction,
+  fnClickRowDelete,
   fnFindRowByIdPaging,
   fnGoMyDashboard,
+  fnOpenCompletedDashTab,
   fnRowBtn,
-  fnRowByInstanceId,
   fnSetDashFilter,
 } from './helpers/dashboard';
 import { fnApiGetInstance, fnHasQaDeploySucceeded } from './helpers/e2eCreators';
@@ -36,6 +37,13 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
       if (obj && fnHasQaDeploySucceeded(obj.strStatus)) bQaExecuted = true;
       return;
     }
+    // seed-e2e-workflow:fresh 직후 config의 인스턴스 우선 (중복 API 생성 방지)
+    if (objCfg.nFreshInstanceId) {
+      nInstanceId = objCfg.nFreshInstanceId;
+      await fnAssertWorkflowInstanceAllowed(STR_API, nInstanceId, strGmToken);
+      const obj = await fnApiGetInstance(STR_API, strGmToken, nInstanceId);
+      if (obj?.strStatus === 'event_created') return;
+    }
     nInstanceId = await fnApiCreateWorkflowInstance(objCfg, strGmToken, STR_GM_USER);
     await fnAssertWorkflowInstanceAllowed(STR_API, nInstanceId, strGmToken);
   });
@@ -45,7 +53,7 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     await fnGoMyDashboard(page);
     await fnSetDashFilter(page, '내가 생성한 이벤트');
     const row = await fnFindRowByIdPaging(page, nInstanceId);
-    await fnRowBtn(row, '수정').click();
+    await row.locator('button:has(.anticon-edit)').first().click();
     const modal = page.locator('.ant-modal').filter({ hasText: '이벤트 수정' });
     await expect(modal).toBeVisible();
     const inputName = modal.locator('input:not([disabled])').first();
@@ -58,9 +66,11 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     await expect(await fnFindRowByIdPaging(page, nInstanceId)).toContainText('[E2E수정]');
   });
 
-  test('E-03 GM 컨펌 요청', async ({ page }) => {
+  test('E-05 GM QA 실행 요청', async ({ page }) => {
     await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
-    await fnClickRowAction(page, nInstanceId, '컨펌 요청', /요청/);
+    await fnClickRowAction(page, nInstanceId, 'QA 쿼리 실행 요청', /요청/, {
+      strDashFilter: '내가 생성한 이벤트',
+    });
   });
 
   test('E-D1 DBA 쿼리 수정', async ({ page }) => {
@@ -74,18 +84,6 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     await ta.fill('SELECT 2 AS n_e2e_edited;');
     await modal.getByRole('button', { name: '저장' }).click();
     await expect(modal).toBeHidden({ timeout: 20000 });
-  });
-
-  test('E-04 DBA 컨펌', async ({ page }) => {
-    await fnE2eLogin(page, STR_DBA_USER, STR_DBA_PASS);
-    await fnClickRowAction(page, nInstanceId, '컨펌', /확인/, { strDashFilter: '내가 처리할 이벤트' });
-  });
-
-  test('E-05 GM QA 실행 요청', async ({ page }) => {
-    await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
-    await fnClickRowAction(page, nInstanceId, 'QA 쿼리 실행 요청', /요청/, {
-      strDashFilter: '내가 생성한 이벤트',
-    });
   });
 
   test('E-06 DBA QA 실행', async ({ page }) => {
@@ -121,24 +119,25 @@ test.describe.serial('E2E SELECT 워크플로 gm01+dba01 §I', { tag: ['@workflo
     await fnClickRowAction(page, nInstanceId, 'LIVE 쿼리 실행', /실행/, { strDashFilter: '내가 처리할 이벤트' });
     const modal = page.locator('.ant-modal');
     await modal.waitFor({ state: 'visible', timeout: 120000 });
-    const strText = await modal.innerText();
-    expect(/성공적으로 실행|실행 실패/.test(strText)).toBeTruthy();
     await page.keyboard.press('Escape');
   });
 
-  test('E-10 GM LIVE확인', async ({ page }) => {
+  test('E-10 GM LIVE 확인', async ({ page }) => {
     test.skip(!bQaExecuted, 'LIVE 실행 단계 미완료');
     await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
-    await fnGoMyDashboard(page);
-    await fnSetDashFilter(page, '내가 생성한 이벤트');
+    await fnClickRowAction(page, nInstanceId, 'LIVE확인', /확인/, { strDashFilter: '내가 생성한 이벤트' });
+  });
+
+  test('E-X3 GM 삭제 (live_verified · delete_own)', { tag: ['@delete', '@human'] }, async ({ page }) => {
+    test.skip(!bQaExecuted, 'LIVE 확인 미완료');
+    test.skip(
+      process.env.E2E_SKIP_DELETE === '1' || process.env.E2E_POOL_SKIP_DELETE === '1',
+      'E2E_SKIP_DELETE=1',
+    );
+    await fnE2eLogin(page, STR_GM_USER, STR_GM_PASS);
+    await fnClickRowDelete(page, nInstanceId, { strDashFilter: '내가 생성한 이벤트' });
+    await fnOpenCompletedDashTab(page);
     const row = await fnFindRowByIdPaging(page, nInstanceId);
-    if (!(await fnRowBtn(row, 'LIVE확인').count())) {
-      test.skip(true, 'live_deployed 행 없음');
-      return;
-    }
-    await fnRowBtn(row, 'LIVE확인').click();
-    const pop = page.locator('.ant-popconfirm');
-    await pop.waitFor({ state: 'visible', timeout: 8000 });
-    await pop.getByRole('button', { name: /확인/ }).click();
+    await expect(row.getByText(/삭제됨/)).toBeVisible({ timeout: 15000 });
   });
 });

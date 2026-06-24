@@ -15,16 +15,23 @@ import {
   Spin,
   Empty,
   theme,
+  Steps,
+  Tooltip,
+  Timeline,
+  Alert,
 } from 'antd';
 import type { FormListFieldData } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined, CalendarOutlined,
+  CodeOutlined, CopyOutlined,
 } from '@ant-design/icons';
 import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
 import { DqpmTag } from '../components/DqpmTag';
+import QueryEditDiffView from '../components/QueryEditDiffView';
+import SqlLineNumberArea from '../components/SqlLineNumberArea';
 import { useEventStore } from '../stores/useEventStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -32,14 +39,23 @@ import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type {
   IEventTemplate, IQueryTemplateItem, IEventInstance, TEventCategory, TEventType, TInputFormat,
-  IDbConnection, TPermission, TEventStatus,
+  IDbConnection, TPermission, TEventStatus, TTemplateStatus,
 } from '../types';
-import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS, OBJ_STATUS_CONFIG } from '../types';
+import { ARR_EVENT_CATEGORIES, ARR_EVENT_TYPES, ARR_INPUT_FORMATS, OBJ_STATUS_CONFIG, OBJ_TEMPLATE_STATUS_CONFIG, ARR_TEMPLATE_STATUSES } from '../types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
-import { fnRenderStatusIcon } from '../constants/statusIcons';
+import { fnRenderStatusIcon, fnRenderTemplateStatusIcon, OBJ_TEMPLATE_STATUS_ICONS } from '../constants/statusIcons';
 import type { TTagVariant } from '../styles/tagPalette';
 import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
+import {
+  fnDeriveTemplateConnFilterAbbr,
+  fnFilterConnectionsForTemplatePicker,
+  fnListTemplateServiceScopeAbbrs,
+  fnMergeTemplatePickerConnections,
+  fnResolveConnectionServiceAbbr,
+  type TProductServiceLookup,
+} from '../utils/dbConnectionScope';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -60,12 +76,68 @@ type TQueryMode = 'single' | 'multi';
 
 const QUERY_TABS_ADD_KEY = '__add__';
 
+const fnResolveTemplateStatus = (obj: IEventTemplate): TTemplateStatus =>
+  obj.strStatus ?? 'dba_confirmed';
+
+const fnBuildTemplateSteps = (strStatus: TTemplateStatus) => {
+  const arrSteps = ARR_TEMPLATE_STATUSES.map((s) => ({
+    strStatus: s,
+    strLabel: OBJ_TEMPLATE_STATUS_CONFIG[s].strLabel,
+  }));
+  const nCurrentIdx = arrSteps.findIndex((s) => s.strStatus === strStatus);
+  const nStep = nCurrentIdx >= 0 ? nCurrentIdx : 0;
+  const bFinished = strStatus === 'dba_confirmed';
+  return { arrSteps, nStep, bFinished };
+};
+
+type TTemplateStepperProps = { objTemplate: IEventTemplate };
+const TemplateStepper = ({ objTemplate }: TTemplateStepperProps) => {
+  const { token } = theme.useToken();
+  const strStatus = fnResolveTemplateStatus(objTemplate);
+  const { arrSteps, nStep, bFinished } = fnBuildTemplateSteps(strStatus);
+
+  return (
+    <div style={{
+      padding: '12px 16px 14px',
+      marginBottom: 12,
+      background: token.colorFillAlter,
+      borderRadius: token.borderRadiusLG,
+      border: `1px solid ${token.colorBorderSecondary}`,
+    }}>
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>템플릿 진행</Text>
+        <Space size={4}>
+          {fnRenderTemplateStatusIcon(strStatus, 12)}
+          <DqpmTag tone={OBJ_TEMPLATE_STATUS_CONFIG[strStatus].strTagVariant} style={{ fontSize: 11 }}>
+            {OBJ_TEMPLATE_STATUS_CONFIG[strStatus].strLabel}
+          </DqpmTag>
+        </Space>
+        {objTemplate.objConfirmer?.strDisplayName && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            승인: {objTemplate.objConfirmer.strDisplayName}
+          </Text>
+        )}
+      </div>
+      <Steps
+        size="small"
+        current={nStep}
+        status={bFinished ? 'finish' : 'process'}
+        items={arrSteps.map((s, nIdx) => ({
+          title: <span style={{ fontSize: 12 }}>{s.strLabel}</span>,
+          icon: fnRenderTemplateStatusIcon(s.strStatus, 14, nIdx <= nStep ? token.colorPrimary : token.colorTextDisabled),
+        }))}
+      />
+    </div>
+  );
+};
+
 // Form.List 렌더 prop 안에서는 훅 호출 불가 → 별도 컴포넌트로 분리
 type TQueryTemplatesTabContentProps = {
   fields: FormListFieldData[];
   add: (defaultValue?: unknown, insertIndex?: number) => void;
   remove: (index: number | number[]) => void;
   arrConnectionsByProduct: IDbConnection[];
+  arrProducts: readonly TProductServiceLookup[];
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
@@ -75,6 +147,7 @@ const QueryTemplatesTabContent = ({
   add,
   remove,
   arrConnectionsByProduct,
+  arrProducts,
   activeKey,
   setActiveKey,
   justAddedRef,
@@ -113,20 +186,31 @@ const QueryTemplatesTabContent = ({
           <Form.Item
             {...restField}
             name={[name, 'nDbConnectionId']}
-            label="연결 DB (DB 구분: 종류·접속·DB명 등)"
+            label={`연결 DB (종류·${STR_SERVICE_SCOPE_LABEL}·DB 구분)`}
             rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
-            extra="환경(QA/LIVE) 구분이 아니라, 어떤 DB에 쿼리를 실행할지 구분합니다. QA/LIVE 반영은 이벤트 생성 시 결정됩니다."
+            extra={`GAME/WEB/LOG 등 DB 종류와 ${STR_SERVICE_SCOPE_LABEL} 기준입니다. QA/LIVE는 이벤트 생성 시 반영 범위에 맞게 자동 연결됩니다.`}
           >
-            <Select placeholder="DB 접속 선택 (종류·호스트·DB명)" showSearch optionFilterProp="children">
-              {arrConnectionsByProduct.map((c) => (
+            <Select placeholder={`DB 접속 선택 (종류 · ${STR_SERVICE_SCOPE_LABEL} · 호스트/DB명)`} showSearch optionFilterProp="children">
+              {arrConnectionsByProduct.map((c) => {
+                const strSvcLabel = fnResolveConnectionServiceAbbr(c, arrProducts);
+                const strTag =
+                  strSvcLabel
+                    ? fnFormatDbConnectionCountryPlatform(strSvcLabel)
+                    : c.nServiceId
+                      ? `#${c.nServiceId}`
+                      : fnFormatDbConnectionCountryPlatform(undefined);
+                return (
                 <Select.Option key={c.nId} value={c.nId}>
                   <Space wrap>
                     <DqpmTag color="blue">{c.strKind || 'GAME'}</DqpmTag>
+                    <DqpmTag tone="service" style={{ fontSize: 11 }}>
+                      {strTag}
+                    </DqpmTag>
                     <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
-                    <DqpmTag color={c.strEnv === 'live' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{c.strEnv.toUpperCase()}</DqpmTag>
                   </Space>
                 </Select.Option>
-              ))}
+                );
+              })}
             </Select>
           </Form.Item>
           <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
@@ -192,8 +276,13 @@ const EventPage = () => {
   const [nActiveRefCount, setNActiveRefCount] = useState(0);
   const [nRemovedRefCount, setNRemovedRefCount] = useState(0);
   const [bLoadingRelated, setBLoadingRelated] = useState(false);
+  const [nPatchingTemplateId, setNPatchingTemplateId] = useState<number | null>(null);
+  const [strStatusFilter, setStrStatusFilter] = useState<TTemplateStatus | ''>('');
+  const bStatusFilterInitializedRef = useRef(false);
 
   const [bModalOpen, setBModalOpen] = useState(false);
+  const [bSavingTemplate, setBSavingTemplate] = useState(false);
+  const [strTemplateConnFilterAbbr, setStrTemplateConnFilterAbbr] = useState<string | undefined>(undefined);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
   const [form] = Form.useForm();
@@ -202,11 +291,19 @@ const EventPage = () => {
   const [strQueryTabsActiveKey, setStrQueryTabsActiveKey] = useState('0');
   const bQueryTabsJustAddedRef = useRef(false);
 
+  const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
+  const [objQueryEditTemplate, setObjQueryEditTemplate] = useState<IEventTemplate | null>(null);
+  const [strQueryEditValue, setStrQueryEditValue] = useState('');
+  const [arrQueryEditValues, setArrQueryEditValues] = useState<string[]>([]);
+  const [bSavingQueryEdit, setBSavingQueryEdit] = useState(false);
+
   const arrEvents = useEventStore((s) => s.arrEvents);
   const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const fnAddEvent = useEventStore((s) => s.fnAddEvent);
   const fnUpdateEvent = useEventStore((s) => s.fnUpdateEvent);
   const fnDeleteEvent = useEventStore((s) => s.fnDeleteEvent);
+  const fnPatchEventStatus = useEventStore((s) => s.fnPatchEventStatus);
+  const fnUpdateEventQuery = useEventStore((s) => s.fnUpdateEventQuery);
   const arrProducts = useProductStore((s) => s.arrProducts);
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
@@ -218,7 +315,25 @@ const EventPage = () => {
   const bCanCreate = fnHas('event_template.create') || fnHas('event_template.manage');
   const bCanEdit   = fnHas('event_template.edit') || fnHas('event_template.manage');
   const bCanDelete = fnHas('event_template.delete') || fnHas('event_template.manage');
+  const bCanRequestConfirm = fnHas('event_template.request_confirm');
+  const bCanConfirm = fnHas('event_template.confirm');
   const bCanOpenDashboard = fnHas('my_dashboard.view');
+
+  const { token } = theme.useToken();
+
+  useEffect(() => {
+    if (bStatusFilterInitializedRef.current) return;
+    // DBA는 리뷰 대기 건만 먼저 보이도록 기본 필터
+    if (bCanConfirm && !bCanRequestConfirm) {
+      setStrStatusFilter('confirm_requested');
+    }
+    bStatusFilterInitializedRef.current = true;
+  }, [bCanConfirm, bCanRequestConfirm]);
+
+  const arrFilteredEvents = useMemo(() => {
+    if (!strStatusFilter) return arrEvents;
+    return arrEvents.filter((e) => fnResolveTemplateStatus(e) === strStatusFilter);
+  }, [arrEvents, strStatusFilter]);
 
   const objSelectedTemplate = useMemo(
     () => (nSelectedTemplateId != null ? arrEvents.find((e) => e.nId === nSelectedTemplateId) : undefined),
@@ -262,11 +377,118 @@ const EventPage = () => {
     navigate(`/my-dashboard?nId=${nInstanceId}`);
   };
 
-  /** 선택한 템플릿 행 아래 펼침 영역 — 나의 대시보드 expandable 패턴과 동일 */
+  const fnHandleTemplateStatusChange = async (nTemplateId: number, strNextStatus: TTemplateStatus) => {
+    setNPatchingTemplateId(nTemplateId);
+    try {
+      const result = await fnPatchEventStatus(nTemplateId, strNextStatus);
+      if (result.bSuccess) {
+        messageApi.success(
+          strNextStatus === 'confirm_requested'
+            ? '쿼리 리뷰를 요청했습니다.'
+            : 'DBA 리뷰가 완료되었습니다.',
+        );
+      } else {
+        messageApi.error(result.strMessage || '상태 변경에 실패했습니다.');
+      }
+    } finally {
+      setNPatchingTemplateId(null);
+    }
+  };
+
+  const fnRenderWorkflowActionButtons = (objRecord: IEventTemplate) => {
+    const strStatus = fnResolveTemplateStatus(objRecord);
+    const bLoading = nPatchingTemplateId === objRecord.nId;
+    const fnRenderActionButton = (strNextStatus: TTemplateStatus) => {
+      const Icon = OBJ_TEMPLATE_STATUS_ICONS[strNextStatus];
+      return (
+        <Button
+          key={strNextStatus}
+          icon={Icon ? <Icon /> : undefined}
+          loading={bLoading}
+          onClick={() => void fnHandleTemplateStatusChange(objRecord.nId, strNextStatus)}
+        >
+          {OBJ_TEMPLATE_STATUS_CONFIG[strNextStatus].strLabel}
+        </Button>
+      );
+    };
+    const arrButtons: React.ReactNode[] = [];
+    if (bCanRequestConfirm && strStatus === 'template_created') {
+      arrButtons.push(fnRenderActionButton('confirm_requested'));
+    }
+    if (bCanConfirm && (strStatus === 'confirm_requested' || strStatus === 'dba_confirmed')) {
+      arrButtons.push(
+        <Tooltip key="query-edit" title="쿼리 수정">
+          <Button
+            type="text"
+            icon={<CodeOutlined />}
+            loading={bSavingQueryEdit && objQueryEditTemplate?.nId === objRecord.nId}
+            onClick={() => fnOpenTemplateQueryEdit(objRecord)}
+          />
+        </Tooltip>,
+      );
+    }
+    if (bCanConfirm && strStatus === 'confirm_requested') {
+      arrButtons.push(fnRenderActionButton('dba_confirmed'));
+    }
+    return arrButtons;
+  };
+
+  /** 선택한 템플릿 행 아래 펼침 영역 — 워크플로 + 진행 이력 + 연결 이벤트 */
   const fnRenderRelatedInstancesPanel = () => {
     if (!objSelectedTemplate) return null;
+    const arrLogs = objSelectedTemplate.arrStatusLogs ?? [];
     return (
       <div style={{ padding: '4px 8px 12px' }}>
+        <TemplateStepper objTemplate={objSelectedTemplate} />
+        {arrLogs.length > 0 && (
+          <div style={{
+            padding: '12px 16px',
+            marginBottom: 12,
+            background: token.colorFillAlter,
+            borderRadius: token.borderRadiusLG,
+            border: `1px solid ${token.colorBorderSecondary}`,
+          }}>
+            <Text strong style={{ fontSize: 13, display: 'block', marginBottom: 10 }}>진행 이력</Text>
+            <Timeline
+              items={arrLogs.map((log) => ({
+                color: log.strComment?.includes('재승인') ? token.colorWarning : token.colorPrimary,
+                children: (
+                  <div>
+                    <Space size={4} wrap>
+                      {fnRenderTemplateStatusIcon(log.strStatus, 12)}
+                      <DqpmTag tone={OBJ_TEMPLATE_STATUS_CONFIG[log.strStatus].strTagVariant}>
+                        {OBJ_TEMPLATE_STATUS_CONFIG[log.strStatus].strLabel}
+                      </DqpmTag>
+                    </Space>
+                    <div>
+                      <Text strong style={{ fontSize: 12 }}>{log.strChangedBy}</Text>
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                        {new Date(log.dtChangedAt).toLocaleString('ko-KR')}
+                      </Text>
+                    </div>
+                    {log.strComment && (
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          display: 'block',
+                          marginTop: 2,
+                          color: log.strComment.includes('DBA 쿼리') ? token.colorError : token.colorTextSecondary,
+                        }}
+                      >
+                        {log.strComment}
+                      </Text>
+                    )}
+                    {log.objQueryEdit && (
+                      <div style={{ marginTop: 6 }}>
+                        <QueryEditDiffView objQueryEdit={log.objQueryEdit} />
+                      </div>
+                    )}
+                  </div>
+                ),
+              }))}
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <Text strong style={{ fontSize: 13 }}>연결된 이벤트</Text>
           <DqpmTag>템플릿 ID {objSelectedTemplate.nId}</DqpmTag>
@@ -378,6 +600,10 @@ const EventPage = () => {
 
   const fnOpenModal = useCallback((objEvent?: IEventTemplate) => {
     setStrQueryTabsActiveKey('0');
+    const strConnFilter = objEvent
+      ? fnDeriveTemplateConnFilterAbbr(objEvent, arrDbConnections, arrProducts)
+      : undefined;
+    setStrTemplateConnFilterAbbr(strConnFilter);
     if (objEvent) {
       setObjEditEvent(objEvent);
       const bMulti = (objEvent.arrQueryTemplates?.length ?? 0) > 0;
@@ -403,11 +629,13 @@ const EventPage = () => {
       form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
-  }, [form]);
+  }, [form, arrDbConnections, arrProducts]);
 
   const fnCloseModal = () => {
+    if (bSavingTemplate) return;
     setBModalOpen(false);
     setObjEditEvent(null);
+    setStrTemplateConnFilterAbbr(undefined);
     form.resetFields();
   };
 
@@ -446,18 +674,78 @@ const EventPage = () => {
     });
   }, [strDeepLinkTemplateId, strDeepLinkInstanceId, arrEvents, searchParams, setSearchParams]);
 
+  const fnCopyQueryText = (str: string | undefined) => {
+    if (!str) return;
+    void navigator.clipboard.writeText(str).then(
+      () => messageApi.success('클립보드에 복사했습니다.'),
+      () => messageApi.error('복사에 실패했습니다.'),
+    );
+  };
+
+  const fnOpenTemplateQueryEdit = (objTpl: IEventTemplate) => {
+    setObjQueryEditTemplate(objTpl);
+    const arrSets = objTpl.arrQueryTemplates?.filter(
+      (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
+    ) ?? [];
+    if (arrSets.length) {
+      setArrQueryEditValues(arrSets.map((s) => s.strQueryTemplate ?? ''));
+      setStrQueryEditValue('');
+    } else {
+      setStrQueryEditValue(objTpl.strQueryTemplate ?? '');
+      setArrQueryEditValues([]);
+    }
+    setBQueryEditOpen(true);
+  };
+
+  const fnSaveTemplateQueryEdit = async () => {
+    if (!objQueryEditTemplate) return;
+    setBSavingQueryEdit(true);
+    try {
+      const arrSets = objQueryEditTemplate.arrQueryTemplates?.filter(
+        (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
+      ) ?? [];
+      const payload: Record<string, unknown> = arrSets.length
+        ? {
+            arrQueryTemplates: arrSets.map((s, i) => ({
+              nDbConnectionId: s.nDbConnectionId,
+              strDefaultItems: s.strDefaultItems,
+              strQueryTemplate: (arrQueryEditValues[i] ?? s.strQueryTemplate ?? '').trim(),
+            })),
+            strQueryTemplate: '',
+          }
+        : { strQueryTemplate: strQueryEditValue.trim(), strDefaultItems: objQueryEditTemplate.strDefaultItems ?? '' };
+      const result = await fnUpdateEventQuery(objQueryEditTemplate.nId, payload);
+      if (result.bSuccess) {
+        messageApi.success(
+          result.bReapprovalRequired
+            ? '쿼리가 변경되어 쿼리 리뷰 요청 상태로 되돌아갔습니다.'
+            : result.strMessage,
+        );
+        setBQueryEditOpen(false);
+        if (nSelectedTemplateId === objQueryEditTemplate.nId && result.objEvent) {
+          setObjQueryEditTemplate(result.objEvent);
+        }
+      } else {
+        messageApi.error(result.strMessage);
+      }
+    } finally {
+      setBSavingQueryEdit(false);
+    }
+  };
+
   const fnHandleSave = async () => {
+    setBSavingTemplate(true);
     try {
       const objValues = await form.validateFields();
-      const objProduct = arrProducts.find((p) => p.nId === objValues.nProductId);
       const bMulti = strQueryMode === 'multi';
 
-      const objEventData: Record<string, unknown> = {
-        ...objValues,
-        strProductName: objProduct?.strName || '',
-        strQueryTemplate: bMulti ? '' : (objValues.strQueryTemplate ?? ''),
-        strDefaultItems: bMulti ? '' : (objValues.strDefaultItems ?? ''),
-        arrQueryTemplates: bMulti
+      const objEventData: Record<string, unknown> = { ...objValues };
+
+      const bQueryLocked = objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested';
+      if (!bQueryLocked) {
+        objEventData.strQueryTemplate = bMulti ? '' : (objValues.strQueryTemplate ?? '');
+        objEventData.strDefaultItems = bMulti ? '' : (objValues.strDefaultItems ?? '');
+        objEventData.arrQueryTemplates = bMulti
           ? (objValues.arrQueryTemplates ?? []).filter(
               (s: IQueryTemplateItem) => s.nDbConnectionId && (s.strQueryTemplate ?? '').trim()
             ).map((s: IQueryTemplateItem) => ({
@@ -465,10 +753,10 @@ const EventPage = () => {
               strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
               strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
             }))
-          : undefined,
-      };
+          : undefined;
+      }
 
-      if (bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
+      if (!bQueryLocked && bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
         messageApi.warning('연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
         return;
       }
@@ -485,6 +773,8 @@ const EventPage = () => {
       }
     } catch {
       // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
+    } finally {
+      setBSavingTemplate(false);
     }
   };
 
@@ -502,13 +792,34 @@ const EventPage = () => {
     void fnLoadRelatedInstances(nId);
   };
 
-  // 입력 형식 라벨
-  // 다중 쿼리 탭에서 선택된 프로덕트에 해당하는 DB 접속만 표시
+  // 다중 쿼리 탭 — 프로덕트·서비스 구분 기준 연결 DB (슬롯당 1행, QA/LIVE는 이벤트 생성 시 매칭)
   const nProductIdWatch = Form.useWatch('nProductId', form);
+  const objFormProduct = useMemo(
+    () => arrProducts.find((p) => p.nId === nProductIdWatch),
+    [arrProducts, nProductIdWatch],
+  );
+  const arrQueryTemplatesWatch = Form.useWatch('arrQueryTemplates', form) as IQueryTemplateItem[] | undefined;
+
   const arrConnectionsByProduct = useMemo(() => {
     if (!nProductIdWatch) return [];
-    return arrDbConnections.filter((c) => c.nProductId === nProductIdWatch && c.bIsActive);
-  }, [arrDbConnections, nProductIdWatch]);
+    const arrFiltered = fnFilterConnectionsForTemplatePicker(
+      arrDbConnections,
+      nProductIdWatch,
+      strTemplateConnFilterAbbr,
+      arrProducts,
+    );
+    const arrSelectedIds = (arrQueryTemplatesWatch ?? [])
+      .map((s) => Number(s?.nDbConnectionId))
+      .filter((n) => n > 0);
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrSelectedIds,
+      nProductIdWatch,
+    );
+  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr, arrProducts, arrQueryTemplatesWatch]);
+
+  const bShowTemplateConnFilter = !objEditEvent || fnResolveTemplateStatus(objEditEvent) !== 'confirm_requested';
 
   const fnGetInputFormatLabel = (strFormat: TInputFormat) => {
     return ARR_INPUT_FORMATS.find((f) => f.value === strFormat)?.label || strFormat;
@@ -519,10 +830,32 @@ const EventPage = () => {
     fnMakeIndexColumn<IEventTemplate>(),
     {
       title: '프로덕트',
-      dataIndex: 'strProductName',
       key: 'strProductName',
       width: 120,
-      render: (str: string) => <ProductNameTag strName={str} />,
+      render: (_: unknown, r: IEventTemplate) => {
+        const strName = arrProducts.find((p) => p.nId === r.nProductId)?.strName ?? r.strProductName;
+        return <ProductNameTag strName={strName} />;
+      },
+    },
+    {
+      title: STR_SERVICE_SCOPE_LABEL,
+      key: 'strServiceScope',
+      width: 130,
+      render: (_: unknown, r: IEventTemplate) => {
+        const arrAbbrs = fnListTemplateServiceScopeAbbrs(r, arrDbConnections, arrProducts);
+        if (!arrAbbrs.length) {
+          return <Text type="secondary">-</Text>;
+        }
+        return (
+          <Space wrap size={4}>
+            {arrAbbrs.map((strAbbr) => (
+              <DqpmTag key={strAbbr || '__fallback'} tone="service" style={{ fontSize: 11 }}>
+                {strAbbr.startsWith('#') ? strAbbr : fnFormatDbConnectionCountryPlatform(strAbbr || undefined)}
+              </DqpmTag>
+            ))}
+          </Space>
+        );
+      },
     },
     {
       title: '이벤트명',
@@ -577,30 +910,57 @@ const EventPage = () => {
         return <DqpmTag color={nSetCount >= 2 ? 'blue' : 'default'}>{strMode}</DqpmTag>;
       },
     },
-    // 수정/삭제 권한이 있을 때만 관리 컬럼 표시
-    ...((bCanEdit || bCanDelete) ? [{
+    {
+      title: '상태',
+      dataIndex: 'strStatus',
+      key: 'strStatus',
+      width: 128,
+      render: (_: unknown, objRecord: IEventTemplate) => {
+        const s = fnResolveTemplateStatus(objRecord);
+        return (
+          <Space size={4}>
+            {fnRenderTemplateStatusIcon(s, 12)}
+            <DqpmTag tone={OBJ_TEMPLATE_STATUS_CONFIG[s].strTagVariant}>
+              {OBJ_TEMPLATE_STATUS_CONFIG[s].strLabel}
+            </DqpmTag>
+          </Space>
+        );
+      },
+    },
+    // 관리 — 수정·삭제 + 리뷰 액션(권한·상태별)
+    ...((bCanEdit || bCanDelete || bCanRequestConfirm || bCanConfirm) ? [{
       title: '관리',
       key: 'actions',
-      width: 100,
-      render: (_: unknown, objRecord: IEventTemplate) => (
-        <Space onClick={(e) => e.stopPropagation()}>
-          {bCanEdit && <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(objRecord)} />}
-          {bCanDelete && (
-            <Popconfirm
-              title={
-                nSelectedTemplateId === objRecord.nId && nActiveRefCount > 0
-                  ? `연결 이벤트 ${nActiveRefCount}건이 있습니다. 먼저 아래 목록에서 대시보드로 이동해 삭제하세요.`
-                  : '정말 삭제하시겠습니까?'
-              }
-              onConfirm={() => fnHandleDelete(objRecord.nId)}
-              okText="삭제"
-              cancelText="취소"
-            >
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Popconfirm>
-          )}
-        </Space>
-      ),
+      width: 200,
+      render: (_: unknown, objRecord: IEventTemplate) => {
+        const arrWorkflow = fnRenderWorkflowActionButtons(objRecord);
+        return (
+          <Space onClick={(e) => e.stopPropagation()}>
+            {bCanEdit && (
+              <Tooltip title="수정">
+                <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(objRecord)} />
+              </Tooltip>
+            )}
+            {bCanDelete && (
+              <Popconfirm
+                title={
+                  nSelectedTemplateId === objRecord.nId && nActiveRefCount > 0
+                    ? `연결 이벤트 ${nActiveRefCount}건이 있습니다. 먼저 아래 목록에서 대시보드로 이동해 삭제하세요.`
+                    : '정말 삭제하시겠습니까?'
+                }
+                onConfirm={() => fnHandleDelete(objRecord.nId)}
+                okText="삭제"
+                cancelText="취소"
+              >
+                <Tooltip title="삭제">
+                  <Button type="text" danger icon={<DeleteOutlined />} />
+                </Tooltip>
+              </Popconfirm>
+            )}
+            {arrWorkflow}
+          </Space>
+        );
+      },
     }] : []),
   ];
 
@@ -610,7 +970,7 @@ const EventPage = () => {
       <CrudPageShell
         strTitle="쿼리 템플릿"
         nodeIcon={<CalendarOutlined />}
-        nodeDescription="행을 클릭하면 아래에 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 활성 이벤트가 남아 있으면 템플릿 삭제 전 대시보드에서 정리해야 합니다."
+        nodeDescription="행을 클릭하면 템플릿 진행 상태와 이 템플릿으로 생성된 이벤트 목록이 펼쳐집니다. 활성 이벤트가 남아 있으면 템플릿 삭제 전 대시보드에서 정리해야 합니다."
         nodeExtra={
           bCanCreate ? (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
@@ -619,10 +979,31 @@ const EventPage = () => {
           ) : undefined
         }
       >
+        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <Text type="secondary" style={{ fontSize: 13 }}>상태</Text>
+          <Select
+            style={{ width: 168 }}
+            value={strStatusFilter || '__all__'}
+            onChange={(v) => {
+              setStrStatusFilter(v === '__all__' ? '' : (v as TTemplateStatus));
+              setNTemplateListPage(1);
+            }}
+            options={[
+              { value: '__all__', label: '전체' },
+              ...ARR_TEMPLATE_STATUSES.map((s) => ({
+                value: s,
+                label: OBJ_TEMPLATE_STATUS_CONFIG[s].strLabel,
+              })),
+            ]}
+          />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {arrFilteredEvents.length}건
+          </Text>
+        </div>
         <AppTable
           strTableId="event_templates"
           rowKey="nId"
-          dataSource={arrEvents}
+          dataSource={arrFilteredEvents}
           columns={arrColumns}
           strEmptyText="등록된 쿼리 템플릿이 없습니다."
           expandable={{
@@ -655,23 +1036,33 @@ const EventPage = () => {
       <Modal
         title={objEditEvent ? '쿼리 템플릿 수정' : '쿼리 템플릿 추가'}
         open={bModalOpen}
-        onOk={fnHandleSave}
         onCancel={fnCloseModal}
-        okText={objEditEvent ? '수정' : '등록'}
-        cancelText="취소"
+        footer={(
+          <Space>
+            <Button onClick={fnCloseModal} disabled={bSavingTemplate}>취소</Button>
+            <Button type="primary" loading={bSavingTemplate} onClick={() => void fnHandleSave()}>
+              {objEditEvent ? '수정' : '등록'}
+            </Button>
+          </Space>
+        )}
         width={720}
         destroyOnClose
+        maskClosable={!bSavingTemplate}
+        closable={!bSavingTemplate}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           {/* 기본 정보 (탭 공통) */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={bShowTemplateConnFilter ? 12 : 24}>
               <Form.Item
                 name="nProductId"
                 label="프로덕트"
                 rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
               >
-                <Select placeholder="프로덕트 선택">
+                <Select
+                  placeholder="프로덕트 선택"
+                  onChange={() => setStrTemplateConnFilterAbbr(undefined)}
+                >
                   {arrProducts.map((p) => (
                     <Select.Option key={p.nId} value={p.nId}>
                       {p.strName}
@@ -680,16 +1071,34 @@ const EventPage = () => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item
-                name="strEventLabel"
-                label="이벤트명"
-                rules={[{ required: true, message: '이벤트명을 입력해주세요.' }]}
-              >
-                <Input placeholder="예: 어워드 이벤트 종료(아이템)" />
-              </Form.Item>
-            </Col>
+            {bShowTemplateConnFilter ? (
+              <Col span={12}>
+                <Form.Item label={`${STR_SERVICE_SCOPE_LABEL} (연결 DB 필터)`}>
+                  <Select
+                    allowClear
+                    placeholder={objFormProduct ? '전체 표시 (필터 없음)' : '먼저 프로덕트를 선택하세요'}
+                    disabled={!objFormProduct}
+                    value={strTemplateConnFilterAbbr}
+                    onChange={(v) => setStrTemplateConnFilterAbbr(v)}
+                  >
+                    {(objFormProduct?.arrServices ?? []).map((s) => (
+                      <Select.Option key={s.strAbbr} value={s.strAbbr}>
+                        {fnFormatCountryPlatformOption(s)}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+            ) : null}
           </Row>
+
+          <Form.Item
+            name="strEventLabel"
+            label="이벤트명"
+            rules={[{ required: true, message: '이벤트명을 입력해주세요.' }]}
+          >
+            <Input placeholder="예: 어워드 이벤트 종료(아이템)" />
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={8}>
@@ -737,7 +1146,27 @@ const EventPage = () => {
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
           </Form.Item>
 
-          {/* 단일 쿼리 탭 숨김 — 필요 시 items에 single 추가 */}
+          {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="쿼리 리뷰 대기 중"
+              description="쿼리·세트는 일반 수정으로 변경할 수 없습니다. 목록의 «쿼리 수정» 버튼(DBA 전용)을 사용하세요."
+            />
+          )}
+
+          {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'dba_confirmed' && (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+              message="승인 완료 템플릿"
+              description="쿼리·세트를 변경하면 DBA 재승인(쿼리 리뷰 요청) 상태로 되돌아갑니다."
+            />
+          )}
+
+          {!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested') && (
           <Tabs
             activeKey={strQueryMode}
             onChange={(k) => setStrQueryMode(k as TQueryMode)}
@@ -748,8 +1177,21 @@ const EventPage = () => {
                 children: (
                   <>
                     <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                      세트별로 <strong>DB 구분</strong>(종류·접속 등)과 쿼리 템플릿을 지정합니다. QA/LIVE 반영은 이벤트 생성 시 선택하며, 보통 QA 후 LIVE 순으로 진행합니다. 입력값 1개가 모든 세트에 동일 적용됩니다.
+                      세트별로 <strong>DB 종류·{STR_SERVICE_SCOPE_LABEL}</strong>에 맞는 연결을 지정합니다. QA/LIVE·실제 host는 <strong>이벤트 생성</strong> 시 선택한 {STR_SERVICE_SCOPE_LABEL}과 반영 범위에 맞게 자동 연결됩니다.
                     </Text>
+                    {nProductIdWatch && arrConnectionsByProduct.length === 0 ? (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        style={{ marginBottom: 12 }}
+                        message="등록된 DB 접속이 없습니다"
+                        description={
+                          strTemplateConnFilterAbbr
+                            ? `${fnFormatDbConnectionCountryPlatform(strTemplateConnFilterAbbr)} · 활성 접속을 DB 접속 정보에서 등록해주세요.`
+                            : '프로덕트에 활성 DB 접속을 등록한 뒤 연결 DB를 선택할 수 있습니다.'
+                        }
+                      />
+                    ) : null}
                     <Form.List name="arrQueryTemplates">
                       {(fields, { add, remove }) => (
                         <QueryTemplatesTabContent
@@ -757,6 +1199,7 @@ const EventPage = () => {
                           add={add}
                           remove={remove}
                           arrConnectionsByProduct={arrConnectionsByProduct}
+                          arrProducts={arrProducts}
                           activeKey={strQueryTabsActiveKey}
                           setActiveKey={setStrQueryTabsActiveKey}
                           justAddedRef={bQueryTabsJustAddedRef}
@@ -768,7 +1211,102 @@ const EventPage = () => {
               },
             ]}
           />
+          )}
         </Form>
+      </Modal>
+
+      <Modal
+        title={(
+          <Space>
+            <CodeOutlined />
+            DBA 쿼리 수정
+            {objQueryEditTemplate && (
+              <>
+                {fnRenderTemplateStatusIcon(fnResolveTemplateStatus(objQueryEditTemplate), 12)}
+                <DqpmTag tone={OBJ_TEMPLATE_STATUS_CONFIG[fnResolveTemplateStatus(objQueryEditTemplate)].strTagVariant}>
+                  {OBJ_TEMPLATE_STATUS_CONFIG[fnResolveTemplateStatus(objQueryEditTemplate)].strLabel}
+                </DqpmTag>
+              </>
+            )}
+          </Space>
+        )}
+        open={bQueryEditOpen}
+        onCancel={() => { if (!bSavingQueryEdit) setBQueryEditOpen(false); }}
+        footer={(
+          <Space>
+            <Button onClick={() => setBQueryEditOpen(false)} disabled={bSavingQueryEdit}>취소</Button>
+            <Button type="primary" loading={bSavingQueryEdit} onClick={() => void fnSaveTemplateQueryEdit()}>
+              저장
+            </Button>
+          </Space>
+        )}
+        width={760}
+        destroyOnClose
+        maskClosable={!bSavingQueryEdit}
+        closable={!bSavingQueryEdit}
+      >
+        {objQueryEditTemplate && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Alert
+              type="info"
+              showIcon
+              message={`템플릿: ${objQueryEditTemplate.strEventLabel}`}
+              description={
+                fnResolveTemplateStatus(objQueryEditTemplate) === 'dba_confirmed'
+                  ? '승인 완료 템플릿입니다. 쿼리를 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 세트 추가·삭제는 «수정» 모달을 사용하세요.'
+                  : '수정 이력이 진행 로그에 diff와 함께 기록됩니다. 템플릿 상태는 유지됩니다.'
+              }
+            />
+            {(objQueryEditTemplate.arrQueryTemplates?.filter(
+              (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
+            ).length ?? 0) > 0 ? (
+              <Tabs
+                items={(objQueryEditTemplate.arrQueryTemplates ?? [])
+                  .filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId)
+                  .map((_t, idx) => ({
+                    key: String(idx),
+                    label: `세트 ${idx + 1}`,
+                    children: (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopyQueryText(arrQueryEditValues[idx] ?? '')}>
+                            복사
+                          </Button>
+                        </div>
+                        <SqlLineNumberArea
+                          strValue={arrQueryEditValues[idx] ?? ''}
+                          fnOnChange={(strNext) => {
+                            const next = [...arrQueryEditValues];
+                            while (next.length <= idx) next.push('');
+                            next[idx] = strNext;
+                            setArrQueryEditValues(next);
+                          }}
+                          nFontSize={13}
+                          nMinRows={10}
+                          nMaxRows={25}
+                          strPlaceholder="SQL 쿼리를 입력하세요..."
+                        />
+                      </div>
+                    ),
+                  }))}
+              />
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopyQueryText(strQueryEditValue)}>복사</Button>
+                </div>
+                <SqlLineNumberArea
+                  strValue={strQueryEditValue}
+                  fnOnChange={setStrQueryEditValue}
+                  nFontSize={13}
+                  nMinRows={10}
+                  nMaxRows={25}
+                  strPlaceholder="SQL 쿼리를 입력하세요..."
+                />
+              </>
+            )}
+          </Space>
+        )}
       </Modal>
     </>
   );

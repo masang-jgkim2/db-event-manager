@@ -1,4 +1,5 @@
 import type { IDashboardLayoutRoot } from '../types/dashboardLayout';
+import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 
 /**
  * 기본 보드 — 프로토타입용. 이후 localStorage/API 오버레이로 교체.
@@ -40,7 +41,7 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
         strDensity: 'compact',
         arrCardRows: [
           { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
-          { strLabel: '서비스', strFieldPath: 'strServiceAbbr', strRender: 'text' },
+          { strLabel: STR_SERVICE_SCOPE_LABEL, strFieldPath: 'strServiceAbbr', strRender: 'service_scope', strEmpty: '-' },
           {
             strLabel: '반영 일시',
             strFieldPath: 'dtDeployDate',

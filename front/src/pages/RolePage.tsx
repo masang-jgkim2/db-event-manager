@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Typography, Card, Space, Button, Modal,
-  Form, Input, Checkbox, Popconfirm, message,
+  Form, Input, Checkbox, Popconfirm, message, Tooltip,
   Row, Col, Collapse,
 } from 'antd';
 import {
@@ -15,7 +15,11 @@ import {
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
 import { DqpmTag } from '../components/DqpmTag';
-import { ARR_PERMISSION_GROUPS } from '../types';
+import {
+  ARR_PERMISSION_GROUPS,
+  fnExpandPermissionsForRoleFormDisplay,
+  fnGetOrphanRolePermissions,
+} from '../types';
 
 const { Text } = Typography;
 
@@ -26,6 +30,8 @@ const RolePage = () => {
   const [objEditRole, setObjEditRole] = useState<IRole | null>(null);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
+  /** 체크박스 UI에 없는 저장 권한 — 저장 시 병합 */
+  const arrOrphanPermsRef = useRef<string[]>([]);
 
   // 권한별 버튼 노출 (역할/생성 권한 없으면 버튼 숨김)
   const arrPermissions = useAuthStore((s) => s.user?.arrPermissions || []);
@@ -50,19 +56,22 @@ const RolePage = () => {
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
 
-  // 추가/수정 모달 열기 — 저장된 권한만 폼에 반영 (확장하지 않음. 제외한 권한이 다시 체크되지 않도록)
+  // 추가/수정 모달 — 표시는 로그인 effective와 동일(레거시 manage·admin 보너스 확장)
   const fnOpenModal = (objRole?: IRole) => {
     if (objRole) {
       setObjEditRole(objRole);
-      const arrPerms = Array.isArray(objRole.arrPermissions) ? [...objRole.arrPermissions] : [];
+      const arrRaw = Array.isArray(objRole.arrPermissions) ? [...objRole.arrPermissions] : [];
+      arrOrphanPermsRef.current = fnGetOrphanRolePermissions(arrRaw);
+      const arrDisplay = fnExpandPermissionsForRoleFormDisplay(arrRaw, objRole.strCode);
       form.setFieldsValue({
         strCode: objRole.strCode,
         strDisplayName: objRole.strDisplayName,
         strDescription: objRole.strDescription,
-        arrPermissions: arrPerms,
+        arrPermissions: arrDisplay,
       });
     } else {
       setObjEditRole(null);
+      arrOrphanPermsRef.current = [];
       form.resetFields();
     }
     setBModalOpen(true);
@@ -72,6 +81,11 @@ const RolePage = () => {
   const fnHandleSave = async () => {
     try {
       const objValues = await form.validateFields();
+      if (objEditRole && arrOrphanPermsRef.current.length > 0) {
+        objValues.arrPermissions = [
+          ...new Set([...(objValues.arrPermissions as string[]), ...arrOrphanPermsRef.current]),
+        ];
+      }
 
       let result;
       if (objEditRole) {
@@ -139,10 +153,14 @@ const RolePage = () => {
         : <DqpmTag color="default">커스텀</DqpmTag>,
     },
     {
-      title: '권한 수',
+      title: '적용 권한',
       key: 'permCount',
-      width: 80,
-      render: (_: unknown, r: IRole) => <DqpmTag color="green">{r.arrPermissions.length}개</DqpmTag>,
+      width: 88,
+      render: (_: unknown, r: IRole) => (
+        <DqpmTag color="green">
+          {fnExpandPermissionsForRoleFormDisplay(r.arrPermissions, r.strCode).length}개
+        </DqpmTag>
+      ),
     },
     ...(bCanEditPermissions || bCanEdit || bCanDelete
       ? [{
@@ -153,14 +171,14 @@ const RolePage = () => {
             <Space>
               {r.bIsSystem
                 ? bCanEditPermissions && (
-                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-                      수정
-                    </Button>
+                    <Tooltip title="수정">
+                      <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(r)} />
+                    </Tooltip>
                   )
                 : bCanEdit && (
-                    <Button size="small" icon={<EditOutlined />} onClick={() => fnOpenModal(r)}>
-                      수정
-                    </Button>
+                    <Tooltip title="수정">
+                      <Button type="text" icon={<EditOutlined />} onClick={() => fnOpenModal(r)} />
+                    </Tooltip>
                   )}
               {!r.bIsSystem && bCanDelete && (
                 <Popconfirm
@@ -170,7 +188,9 @@ const RolePage = () => {
                   okText="삭제"
                   cancelText="취소"
                 >
-                  <Button size="small" danger icon={<DeleteOutlined />} />
+                  <Tooltip title="삭제">
+                    <Button type="text" danger icon={<DeleteOutlined />} />
+                  </Tooltip>
                 </Popconfirm>
               )}
             </Space>
@@ -210,7 +230,12 @@ const RolePage = () => {
         title={objEditRole ? (objEditRole.bIsSystem ? '시스템 역할 수정' : '역할 수정') : '새로운 역할 추가'}
         open={bModalOpen}
         onOk={fnHandleSave}
-        onCancel={() => { setBModalOpen(false); form.resetFields(); setObjEditRole(null); }}
+        onCancel={() => {
+          setBModalOpen(false);
+          form.resetFields();
+          setObjEditRole(null);
+          arrOrphanPermsRef.current = [];
+        }}
         okText={objEditRole ? '수정' : '생성'}
         cancelText="취소"
         width={780}
@@ -278,8 +303,10 @@ const RolePage = () => {
                           </Form.Item>
                         </Col>
                         <Col span={12}>
-                          <Form.Item label="권한 수">
-                            <DqpmTag color="green">{objEditRole.arrPermissions.length}개</DqpmTag>
+                          <Form.Item label="적용 권한">
+                            <DqpmTag color="green">
+                              {fnExpandPermissionsForRoleFormDisplay(objEditRole.arrPermissions, objEditRole.strCode).length}개
+                            </DqpmTag>
                           </Form.Item>
                         </Col>
                       </Row>
@@ -298,7 +325,11 @@ const RolePage = () => {
                   </Space>
                 ),
                 children: (
-                  <Form.Item name="arrPermissions" style={{ marginBottom: 0 }}>
+                  <>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                      체크 항목·개수는 로그인 시 실제 적용되는 권한과 동일합니다.
+                    </Text>
+                    <Form.Item name="arrPermissions" style={{ marginBottom: 0 }}>
                     <Checkbox.Group style={{ width: '100%' }}>
                       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                         {ARR_PERMISSION_GROUPS.map((group) => (
@@ -315,6 +346,7 @@ const RolePage = () => {
                       </Space>
                     </Checkbox.Group>
                   </Form.Item>
+                  </>
                 ),
               },
             ]}

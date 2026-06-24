@@ -1,5 +1,7 @@
 # 수동 체크리스트 — 가입 ~ LIVE 확인 (§I)
 
+> 페이지별 통합 계획: [docs/E2E-PAGE-TEST-PLAN.md](../../docs/E2E-PAGE-TEST-PLAN.md)
+
 Playwright가 대신하지 **않는** 구간입니다. 배포 전·월 1회 **headed**로 따라 하세요.
 
 `npm run test:e2e:ui` → 이 파일을 옆에 두고 진행.
@@ -7,30 +9,33 @@ Playwright가 대신하지 **않는** 구간입니다. 배포 전·월 1회 **he
 - [ ] **사전** `test:e2e:smoke` 통과 (자동)
 - [ ] **사전** 서버·계정: GM, DBA(`dba01`), admin
 
+## 0. 쿼리 템플릿 승인 (EventPage — 신규 템플릿만)
+
+워크플로 분리 후 **컨펌은 템플릿**에서 처리합니다. E2E 시드(`seed-e2e-workflow:fresh`)는 자동 승인합니다.
+
+- [ ] GM: **쿼리 리뷰 요청** → `confirm_requested` (`event_template.request_confirm`)
+- [ ] DBA: **DBA 리뷰 완료** → `dba_confirmed` (`event_template.confirm`)
+
 ## 1. 이벤트 생성 (GM)
 
-- [ ] `/query` — SELECT 포함 테스트 이벤트 권장 (`SELECT 1 AS n_test`)
+- [ ] `/query` — **DBA 리뷰 완료** 템플릿만 선택 가능
+- [ ] SELECT 포함 테스트 이벤트 권장 (`SELECT 1 AS n_test`)
 - [ ] 반영 범위 QA+LIVE (또는 LIVE만이면 QA 단계 생략)
 - [ ] 제출 → 나의 대시보드에 `event_created`
 
-## 2. 컨펌 (GM → DBA)
-
-- [ ] GM: **컨펌 요청** → `confirm_requested`
-- [ ] DBA: **컨펌** → `dba_confirmed`
-
-## 3. QA (GM → DBA → GM)
+## 2. QA (GM → DBA → GM)
 
 - [ ] GM: **QA 쿼리 실행 요청** → `qa_requested`
 - [ ] DBA: **QA 쿼리 실행** → 성공 시 `qa_deployed`, 모달에 **쿼리별 결과**·`N행 조회`
 - [ ] GM: **QA 확인** → `qa_verified`
 
-## 4. LIVE (GM → DBA → GM)
+## 3. LIVE (GM → DBA → GM)
 
 - [ ] GM: **LIVE 쿼리 실행 요청** → `live_requested`
 - [ ] DBA: **LIVE 쿼리 실행** → `live_deployed`
 - [ ] GM: **LIVE 확인** → `live_verified` (완료)
 
-## 5. 선택 확인
+## 4. 선택 확인
 
 - [ ] 상세 → **진행 이력** — 실행 블록·SELECT 테이블(신규 실행분만)
 - [ ] 알림 벨·SSE — 다른 탭에서 상태 변경 시 목록 갱신

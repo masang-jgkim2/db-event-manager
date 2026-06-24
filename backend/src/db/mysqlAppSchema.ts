@@ -77,6 +77,8 @@ COMMENT='rolePermissions.json'`,
   n_id              INT           NOT NULL PRIMARY KEY COMMENT 'JSON nId',
   n_product_id      INT           NOT NULL,
   str_product_name  VARCHAR(200)  NOT NULL,
+  n_service_id      BIGINT        NULL COMMENT 'product_service.n_id, NULL=공통',
+  str_service_abbr  VARCHAR(64)   NULL COMMENT 'denormalized strAbbr',
   str_kind          VARCHAR(16)   NOT NULL DEFAULT 'GAME' COMMENT 'GAME|WEB|LOG',
   str_env           VARCHAR(16)   NOT NULL COMMENT 'dev|qa|live',
   str_db_type       VARCHAR(16)   NOT NULL COMMENT 'mssql|mysql',
@@ -89,7 +91,9 @@ COMMENT='rolePermissions.json'`,
   dt_created_at     DATETIME(6)   NOT NULL,
   dt_updated_at     DATETIME(6)   NOT NULL,
   CONSTRAINT fk_db_connection_product FOREIGN KEY (n_product_id) REFERENCES product(n_id) ON DELETE CASCADE,
-  KEY idx_db_connection_product_env (n_product_id, str_env, b_is_active)
+  KEY idx_db_connection_product_env (n_product_id, str_env, b_is_active),
+  KEY idx_db_connection_product_service_env (n_product_id, str_service_abbr, str_env, b_is_active),
+  KEY idx_db_connection_service (n_service_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='dbConnections.json'`,
 
@@ -107,9 +111,14 @@ COMMENT='dbConnections.json'`,
   str_created_by      VARCHAR(200)  NULL COMMENT 'JSON strCreatedBy',
   n_created_by_user_id INT          NULL COMMENT 'JSON nCreatedByUserId',
   dt_created_at       DATETIME(6)   NOT NULL,
+  str_status          VARCHAR(32)   NOT NULL DEFAULT 'dba_confirmed' COMMENT 'template_created|confirm_requested|dba_confirmed',
+  json_status_logs    JSON          NOT NULL COMMENT 'ITemplateStatusLog[]',
+  json_creator        JSON          NULL COMMENT 'ITemplateStageActor objCreator',
+  json_confirmer      JSON          NULL COMMENT 'ITemplateStageActor objConfirmer',
   CONSTRAINT fk_event_template_product FOREIGN KEY (n_product_id) REFERENCES product(n_id) ON DELETE RESTRICT,
   CONSTRAINT fk_event_template_creator FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE SET NULL,
-  KEY idx_event_template_product (n_product_id)
+  KEY idx_event_template_product (n_product_id),
+  KEY idx_event_template_status (str_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='events.json 본문(세트 제외)'`,
 
@@ -130,6 +139,7 @@ COMMENT='events.json arrQueryTemplates[]'`,
   n_id                      INT           NOT NULL PRIMARY KEY COMMENT 'JSON nId',
   n_event_template_id       INT           NOT NULL,
   n_product_id              INT           NOT NULL,
+  n_service_id              BIGINT        NULL COMMENT 'product_service.n_id',
   str_event_label           VARCHAR(300)  NOT NULL,
   str_product_name          VARCHAR(200)  NOT NULL,
   str_service_abbr          VARCHAR(64)   NOT NULL,
@@ -154,6 +164,7 @@ COMMENT='events.json arrQueryTemplates[]'`,
   CONSTRAINT fk_ei_creator_user FOREIGN KEY (n_created_by_user_id) REFERENCES users(n_id) ON DELETE RESTRICT,
   KEY idx_ei_status (str_status),
   KEY idx_ei_product (n_product_id),
+  KEY idx_ei_service (n_service_id),
   KEY idx_ei_created_by (n_created_by_user_id),
   KEY idx_ei_created_at (dt_created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

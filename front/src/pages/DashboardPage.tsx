@@ -57,13 +57,13 @@ import type { ICustomEventDashboardCard, ICustomDashboardEventGroup } from '../t
 const { Text } = Typography;
 
 const ARR_EVENT_STATUSES: TEventStatus[] = [
-  'event_created', 'confirm_requested', 'dba_confirmed',
+  'event_created',
   'qa_requested', 'qa_deployed', 'qa_verified',
   'live_requested', 'live_deployed', 'live_verified',
 ];
 
 const STATUS_CARD_IDS = [
-  'status_event_created', 'status_confirm_requested', 'status_dba_confirmed',
+  'status_event_created',
   'status_qa_requested', 'status_qa_deployed', 'status_qa_verified',
   'status_live_requested', 'status_live_deployed', 'status_live_verified',
 ] as const;
@@ -92,15 +92,13 @@ const OBJ_CARD_LABELS: Record<TDashboardCardId, string> = {
   product: '프로덕트',
   eventTemplate: '쿼리 템플릿',
   instance: '이벤트 인스턴스',
-  service: '서비스(국내/해외)',
+  service: '국가/플랫폼',
   dbConnection: 'DB 접속',
   user: '사용자',
   role: '역할',
   instanceInProgress: '진행 중',
   instanceCompleted: '완료',
   status_event_created: fnGetStatusCardLabel('event_created'),
-  status_confirm_requested: fnGetStatusCardLabel('confirm_requested'),
-  status_dba_confirmed: fnGetStatusCardLabel('dba_confirmed'),
   status_qa_requested: fnGetStatusCardLabel('qa_requested'),
   status_qa_deployed: fnGetStatusCardLabel('qa_deployed'),
   status_qa_verified: fnGetStatusCardLabel('qa_verified'),
@@ -251,8 +249,6 @@ const DEFAULT_SIZES: Record<TDashboardCardId, { width: number; height: number }>
   instanceInProgress: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
   instanceCompleted: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
   status_event_created: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
-  status_confirm_requested: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
-  status_dba_confirmed: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
   status_qa_requested: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
   status_qa_deployed: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
   status_qa_verified: { width: N_STATUS_CARD_W, height: N_STATUS_CARD_H },
@@ -1171,7 +1167,7 @@ const DashboardPage = () => {
                   arr.filter((objI) => objI.strStatus === 'live_verified').length
                 );
                 const statusKeys: TEventStatus[] = [
-                  'event_created', 'confirm_requested', 'dba_confirmed',
+                  'event_created',
                   'qa_requested', 'qa_deployed', 'qa_verified',
                   'live_requested', 'live_deployed', 'live_verified',
                 ];
@@ -2130,7 +2126,7 @@ const DashboardPage = () => {
                 {strId === 'service' && (
                   <DashboardCardContent
                     icon={fnDashboardCardIcon(TeamOutlined, fnCardIconColor('service'))}
-                    title="서비스(국내/해외)"
+                    title="국가/플랫폼"
                   >
                     <span style={OBJ_CARD_VALUE_STYLE}>
                       {arrProducts.reduce((n, p) => n + p.arrServices.length, 0)}개

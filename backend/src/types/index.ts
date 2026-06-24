@@ -6,6 +6,7 @@ export type TPermission =
   | 'dashboard.view'
   | 'product.view' | 'product.create' | 'product.edit' | 'product.delete' | 'product.manage'
   | 'event_template.view' | 'event_template.create' | 'event_template.edit' | 'event_template.delete' | 'event_template.manage'
+  | 'event_template.request_confirm' | 'event_template.confirm'
   | 'user.view' | 'user.create' | 'user.edit' | 'user.delete' | 'user.reset_password' | 'user.approve' | 'user.manage'
   | 'role.view' | 'role.create' | 'role.edit' | 'role.delete' | 'role.edit_permissions'
   | 'db_connection.view' | 'db_connection.create' | 'db_connection.edit' | 'db_connection.delete' | 'db_connection.test' | 'db.manage'
@@ -91,6 +92,10 @@ export interface IDbConnection {
   nId: number;
   nProductId: number;
   strProductName: string;           // 자동 매핑
+  /** products.arrServices[].strAbbr — 비우면 프로덕트 공통 fallback (denormalized) */
+  strServiceAbbr?: string;
+  /** product_service.n_id — NULL=공통 fallback */
+  nServiceId?: number | null;
   strKind: TDbConnectionKind;       // 접속 종류 (GAME, WEB, LOG)
   strEnv: 'dev' | 'qa' | 'live';   // 환경 구분
   strDbType: 'mssql' | 'mysql';    // DB 드라이버 종류

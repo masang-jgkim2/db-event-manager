@@ -1,6 +1,7 @@
 // 역할 — 정규화: 권한은 rolePermissions.ts에서 조회/저장
 import { IRole, TPermission } from '../types';
-import { fnLoadJson, fnSaveJson } from './jsonStore';
+import { fnLoadJson, fnSaveJson, fnMirrorJsonToDisk } from './jsonStore';
+import { fnIsMysqlStore } from './dataStore';
 import {
   fnDeletePermissionsForRole,
   fnGetPermissionsByRoleId,
@@ -31,7 +32,12 @@ const ARR_SEED_ROWS: IRoleRow[] = [
 
 export const arrRoles: IRoleRow[] = fnLoadJson<IRoleRow>(STR_FILE, ARR_SEED_ROWS);
 
-export const fnSaveRoles = () => fnSaveJson(STR_FILE, arrRoles);
+export const fnSaveRoles = () => {
+  fnSaveJson(STR_FILE, arrRoles);
+  if (fnIsMysqlStore()) {
+    fnMirrorJsonToDisk(STR_FILE, arrRoles);
+  }
+};
 
 export const fnGetNextRoleId = (): number =>
   arrRoles.length > 0 ? Math.max(...arrRoles.map((r) => r.nId)) + 1 : 1;
@@ -81,12 +87,13 @@ export const fnGetMergedPermissions = (arrRoleCodes: string[]): string[] => {
 /** 레거시 권한 → 세분화 권한 확장 (클라이언트 응답용). admin 역할 시 대시보드/사용자/역할/DB 접속 세분화 추가 */
 const OBJ_EXPAND: Record<string, string[]> = {
   'product.manage': ['product.view', 'product.create', 'product.edit', 'product.delete'],
-  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete'],
+  'event_template.manage': ['event_template.view', 'event_template.create', 'event_template.edit', 'event_template.delete', 'event_template.request_confirm', 'event_template.confirm'],
   'user.manage': ['user.view', 'user.create', 'user.edit', 'user.delete', 'user.reset_password', 'user.approve'],
   'db.manage': ['db_connection.view', 'db_connection.create', 'db_connection.edit', 'db_connection.delete', 'db_connection.test'],
   // instance.create는 이벤트 수정/컨펌 요청 권한을 자동 부여하지 않음 (역할에서 별도 체크한 권한만 적용)
   'instance.create': ['instance.view'],
-  'instance.approve_qa': ['my_dashboard.request_qa', 'my_dashboard.request_qa_rereq'],
+  'my_dashboard.request_confirm': ['event_template.request_confirm'],
+  'my_dashboard.confirm': ['event_template.confirm'],
   // 쿼리 수정(query_edit)은 별도 권한 — execute_qa만으로는 부여하지 않음
   'instance.execute_qa': ['my_dashboard.execute_qa', 'my_dashboard.confirm'],
   'instance.verify_qa': ['my_dashboard.verify_qa'],

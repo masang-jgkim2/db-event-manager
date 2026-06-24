@@ -112,6 +112,26 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_created_by, n_created_by_user_id');
   }
 
+  const [tplStatusCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template' AND COLUMN_NAME = 'str_status'`,
+  );
+  if (Number((tplStatusCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template
+       ADD COLUMN str_status VARCHAR(32) NOT NULL DEFAULT 'dba_confirmed'
+         COMMENT 'template_created|confirm_requested|dba_confirmed' AFTER dt_created_at,
+       ADD COLUMN json_status_logs JSON NOT NULL COMMENT 'ITemplateStatusLog[]' AFTER str_status,
+       ADD COLUMN json_creator JSON NULL COMMENT 'objCreator' AFTER json_status_logs,
+       ADD COLUMN json_confirmer JSON NULL COMMENT 'objConfirmer' AFTER json_creator,
+       ADD KEY idx_event_template_status (str_status)`,
+    );
+    await pool.query(
+      `UPDATE event_template SET json_status_logs = '[]' WHERE json_status_logs IS NULL`,
+    ).catch(() => { /* NOT NULL DEFAULT handled */ });
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template.str_status, json_status_logs, json_creator, json_confirmer');
+  }
+
   const [userEmailCol] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'str_email'`,
@@ -123,6 +143,61 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
        ADD COLUMN str_status VARCHAR(32) NOT NULL DEFAULT 'active' AFTER str_email`,
     );
     console.log('[DATA_MYSQL] 컬럼 추가 | users.str_email, users.str_status');
+  }
+
+  const [instRemovedCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance' AND COLUMN_NAME = 'b_permanently_removed'`,
+  );
+  if (Number((instRemovedCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance
+       ADD COLUMN b_permanently_removed TINYINT(1) NOT NULL DEFAULT 0 AFTER dt_created_at,
+       ADD COLUMN dt_permanently_removed_at DATETIME(6) NULL AFTER b_permanently_removed`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance.b_permanently_removed, dt_permanently_removed_at');
+  }
+
+  const [dbConnSvcCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'db_connection' AND COLUMN_NAME = 'str_service_abbr'`,
+  );
+  if (Number((dbConnSvcCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE db_connection
+       ADD COLUMN str_service_abbr VARCHAR(64) NULL COMMENT 'products.arrServices[].strAbbr, NULL=공통'
+       AFTER str_product_name,
+       ADD KEY idx_db_connection_product_service_env (n_product_id, str_service_abbr, str_env, b_is_active)`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | db_connection.str_service_abbr');
+  }
+
+  const [dbConnSvcIdCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'db_connection' AND COLUMN_NAME = 'n_service_id'`,
+  );
+  if (Number((dbConnSvcIdCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE db_connection
+       ADD COLUMN n_service_id BIGINT NULL COMMENT 'product_service.n_id, NULL=공통'
+       AFTER str_product_name,
+       ADD KEY idx_db_connection_service (n_service_id)`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | db_connection.n_service_id');
+  }
+
+  const [instSvcIdCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance' AND COLUMN_NAME = 'n_service_id'`,
+  );
+  if (Number((instSvcIdCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance
+       ADD COLUMN n_service_id BIGINT NULL COMMENT 'product_service.n_id'
+       AFTER n_product_id,
+       ADD KEY idx_event_instance_service (n_service_id)`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance.n_service_id');
   }
 };
 

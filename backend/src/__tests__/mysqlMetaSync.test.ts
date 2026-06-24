@@ -27,15 +27,14 @@ import {
   type IRelationalImportPayload,
   type IUserRowJson,
   type IRoleRowJson,
-} from '../db/mysqlRelationalSync';
-import { fnEnsureMysqlAppSchema, fnMysqlImportRelationalPayload } from '../db/mysqlAppDataAccess';
-import {
   fnRelationalLoadActivityLogs,
   fnRelationalLoadProducts,
   fnRelationalLoadUsers,
   fnRelationalLoadUserUiRoot,
   fnRelationalReplaceUserUiOnly,
+  fnSyncProductsOnlyToMysql,
 } from '../db/mysqlRelationalSync';
+import { fnEnsureMysqlAppSchema, fnMysqlImportRelationalPayload } from '../db/mysqlAppDataAccess';
 import { fnGetMysqlAppPool, fnResetMysqlAppPoolForTests } from '../db/mysqlAppPool';
 import { ARR_META_TABLE_NAMES } from '../db/mysqlAppSchema';
 
@@ -100,6 +99,8 @@ const fnBuildMinimalPayload = (): IRelationalImportPayload => {
         { nDbConnectionId: N_DB_CONN, strDefaultItems: '', strQueryTemplate: 'SELECT 1' },
       ],
       dtCreatedAt: strDt,
+      strStatus: 'dba_confirmed',
+      arrStatusLogs: [],
     },
   ];
   const arrEventInstances: IEventInstance[] = [
@@ -235,6 +236,22 @@ describeMysql('메타 MySQL 동기화 (RUN_MYSQL_META_TESTS=1 + DATA_MYSQL_*)', 
     });
     const root = await fnRelationalLoadUserUiRoot(pool);
     expect(root.mapByUserId[String(N_USER)]?.theme).toBe('dark');
+  });
+
+  it('fnSyncProductsOnlyToMysql — 미참조 프로덕트 삭제', async () => {
+    await fnMysqlImportRelationalPayload(pool, fnBuildMinimalPayload());
+    const arrKeep = (await fnRelationalLoadProducts(pool)).filter((p) => p.nId !== N_PRODUCT);
+    await fnSyncProductsOnlyToMysql(pool, arrKeep);
+    const arrAfter = await fnRelationalLoadProducts(pool);
+    expect(arrAfter.some((p) => p.nId === N_PRODUCT)).toBe(false);
+    expect(arrAfter.length).toBe(0);
+  });
+
+  it('fnSyncProductsOnlyToMysql — 템플릿 참조 프로덕트 삭제 거부', async () => {
+    await fnMysqlImportRelationalPayload(pool, fnBuildMinimalPayload());
+    await expect(fnSyncProductsOnlyToMysql(pool, [])).rejects.toThrow(/사용 중|삭제할 수 없습니다/);
+    const arrAfter = await fnRelationalLoadProducts(pool);
+    expect(arrAfter.some((p) => p.nId === N_PRODUCT)).toBe(true);
   });
 });
 

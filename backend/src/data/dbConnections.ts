@@ -4,7 +4,7 @@ import { IDbConnection, TDbConnectionKind } from '../types';
 import { STR_DATA_DIR, fnMirrorJsonToDisk, fnSaveJson, fnReadJsonArrayFromDisk } from './jsonStore';
 import { fnIsMysqlStore } from './dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
-import { fnCancelMysqlDocFlushForFiles } from '../db/mysqlDocPersist';
+import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
 import {
   fnDeleteDbConnectionRowFromMysql,
   fnRelationalLoadDbConnections,
@@ -17,6 +17,7 @@ import {
   fnIsDbConnPasswordEncrypted,
   fnIsDbConnPasswordSecretConfigured,
 } from '../services/dbConnectionPasswordCrypto';
+import { fnNormalizeServiceAbbr, fnServiceAbbrsCompatible } from '../utils/serviceScope';
 
 const STR_FILE = 'dbConnections.json';
 
@@ -108,6 +109,7 @@ export const fnCommitOneDbConnectionToMysql = async (objConn: IDbConnection): Pr
 export const fnCommitDbConnectionDeleteToMysql = async (nId: number): Promise<void> => {
   if (!fnIsMysqlStore()) return;
   fnCancelMysqlDocFlushForFiles(['dbConnections.json']);
+  await fnAwaitInFlightMysqlDocFlush();
   const pool = fnGetMysqlAppPool();
   await fnDeleteDbConnectionRowFromMysql(pool, nId);
   fnMirrorDbConnectionsJson();
@@ -175,6 +177,63 @@ fnMaybeAutoEncryptPlainPasswordsOnDisk();
 export const fnGetNextDbConnectionId = (): number =>
   arrDbConnections.length > 0 ? Math.max(...arrDbConnections.map((c) => c.nId)) + 1 : 1;
 
+export { fnNormalizeServiceAbbr } from '../utils/serviceScope';
+
+/** 접속 행이 이벤트 Step2 서비스 범위와 호환 (nServiceId 우선, abbr fallback) */
+export const fnConnectionMatchesServiceScope = (
+  objConn: IDbConnection,
+  strServiceAbbr?: string | null,
+  nServiceId?: number | null,
+): boolean => {
+  const nInstId = Number(nServiceId) || 0;
+  const nConnId = Number(objConn.nServiceId) || 0;
+  if (nInstId > 0 && nConnId > 0) return nConnId === nInstId;
+
+  const strConnSvc = fnNormalizeServiceAbbr(objConn.strServiceAbbr);
+  const strInstSvc = fnNormalizeServiceAbbr(strServiceAbbr);
+  if (!strInstSvc && nInstId <= 0) return !strConnSvc || strConnSvc === strInstSvc;
+  if (!strConnSvc) return true;
+  if (!strInstSvc) return true;
+  return fnServiceAbbrsCompatible(strConnSvc, strInstSvc);
+};
+
+/** 프로덕트+환경+종류+서비스 범위 기준 활성 접속 1건 (서비스 전용 → 공통 fallback) */
+export const fnFindActiveConnectionByKindAndService = (
+  nProductId: number,
+  strEnv: 'dev' | 'qa' | 'live',
+  strKind: TDbConnectionKind,
+  strServiceAbbr?: string | null,
+  nServiceId?: number | null,
+): IDbConnection | undefined => {
+  const strSvc = fnNormalizeServiceAbbr(strServiceAbbr);
+  const fnMatches = (c: IDbConnection) =>
+    c.nProductId === nProductId &&
+    c.strEnv === strEnv &&
+    (c.strKind ?? 'GAME') === strKind &&
+    c.bIsActive &&
+    fnConnectionMatchesServiceScope(c, strSvc, nServiceId);
+
+  if (strSvc || (nServiceId != null && nServiceId > 0)) {
+    if (nServiceId != null && nServiceId > 0) {
+      const objById = arrDbConnections.find(
+        (c) => fnMatches(c) && Number(c.nServiceId) === Number(nServiceId),
+      );
+      if (objById) return objById;
+    }
+    const objExact = arrDbConnections.find(
+      (c) => fnMatches(c) && fnNormalizeServiceAbbr(c.strServiceAbbr) === strSvc,
+    );
+    if (objExact) return objExact;
+    const objCompat = arrDbConnections.find((c) => {
+      const strConn = fnNormalizeServiceAbbr(c.strServiceAbbr);
+      return fnMatches(c) && strConn && strConn !== strSvc && fnServiceAbbrsCompatible(strConn, strSvc);
+    });
+    if (objCompat) return objCompat;
+    return arrDbConnections.find((c) => fnMatches(c) && !fnNormalizeServiceAbbr(c.strServiceAbbr));
+  }
+  return arrDbConnections.find((c) => fnMatches(c) && !fnNormalizeServiceAbbr(c.strServiceAbbr));
+};
+
 /** 프로덕트+환경 기준 활성 접속 1건 (종류 무관, 배열 순서 비결정적 — 신규 코드는 fnResolveExecuteConnection 사용) */
 export const fnFindActiveConnection = (
   nProductId: number,
@@ -186,33 +245,70 @@ export const fnFindActiveConnection = (
 
 /**
  * 쿼리 실행용 접속 해석 (다중 세트와 동일 규칙).
- * - nDbConnectionId 있음: 해당 템플릿 연결 조회 → 요청 env·활성이면 그대로, 아니면 동일 strKind의 요청 env 활성 접속.
+ * - nDbConnectionId 있음: 해당 템플릿 연결 조회 → 요청 env·서비스·활성이면 그대로, 아니면 동일 kind·서비스의 요청 env 활성 접속.
  * - 없음(레거시 단일 strGeneratedQuery): strKind GAME 활성 접속 1건.
  */
 export const fnResolveExecuteConnection = (
   nProductId: number,
   strEnv: 'dev' | 'qa' | 'live',
-  nDbConnectionId?: number | null
+  nDbConnectionId?: number | null,
+  strServiceAbbr?: string | null,
+  nServiceId?: number | null,
 ): IDbConnection | undefined => {
   if (nDbConnectionId != null && nDbConnectionId > 0) {
     const objTemplateConn = fnFindConnectionById(nDbConnectionId);
     if (!objTemplateConn || objTemplateConn.nProductId !== nProductId) return undefined;
     const strKind = objTemplateConn.strKind ?? 'GAME';
-    return objTemplateConn.strEnv === strEnv && objTemplateConn.bIsActive
-      ? objTemplateConn
-      : fnFindActiveConnectionByKind(nProductId, strEnv, strKind);
+    if (
+      objTemplateConn.strEnv === strEnv &&
+      objTemplateConn.bIsActive &&
+      fnConnectionMatchesServiceScope(objTemplateConn, strServiceAbbr, nServiceId)
+    ) {
+      return objTemplateConn;
+    }
+    return fnFindActiveConnectionByKindAndService(nProductId, strEnv, strKind, strServiceAbbr, nServiceId);
   }
-  return fnFindActiveConnectionByKind(nProductId, strEnv, 'GAME');
+  return fnFindActiveConnectionByKindAndService(nProductId, strEnv, 'GAME', strServiceAbbr, nServiceId);
 };
 
-/** 프로덕트+환경+종류 기준 활성 접속 1건 */
+/** @deprecated fnFindActiveConnectionByKindAndService 사용 — 서비스 범위 미반영 */
 export const fnFindActiveConnectionByKind = (
   nProductId: number,
   strEnv: 'dev' | 'qa' | 'live',
-  strKind: TDbConnectionKind
+  strKind: TDbConnectionKind,
 ): IDbConnection | undefined =>
-  arrDbConnections.find(
-    (c) => c.nProductId === nProductId && c.strEnv === strEnv && c.strKind === strKind && c.bIsActive
+  fnFindActiveConnectionByKindAndService(nProductId, strEnv, strKind);
+
+/** 프로덕트·서비스·환경 기준 활성 접속 존재 (종류 무관) */
+export const fnHasEnvConnectionForService = (
+  nProductId: number,
+  strServiceAbbr: string,
+  strEnv: 'qa' | 'live',
+  nServiceId?: number | null,
+): boolean =>
+  arrDbConnections.some(
+    (c) =>
+      c.nProductId === nProductId &&
+      c.strEnv === strEnv &&
+      c.bIsActive &&
+      fnConnectionMatchesServiceScope(c, strServiceAbbr, nServiceId),
+  );
+
+/** 프로덕트·서비스·환경·종류 기준 활성 접속 존재 */
+export const fnHasEnvConnectionForKindAndService = (
+  nProductId: number,
+  strServiceAbbr: string,
+  strEnv: 'qa' | 'live',
+  strKind: TDbConnectionKind,
+  nServiceId?: number | null,
+): boolean =>
+  arrDbConnections.some(
+    (c) =>
+      c.nProductId === nProductId &&
+      c.strEnv === strEnv &&
+      (c.strKind ?? 'GAME') === strKind &&
+      c.bIsActive &&
+      fnConnectionMatchesServiceScope(c, strServiceAbbr, nServiceId),
   );
 
 /** ID로 접속 정보 1건 조회 */
@@ -230,15 +326,18 @@ export const fnFindDuplicateDbConnection = (
   strHost: string,
   strDatabase: string,
   nExcludeId?: number,
+  strServiceAbbr?: string | null,
 ): IDbConnection | undefined => {
   const strHostNorm = strHost.trim();
   const strDbNorm = strDatabase.trim();
+  const strSvcNorm = fnNormalizeServiceAbbr(strServiceAbbr);
   return arrDbConnections.find(
     (c) =>
       c.nId !== nExcludeId &&
       c.nProductId === nProductId &&
       c.strEnv === strEnv &&
       c.strKind === strKind &&
+      fnNormalizeServiceAbbr(c.strServiceAbbr) === strSvcNorm &&
       c.strHost.trim() === strHostNorm &&
       c.strDatabase.trim() === strDbNorm,
   );

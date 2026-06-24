@@ -1,21 +1,33 @@
 ---
-description: 이벤트 인스턴스 도메인 규칙 — 워크플로, 반영 날짜 조건, DBA 쿼리 수정
-globs: {backend/src/controllers/eventInstanceController.ts,backend/src/controllers/eventController.ts,front/src/pages/MyDashboardPage.tsx,front/src/pages/EventPage.tsx,front/src/stores/useEventInstanceStore.ts}
+description: 이벤트 인스턴스·쿼리 템플릿 워크플로 — D1 생성 차단, 반영 날짜, DBA 쿼리 수정
+globs: {backend/src/controllers/eventInstanceController.ts,backend/src/controllers/eventController.ts,front/src/pages/MyDashboardPage.tsx,front/src/pages/EventPage.tsx,front/src/pages/QueryPage.tsx,front/src/stores/useEventInstanceStore.ts}
 alwaysApply: false
 ---
 
-# 이벤트 인스턴스 도메인
+# 이벤트 인스턴스·템플릿 도메인
 
-## 9단계 워크플로 (코드와 동일)
+## 쿼리 템플릿 워크플로·D1
 
 ```
-event_created → confirm_requested → dba_confirmed
-  → qa_requested → qa_deployed → qa_verified
+template_created → confirm_requested → dba_confirmed
+```
+
+- **D1**: `dba_confirmed`만 이벤트 생성 — `fnCreateInstance`(`fnIsTemplateReadyForInstance`) + `QueryPage`(선택·제출). 미승인 → 400 / UI 차단.
+- 레거시(`strStatus` 없음): `fnNormalizeEventTemplate` → `dba_confirmed`.
+- 전이: `PATCH /api/events/:id/status` — `event_template.request_confirm` / `event_template.confirm`. UI: `EventPage` 스테퍼·필터.
+- **D2**: `dba_confirmed` + `PUT /api/events/:id` 쿼리·세트 변경 → `confirm_requested` + 재승인 로그, `objConfirmer` null.
+- **리뷰 중 쿼리 수정**: `confirm_requested`만 `PUT /api/events/:id/query` — 상태 유지, `ITemplateStatusLog.objQueryEdit`. 일반 PUT은 쿼리 필드 400.
+
+## 7단계 인스턴스 워크플로 (코드와 동일)
+
+```
+event_created → qa_requested → qa_deployed → qa_verified
   → live_requested → live_deployed → live_verified(완료)
 ```
 
-- 반영 범위 `['live']`만: `dba_confirmed` 다음 `live_requested` 직행.
+- 반영 범위 `['live']`만: `event_created` 다음 `live_requested` 직행.
 - 전이: `OBJ_STATUS_TRANSITIONS_BASE`, `fnGetTransitions(..., arrDeployScope)`.
+- 레거시 `confirm_requested`/`dba_confirmed` 인스턴스: `fnNormalizeEventInstance` → `event_created`.
 
 ## 재요청
 
@@ -29,7 +41,7 @@ event_created → confirm_requested → dba_confirmed
 
 ## DBA 쿼리 수정 가능
 
-`confirm_requested`, `qa_requested`, `live_requested`에서만 `strGeneratedQuery`(및 세트 쿼리) 수정.
+`qa_requested`, `live_requested`에서만 `strGeneratedQuery`(및 세트 쿼리) 수정.
 
 ## 쿼리 재생성·{{items}}
 
@@ -37,7 +49,8 @@ event_created → confirm_requested → dba_confirmed
 
 ## QA/LIVE 실행·접속 (`fnExecuteAndDeploy`)
 
-- 접속: **`fnResolveExecuteConnection`** — 단일·다중 세트 모두 세트별 `nDbConnectionId`(레거시는 GAME).
+- 접속: **`fnResolveExecuteConnection(..., strServiceAbbr)`** — 인스턴스 Step2. 단일·다중 세트 세트별 `nDbConnectionId`+서비스+kind(레거시 GAME).
+- **생성 검증**: `fnCreateInstance` — `arrDeployScope` env별·세트 kind별 접속 없으면 400.
 - **성공**: `qa_deployed`/`live_deployed` + `objExecutionResult`(`strConnectionSummary` 선택).
 - **실패**: 상태 유지 + `arrStatusLogs`에 실패 행 — `bSuccess: false`, `strError`, `strConnectionSummary`, 부분 `arrQueryResults`. `fnSaveEventInstances` + `fnBroadcastInstanceUpdate`.
 

@@ -1,5 +1,8 @@
 # DQPM Headed E2E 테스트 카탈로그
 
+> **페이지별 통합 계획(SSOT)**: [docs/E2E-PAGE-TEST-PLAN.md](../../docs/E2E-PAGE-TEST-PLAN.md) — 기능 추가 시 매트릭스 한 줄 먼저 갱신.  
+> 본 파일은 **카탈로그 ID·풀 번호·probe 명령** 부록이다.
+
 **하이브리드 운영**: Playwright **자동 검증** + 본 문서 **수동 체크리스트**를 함께 씁니다.
 
 | 모드 | 표기 | 의미 |
@@ -29,7 +32,7 @@ npm run test:e2e:ui                 # 전체 — 수동 체크리스트 따라�
 | `register-approve.spec.ts` | A-05~09 🤖 |
 | `my-dashboard-dba.spec.ts` | B-07, E-X1, F-04 🔀 |
 | `navigation-gm01.spec.ts` | B-gm01, B-07, B-08 🤖 |
-| `workflow-qa-live.spec.ts` | E-02, E-D1, E-03~E-10 serial 🤖 `@workflow` |
+| `workflow-qa-live.spec.ts` | E-02, E-D1, E-05~E-10 serial 🤖 `@workflow` |
 | `workflow-pool-live-delete.spec.ts` | 풀 #152~162 LIVE·삭제 🤖 `@pool` · 체크리스트 **§P** |
 | `result-ui.spec.ts` | F-02, F-03 🤖 `@result-ui` |
 | `scripts/probe-gm01-headed-full.mjs` | gm01 L1 투어 |
@@ -88,7 +91,7 @@ node scripts/probe-select-result-ui.mjs
 |------|------|-------------------------|
 | **신규 가입용** | 회원가입·승인 대기 | 매번 새 `testuser001` |
 | **admin** | 승인·사용자·역할·전체 메뉴 | `admin` / 시드 비밀번호 |
-| **dba01** | 컨펌·QA/LIVE 실행·쿼리 수정 | `dba01` |
+| **dba01** | 템플릿 승인(EventPage)·QA/LIVE 실행·쿼리 수정 | `dba01` |
 | **GM/기획** | 이벤트 생성·수정·확인 요청 | 제품별 담당 계정 |
 | **guest** | 승인 전 — 로그인 불가 확인 | 가입 직후 |
 
@@ -157,11 +160,20 @@ node scripts/probe-select-result-ui.mjs
 | D-03 | 반영 범위 LIVE만 | GM | QA 단계 스킵 워크플로 | ⬜ |
 | D-04 | 다중 쿼리 세트 생성 | GM | `arrExecutionTargets` N개 | ⬜ |
 | D-05 | 제출 → `event_created` | GM | 나의 대시보드에 행 생성 | 🤖 seed+`workflow` / probe `DQPM_FRESH` |
-| D-06 | DEV 환경 이벤트 생성 | GM | DEV 태그·컨펌 요청 플로우 | ⬜ |
+| D-06 | DEV 환경 이벤트 생성 | GM | DEV 태그·템플릿 리뷰 플로우 | ⬜ |
 
 ---
 
-## E. 9단계 워크플로 (핵심 — QA+LIVE 경로)
+## T. 템플릿 워크플로 (EventPage — 인스턴스 이전)
+
+| ID | 단계 | 상태 | 담당 | 비고 |
+|----|------|------|------|------|
+| T-01 | 쿼리 리뷰 요청 | `confirm_requested` | GM `event_template.request_confirm` | 🤖 시드 자동 |
+| T-02 | DBA 리뷰 완료 | `dba_confirmed` | DBA `event_template.confirm` | 🤖 시드 자동 · D1 생성 허용 |
+
+---
+
+## E. 7단계 인스턴스 워크플로 (핵심 — QA+LIVE 경로)
 
 ### E2E 대상 이벤트 제한 (필수)
 
@@ -180,26 +192,25 @@ node scripts/probe-select-result-ui.mjs
 
 ### 「삭제 제외」의 의미 (풀·headed 공통)
 
-**끝까지 가는 범위** = 아래 **9단계 전체(E-01~E-10)**. **포함하지 않음**: 숨기기(E-X2), **삭제(E-X3)**.
+**끝까지 가는 범위** = **T-01~T-02**(템플릿, 시드 자동) + **7단계(E-01~E-02·E-D1·E-05~E-10)**. **포함하지 않음**: 숨기기(E-X2), **삭제(E-X3)**.
 
 | 순서 | 업무 표현 (DQPM) | E-ID | 상태(도달) | 담당 |
 |------|------------------|------|------------|------|
+| 0 | **템플릿 DBA 승인** | T-01~T-02 | `dba_confirmed` | GM→DBA (EventPage) |
 | 1 | **이벤트 생성** | E-01 | `event_created` | GM |
-| 2 | **컨펌 요청** | E-03 | `confirm_requested` | GM |
-| 3 | **DBA 컨펌 완료** | E-04 | `dba_confirmed` | DBA |
-| 4 | **QA 반영 요청** | E-05 | `qa_requested` | GM |
-| 5 | **QA 반영 실행** | E-06 | `qa_deployed` | DBA |
-| 6 | **QA 확인** | E-07 | `qa_verified` | GM |
-| 7 | **LIVE 반영 요청** | E-08 | `live_requested` | GM |
-| 8 | **LIVE 반영 실행** | E-09 | `live_deployed` | DBA |
-| 9 | **완료** (LIVE 확인) | E-10 | `live_verified` | GM |
+| 2 | **QA 반영 요청** | E-05 | `qa_requested` | GM |
+| 3 | **QA 반영 실행** | E-06 | `qa_deployed` | DBA |
+| 4 | **QA 확인** | E-07 | `qa_verified` | GM |
+| 5 | **LIVE 반영 요청** | E-08 | `live_requested` | GM |
+| 6 | **LIVE 반영 실행** | E-09 | `live_deployed` | DBA |
+| 7 | **완료** (LIVE 확인) | E-10 | `live_verified` | GM |
 
-- (선택) E-02 수정 · E-D1 DBA 쿼리 수정 — 본 9단계에 **끼워 넣는 부가** 단계.
-- 인스턴스가 **이미 중간 상태**면, 위 표에서 **현재 다음 단계부터 E-10**까지 진행하면 됨 (예: #152가 `confirm_requested`면 3번 E-04부터).
-- `npm run test:e2e:pool:no-delete` = **E-06~E-10만** (`qa_requested` 이상 풀용). **전체 9단계**는 `workflow-qa-live.spec.ts` headed.
+- (선택) E-02 수정 · E-D1 DBA 쿼리 수정 — 본 7단계에 **끼워 넣는 부가** 단계.
+- 인스턴스가 **이미 중간 상태**면, 위 표에서 **현재 다음 단계부터 E-10**까지 진행 (예: `qa_requested`면 E-06부터).
+- `npm run test:e2e:pool:no-delete` = **E-06~E-10만** (`qa_requested` 이상 풀용). **전체 7단계**는 `workflow-qa-live.spec.ts` headed (템플릿은 시드·T-01~T-02).
 
-상태 전이:  
-`event_created` → `confirm_requested` → `dba_confirmed` → `qa_requested` → `qa_deployed` → `qa_verified` → `live_requested` → `live_deployed` → `live_verified`
+상태 전이 (인스턴스):  
+`event_created` → `qa_requested` → `qa_deployed` → `qa_verified` → `live_requested` → `live_deployed` → `live_verified`
 
 ### E2E 시나리오 (계정 바꿔 가며 1건 끝까지)
 
@@ -207,8 +218,6 @@ node scripts/probe-select-result-ui.mjs
 |----|------|-----------|------|-----------|------|--------|
 | E-01 | 생성 완료 | `event_created` | 나의 대시보드 | (자동) | GM | 🤖 `workflow` beforeAll |
 | E-02 | 수정 | `event_created` | 나의 대시보드 | **수정** | GM `my_dashboard.edit` | 🤖 `workflow` |
-| E-03 | 컨펌 요청 | `confirm_requested` | | **컨펌 요청** | GM `request_confirm` | 🤖 `workflow` · 🔶 probe |
-| E-04 | DBA 컨펌 | `dba_confirmed` | | **컨펌** (초록) | DBA `confirm` | 🤖 `workflow` · 🔶 probe |
 | E-05 | QA 실행 요청 | `qa_requested` | | **QA 쿼리 실행 요청** | GM `request_qa` | 🤖 `workflow` · 🔶 probe |
 | E-06 | QA DB 실행 | `qa_deployed` | 실행 결과 모달 | **QA 쿼리 실행** → 성공 | DBA `execute_qa` | 🤖 `workflow` · 🔶 probe |
 | E-07 | QA 확인 | `qa_verified` | Popconfirm | **QA확인** | GM `verify_qa` | 🤖 `workflow` (QA 성공 시) |
@@ -241,7 +250,7 @@ node scripts/probe-select-result-ui.mjs
 
 ## P-CC. **콜오브카오스** INSERT 풀 #166~168 (`nProductId=3`)
 
-| P-ID | # | 결과 (9단계·삭제 제외) |
+| P-ID | # | 결과 (7단계·삭제 제외) |
 |------|---|------------------------|
 | P-CC-166 | 166 | ☑ `live_verified` (E-06 선행 + E-07~10 headed) |
 | P-CC-167 | 167 | ☑ `live_verified` |
@@ -251,7 +260,7 @@ node scripts/probe-select-result-ui.mjs
 |------|------|
 | **시드** | `$env:E2E_PRODUCT_ID='3'; $env:E2E_WORKFLOW_KIND='insert'; npm run seed-e2e-workflow:fresh` |
 | **쿼리** | temp `#e2e_dqpm` INSERT 1건 → DROP (MSSQL QA) |
-| **실행** | `$env:E2E_SLOW_MO='900'` · `workflow` E-03~E-10 또는 `pool:no-delete` (중간부터) |
+| **실행** | `$env:E2E_SLOW_MO='900'` · `workflow` E-05~E-10 또는 `pool:no-delete` (중간부터) |
 
 ---
 
@@ -260,11 +269,11 @@ node scripts/probe-select-result-ui.mjs
 | P-ID | # | 프로덕트 | 결과 |
 |------|---|----------|------|
 | P-DK-163 | 163 | DK온라인 | ☑ `live_verified` + **삭제** |
-| P-DK-164 | 164 | DK온라인 | ☑ 9단계 (삭제 미실시) |
-| P-DK-165 | 165 | DK온라인 | ☑ 9단계 (삭제 미실시) |
+| P-DK-164 | 164 | DK온라인 | ☑ 7단계 (삭제 미실시) |
+| P-DK-165 | 165 | DK온라인 | ☑ 7단계 (삭제 미실시) |
 
 **시드**: `cd backend` → `$env:E2E_PRODUCT_ID='2'; npm run seed-e2e-workflow:fresh`  
-**실행**: `$env:E2E_INSTANCE_ID='<번호>'; $env:E2E_SLOW_MO='900'` → `workflow` E-03~E-10 `--headed`
+**실행**: `$env:E2E_INSTANCE_ID='<번호>'; $env:E2E_SLOW_MO='900'` → `workflow` E-05~E-10 `--headed`
 
 ---
 
@@ -272,22 +281,22 @@ node scripts/probe-select-result-ui.mjs
 
 **스냅샷**: 로컬 API 기준 (갱신 시 `backend`에서 `gm01` 로그인 후 `/event-instances/:id` 확인).
 
-| P-ID | # | 현재 상태 | 9단계 완료까지 (삭제 제외) | 남은 업무 단계 (§ 위 표) | 실행 (지시 후) | ☐ |
+| P-ID | # | 현재 상태 | 7단계 완료까지 (삭제 제외) | 남은 업무 단계 (§ 위 표) | 실행 (지시 후) | ☐ |
 |------|---|-----------|---------------------------|-------------------------|----------------|---|
 | P-152 | 152 | `live_verified` **삭제됨** | ☑ 완료+삭제 | — | ☑ |
 | P-153~162 | 153~162 | **삭제됨** | ☑ | headed E-X3 완료 | — | ☑ |
 | P-154 | 154 | **삭제됨** | (이전 포함) | — | — | ☑ |
 | P-156 | 156 | **삭제됨** | (이전 포함) | — | — | ☑ |
 
-² P-152: headed 9단계 완료(`live_verified`, 삭제 제외). DB 복구 후 E-07~E-10 headed(slowMo) 완료.
+² P-152: headed 7단계 완료(`live_verified`, 삭제 제외). DB 복구 후 E-07~E-10 headed(slowMo) 완료.
 
 \* **QA 반영 실행(E-06)·LIVE 반영 실행(E-09)** DB **성공** 필요. 실패 시 QA 확인~완료는 skip.
 
-### P-POOL 공통 명령 (9단계·삭제 제외 · headed)
+### P-POOL 공통 명령 (7단계·삭제 제외 · headed)
 
 ```powershell
 cd front
-# ① 9단계 전체 (이벤트 생성~완료) — event_created 등
+# ① 7단계 전체 (이벤트 생성~완료) — event_created 등 · 템플릿은 시드 T-01~T-02
 $env:E2E_INSTANCE_ID='155'
 npx playwright test e2e/workflow-qa-live.spec.ts --project=workflow --headed
 
@@ -307,14 +316,14 @@ node scripts/probe-gm01-dba01-headed-full.mjs
 | 범위 | spec | 단계 |
 |------|------|------|
 | `qa_requested` 이상 | `workflow-pool-live-delete.spec.ts` | E-06~E-10 (+ 옵션 E-X3) |
-| `event_created` ~ `dba_confirmed` | `workflow-qa-live.spec.ts` | E-02~E-10 |
+| `event_created` | `workflow-qa-live.spec.ts` | E-02·E-D1·E-05~E-10 |
 | 삭제만 | `workflow-pool` · E-X3 describe | `live_verified` · `E2E_SKIP_DELETE` 없을 때 |
 
 ### LIVE 전용 경로 (`arrDeployScope: ['live']` 만)
 
 | ID | 단계 | 비고 |
 |----|------|------|
-| E-L1 | `dba_confirmed` 후 | **LIVE 쿼리 실행 요청** (QA 스킵 안내 문구) |
+| E-L1 | `event_created` (LIVE-only) | **LIVE 쿼리 실행 요청** (QA 스킵 안내 문구) |
 | E-L2~L4 | `live_requested` → `live_deployed` → `live_verified` | E-09, E-10과 동일 |
 
 ### 재요청
@@ -389,15 +398,14 @@ node scripts/probe-gm01-dba01-headed-full.mjs
 ```
 1. [A-07] 신규 가입 (또는 GM 계정 사용)
 2. [A-09] admin 승인 — 생략 가능 시 GM/DBA 기존 계정
-3. [D-05] GM — 이벤트 생성 (QA+LIVE, SELECT 1줄 포함 권장)
-4. [E-03] GM — 컨펌 요청
-5. [E-04] dba01 — 컨펌
-6. [E-05] GM — QA 쿼리 실행 요청
-7. [E-06] dba01 — QA 쿼리 실행 (headed: DQPM_HEADED=1 probe 또는 수동)
-8. [E-07] GM — QA 확인
-9. [E-08] GM — LIVE 쿼리 실행 요청
-10. [E-09] dba01 — LIVE 쿼리 실행
-11. [E-10] GM — LIVE 확인 → live_verified
+3. [T-01~T-02] 템플릿 DBA 승인 (EventPage) — E2E 시드는 자동
+4. [D-05] GM — 이벤트 생성 (QA+LIVE, SELECT 1줄 포함 권장)
+5. [E-05] GM — QA 쿼리 실행 요청
+6. [E-06] dba01 — QA 쿼리 실행 (headed: DQPM_HEADED=1 probe 또는 수동)
+7. [E-07] GM — QA 확인
+8. [E-08] GM — LIVE 쿼리 실행 요청
+9. [E-09] dba01 — LIVE 쿼리 실행
+10. [E-10] GM — LIVE 확인 → live_verified
 ```
 
 **LIVE-only 템플릿**이면 6~8 생략 → E-L1부터.
@@ -408,7 +416,7 @@ node scripts/probe-gm01-dba01-headed-full.mjs
 
 | 우선순위 | 파일 | 포함 ID | 상태 |
 |----------|------|---------|------|
-| P0 | `e2e/workflow-qa-live.spec.ts` | E-01(API)·E-02·E-D1·E-03~E-10 serial | ✅ |
+| P0 | `e2e/workflow-qa-live.spec.ts` | E-01(API)·E-02·E-D1·E-05~E-10 serial | ✅ |
 | P0 | `e2e/register-approve.spec.ts` | A-05~A-09 | ✅ |
 | P0 | `e2e/navigation-gm01.spec.ts` | B-gm01·B-07·B-08 | ✅ |
 | P0 | `e2e/result-ui.spec.ts` | F-02~F-03 | ✅ |
@@ -443,7 +451,7 @@ $env:DQPM_HEADED='1'; $env:DQPM_SLOW_MO='700'; $env:DQPM_STEP_MS='1800'
 $env:DQPM_BASE='http://localhost:5173'
 # gm01 메뉴·상세·이벤트 생성 화면만 (제출 없음)
 node scripts/probe-gm01-headed-full.mjs
-# gm01+dba01 §I E-03~E-10 (신규: DQPM_FRESH=1)
+# gm01+dba01 §I E-05~E-10 (신규: DQPM_FRESH=1)
 $env:DQPM_FRESH='1'; node scripts/probe-gm01-dba01-headed-full.mjs
 # 인스턴스 고정: $env:DQPM_WORKFLOW_ID='154' · UI 생성: DQPM_UI_CREATE=1
 ```
@@ -451,7 +459,7 @@ $env:DQPM_FRESH='1'; node scripts/probe-gm01-dba01-headed-full.mjs
 | 스크립트 | 레벨 | 담당 계정 | 실제로 하는 일 |
 |----------|------|-----------|----------------|
 | `probe-gm01-headed-full.mjs` | **L1** | gm01 | B-01~03·07·08, C-01, D-01(진입만), E-X1, GM 버튼 스캔 |
-| `probe-gm01-dba01-headed-full.mjs` | **L2~L3** | gm01↔dba01 | §I E-03~E-10 · `DQPM_FRESH` · E-X1 (Playwright workflow와 동일 라인) |
+| `probe-gm01-dba01-headed-full.mjs` | **L2~L3** | gm01↔dba01 | §I E-05~E-10 · `DQPM_FRESH` · E-X1 (Playwright workflow와 동일 라인) |
 | `probe-select-result-ui.mjs` | L2/F | dba01 | F-02·F-03 UI (시드·데모 로그 의존) |
 | `probe-dba01-non-ops-headed.mjs` | L1 | dba01 | B-dba 메뉴(이벤트·사용자·DB 접속 등) |
 
@@ -473,7 +481,7 @@ $env:DQPM_FRESH='1'; node scripts/probe-gm01-dba01-headed-full.mjs
 | D-05 | 🤖 `workflow` beforeAll API | ✅ probe `DQPM_FRESH` | UI 제출: `DQPM_UI_CREATE` |
 | E-01 | 🤖 `workflow` API | ✅ probe | UI 이벤트 생성 아님 |
 | E-02 | 🤖 `workflow` | — | |
-| E-03~E-10 | 🤖 `workflow` serial | ✅ | QA/LIVE DB 성공 시 |
+| E-05~E-10 | 🤖 `workflow` serial | ✅ | QA/LIVE DB 성공 시 |
 | E-D1 | 🤖 `workflow` | — | E-D2 diff ⬜ |
 | E-X1 | 🤖 dba smoke | ✅ | |
 | F-01 | 🤖 workflow E-06 | ✅ | |
@@ -533,7 +541,7 @@ flowchart LR
 | 작업 | 커버 |
 |------|------|
 | `reset-e2e-passwords` + `seed-e2e-workflow:fresh` | D-05·E-01·config |
-| `workflow-qa-live.spec.ts` (`test:e2e:workflow` 10/10) | E-02·E-D1·E-03~E-10 |
+| `workflow-qa-live.spec.ts` (`test:e2e:workflow` 8/8) | E-02·E-D1·E-05~E-10 |
 | `navigation-gm01.spec.ts` smoke | B-gm01·B-07·B-08 |
 | `probe-gm01-dba01-headed-full.mjs` + `DQPM_FRESH` | headed §I 데모 |
 | `result-ui.spec.ts` + `seed-e2e-result-ui` | F-02·F-03 |
