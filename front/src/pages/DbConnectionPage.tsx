@@ -28,6 +28,10 @@ import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
 import { fnSemanticColor } from '../styles/semanticColors';
 import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
+import {
+  fnFindDuplicateDbConnectionInList,
+  fnNormalizeServiceAbbr,
+} from '../utils/dbConnectionScope';
 
 const { Text } = Typography;
 
@@ -94,6 +98,8 @@ const DbConnectionPage = () => {
   const nFormServiceId = Form.useWatch('nServiceId', form);
   const strFormEnv = Form.useWatch('strEnv', form);
   const strFormKind = Form.useWatch('strKind', form);
+  const strFormHost = Form.useWatch('strHost', form);
+  const strFormDatabase = Form.useWatch('strDatabase', form);
   const objFormProduct = useMemo(
     () => arrProducts.find((p) => p.nId === (objEditConn?.nProductId ?? nFormProductId)),
     [arrProducts, objEditConn?.nProductId, nFormProductId],
@@ -152,38 +158,39 @@ const DbConnectionPage = () => {
     form.setFieldValue('nPort', strDbType === 'mssql' ? 1433 : 3306);
   };
 
-  /** 프로덕트·서비스 구분·환경·접속 종류 조합 중복 (슬롯당 1건) */
-  const fnFindScopeDuplicateInList = useCallback((
-    nProductId: number | undefined,
-    strEnv: string | undefined,
-    strKind: string | undefined,
+  const fnResolveFormServiceAbbr = useCallback((
     nServiceId: number | undefined | null,
-    nExcludeId?: number,
-  ): IDbConnection | undefined => {
-    if (!nProductId || !strEnv) return undefined;
+    objProduct: typeof objFormProduct,
+  ): string => {
     const nSvc = Number(nServiceId) || 0;
-    const strKindNorm = (strKind ?? 'GAME') as TDbConnectionKind;
-    return arrConnections.find(
-      (c) =>
-        c.nId !== nExcludeId &&
-        c.nProductId === nProductId &&
-        c.strEnv === strEnv &&
-        (c.strKind ?? 'GAME') === strKindNorm &&
-        (nSvc > 0 ? Number(c.nServiceId) === nSvc : !(c.nServiceId ?? 0) && !(c.strServiceAbbr ?? '').trim()),
-    );
-  }, [arrConnections]);
+    if (nSvc > 0) {
+      const objSvc = objProduct?.arrServices?.find((s) => s.nServiceId === nSvc);
+      return fnNormalizeServiceAbbr(objSvc?.strAbbr);
+    }
+    return '';
+  }, []);
 
-  const objScopeDuplicate = useMemo(() => {
+  const objConnectionDuplicate = useMemo(() => {
     if (!bModalOpen) return undefined;
     const nProductId = objEditConn?.nProductId ?? nFormProductId;
     const strEnv = objEditConn?.strEnv ?? strFormEnv;
-    const strKind = strFormKind ?? 'GAME';
-    return fnFindScopeDuplicateInList(
-      nProductId,
-      strEnv,
-      strKind,
-      nFormServiceId,
-      objEditConn?.nId,
+    const strKind = (strFormKind ?? 'GAME') as TDbConnectionKind;
+    const strHost = String(strFormHost ?? objEditConn?.strHost ?? '').trim();
+    const strDatabase = String(strFormDatabase ?? objEditConn?.strDatabase ?? '').trim();
+    if (!nProductId || !strEnv || !strHost || !strDatabase) return undefined;
+
+    return fnFindDuplicateDbConnectionInList(
+      arrConnections,
+      {
+        nProductId,
+        strEnv: strEnv as IDbConnection['strEnv'],
+        strKind,
+        strHost,
+        strDatabase,
+        strServiceAbbr: fnResolveFormServiceAbbr(nFormServiceId, objFormProduct),
+        nExcludeId: objEditConn?.nId,
+      },
+      arrProducts,
     );
   }, [
     bModalOpen,
@@ -192,21 +199,26 @@ const DbConnectionPage = () => {
     strFormEnv,
     strFormKind,
     nFormServiceId,
-    fnFindScopeDuplicateInList,
+    strFormHost,
+    strFormDatabase,
+    arrConnections,
+    arrProducts,
+    objFormProduct,
+    fnResolveFormServiceAbbr,
   ]);
 
-  const fnOpenExistingFromScopeDuplicate = () => {
-    if (!objScopeDuplicate) return;
-    fnOpenModal(objScopeDuplicate);
-    setObjSelectedRow(objScopeDuplicate);
+  const fnOpenExistingFromConnectionDuplicate = () => {
+    if (!objConnectionDuplicate) return;
+    fnOpenModal(objConnectionDuplicate);
+    setObjSelectedRow(objConnectionDuplicate);
   };
 
-  const nodeScopeDuplicateHint = objScopeDuplicate ? (
+  const nodeConnectionDuplicateHint = objConnectionDuplicate ? (
     <span style={{ fontSize: 12 }}>
       <ExclamationCircleOutlined style={{ marginRight: 4, color: token.colorWarning }} />
-      <span style={{ color: token.colorWarning }}>이미 등록된 접속</span>
+      <span style={{ color: token.colorWarning }}>동일 호스트·DB명 접속이 이미 있습니다</span>
       <Text type="secondary" style={{ fontSize: 12 }}>
-        {' '}(#{objScopeDuplicate.nId} · {objScopeDuplicate.strHost}:{objScopeDuplicate.nPort}/{objScopeDuplicate.strDatabase})
+        {' '}(#{objConnectionDuplicate.nId} · {objConnectionDuplicate.strHost}:{objConnectionDuplicate.nPort}/{objConnectionDuplicate.strDatabase})
       </Text>
       {bCanEdit ? (
         <>
@@ -215,7 +227,7 @@ const DbConnectionPage = () => {
             type="link"
             size="small"
             style={{ padding: 0, height: 'auto', fontSize: 12 }}
-            onClick={fnOpenExistingFromScopeDuplicate}
+            onClick={fnOpenExistingFromConnectionDuplicate}
           >
             수정
           </Button>
@@ -226,7 +238,7 @@ const DbConnectionPage = () => {
 
   // 저장 — antd 6 Modal onOk는 항상 닫히므로 footer 버튼에서만 호출
   const fnHandleSave = async (): Promise<void> => {
-    if (objScopeDuplicate) return;
+    if (objConnectionDuplicate) return;
     setBSaving(true);
     try {
       const objValues = await form.validateFields();
@@ -701,7 +713,7 @@ const DbConnectionPage = () => {
             <Button
               type="primary"
               loading={bSaving}
-              disabled={!!objScopeDuplicate}
+              disabled={!!objConnectionDuplicate}
               onClick={() => void fnHandleSave()}
             >
               {objEditConn ? '수정' : '등록'}
@@ -782,8 +794,6 @@ const DbConnectionPage = () => {
             name="strKind"
             label="접속 종류"
             rules={[{ required: true, message: '종류를 선택해주세요.' }]}
-            validateStatus={objScopeDuplicate ? 'warning' : undefined}
-            help={nodeScopeDuplicateHint}
           >
             <Select placeholder="종류 선택">
               {ARR_DB_CONNECTION_KINDS.map((k) => (
@@ -809,6 +819,8 @@ const DbConnectionPage = () => {
             name="strHost"
             label="호스트"
             rules={[{ required: true, message: '호스트를 입력해주세요.' }]}
+            validateStatus={objConnectionDuplicate ? 'warning' : undefined}
+            help={nodeConnectionDuplicateHint}
           >
             <Input placeholder="예: 192.168.1.100 또는 db.example.com" />
           </Form.Item>

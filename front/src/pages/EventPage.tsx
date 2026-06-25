@@ -30,6 +30,7 @@ import {
 import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
 import { DqpmTag } from '../components/DqpmTag';
+import { fnRenderConnectionSelectOption, OBJ_DB_CONNECTION_SELECT_PROPS } from '../components/DbConnectionSelectOption';
 import QueryEditDiffView from '../components/QueryEditDiffView';
 import SqlLineNumberArea from '../components/SqlLineNumberArea';
 import { useEventStore } from '../stores/useEventStore';
@@ -50,10 +51,12 @@ import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorT
 import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 import {
   fnDeriveTemplateConnFilterAbbr,
-  fnFilterConnectionsForTemplatePicker,
+  fnFilterConnectionsForTemplatePickerByEnv,
+  fnFindLivePairForQaConnection,
+  fnIsValidQueryTemplateSet,
   fnListTemplateServiceScopeAbbrs,
   fnMergeTemplatePickerConnections,
-  fnResolveConnectionServiceAbbr,
+  fnNormalizeQueryTemplateItem,
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
 
@@ -136,18 +139,28 @@ type TQueryTemplatesTabContentProps = {
   fields: FormListFieldData[];
   add: (defaultValue?: unknown, insertIndex?: number) => void;
   remove: (index: number | number[]) => void;
-  arrConnectionsByProduct: IDbConnection[];
+  arrQaConnections: IDbConnection[];
+  arrLiveConnections: IDbConnection[];
+  arrAllConnections: IDbConnection[];
   arrProducts: readonly TProductServiceLookup[];
+  form: ReturnType<typeof Form.useForm>[0];
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
 };
+
+const fnFilterValidTemplateSets = (arrSets?: IQueryTemplateItem[]) =>
+  arrSets?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+
 const QueryTemplatesTabContent = ({
   fields,
   add,
   remove,
-  arrConnectionsByProduct,
+  arrQaConnections,
+  arrLiveConnections,
+  arrAllConnections,
   arrProducts,
+  form,
   activeKey,
   setActiveKey,
   justAddedRef,
@@ -185,32 +198,34 @@ const QueryTemplatesTabContent = ({
           )}
           <Form.Item
             {...restField}
-            name={[name, 'nDbConnectionId']}
-            label={`연결 DB (종류·${STR_SERVICE_SCOPE_LABEL}·DB 구분)`}
-            rules={[{ required: true, message: '연결 DB를 선택하세요.' }]}
-            extra={`GAME/WEB/LOG 등 DB 종류와 ${STR_SERVICE_SCOPE_LABEL} 기준입니다. QA/LIVE는 이벤트 생성 시 반영 범위에 맞게 자동 연결됩니다.`}
+            name={[name, 'nQaDbConnectionId']}
+            label={`QA 연결 DB (종류·${STR_SERVICE_SCOPE_LABEL}·DB)`}
+            rules={[{ required: true, message: 'QA 연결 DB를 선택하세요.' }]}
           >
-            <Select placeholder={`DB 접속 선택 (종류 · ${STR_SERVICE_SCOPE_LABEL} · 호스트/DB명)`} showSearch optionFilterProp="children">
-              {arrConnectionsByProduct.map((c) => {
-                const strSvcLabel = fnResolveConnectionServiceAbbr(c, arrProducts);
-                const strTag =
-                  strSvcLabel
-                    ? fnFormatDbConnectionCountryPlatform(strSvcLabel)
-                    : c.nServiceId
-                      ? `#${c.nServiceId}`
-                      : fnFormatDbConnectionCountryPlatform(undefined);
-                return (
-                <Select.Option key={c.nId} value={c.nId}>
-                  <Space wrap>
-                    <DqpmTag color="blue">{c.strKind || 'GAME'}</DqpmTag>
-                    <DqpmTag tone="service" style={{ fontSize: 11 }}>
-                      {strTag}
-                    </DqpmTag>
-                    <span>{c.strHost}:{c.nPort} / {c.strDatabase}</span>
-                  </Space>
-                </Select.Option>
-                );
-              })}
+            <Select
+              placeholder="QA DB 접속 선택"
+              {...OBJ_DB_CONNECTION_SELECT_PROPS}
+              onChange={(nId: number) => {
+                const objQa = arrAllConnections.find((c) => c.nId === nId);
+                if (!objQa) return;
+                const objLive = fnFindLivePairForQaConnection(arrAllConnections, objQa);
+                if (objLive) {
+                  form.setFieldValue(['arrQueryTemplates', name, 'nLiveDbConnectionId'], objLive.nId);
+                }
+              }}
+            >
+              {arrQaConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
+            </Select>
+          </Form.Item>
+          <Form.Item
+            {...restField}
+            name={[name, 'nLiveDbConnectionId']}
+            label={`LIVE 연결 DB (종류·${STR_SERVICE_SCOPE_LABEL}·DB)`}
+            rules={[{ required: true, message: 'LIVE 연결 DB를 선택하세요.' }]}
+            extra="QA 선택 시 동일 DB명 LIVE 접속이 있으면 자동으로 채워집니다."
+          >
+            <Select placeholder="LIVE DB 접속 선택" {...OBJ_DB_CONNECTION_SELECT_PROPS}>
+              {arrLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
             </Select>
           </Form.Item>
           <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
@@ -249,7 +264,7 @@ const QueryTemplatesTabContent = ({
       activeKey={activeKey}
       onTabClick={(key) => {
         if (key === QUERY_TABS_ADD_KEY) {
-          add({ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
+          add({ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
           justAddedRef.current = true;
           setActiveKey(QUERY_TABS_ADD_KEY);
         } else {
@@ -294,7 +309,8 @@ const EventPage = () => {
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditTemplate, setObjQueryEditTemplate] = useState<IEventTemplate | null>(null);
   const [strQueryEditValue, setStrQueryEditValue] = useState('');
-  const [arrQueryEditValues, setArrQueryEditValues] = useState<string[]>([]);
+  /** DBA 쿼리 수정 — 세트별 쿼리·QA/LIVE 연결 (confirm_requested 시 일반 수정 모달 대신) */
+  const [arrQueryEditSets, setArrQueryEditSets] = useState<IQueryTemplateItem[]>([]);
   const [bSavingQueryEdit, setBSavingQueryEdit] = useState(false);
 
   const arrEvents = useEventStore((s) => s.arrEvents);
@@ -611,7 +627,7 @@ const EventPage = () => {
       if (bMulti) {
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: objEvent.arrQueryTemplates,
+          arrQueryTemplates: objEvent.arrQueryTemplates?.map((s) => fnNormalizeQueryTemplateItem(s)),
         });
       } else {
         // 기존 단일 템플릿 → 다중 폼에 1세트로 표시 (연결 DB는 사용자가 선택)
@@ -619,14 +635,14 @@ const EventPage = () => {
         const strDefault = objEvent.strDefaultItems ?? '';
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
+          arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
         });
       }
     } else {
       setObjEditEvent(null);
       setStrQueryMode('multi');
       form.resetFields();
-      form.setFieldsValue({ arrQueryTemplates: [{ nDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
+      form.setFieldsValue({ arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
     }
     setBModalOpen(true);
   }, [form, arrDbConnections, arrProducts]);
@@ -684,33 +700,47 @@ const EventPage = () => {
 
   const fnOpenTemplateQueryEdit = (objTpl: IEventTemplate) => {
     setObjQueryEditTemplate(objTpl);
-    const arrSets = objTpl.arrQueryTemplates?.filter(
-      (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
-    ) ?? [];
+    const arrSets = fnFilterValidTemplateSets(objTpl.arrQueryTemplates);
     if (arrSets.length) {
-      setArrQueryEditValues(arrSets.map((s) => s.strQueryTemplate ?? ''));
+      setArrQueryEditSets(arrSets.map((s) => ({
+        ...fnNormalizeQueryTemplateItem(s),
+        strDefaultItems: s.strDefaultItems,
+        strQueryTemplate: s.strQueryTemplate ?? '',
+      })));
       setStrQueryEditValue('');
     } else {
       setStrQueryEditValue(objTpl.strQueryTemplate ?? '');
-      setArrQueryEditValues([]);
+      setArrQueryEditSets([]);
     }
     setBQueryEditOpen(true);
   };
 
+  const fnPatchQueryEditSet = (nIdx: number, patch: Partial<IQueryTemplateItem>) => {
+    setArrQueryEditSets((prev) => prev.map((s, i) => (i === nIdx ? { ...s, ...patch } : s)));
+  };
+
   const fnSaveTemplateQueryEdit = async () => {
     if (!objQueryEditTemplate) return;
+    if (arrQueryEditSets.length > 0) {
+      const bAllValid = arrQueryEditSets.every((s) => fnIsValidQueryTemplateSet(s));
+      if (!bAllValid) {
+        messageApi.warning('모든 세트에 QA/LIVE 연결 DB와 쿼리를 입력해주세요.');
+        return;
+      }
+    }
     setBSavingQueryEdit(true);
     try {
-      const arrSets = objQueryEditTemplate.arrQueryTemplates?.filter(
-        (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
-      ) ?? [];
-      const payload: Record<string, unknown> = arrSets.length
+      const payload: Record<string, unknown> = arrQueryEditSets.length
         ? {
-            arrQueryTemplates: arrSets.map((s, i) => ({
-              nDbConnectionId: s.nDbConnectionId,
-              strDefaultItems: s.strDefaultItems,
-              strQueryTemplate: (arrQueryEditValues[i] ?? s.strQueryTemplate ?? '').trim(),
-            })),
+            arrQueryTemplates: arrQueryEditSets.map((s) => {
+              const objNorm = fnNormalizeQueryTemplateItem(s);
+              return {
+                nQaDbConnectionId: objNorm.nQaDbConnectionId,
+                nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+                strDefaultItems: s.strDefaultItems,
+                strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
+              };
+            }),
             strQueryTemplate: '',
           }
         : { strQueryTemplate: strQueryEditValue.trim(), strDefaultItems: objQueryEditTemplate.strDefaultItems ?? '' };
@@ -746,18 +776,23 @@ const EventPage = () => {
         objEventData.strQueryTemplate = bMulti ? '' : (objValues.strQueryTemplate ?? '');
         objEventData.strDefaultItems = bMulti ? '' : (objValues.strDefaultItems ?? '');
         objEventData.arrQueryTemplates = bMulti
-          ? (objValues.arrQueryTemplates ?? []).filter(
-              (s: IQueryTemplateItem) => s.nDbConnectionId && (s.strQueryTemplate ?? '').trim()
-            ).map((s: IQueryTemplateItem) => ({
-              nDbConnectionId: Number(s.nDbConnectionId),
-              strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
-              strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
-            }))
+          ? (objValues.arrQueryTemplates ?? [])
+              .map((s: IQueryTemplateItem) => fnNormalizeQueryTemplateItem(s))
+              .filter((s: IQueryTemplateItem) => {
+                const objNorm = fnNormalizeQueryTemplateItem(s);
+                return objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (s.strQueryTemplate ?? '').trim();
+              })
+              .map((s: IQueryTemplateItem) => ({
+                nQaDbConnectionId: Number(s.nQaDbConnectionId),
+                nLiveDbConnectionId: Number(s.nLiveDbConnectionId),
+                strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
+                strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+              }))
           : undefined;
       }
 
       if (!bQueryLocked && bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
-        messageApi.warning('연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
+        messageApi.warning('QA/LIVE 연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
         return;
       }
 
@@ -792,7 +827,7 @@ const EventPage = () => {
     void fnLoadRelatedInstances(nId);
   };
 
-  // 다중 쿼리 탭 — 프로덕트·서비스 구분 기준 연결 DB (슬롯당 1행, QA/LIVE는 이벤트 생성 시 매칭)
+  // 다중 쿼리 탭 — 프로덕트·서비스 필터 + env별 QA/LIVE 연결 DB
   const nProductIdWatch = Form.useWatch('nProductId', form);
   const objFormProduct = useMemo(
     () => arrProducts.find((p) => p.nId === nProductIdWatch),
@@ -800,24 +835,99 @@ const EventPage = () => {
   );
   const arrQueryTemplatesWatch = Form.useWatch('arrQueryTemplates', form) as IQueryTemplateItem[] | undefined;
 
-  const arrConnectionsByProduct = useMemo(() => {
+  const arrSelectedConnIds = useMemo(
+    () =>
+      (arrQueryTemplatesWatch ?? []).flatMap((s) => {
+        const objNorm = fnNormalizeQueryTemplateItem(s ?? {});
+        return [objNorm.nQaDbConnectionId, objNorm.nLiveDbConnectionId].filter((n) => n > 0);
+      }),
+    [arrQueryTemplatesWatch],
+  );
+
+  const arrQaConnections = useMemo(() => {
     if (!nProductIdWatch) return [];
-    const arrFiltered = fnFilterConnectionsForTemplatePicker(
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
       arrDbConnections,
       nProductIdWatch,
+      'qa',
       strTemplateConnFilterAbbr,
       arrProducts,
     );
-    const arrSelectedIds = (arrQueryTemplatesWatch ?? [])
-      .map((s) => Number(s?.nDbConnectionId))
-      .filter((n) => n > 0);
     return fnMergeTemplatePickerConnections(
       arrFiltered,
       arrDbConnections,
-      arrSelectedIds,
+      arrSelectedConnIds,
       nProductIdWatch,
     );
-  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr, arrProducts, arrQueryTemplatesWatch]);
+  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr, arrProducts, arrSelectedConnIds]);
+
+  const arrLiveConnections = useMemo(() => {
+    if (!nProductIdWatch) return [];
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
+      arrDbConnections,
+      nProductIdWatch,
+      'live',
+      strTemplateConnFilterAbbr,
+      arrProducts,
+    );
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrSelectedConnIds,
+      nProductIdWatch,
+    );
+  }, [arrDbConnections, nProductIdWatch, strTemplateConnFilterAbbr, arrProducts, arrSelectedConnIds]);
+
+  const strQueryEditConnFilterAbbr = useMemo(
+    () => (objQueryEditTemplate
+      ? fnDeriveTemplateConnFilterAbbr(objQueryEditTemplate, arrDbConnections, arrProducts)
+      : undefined),
+    [objQueryEditTemplate, arrDbConnections, arrProducts],
+  );
+
+  const arrQueryEditSelectedConnIds = useMemo(
+    () => arrQueryEditSets.flatMap((s) => {
+      const objNorm = fnNormalizeQueryTemplateItem(s);
+      return [objNorm.nQaDbConnectionId, objNorm.nLiveDbConnectionId].filter((n) => n > 0);
+    }),
+    [arrQueryEditSets],
+  );
+
+  const nQueryEditProductId = objQueryEditTemplate?.nProductId ?? 0;
+
+  const arrQueryEditQaConnections = useMemo(() => {
+    if (!nQueryEditProductId) return [];
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
+      arrDbConnections,
+      nQueryEditProductId,
+      'qa',
+      strQueryEditConnFilterAbbr,
+      arrProducts,
+    );
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrQueryEditSelectedConnIds,
+      nQueryEditProductId,
+    );
+  }, [arrDbConnections, nQueryEditProductId, strQueryEditConnFilterAbbr, arrProducts, arrQueryEditSelectedConnIds]);
+
+  const arrQueryEditLiveConnections = useMemo(() => {
+    if (!nQueryEditProductId) return [];
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
+      arrDbConnections,
+      nQueryEditProductId,
+      'live',
+      strQueryEditConnFilterAbbr,
+      arrProducts,
+    );
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrQueryEditSelectedConnIds,
+      nQueryEditProductId,
+    );
+  }, [arrDbConnections, nQueryEditProductId, strQueryEditConnFilterAbbr, arrProducts, arrQueryEditSelectedConnIds]);
 
   const bShowTemplateConnFilter = !objEditEvent || fnResolveTemplateStatus(objEditEvent) !== 'confirm_requested';
 
@@ -904,7 +1014,10 @@ const EventPage = () => {
       key: 'queryMode',
       width: 80,
       render: (_: unknown, objRecord: IEventTemplate) => {
-        const arrSets = objRecord.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+        const arrSets = objRecord.arrQueryTemplates?.filter((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s);
+          return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+        }) ?? [];
         const nSetCount = arrSets.length;
         const strMode = nSetCount >= 2 ? '다중' : '단일';
         return <DqpmTag color={nSetCount >= 2 ? 'blue' : 'default'}>{strMode}</DqpmTag>;
@@ -1152,7 +1265,7 @@ const EventPage = () => {
               showIcon
               style={{ marginBottom: 12 }}
               message="쿼리 리뷰 대기 중"
-              description="쿼리·세트는 일반 수정으로 변경할 수 없습니다. 목록의 «쿼리 수정» 버튼(DBA 전용)을 사용하세요."
+              description="쿼리·세트·QA/LIVE 연결은 일반 «수정»으로 변경할 수 없습니다. 목록의 «쿼리 수정» 버튼(DBA 전용)에서 쿼리와 QA/LIVE 연결을 수정하세요."
             />
           )}
 
@@ -1177,9 +1290,9 @@ const EventPage = () => {
                 children: (
                   <>
                     <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                      세트별로 <strong>DB 종류·{STR_SERVICE_SCOPE_LABEL}</strong>에 맞는 연결을 지정합니다. QA/LIVE·실제 host는 <strong>이벤트 생성</strong> 시 선택한 {STR_SERVICE_SCOPE_LABEL}과 반영 범위에 맞게 자동 연결됩니다.
+                      세트별로 <strong>QA·LIVE 연결 DB</strong>를 각각 지정합니다. QA 선택 시 동일 DB명 LIVE 접속이 있으면 자동으로 채워집니다.
                     </Text>
-                    {nProductIdWatch && arrConnectionsByProduct.length === 0 ? (
+                    {nProductIdWatch && arrQaConnections.length === 0 && arrLiveConnections.length === 0 ? (
                       <Alert
                         type="warning"
                         showIcon
@@ -1198,8 +1311,11 @@ const EventPage = () => {
                           fields={fields}
                           add={add}
                           remove={remove}
-                          arrConnectionsByProduct={arrConnectionsByProduct}
+                          arrQaConnections={arrQaConnections}
+                          arrLiveConnections={arrLiveConnections}
+                          arrAllConnections={arrDbConnections}
                           arrProducts={arrProducts}
+                          form={form}
                           activeKey={strQueryTabsActiveKey}
                           setActiveKey={setStrQueryTabsActiveKey}
                           justAddedRef={bQueryTabsJustAddedRef}
@@ -1253,46 +1369,98 @@ const EventPage = () => {
               message={`템플릿: ${objQueryEditTemplate.strEventLabel}`}
               description={
                 fnResolveTemplateStatus(objQueryEditTemplate) === 'dba_confirmed'
-                  ? '승인 완료 템플릿입니다. 쿼리를 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 세트 추가·삭제는 «수정» 모달을 사용하세요.'
-                  : '수정 이력이 진행 로그에 diff와 함께 기록됩니다. 템플릿 상태는 유지됩니다.'
+                  ? '승인 완료 템플릿입니다. 쿼리·QA/LIVE 연결을 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 세트 추가·삭제는 «수정» 모달을 사용하세요.'
+                  : '쿼리·QA/LIVE 연결 수정이 가능합니다. 변경 이력이 진행 로그에 diff와 함께 기록되며 템플릿 상태는 유지됩니다.'
               }
             />
-            {(objQueryEditTemplate.arrQueryTemplates?.filter(
-              (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
-            ).length ?? 0) > 0 ? (
+            {arrQueryEditSets.length > 0 ? (
               <Tabs
-                items={(objQueryEditTemplate.arrQueryTemplates ?? [])
-                  .filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId)
-                  .map((_t, idx) => ({
+                items={arrQueryEditSets.map((objSet, idx) => {
+                  const objNorm = fnNormalizeQueryTemplateItem(objSet);
+                  return {
                     key: String(idx),
                     label: `세트 ${idx + 1}`,
                     children: (
                       <div style={{ marginTop: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopyQueryText(arrQueryEditValues[idx] ?? '')}>
-                            복사
-                          </Button>
-                        </div>
-                        <SqlLineNumberArea
-                          strValue={arrQueryEditValues[idx] ?? ''}
-                          fnOnChange={(strNext) => {
-                            const next = [...arrQueryEditValues];
-                            while (next.length <= idx) next.push('');
-                            next[idx] = strNext;
-                            setArrQueryEditValues(next);
-                          }}
-                          nFontSize={13}
-                          nMinRows={10}
-                          nMaxRows={25}
-                          strPlaceholder="SQL 쿼리를 입력하세요..."
-                        />
+                        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                          <div>
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                              QA 연결 DB
+                            </Text>
+                            <Select
+                              placeholder="QA DB 접속 선택"
+                              {...OBJ_DB_CONNECTION_SELECT_PROPS}
+                              value={objNorm.nQaDbConnectionId || undefined}
+                              onChange={(nId: number) => {
+                                const objQa = arrDbConnections.find((c) => c.nId === nId);
+                                const patch: Partial<IQueryTemplateItem> = { nQaDbConnectionId: nId };
+                                if (objQa) {
+                                  const objLive = fnFindLivePairForQaConnection(arrDbConnections, objQa);
+                                  if (objLive) patch.nLiveDbConnectionId = objLive.nId;
+                                }
+                                fnPatchQueryEditSet(idx, patch);
+                              }}
+                            >
+                              {arrQueryEditQaConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
+                            </Select>
+                          </div>
+                          <div>
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                              LIVE 연결 DB
+                            </Text>
+                            <Select
+                              placeholder="LIVE DB 접속 선택"
+                              {...OBJ_DB_CONNECTION_SELECT_PROPS}
+                              value={objNorm.nLiveDbConnectionId || undefined}
+                              onChange={(nId: number) => fnPatchQueryEditSet(idx, { nLiveDbConnectionId: nId })}
+                            >
+                              {arrQueryEditLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
+                            </Select>
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: 4,
+                              }}
+                            >
+                              <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                              <Button
+                                size="small"
+                                icon={<CopyOutlined />}
+                                onClick={() => fnCopyQueryText(objSet.strQueryTemplate ?? '')}
+                              >
+                                복사
+                              </Button>
+                            </div>
+                            <SqlLineNumberArea
+                              strValue={objSet.strQueryTemplate ?? ''}
+                              fnOnChange={(strNext) => fnPatchQueryEditSet(idx, { strQueryTemplate: strNext })}
+                              nFontSize={13}
+                              nMinRows={10}
+                              nMaxRows={25}
+                              strPlaceholder="SQL 쿼리를 입력하세요..."
+                            />
+                          </div>
+                        </Space>
                       </div>
                     ),
-                  }))}
+                  };
+                })}
               />
             ) : (
               <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
                   <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopyQueryText(strQueryEditValue)}>복사</Button>
                 </div>
                 <SqlLineNumberArea

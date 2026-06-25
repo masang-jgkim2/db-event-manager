@@ -17,6 +17,11 @@ import type {
 import { fnNormalizeEventInstance } from '../data/eventInstances';
 import type { IActivityLogRow } from '../data/activityLogs';
 import { fnEncryptDbConnPasswordForDisk } from '../services/dbConnectionPasswordCrypto';
+import {
+  fnFindLivePairForQaConnection,
+  fnNormalizeExecutionTargetConnFields,
+  fnNormalizeQueryTemplateConnFields,
+} from '../utils/queryTemplateConnections';
 
 /** users.json 행 */
 export interface IUserRowJson {
@@ -183,11 +188,13 @@ const fnInsertEventInstancesRelational = async (
     }
     let nEtSort = 0;
     for (const t of inst.arrExecutionTargets ?? []) {
-      const nConn = fnResolveDbConnId(inst.nProductId, t.nDbConnectionId, arrDbConnections);
-      if (nConn <= 0) continue;
+      const objNorm = fnNormalizeExecutionTargetConnFields(t);
+      const nQa = fnResolveDbConnId(inst.nProductId, objNorm.nQaDbConnectionId, arrDbConnections);
+      const nLive = fnResolveDbConnId(inst.nProductId, objNorm.nLiveDbConnectionId, arrDbConnections);
+      if (nQa <= 0 || nLive <= 0) continue;
       await conn.execute(
-        `INSERT INTO event_instance_execution_target (n_instance_id, n_sort, n_db_connection_id, str_query) VALUES (?,?,?,?)`,
-        [inst.nId, nEtSort, nConn, t.strQuery ?? ''],
+        `INSERT INTO event_instance_execution_target (n_instance_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_query) VALUES (?,?,?,?,?)`,
+        [inst.nId, nEtSort, nQa, nLive, t.strQuery ?? ''],
       );
       nEtSort += 1;
     }
@@ -360,12 +367,14 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
     if (arrSets.length) {
       let nSort = 0;
       for (const q of arrSets) {
-        const nConn = fnResolveDbConnId(e.nProductId, q.nDbConnectionId, arrDbConnections);
-        if (nConn <= 0) continue;
+        const objNorm = fnNormalizeQueryTemplateConnFields(q);
+        const nQa = fnResolveDbConnId(e.nProductId, objNorm.nQaDbConnectionId, arrDbConnections);
+        const nLive = fnResolveDbConnId(e.nProductId, objNorm.nLiveDbConnectionId, arrDbConnections);
+        if (nQa <= 0 || nLive <= 0) continue;
         await conn.execute(
-          `INSERT INTO event_template_query_set (n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template)
-           VALUES (?,?,?,?,?)`,
-          [e.nId, nSort, nConn, q.strDefaultItems ?? null, q.strQueryTemplate ?? ''],
+          `INSERT INTO event_template_query_set (n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_default_items, str_query_template)
+           VALUES (?,?,?,?,?,?)`,
+          [e.nId, nSort, nQa, nLive, q.strDefaultItems ?? null, q.strQueryTemplate ?? ''],
         );
         nSort += 1;
       }
@@ -615,15 +624,17 @@ export const fnGetDbConnectionDeleteBlockReason = async (
   nDbConnectionId: number,
 ): Promise<string | null> => {
   const [tplRows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 AS b FROM event_template_query_set WHERE n_db_connection_id = ? LIMIT 1',
-    [nDbConnectionId],
+    `SELECT 1 AS b FROM event_template_query_set
+     WHERE n_db_connection_id = ? OR n_live_db_connection_id = ? LIMIT 1`,
+    [nDbConnectionId, nDbConnectionId],
   );
   if ((tplRows as RowDataPacket[]).length > 0) {
     return '이 DB 접속 정보는 쿼리 템플릿에서 사용 중입니다. 쿼리 템플릿을 먼저 삭제하세요.';
   }
   const [instRows] = await pool.query<RowDataPacket[]>(
-    'SELECT 1 AS b FROM event_instance_execution_target WHERE n_db_connection_id = ? LIMIT 1',
-    [nDbConnectionId],
+    `SELECT 1 AS b FROM event_instance_execution_target
+     WHERE n_db_connection_id = ? OR n_live_db_connection_id = ? LIMIT 1`,
+    [nDbConnectionId, nDbConnectionId],
   );
   if ((instRows as RowDataPacket[]).length > 0) {
     return '이 DB 접속 정보는 이벤트 인스턴스에서 사용 중입니다. 이벤트를 영구 삭제한 뒤 다시 시도하세요.';
@@ -960,18 +971,31 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
      FROM event_template ORDER BY n_id`,
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
-    `SELECT n_event_template_id, n_sort, n_db_connection_id, str_default_items, str_query_template
+    `SELECT n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_default_items, str_query_template
      FROM event_template_query_set ORDER BY n_event_template_id, n_sort`,
   );
   const mapQ = new Map<number, IQueryTemplateItem[]>();
   for (const q of qrows as RowDataPacket[]) {
     const tid = Number(q.n_event_template_id);
     if (!mapQ.has(tid)) mapQ.set(tid, []);
-    mapQ.get(tid)!.push({
-      nDbConnectionId: Number(q.n_db_connection_id),
-      strDefaultItems: q.str_default_items != null ? String(q.str_default_items) : undefined,
-      strQueryTemplate: String(q.str_query_template ?? ''),
-    });
+    const nQa = Number(q.n_db_connection_id);
+    let nLive = q.n_live_db_connection_id != null ? Number(q.n_live_db_connection_id) : 0;
+    if (!nLive && nQa > 0) {
+      const { arrDbConnections } = await import('../data/dbConnections');
+      const objQa = arrDbConnections.find((c) => c.nId === nQa);
+      if (objQa) {
+        const objLive = fnFindLivePairForQaConnection(arrDbConnections, objQa);
+        nLive = objLive?.nId ?? 0;
+      }
+    }
+    mapQ.get(tid)!.push(
+      fnNormalizeQueryTemplateConnFields({
+        nQaDbConnectionId: nQa,
+        nLiveDbConnectionId: nLive,
+        strDefaultItems: q.str_default_items != null ? String(q.str_default_items) : undefined,
+        strQueryTemplate: String(q.str_query_template ?? ''),
+      }),
+    );
   }
   return (trows as RowDataPacket[]).map((r) => {
     const nId = Number(r.n_id);
@@ -1034,7 +1058,8 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
     `SELECT n_instance_id, str_scope FROM event_instance_deploy_scope`,
   );
   const [etgt] = await pool.query<RowDataPacket[]>(
-    `SELECT n_instance_id, n_sort, n_db_connection_id, str_query FROM event_instance_execution_target ORDER BY n_instance_id, n_sort`,
+    `SELECT n_instance_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_query
+     FROM event_instance_execution_target ORDER BY n_instance_id, n_sort`,
   );
   const [logs] = await pool.query<RowDataPacket[]>(
     `SELECT n_instance_id, n_sort, str_status, str_changed_by, n_changed_by_user_id, str_comment, dt_changed_at, json_execution_result
@@ -1051,10 +1076,26 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
     mapScope.get(id)!.push(String(r.str_scope) as 'qa' | 'live');
   }
   const mapEt = new Map<number, IExecutionTarget[]>();
+  const { arrDbConnections } = await import('../data/dbConnections');
   for (const r of etgt as RowDataPacket[]) {
     const id = Number(r.n_instance_id);
     if (!mapEt.has(id)) mapEt.set(id, []);
-    mapEt.get(id)!.push({ nDbConnectionId: Number(r.n_db_connection_id), strQuery: String(r.str_query ?? '') });
+    const nQa = Number(r.n_db_connection_id);
+    let nLive = r.n_live_db_connection_id != null ? Number(r.n_live_db_connection_id) : 0;
+    if (!nLive && nQa > 0) {
+      const objQa = arrDbConnections.find((c) => c.nId === nQa);
+      if (objQa) {
+        const objLive = fnFindLivePairForQaConnection(arrDbConnections, objQa);
+        nLive = objLive?.nId ?? 0;
+      }
+    }
+    mapEt.get(id)!.push(
+      fnNormalizeExecutionTargetConnFields({
+        nQaDbConnectionId: nQa,
+        nLiveDbConnectionId: nLive,
+        strQuery: String(r.str_query ?? ''),
+      }),
+    );
   }
   const mapLog = new Map<number, IStatusLog[]>();
   for (const r of logs as RowDataPacket[]) {
