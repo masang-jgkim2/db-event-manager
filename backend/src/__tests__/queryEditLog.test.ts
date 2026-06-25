@@ -19,13 +19,13 @@ describe('queryEditLog', () => {
   it('템플릿 세트 삭제 시 본문 변경으로 감지', () => {
     const objBefore = {
       arrQueryTemplates: [
-        { nDbConnectionId: 1, strQueryTemplate: 'A', strDefaultItems: '' },
-        { nDbConnectionId: 2, strQueryTemplate: 'B', strDefaultItems: '' },
+        { nQaDbConnectionId: 1, nLiveDbConnectionId: 11, strQueryTemplate: 'A', strDefaultItems: '' },
+        { nQaDbConnectionId: 2, nLiveDbConnectionId: 22, strQueryTemplate: 'B', strDefaultItems: '' },
       ],
     };
     const objAfter = {
       arrQueryTemplates: [
-        { nDbConnectionId: 1, strQueryTemplate: 'A', strDefaultItems: '' },
+        { nQaDbConnectionId: 1, nLiveDbConnectionId: 11, strQueryTemplate: 'A', strDefaultItems: '' },
       ],
     };
     expect(fnTemplateQueryBodyChanged(objBefore, objAfter)).toBe(true);

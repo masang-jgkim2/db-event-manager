@@ -48,6 +48,7 @@ const describeMysql = B_RUN && fnHasMysqlConfig() ? describe : describe.skip;
 
 const N_PRODUCT = 990_001;
 const N_DB_CONN = 990_002;
+const N_DB_CONN_LIVE = 990_007;
 const N_TEMPLATE = 990_003;
 const N_INSTANCE = 990_004;
 const N_USER = 990_005;
@@ -71,9 +72,25 @@ const fnBuildMinimalPayload = (): IRelationalImportPayload => {
       nProductId: N_PRODUCT,
       strProductName: 'jest-mysql-meta-product',
       strKind: 'GAME',
-      strEnv: 'dev',
+      strEnv: 'qa',
       strDbType: 'mysql',
       strHost: '127.0.0.1',
+      nPort: 3306,
+      strDatabase: 'test',
+      strUser: 'u',
+      strPassword: 'p',
+      bIsActive: true,
+      dtCreatedAt: strDt,
+      dtUpdatedAt: strDt,
+    },
+    {
+      nId: N_DB_CONN_LIVE,
+      nProductId: N_PRODUCT,
+      strProductName: 'jest-mysql-meta-product',
+      strKind: 'GAME',
+      strEnv: 'live',
+      strDbType: 'mysql',
+      strHost: '127.0.0.2',
       nPort: 3306,
       strDatabase: 'test',
       strUser: 'u',
@@ -96,7 +113,12 @@ const fnBuildMinimalPayload = (): IRelationalImportPayload => {
       strDefaultItems: '',
       strQueryTemplate: '',
       arrQueryTemplates: [
-        { nDbConnectionId: N_DB_CONN, strDefaultItems: '', strQueryTemplate: 'SELECT 1' },
+        {
+          nQaDbConnectionId: N_DB_CONN,
+          nLiveDbConnectionId: N_DB_CONN_LIVE,
+          strDefaultItems: '',
+          strQueryTemplate: 'SELECT 1',
+        },
       ],
       dtCreatedAt: strDt,
       strStatus: 'dba_confirmed',

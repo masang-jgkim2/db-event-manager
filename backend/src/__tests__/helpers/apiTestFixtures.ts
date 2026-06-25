@@ -2,6 +2,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { arrProducts, fnCommitProductsToStore } from '../../data/products';
 import { arrEvents, fnIsTemplateReadyForInstance } from '../../data/events';
+import { arrDbConnections } from '../../data/dbConnections';
 import type { IProduct } from '../../data/products';
 
 /** API 테스트용 고유 이름 — 디스크 중복·409 방지 */
@@ -35,9 +36,15 @@ export const fnPruneEphemeralTestProducts = async (): Promise<number> => {
 export const fnFindProductById = (nProductId: number): IProduct | undefined =>
   arrProducts.find((p) => p.nId === nProductId);
 
-/** 프로덕트 첫 서비스 약자 — DB 접속 strServiceAbbr와 맞춤 */
+/** 프로덕트 첫 서비스 약자 — 표시·레거시 dual-read용 */
 export const fnPrimaryServiceAbbr = (nProductId: number): string =>
   fnFindProductById(nProductId)?.arrServices?.[0]?.strAbbr?.trim() ?? '';
+
+/** 프로덕트 첫 서비스 ID — 등록·생성 API payload용 */
+export const fnPrimaryServiceId = (nProductId: number): number | undefined => {
+  const nId = fnFindProductById(nProductId)?.arrServices?.[0]?.nServiceId;
+  return nId != null && nId > 0 ? nId : undefined;
+};
 
 /** DBA 승인 완료 템플릿 — 없으면 undefined */
 export const fnFindReadyTemplateForProduct = (nProductId: number) =>
@@ -64,3 +71,94 @@ export const fnApiPatchTemplateDbaConfirmed = async (
     throw new Error(`dba_confirmed 실패 | status=${resConf.status} ${resConf.body?.strMessage ?? ''}`);
   }
 };
+
+export type TTestQaLiveConnPair = { nQaId: number; nLiveId: number };
+
+/** API 테스트용 QA+LIVE 접속 쌍 — 동일 DB명·kind·서비스 */
+export const fnEnsureTestQaLiveConnPair = async (
+  app: Express,
+  strToken: string,
+  nProductId: number,
+  strDatabase: string,
+  nServiceId?: number,
+): Promise<TTestQaLiveConnPair> => {
+  const fnFindExisting = (): TTestQaLiveConnPair | null => {
+    const arrForProd = arrDbConnections.filter((c) => c.nProductId === nProductId && c.bIsActive !== false);
+    const objQa = arrForProd.find((c) => c.strEnv === 'qa' && c.strDatabase === strDatabase);
+    if (!objQa) return null;
+    const objLive = arrForProd.find(
+      (c) =>
+        c.strEnv === 'live' &&
+        c.strDatabase === strDatabase &&
+        (c.strKind ?? 'GAME') === (objQa.strKind ?? 'GAME'),
+    );
+    if (!objLive) return null;
+    return { nQaId: objQa.nId, nLiveId: objLive.nId };
+  };
+
+  const objExisting = fnFindExisting();
+  if (objExisting) return objExisting;
+
+  const objProduct = fnFindProductById(nProductId);
+  const strDbType = objProduct?.strDbType ?? 'mssql';
+  const nPort = strDbType === 'mysql' ? 3306 : 1433;
+
+  const objBase = {
+    nProductId,
+    strKind: 'GAME' as const,
+    strDbType,
+    strDatabase,
+    strUser: 'u',
+    strPassword: 'p',
+    ...(nServiceId ? { nServiceId } : {}),
+  };
+
+  const resQa = await request(app)
+    .post('/api/db-connections')
+    .set('Authorization', `Bearer ${strToken}`)
+    .send({
+      ...objBase,
+      strEnv: 'qa',
+      strHost: '127.0.0.1',
+      nPort,
+    });
+  if (resQa.status !== 200) {
+    throw new Error(`QA 접속 생성 실패 | ${resQa.body?.strMessage ?? resQa.status}`);
+  }
+
+  const resLive = await request(app)
+    .post('/api/db-connections')
+    .set('Authorization', `Bearer ${strToken}`)
+    .send({
+      ...objBase,
+      strEnv: 'live',
+      strHost: '127.0.0.2',
+      nPort,
+    });
+  if (resLive.status !== 200) {
+    throw new Error(`LIVE 접속 생성 실패 | ${resLive.body?.strMessage ?? resLive.status}`);
+  }
+
+  return {
+    nQaId: resQa.body.objDbConnection.nId as number,
+    nLiveId: resLive.body.objDbConnection.nId as number,
+  };
+};
+
+export const fnTemplateSetBody = (
+  objPair: TTestQaLiveConnPair,
+  body: { strQueryTemplate: string; strDefaultItems?: string },
+) => ({
+  nQaDbConnectionId: objPair.nQaId,
+  nLiveDbConnectionId: objPair.nLiveId,
+  ...body,
+});
+
+export const fnExecutionTargetBody = (
+  objPair: TTestQaLiveConnPair,
+  strQuery: string,
+) => ({
+  nQaDbConnectionId: objPair.nQaId,
+  nLiveDbConnectionId: objPair.nLiveId,
+  strQuery,
+});

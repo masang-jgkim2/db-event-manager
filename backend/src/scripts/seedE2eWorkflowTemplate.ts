@@ -44,6 +44,7 @@ interface IDbConnection {
   nId: number;
   nProductId: number;
   strEnv: string;
+  strDatabase?: string;
   bIsActive?: boolean;
 }
 
@@ -132,10 +133,18 @@ const fnMain = async () => {
   if (!objSvc) throw new Error(`프로덕트 ${nProductId} 서비스 없음`);
 
   const objConnList = await fnGet<{ arrDbConnections?: IDbConnection[] }>('/db-connections', strAdminToken);
-  const nConnQa = (objConnList.arrDbConnections || []).find(
-    (c) => c.nProductId === nProductId && c.strEnv === 'qa',
-  )?.nId;
-  if (!nConnQa) throw new Error(`프로덕트 ${nProductId} QA 접속 없음`);
+  const arrProdConns = (objConnList.arrDbConnections || []).filter(
+    (c) => c.nProductId === nProductId && c.bIsActive !== false,
+  );
+  const objConnQa = arrProdConns.find((c) => c.strEnv === 'qa');
+  const nConnQa = objConnQa?.nId;
+  const nConnLive = arrProdConns.find(
+    (c) =>
+      c.strEnv === 'live' &&
+      objConnQa &&
+      (c.strDatabase ?? '') === (objConnQa.strDatabase ?? ''),
+  )?.nId ?? arrProdConns.find((c) => c.strEnv === 'live')?.nId;
+  if (!nConnQa || !nConnLive) throw new Error(`프로덕트 ${nProductId} QA/LIVE 접속 쌍 없음`);
 
   const objEvents = await fnGet<{ arrEvents?: Array<{ nId: number; strEventLabel: string }> }>('/events', strAdminToken);
   let nTemplateId = (objEvents.arrEvents || []).find(
@@ -152,7 +161,12 @@ const fnMain = async () => {
       strInputFormat: 'none',
       strDefaultItems: '',
       strQueryTemplate: STR_QUERY_TEMPLATE,
-      arrQueryTemplates: [{ nDbConnectionId: nConnQa, strDefaultItems: '', strQueryTemplate: STR_QUERY_TEMPLATE }],
+      arrQueryTemplates: [{
+        nQaDbConnectionId: nConnQa,
+        nLiveDbConnectionId: nConnLive,
+        strDefaultItems: '',
+        strQueryTemplate: STR_QUERY_TEMPLATE,
+      }],
     });
     if (!res.ok || !obj.objEvent?.nId) {
       throw new Error(`템플릿 생성 실패: ${res.status} ${JSON.stringify(obj).slice(0, 300)}`);
@@ -175,6 +189,7 @@ const fnMain = async () => {
     strServiceAbbr: objSvc.strAbbr,
     strServiceRegion: objSvc.strRegion,
     nDbConnectionIdQa: nConnQa,
+    nDbConnectionIdLive: nConnLive,
     dtQaDeployDate: dtPast,
     dtLiveDeployDate: dtPast,
     arrDeployScope: ['qa', 'live'],
@@ -197,7 +212,11 @@ const fnMain = async () => {
       strEventName,
       strInputValues: '',
       strGeneratedQuery: STR_QUERY_TEMPLATE,
-      arrExecutionTargets: [{ nDbConnectionId: nConnQa, strQuery: STR_QUERY_TEMPLATE }],
+      arrExecutionTargets: [{
+        nQaDbConnectionId: nConnQa,
+        nLiveDbConnectionId: nConnLive,
+        strQuery: STR_QUERY_TEMPLATE,
+      }],
       dtQaDeployDate: dtPast,
       dtLiveDeployDate: dtPast,
       dtDeployDate: dtPast,

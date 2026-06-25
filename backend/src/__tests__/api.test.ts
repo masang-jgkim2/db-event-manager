@@ -6,11 +6,16 @@ import app from '../app';
 import { fnEnsureRoleTestUsers } from './helpers/ensureRoleTestUsers';
 import {
   fnApiPatchTemplateDbaConfirmed,
+  fnEnsureTestQaLiveConnPair,
+  fnExecutionTargetBody,
   fnFindReadyTemplateForProduct,
   fnLoginAdminToken,
   fnPrimaryServiceAbbr,
+  fnPrimaryServiceId,
   fnPruneEphemeralTestProducts,
+  fnTemplateSetBody,
   fnUniqueApiTestName,
+  type TTestQaLiveConnPair,
 } from './helpers/apiTestFixtures';
 import { arrRolePermissions, fnSetPermissionsForRole, fnGetPermissionsByRoleId } from '../data/rolePermissions';
 import { arrProducts } from '../data/products';
@@ -701,7 +706,9 @@ describe('API 전체 테스트', () => {
     let nProductId: number;
     let strProductName: string;
     let strServiceAbbr: string;
+    let nServiceId: number;
     let nDbConnId: number;
+    let nLiveDbConnId: number;
     let nTemplateId: number;
     let nInstanceId: number;
 
@@ -724,6 +731,7 @@ describe('API 전체 테스트', () => {
         });
       expect(resProd.status).toBe(200);
       nProductId = resProd.body.objProduct.nId;
+      nServiceId = resProd.body.objProduct.arrServices[0].nServiceId as number;
 
       const resConn = await request(app)
         .post('/api/db-connections')
@@ -738,10 +746,28 @@ describe('API 전체 테스트', () => {
           strDatabase: 'test_del_chain',
           strUser: 'u',
           strPassword: 'p',
-          strServiceAbbr,
+          nServiceId,
         });
       expect(resConn.status).toBe(200);
       nDbConnId = resConn.body.objDbConnection.nId;
+
+      const resConnLive = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strToken}`)
+        .send({
+          nProductId,
+          strKind: 'GAME',
+          strEnv: 'live',
+          strDbType: 'mysql',
+          strHost: '127.0.0.2',
+          nPort: 3306,
+          strDatabase: 'test_del_chain',
+          strUser: 'u',
+          strPassword: 'p',
+          nServiceId,
+        });
+      expect(resConnLive.status).toBe(200);
+      nLiveDbConnId = resConnLive.body.objDbConnection.nId;
 
       const resTpl = await request(app)
         .post('/api/events')
@@ -754,7 +780,10 @@ describe('API 전체 테스트', () => {
           strType: '지급',
           strInputFormat: 'item_number',
           arrQueryTemplates: [
-            { nDbConnectionId: nDbConnId, strDefaultItems: '1', strQueryTemplate: 'SELECT 1;' },
+            fnTemplateSetBody(
+              { nQaId: nDbConnId, nLiveId: nLiveDbConnId },
+              { strDefaultItems: '1', strQueryTemplate: 'SELECT 1;' },
+            ),
           ],
         });
       expect(resTpl.status).toBe(200);
@@ -769,7 +798,7 @@ describe('API 전체 테스트', () => {
           nProductId,
           strEventLabel: '삭제연관이벤트',
           strProductName,
-          strServiceAbbr,
+          nServiceId,
           strServiceRegion: '테스트',
           strCategory: '아이템',
           strType: '지급',
@@ -832,6 +861,10 @@ describe('API 전체 테스트', () => {
     });
 
     it('템플릿 제거 후 DB접속 DELETE → 200', async () => {
+      const resLive = await request(app)
+        .delete(`/api/db-connections/${nLiveDbConnId}`)
+        .set('Authorization', `Bearer ${strToken}`);
+      expect(resLive.status).toBe(200);
       const res = await request(app)
         .delete(`/api/db-connections/${nDbConnId}`)
         .set('Authorization', `Bearer ${strToken}`);
@@ -854,29 +887,16 @@ describe('API 전체 테스트', () => {
   describe('쿼리 템플릿 CRUD (다중 세트)', () => {
     let nEventId: number;
     const nProductIdForEvent = 1;
-    let nDbConnectionId: number;
+    let objConnPair: TTestQaLiveConnPair;
 
     beforeAll(async () => {
-      const list = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${strAdminToken}`);
-      const conn = list.body?.arrDbConnections?.find((c: { nProductId: number }) => c.nProductId === nProductIdForEvent);
-      nDbConnectionId = conn?.nId ?? arrDbConnections.find((c) => c.nProductId === nProductIdForEvent)?.nId ?? 0;
-      if (!nDbConnectionId) {
-        const createConn = await request(app)
-          .post('/api/db-connections')
-          .set('Authorization', `Bearer ${strAdminToken}`)
-          .send({
-            nProductId: nProductIdForEvent,
-            strKind: 'GAME',
-            strEnv: 'dev',
-            strDbType: 'mssql',
-            strHost: 'localhost',
-            nPort: 1433,
-            strDatabase: 'test',
-            strUser: 'u',
-            strPassword: 'p',
-          });
-        if (createConn.status === 200) nDbConnectionId = createConn.body.objDbConnection?.nId ?? 0;
-      }
+      objConnPair = await fnEnsureTestQaLiveConnPair(
+        app,
+        strAdminToken,
+        nProductIdForEvent,
+        'test_tpl_crud',
+        fnPrimaryServiceId(nProductIdForEvent),
+      );
     });
 
     it('POST /api/events (arrQueryTemplates) → 200', async () => {
@@ -893,7 +913,7 @@ describe('API 전체 테스트', () => {
           strDefaultItems: '',
           strQueryTemplate: '',
           arrQueryTemplates: [
-            { nDbConnectionId, strDefaultItems: '1,2,3', strQueryTemplate: 'SELECT 1;' },
+            fnTemplateSetBody(objConnPair, { strDefaultItems: '1,2,3', strQueryTemplate: 'SELECT 1;' }),
           ],
         });
       expect(res.status).toBe(200);
@@ -911,7 +931,7 @@ describe('API 전체 테스트', () => {
         .send({
           strEventLabel: '테스트이벤트CRUD(수정)',
           arrQueryTemplates: [
-            { nDbConnectionId, strDefaultItems: '9,8', strQueryTemplate: 'SELECT 2;' },
+            fnTemplateSetBody(objConnPair, { strDefaultItems: '9,8', strQueryTemplate: 'SELECT 2;' }),
           ],
         });
       expect(res.status).toBe(200);
@@ -953,16 +973,15 @@ describe('API 전체 테스트', () => {
   // ─── 다중 세트 E2E: 템플릿(2세트) → 이벤트 생성 → 진행 ─────────────────
   describe('다중 세트 E2E 테스트', () => {
     const nProductId = 1;
-    let nConn1: number;
-    let nConn2: number;
+    let objPair1: TTestQaLiveConnPair;
+    let objPair2: TTestQaLiveConnPair;
     let nEventTemplateId: number;
     let nInstanceId: number;
 
     beforeAll(async () => {
-      const list = await request(app).get('/api/db-connections').set('Authorization', `Bearer ${strAdminToken}`);
-      const conns = (list.body?.arrDbConnections ?? []).filter((c: { nProductId: number }) => c.nProductId === nProductId);
-      nConn1 = conns[0]?.nId ?? arrDbConnections.find((c) => c.nProductId === nProductId)?.nId ?? 0;
-      nConn2 = conns[1]?.nId ?? arrDbConnections.filter((c) => c.nProductId === nProductId)[1]?.nId ?? nConn1;
+      const nSvcId = fnPrimaryServiceId(nProductId);
+      objPair1 = await fnEnsureTestQaLiveConnPair(app, strAdminToken, nProductId, 'test_multi_set1', nSvcId);
+      objPair2 = await fnEnsureTestQaLiveConnPair(app, strAdminToken, nProductId, 'test_multi_set2', nSvcId);
     });
 
     it('다중 세트 쿼리 템플릿 생성 (2세트, 임의 쿼리)', async () => {
@@ -979,8 +998,8 @@ describe('API 전체 테스트', () => {
           strDefaultItems: '',
           strQueryTemplate: '',
           arrQueryTemplates: [
-            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1, {{items}} AS Items;' },
-            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+            fnTemplateSetBody(objPair1, { strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1, {{items}} AS Items;' }),
+            fnTemplateSetBody(objPair2, { strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' }),
           ],
         });
       expect(res.status).toBe(200);
@@ -1009,8 +1028,8 @@ describe('API 전체 테스트', () => {
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
           arrQueryTemplates: [
-            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1Changed, {{items}} AS Items;' },
-            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+            fnTemplateSetBody(objPair1, { strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1Changed, {{items}} AS Items;' }),
+            fnTemplateSetBody(objPair2, { strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' }),
           ],
           strQueryTemplate: '',
         });
@@ -1033,8 +1052,8 @@ describe('API 전체 테스트', () => {
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
           arrQueryTemplates: [
-            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1ViaQueryApi, {{items}} AS Items;' },
-            { nDbConnectionId: nConn2, strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' },
+            fnTemplateSetBody(objPair1, { strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS Set1ViaQueryApi, {{items}} AS Items;' }),
+            fnTemplateSetBody(objPair2, { strDefaultItems: '200,201', strQueryTemplate: 'SELECT 2 AS Set2, {{items}} AS Items;' }),
           ],
           strQueryTemplate: '',
         });
@@ -1053,7 +1072,7 @@ describe('API 전체 테스트', () => {
         .set('Authorization', `Bearer ${strAdminToken}`)
         .send({
           arrQueryTemplates: [
-            { nDbConnectionId: nConn1, strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS OnlySet, {{items}} AS Items;' },
+            fnTemplateSetBody(objPair1, { strDefaultItems: '100,101', strQueryTemplate: 'SELECT 1 AS OnlySet, {{items}} AS Items;' }),
           ],
           strQueryTemplate: '',
         });
@@ -1131,7 +1150,8 @@ describe('API 전체 테스트', () => {
         .send({ strNextStatus: 'dba_confirmed' });
 
       const dtDeploy = new Date(Date.now() + 86400000).toISOString();
-      const strSvc = fnPrimaryServiceAbbr(nProductId) || 'FH/KR';
+      const nSvcId = fnPrimaryServiceId(nProductId);
+      expect(nSvcId).toBeDefined();
       const res = await request(app)
         .post('/api/event-instances')
         .set('Authorization', `Bearer ${strGmToken}`)
@@ -1140,7 +1160,7 @@ describe('API 전체 테스트', () => {
           nProductId,
           strEventLabel: '다중세트 테스트 이벤트',
           strProductName: '출조낚시왕',
-          strServiceAbbr: strSvc,
+          nServiceId: nSvcId,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1148,8 +1168,8 @@ describe('API 전체 테스트', () => {
           strInputValues: '100,101\u0001200,201',
           strGeneratedQuery: 'SELECT 1 AS Set1, 100,101 AS Items;',
           arrExecutionTargets: [
-            { nDbConnectionId: nConn1, strQuery: 'SELECT 1 AS Set1, 100,101 AS Items;' },
-            { nDbConnectionId: nConn2, strQuery: 'SELECT 2 AS Set2, 200,201 AS Items;' },
+            fnExecutionTargetBody(objPair1, 'SELECT 1 AS Set1, 100,101 AS Items;'),
+            fnExecutionTargetBody(objPair2, 'SELECT 2 AS Set2, 200,201 AS Items;'),
           ],
           dtDeployDate: dtDeploy,
           arrDeployScope: ['qa', 'live'],
@@ -1207,6 +1227,26 @@ describe('API 전체 테스트', () => {
         });
       expect(res.status).toBe(400);
       expect(res.body.strMessage).toMatch(/DB 종류/);
+    });
+
+    it('POST /api/db-connections strServiceAbbr 단독 → 400', async () => {
+      const res = await request(app)
+        .post('/api/db-connections')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId: nProductIdMysql,
+          strKind: 'GAME',
+          strEnv: 'dev',
+          strDbType: 'mysql',
+          strHost: '127.0.0.1',
+          nPort: 3306,
+          strDatabase: 'test_abbr_only',
+          strUser: 'u',
+          strPassword: 'p',
+          strServiceAbbr: 'LH/KR',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.strMessage).toMatch(/nServiceId/);
     });
 
     it('POST /api/db-connections (strKind 포함) → 200', async () => {
@@ -1367,11 +1407,13 @@ describe('API 전체 테스트', () => {
     let nEventTemplateId: number;
     let nProductId: number;
     let strServiceAbbr: string;
+    let nServiceId: number;
     let strProductName: string;
 
     beforeAll(async () => {
       nProductId = 1;
       strServiceAbbr = fnPrimaryServiceAbbr(nProductId) || 'FH/KR';
+      nServiceId = fnPrimaryServiceId(nProductId) ?? 1001;
       strProductName = arrProducts.find((p) => p.nId === nProductId)?.strName ?? '출조낚시왕';
       const objTpl = fnFindReadyTemplateForProduct(nProductId);
       nEventTemplateId = objTpl?.nId ?? arrEvents.find((e) => e.nProductId === nProductId)?.nId ?? 1;
@@ -1386,7 +1428,7 @@ describe('API 전체 테스트', () => {
           nProductId,
           strEventLabel: '테스트',
           strProductName,
-          strServiceAbbr,
+          nServiceId,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1416,6 +1458,7 @@ describe('API 전체 테스트', () => {
         });
       expect(createPermProduct.status).toBe(200);
       const nPermProductId = createPermProduct.body.objProduct.nId as number;
+      const nPermServiceId = createPermProduct.body.objProduct.arrServices[0].nServiceId as number;
 
       const createTpl = await request(app)
         .post('/api/events')
@@ -1441,7 +1484,7 @@ describe('API 전체 테스트', () => {
           nProductId: nPermProductId,
           strEventLabel: 'D1차단테스트',
           strProductName: strPermTestName,
-          strServiceAbbr: 'T',
+          nServiceId: nPermServiceId,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1454,6 +1497,30 @@ describe('API 전체 테스트', () => {
         });
       expect(res.status).toBe(400);
       expect(res.body.strMessage).toMatch(/DBA 리뷰/);
+    });
+
+    it('POST /api/event-instances — strServiceAbbr 단독 → 400', async () => {
+      const res = await request(app)
+        .post('/api/event-instances')
+        .set('Authorization', `Bearer ${strGmToken}`)
+        .send({
+          nEventTemplateId,
+          nProductId,
+          strEventLabel: '테스트',
+          strProductName,
+          strServiceAbbr,
+          strServiceRegion: '국내',
+          strCategory: '아이템',
+          strType: '지급',
+          strEventName: '[T] abbr-only',
+          strInputValues: '1',
+          strGeneratedQuery: 'SELECT 1;',
+          dtDeployDate: new Date(Date.now() + 86400000).toISOString(),
+          arrDeployScope: ['qa'],
+          strCreatedBy: 'GM테스트',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.strMessage).toMatch(/nServiceId/);
     });
 
     it('PUT /api/event-instances/:id (event_created 수정) → 200', async () => {
@@ -1557,7 +1624,8 @@ describe('API 전체 테스트', () => {
 
     it('DELETE /api/event-instances/:id (진행 중 인스턴스, admin 삭제 권한) → 200', async () => {
       const nDelProductId = 1;
-      const strDelSvc = fnPrimaryServiceAbbr(nDelProductId) || 'FH/KR';
+      const nDelServiceId = fnPrimaryServiceId(nDelProductId);
+      expect(nDelServiceId).toBeDefined();
       const strDelProductName = arrProducts.find((p) => p.nId === nDelProductId)?.strName ?? '출조낚시왕';
       const objDelTpl = fnFindReadyTemplateForProduct(nDelProductId);
       const createRes = await request(app)
@@ -1568,7 +1636,7 @@ describe('API 전체 테스트', () => {
           nProductId: nDelProductId,
           strEventLabel: 'DEL테스트',
           strProductName: strDelProductName,
-          strServiceAbbr: strDelSvc,
+          nServiceId: nDelServiceId,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '지급',
@@ -1631,7 +1699,8 @@ describe('API 전체 테스트', () => {
       expect(loginRes.status).toBe(200);
       expect(loginRes.body.user?.arrPermissions).toContain('my_dashboard.query_edit');
 
-      const strQueryEditSvc = fnPrimaryServiceAbbr(1) || 'FH/KR';
+      const nQueryEditServiceId = fnPrimaryServiceId(1);
+      expect(nQueryEditServiceId).toBeDefined();
       const createRes = await request(app)
         .post('/api/event-instances')
         .set('Authorization', `Bearer ${strGmToken}`)
@@ -1640,7 +1709,7 @@ describe('API 전체 테스트', () => {
           nProductId: 1,
           strEventLabel: 'test',
           strProductName: '출조낚시왕',
-          strServiceAbbr: strQueryEditSvc,
+          nServiceId: nQueryEditServiceId,
           strServiceRegion: '국내',
           strCategory: '아이템',
           strType: '삭제',
