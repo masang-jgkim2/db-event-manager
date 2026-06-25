@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Typography, Card, Space, Button, Modal,
   Input, message, Row, Col, Statistic, Timeline, Popconfirm,
@@ -40,8 +40,20 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
+import {
+  fnFilterConnectionsForTemplatePickerByEnv,
+  fnFindLivePairForQaConnection,
+  fnFormatExecutionTargetConnLabel,
+  fnMergeTemplatePickerConnections,
+  fnNormalizeExecutionTargetItem,
+  fnNormalizeServiceAbbr,
+  fnResolveConnectionServiceAbbr,
+} from '../utils/dbConnectionScope';
+import { useDbConnectionStore } from '../stores/useDbConnectionStore';
+import { useProductStore } from '../stores/useProductStore';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
+import { fnRenderConnectionSelectOption, OBJ_DB_CONNECTION_SELECT_PROPS } from '../components/DbConnectionSelectOption';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 import { fnStatusTimelineColor } from '../styles/workflowTimelineColors';
@@ -54,6 +66,13 @@ import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Text } = Typography;
+
+type TQueryEditTarget = {
+  nQaDbConnectionId: number;
+  nLiveDbConnectionId: number;
+  strQuery: string;
+};
+
 const { TextArea } = Input;
 
 // 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
@@ -365,7 +384,7 @@ const ExecutionResultModal = ({
   objResult: IQueryExecutionResult | null;
   strEnv: 'qa' | 'live';
   /** 다중 세트 실패 시 DBA 쿼리 수정 모달과 동일한 탭 UI */
-  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
+  arrExecutionTargets?: Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number; strQuery: string }>;
   onClose: () => void;
   /** useMessage() 인스턴스 — 모달 위에 토스트가 뜨도록 필수 */
   messageApi: TMessageLike;
@@ -421,7 +440,7 @@ const ExecutionResultModal = ({
           key: String(idx),
           label: (
             <Space size={6}>
-              <span>{`쿼리 세트 ${nSetNo}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`}</span>
+              <span>{`쿼리 세트 ${nSetNo}${fnFormatExecutionTargetConnLabel(t)}`}</span>
               {bFailed ? <DqpmTag color="red">실패</DqpmTag> : null}
             </Space>
           ),
@@ -714,8 +733,8 @@ const MyDashboardPage = () => {
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
   const [strQueryEditValue, setStrQueryEditValue] = useState('');
-  /** 다중 쿼리 세트일 때 세트별 쿼리 (쿼리 수정 모달) */
-  const [arrQueryEditValues, setArrQueryEditValues] = useState<string[]>([]);
+  /** 다중 세트 — 쿼리·QA/LIVE 연결 (DBA 쿼리 수정 모달) */
+  const [arrQueryEditTargets, setArrQueryEditTargets] = useState<TQueryEditTarget[]>([]);
   const [bQuerySaving, setBQuerySaving] = useState(false);
   // 실행 관련
   const [bExecuting, setBExecuting] = useState<number | null>(null);
@@ -739,7 +758,7 @@ const MyDashboardPage = () => {
   const [bExecResultOpen, setBExecResultOpen] = useState(false);
   /** 실행 실패 모달 — 다중 세트 탭용 (DBA 쿼리 수정과 동일 레이아웃) */
   const [arrExecModalTargets, setArrExecModalTargets] = useState<
-    Array<{ nDbConnectionId: number; strQuery: string }> | undefined
+    Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; strQuery: string }> | undefined
   >(undefined);
   // QA/LIVE 확인 팝업 — 팝업 안에 취소 / 확인 / 재요청 버튼
   const [objConfirmModal, setObjConfirmModal] = useState<{ nId: number; strType: 'qa' | 'live' } | null>(null);
@@ -776,6 +795,10 @@ const MyDashboardPage = () => {
   const bLoading = useEventInstanceStore((s) => s.bLoading);
   const strFilter = useEventInstanceStore((s) => s.strFilter);
   const fnFetchInstances = useEventInstanceStore((s) => s.fnFetchInstances);
+  const arrDbConnections = useDbConnectionStore((s) => s.arrDbConnections);
+  const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
+  const arrProducts = useProductStore((s) => s.arrProducts);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const fnSetFilter = useEventInstanceStore((s) => s.fnSetFilter);
   const fnStoreUpdateStatus = useEventInstanceStore((s) => s.fnUpdateStatus);
   const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
@@ -801,7 +824,9 @@ const MyDashboardPage = () => {
   // 페이지 진입 시 최초 1회 로드 (이후는 SSE가 자동 동기화)
   useEffect(() => {
     fnFetchInstances();
-  }, [fnFetchInstances]);
+    void fnFetchDbConnections();
+    void fnFetchProducts();
+  }, [fnFetchInstances, fnFetchDbConnections, fnFetchProducts]);
 
   // URL ?nId= / ?nInstanceId= — 알림 딥링크·퍼머링크 (같은 페이지에서 쿼리만 바뀔 때도 반응)
   useEffect(() => {
@@ -1068,16 +1093,85 @@ const MyDashboardPage = () => {
     }
   };
 
-  // DBA 쿼리 수정 모달 열기 (다중 세트면 세트별 쿼리 배열로)
+  const strQueryEditConnFilterAbbr = useMemo(() => {
+    if (!objQueryEditInstance) return undefined;
+    const strFromInstance = fnNormalizeServiceAbbr(objQueryEditInstance.strServiceAbbr);
+    if (strFromInstance) return strFromInstance;
+    const setAbbrs = new Set<string>();
+    for (const t of arrQueryEditTargets) {
+      const objConn = arrDbConnections.find((c) => c.nId === t.nQaDbConnectionId);
+      if (!objConn) continue;
+      const strResolved = fnResolveConnectionServiceAbbr(objConn, arrProducts);
+      if (strResolved) setAbbrs.add(strResolved);
+    }
+    if (setAbbrs.size === 1) return [...setAbbrs][0];
+    return undefined;
+  }, [objQueryEditInstance, arrQueryEditTargets, arrDbConnections, arrProducts]);
+
+  const arrQueryEditSelectedConnIds = useMemo(
+    () => arrQueryEditTargets.flatMap((t) =>
+      [t.nQaDbConnectionId, t.nLiveDbConnectionId].filter((n) => n > 0),
+    ),
+    [arrQueryEditTargets],
+  );
+
+  const nQueryEditProductId = objQueryEditInstance?.nProductId ?? 0;
+
+  const arrQueryEditQaConnections = useMemo(() => {
+    if (!nQueryEditProductId) return [];
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
+      arrDbConnections,
+      nQueryEditProductId,
+      'qa',
+      strQueryEditConnFilterAbbr,
+      arrProducts,
+    );
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrQueryEditSelectedConnIds,
+      nQueryEditProductId,
+    );
+  }, [arrDbConnections, nQueryEditProductId, strQueryEditConnFilterAbbr, arrProducts, arrQueryEditSelectedConnIds]);
+
+  const arrQueryEditLiveConnections = useMemo(() => {
+    if (!nQueryEditProductId) return [];
+    const arrFiltered = fnFilterConnectionsForTemplatePickerByEnv(
+      arrDbConnections,
+      nQueryEditProductId,
+      'live',
+      strQueryEditConnFilterAbbr,
+      arrProducts,
+    );
+    return fnMergeTemplatePickerConnections(
+      arrFiltered,
+      arrDbConnections,
+      arrQueryEditSelectedConnIds,
+      nQueryEditProductId,
+    );
+  }, [arrDbConnections, nQueryEditProductId, strQueryEditConnFilterAbbr, arrProducts, arrQueryEditSelectedConnIds]);
+
+  const fnPatchQueryEditTarget = (nIdx: number, patch: Partial<TQueryEditTarget>) => {
+    setArrQueryEditTargets((prev) => prev.map((t, i) => (i === nIdx ? { ...t, ...patch } : t)));
+  };
+
+  // DBA 쿼리 수정 모달 열기 (다중 세트면 세트별 쿼리·연결)
   const fnOpenQueryEdit = (r: IEventInstance) => {
     setObjQueryEditInstance(r);
     const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
     if (bMulti && r.arrExecutionTargets) {
-      setArrQueryEditValues(r.arrExecutionTargets.map((t) => t.strQuery ?? ''));
+      setArrQueryEditTargets(r.arrExecutionTargets.map((t) => {
+        const objNorm = fnNormalizeExecutionTargetItem(t);
+        return {
+          nQaDbConnectionId: objNorm.nQaDbConnectionId,
+          nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          strQuery: t.strQuery ?? '',
+        };
+      }));
       setStrQueryEditValue('');
     } else {
       setStrQueryEditValue(r.strGeneratedQuery ?? '');
-      setArrQueryEditValues([]);
+      setArrQueryEditTargets([]);
     }
     setBQueryEditOpen(true);
   };
@@ -1085,14 +1179,24 @@ const MyDashboardPage = () => {
   // DBA 쿼리 수정 저장 (다중 세트면 arrExecutionTargets 전송)
   const fnSaveQueryEdit = async () => {
     if (!objQueryEditInstance) return;
+    const bMulti = arrQueryEditTargets.length > 0;
+    if (bMulti) {
+      const bInvalid = arrQueryEditTargets.some(
+        (t) => !t.nQaDbConnectionId || !t.nLiveDbConnectionId || !t.strQuery.trim(),
+      );
+      if (bInvalid) {
+        messageApi.warning('모든 세트에 QA/LIVE 연결과 쿼리를 입력하세요.');
+        return;
+      }
+    }
     setBQuerySaving(true);
     try {
-      const bMulti = (objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0;
-      const payload: Record<string, unknown> = bMulti && objQueryEditInstance.arrExecutionTargets
+      const payload: Record<string, unknown> = bMulti
         ? {
-            arrExecutionTargets: objQueryEditInstance.arrExecutionTargets.map((t, i) => ({
-              nDbConnectionId: t.nDbConnectionId,
-              strQuery: arrQueryEditValues[i] ?? t.strQuery ?? '',
+            arrExecutionTargets: arrQueryEditTargets.map((t) => ({
+              nQaDbConnectionId: t.nQaDbConnectionId,
+              nLiveDbConnectionId: t.nLiveDbConnectionId,
+              strQuery: t.strQuery,
             })),
           }
         : { strGeneratedQuery: strQueryEditValue };
@@ -2392,12 +2496,19 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           </Space>
         }
         open={bQueryEditOpen}
-        onOk={fnSaveQueryEdit}
-        onCancel={() => setBQueryEditOpen(false)}
-        okText="저장"
-        cancelText="취소"
-        confirmLoading={bQuerySaving}
-        width={740}
+        onCancel={() => { if (!bQuerySaving) setBQueryEditOpen(false); }}
+        footer={(
+          <Space>
+            <Button onClick={() => setBQueryEditOpen(false)} disabled={bQuerySaving}>취소</Button>
+            <Button type="primary" loading={bQuerySaving} onClick={() => void fnSaveQueryEdit()}>
+              저장
+            </Button>
+          </Space>
+        )}
+        width={760}
+        destroyOnClose
+        maskClosable={!bQuerySaving}
+        closable={!bQuerySaving}
       >
         {objQueryEditInstance && (
           <Space direction="vertical" style={{ width: '100%', marginTop: 8 }} size="middle">
@@ -2407,37 +2518,86 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               message="DBA 전용 쿼리 직접 수정"
               description={`이벤트: ${objQueryEditInstance.strEventName} | 수정 이력이 진행 로그에 기록됩니다.`}
             />
-            {(objQueryEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
+            {arrQueryEditTargets.length > 0 ? (
               <Tabs
                 type="card"
-                items={objQueryEditInstance.arrExecutionTargets!.map((t, idx) => ({
+                items={arrQueryEditTargets.map((objTarget, idx) => ({
                   key: String(idx),
-                  label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                  label: `세트 ${idx + 1}`,
                   children: (
                     <div style={{ marginTop: 8 }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-                        <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(arrQueryEditValues[idx] ?? '')}>복사</Button>
-                      </div>
-                      <SqlLineNumberArea
-                        strValue={arrQueryEditValues[idx] ?? ''}
-                        fnOnChange={(strNext) => {
-                          const next = [...arrQueryEditValues];
-                          while (next.length <= idx) next.push('');
-                          next[idx] = strNext;
-                          setArrQueryEditValues(next);
-                        }}
-                        nFontSize={13}
-                        nMinRows={10}
-                        nMaxRows={25}
-                        strPlaceholder="SQL 쿼리를 입력하세요..."
-                      />
+                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                        <div>
+                          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                            QA 연결 DB
+                          </Text>
+                          <Select
+                            placeholder="QA DB 접속 선택"
+                            {...OBJ_DB_CONNECTION_SELECT_PROPS}
+                            value={objTarget.nQaDbConnectionId || undefined}
+                            onChange={(nId: number) => {
+                              const objQa = arrDbConnections.find((c) => c.nId === nId);
+                              const patch: Partial<TQueryEditTarget> = { nQaDbConnectionId: nId };
+                              if (objQa) {
+                                const objLive = fnFindLivePairForQaConnection(arrDbConnections, objQa);
+                                if (objLive) patch.nLiveDbConnectionId = objLive.nId;
+                              }
+                              fnPatchQueryEditTarget(idx, patch);
+                            }}
+                          >
+                            {arrQueryEditQaConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
+                          </Select>
+                        </div>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                            LIVE 연결 DB
+                          </Text>
+                          <Select
+                            placeholder="LIVE DB 접속 선택"
+                            {...OBJ_DB_CONNECTION_SELECT_PROPS}
+                            value={objTarget.nLiveDbConnectionId || undefined}
+                            onChange={(nId: number) => fnPatchQueryEditTarget(idx, { nLiveDbConnectionId: nId })}
+                          >
+                            {arrQueryEditLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
+                          </Select>
+                        </div>
+                        <div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: 4,
+                            }}
+                          >
+                            <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                            <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objTarget.strQuery)}>복사</Button>
+                          </div>
+                          <SqlLineNumberArea
+                            strValue={objTarget.strQuery}
+                            fnOnChange={(strNext) => fnPatchQueryEditTarget(idx, { strQuery: strNext })}
+                            nFontSize={13}
+                            nMinRows={10}
+                            nMaxRows={25}
+                            strPlaceholder="SQL 쿼리를 입력하세요..."
+                          />
+                        </div>
+                      </Space>
                     </div>
                   ),
                 }))}
               />
             ) : (
               <>
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
                   <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(strQueryEditValue)}>복사</Button>
                 </div>
                 <SqlLineNumberArea

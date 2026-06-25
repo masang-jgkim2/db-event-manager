@@ -114,7 +114,26 @@ export type TResolvedConnectionService = {
   strServiceAbbr?: string;
 };
 
-/** DB 접속·이벤트 생성 — nServiceId 우선, 없으면 strServiceAbbr로 해석 */
+/** 등록·생성 API — 약자 단독(strServiceAbbr only) 거부, nServiceId 또는 공통(둘 다 비움)만 허용 */
+export const STR_SERVICE_ID_WRITE_REQUIRED =
+  '서비스 구분은 nServiceId로 지정해주세요. (약자 strServiceAbbr 단독 등록·생성은 지원하지 않습니다)';
+
+export const fnResolveConnectionServiceFieldsForWrite = (
+  objProduct: Pick<IProduct, 'strName' | 'arrServices'> | undefined,
+  nServiceId?: number | null,
+  strServiceAbbr?: string | null,
+): TResolvedConnectionService | { strError: string } => {
+  const nId = Number(nServiceId);
+  if (nId > 0) {
+    return fnResolveConnectionServiceFields(objProduct, nServiceId, null);
+  }
+  if ((strServiceAbbr ?? '').trim()) {
+    return { strError: STR_SERVICE_ID_WRITE_REQUIRED };
+  }
+  return {};
+};
+
+/** DB 접속·이벤트 생성 — nServiceId 우선, 없으면 strServiceAbbr로 해석 (실행·레거시 dual-read) */
 export const fnResolveConnectionServiceFields = (
   objProduct: Pick<IProduct, 'strName' | 'arrServices'> | undefined,
   nServiceId?: number | null,

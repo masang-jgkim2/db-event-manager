@@ -199,6 +199,32 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     );
     console.log('[DATA_MYSQL] 컬럼 추가 | event_instance.n_service_id');
   }
+
+  const [etqsLiveCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template_query_set' AND COLUMN_NAME = 'n_live_db_connection_id'`,
+  );
+  if (Number((etqsLiveCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template_query_set
+       ADD COLUMN n_live_db_connection_id INT NULL
+         COMMENT 'IQueryTemplateItem.nLiveDbConnectionId' AFTER n_db_connection_id`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template_query_set.n_live_db_connection_id');
+  }
+
+  const [eietLiveCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance_execution_target' AND COLUMN_NAME = 'n_live_db_connection_id'`,
+  );
+  if (Number((eietLiveCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance_execution_target
+       ADD COLUMN n_live_db_connection_id INT NULL
+         COMMENT 'nLiveDbConnectionId' AFTER n_db_connection_id`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance_execution_target.n_live_db_connection_id');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {

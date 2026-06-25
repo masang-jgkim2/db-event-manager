@@ -41,7 +41,11 @@ import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
 import {
   fnBuildInstanceConnectionPreview,
   fnFormatConnectionEndpoint,
-  fnHasEnvConnectionForKindAndService,
+  fnFormatExecutionTargetConnLabel,
+  fnIsExplicitEnvConnectionValid,
+  fnIsValidQueryTemplateSet,
+  fnNormalizeExecutionTargetItem,
+  fnNormalizeQueryTemplateItem,
   fnHasEnvConnectionForService,
   fnServiceHasAnyDeployConnection,
 } from '../utils/dbConnectionScope';
@@ -116,7 +120,7 @@ const QueryPage = () => {
 
   // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
-  const [arrExecutionTargets, setArrExecutionTargets] = useState<Array<{ nDbConnectionId: number; strQuery: string }>>([]);
+  const [arrExecutionTargets, setArrExecutionTargets] = useState<Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; strQuery: string }>>([]);
 
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -209,7 +213,7 @@ const QueryPage = () => {
   // 유효한 쿼리 세트 (세트 2개 이상 = 다중, 1개 = 단일)
   const arrSets = useMemo(() => {
     if (!objSelectedEvent) return [];
-    return objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+    return objSelectedEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
   }, [objSelectedEvent]);
   const bMultiQuery = arrSets.length >= 2;
 
@@ -219,14 +223,13 @@ const QueryPage = () => {
     if (!nSelectedProductId || nSelectedServiceId == null) return true;
     if (arrSets.length > 0) {
       return arrSets.every((s) => {
-        const objConn = arrDbConnections.find((c) => c.nId === s.nDbConnectionId);
-        const strKind = objConn?.strKind ?? 'GAME';
-        return fnHasEnvConnectionForKindAndService(
+        const objNorm = fnNormalizeQueryTemplateItem(s);
+        return fnIsExplicitEnvConnectionValid(
           arrDbConnections,
           nSelectedProductId,
-          strSelectedAbbr ?? '',
+          objNorm.nQaDbConnectionId,
           'qa',
-          strKind,
+          strSelectedAbbr ?? '',
           nSelectedServiceId,
         );
       });
@@ -244,14 +247,13 @@ const QueryPage = () => {
     if (!nSelectedProductId || nSelectedServiceId == null) return true;
     if (arrSets.length > 0) {
       return arrSets.every((s) => {
-        const objConn = arrDbConnections.find((c) => c.nId === s.nDbConnectionId);
-        const strKind = objConn?.strKind ?? 'GAME';
-        return fnHasEnvConnectionForKindAndService(
+        const objNorm = fnNormalizeQueryTemplateItem(s);
+        return fnIsExplicitEnvConnectionValid(
           arrDbConnections,
           nSelectedProductId,
-          strSelectedAbbr ?? '',
+          objNorm.nLiveDbConnectionId,
           'live',
-          strKind,
+          strSelectedAbbr ?? '',
           nSelectedServiceId,
         );
       });
@@ -356,7 +358,7 @@ const QueryPage = () => {
     if (objEvent && strSelectedAbbr) {
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
-      const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
       if (arrNewSets.length >= 2) {
         setArrInputValues(arrNewSets.map((s) => (s.strDefaultItems ?? '').trim()));
         setStrInputValues('');
@@ -392,6 +394,15 @@ const QueryPage = () => {
 
     if (!bTemplateReady) {
       messageApi.warning('DBA 리뷰가 완료된 쿼리 템플릿만 이벤트를 생성할 수 있습니다.');
+      return;
+    }
+
+    if (
+      objSelectedProduct &&
+      objSelectedProduct.arrServices.length > 0 &&
+      !(Number(nSelectedServiceId) > 0)
+    ) {
+      messageApi.warning(`${STR_SERVICE_SCOPE_LABEL}을 선택해주세요.`);
       return;
     }
 
@@ -440,21 +451,34 @@ const QueryPage = () => {
     }
 
     let strQuery = '';
-    const arrTargets: Array<{ nDbConnectionId: number; strQuery: string }> = [];
+    const arrTargets: Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; strQuery: string }> = [];
 
     if (bMultiQuery) {
       for (let i = 0; i < arrSets.length; i++) {
         const s = arrSets[i];
+        const objNorm = fnNormalizeQueryTemplateItem(s);
         const strItems = (arrInputValues[i] ?? '').trim();
         const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strItems);
-        arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
+        arrTargets.push({
+          nQaDbConnectionId: objNorm.nQaDbConnectionId,
+          nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          strQuery: q,
+        });
       }
       setArrExecutionTargets(arrTargets);
-      strQuery = arrTargets.map((t, idx) => `-- === 세트 ${idx + 1} (연결 ID: ${t.nDbConnectionId}) ===\n${t.strQuery}`).join('\n\n');
+      strQuery = arrTargets.map((t, idx) => {
+        const objNorm = fnNormalizeExecutionTargetItem(t);
+        return `-- === 세트 ${idx + 1} (QA #${objNorm.nQaDbConnectionId} / LIVE #${objNorm.nLiveDbConnectionId}) ===\n${t.strQuery}`;
+      }).join('\n\n');
     } else if (arrSets.length === 1) {
       const s = arrSets[0];
+      const objNorm = fnNormalizeQueryTemplateItem(s);
       const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strInputValues.trim());
-      arrTargets.push({ nDbConnectionId: s.nDbConnectionId, strQuery: q });
+      arrTargets.push({
+        nQaDbConnectionId: objNorm.nQaDbConnectionId,
+        nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+        strQuery: q,
+      });
       setArrExecutionTargets(arrTargets);
       strQuery = q;
     } else {
@@ -474,7 +498,6 @@ const QueryPage = () => {
         nProductId: objSelectedProduct?.nId || 0,
         nServiceId: nSelectedServiceId ?? undefined,
         strEventLabel: objSelectedEvent.strEventLabel,
-        strServiceAbbr: strSelectedAbbr || '',
         strServiceRegion: objSelectedService?.strRegion || '',
         strCategory: objSelectedEvent.strCategory,
         strType: objSelectedEvent.strType,
@@ -733,7 +756,7 @@ const QueryPage = () => {
                 />
               )}
               {objSelectedEvent && (() => {
-                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
                 const strStatus = fnResolveTemplateStatus(objSelectedEvent);
                 const objStatusCfg = OBJ_TEMPLATE_STATUS_CONFIG[strStatus];
                 return (
@@ -1085,7 +1108,7 @@ const QueryPage = () => {
                     type="card"
                     items={arrExecutionTargets.map((t, idx) => ({
                       key: String(idx),
-                      label: `쿼리 세트 ${idx + 1}${t.nDbConnectionId ? ` (연결 ${t.nDbConnectionId})` : ''}`,
+                      label: `쿼리 세트 ${idx + 1}${fnFormatExecutionTargetConnLabel(t)}`,
                       children: (
                         <TextArea
                           className={`${STR_CODE_BLOCK_CLASS} dqpm-code-block`}

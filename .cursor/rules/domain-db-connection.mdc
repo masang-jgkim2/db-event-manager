@@ -29,7 +29,8 @@ alwaysApply: false
 - **금지**: `DELETE FROM db_connection` 전체 치환 → `event_instance_execution_target`·`event_template_query_set` **FK RESTRICT**.
 - **금지**: `fnAwaitInFlightMysqlDocFlush` / `fnRelationalWriteFullFromMemory` on db 접속 CUD(인스턴스 전체 스냅샷 대기).
 - **금지**: `fnSaveJson('dbConnections.json')` 예약(전체 메타 flush 트리거).
-- **중복**: 프로덕트 + **strServiceAbbr(비움=공통)** + env + kind + **host + DB명** (샤드 DB 여러 건 허용).
+- **중복**: 프로덕트 + 서비스(**nServiceId**→약자 derive) + env + kind + **host + DB명** (샤드·다중 호스트). UI `fnFindDuplicateDbConnectionInList` 동일.
+- **등록·수정**: payload **`nServiceId`**(공통=비움). **`strServiceAbbr` 단독** → 400.
 - **삭제**: `fnDeleteDbConnectionRowFromMysql` + 참조 검사 → 409.
 
 ## 연결 테스트 SQL
@@ -38,10 +39,12 @@ alwaysApply: false
 
 ## 서비스 범위(프로젝트)
 
-- `IDbConnection.strServiceAbbr` — `products.arrServices[].strAbbr`와 일치. **NULL/비움** = 프로덕트 공통 fallback.
-- 실행: `fnResolveExecuteConnection(..., strServiceAbbr)` — 인스턴스 Step2 값. 서비스 전용 없으면 공통; **DK/KR 전용은 DK/G에 매칭 안 됨**.
-- 이벤트 생성·실행 전 `fnHasEnvConnectionForService` / `fnHasEnvConnectionForKindAndService`로 QA/LIVE·WEB/GAME 검증.
+- **`IService.nServiceId`** ↔ `product_service.n_id`. `db_connection`·`event_instance` FK.
+- **등록·생성**: `fnResolveConnectionServiceFieldsForWrite`. **실행**: `fnResolveConnectionServiceFields` dual-read.
+- `strServiceAbbr` — 저장 시 derive. **비움** = 공통 fallback.
+- 실행: `fnResolveExecuteConnection(..., strServiceAbbr?, nServiceId?)`. **DK/KR 전용은 DK/G에 매칭 안 됨**.
+- `fnHasEnvConnectionForService` / `fnHasEnvConnectionForKindAndService` — nServiceId 포함.
 
 ## 코드 위치
 
-`dbConnectionController.ts`, `data/dbConnections.ts`, `db/mysqlRelationalSync.ts`, `db/dbManager.ts`, `db/mysqlGameConnection.ts`, `db/mysqlServerProbe.ts`
+`dbConnectionController.ts`, `data/dbConnections.ts`, `utils/serviceId.ts`, `db/mysqlRelationalSync.ts`, `front/src/utils/dbConnectionScope.ts`

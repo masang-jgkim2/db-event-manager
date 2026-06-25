@@ -67,9 +67,12 @@ export interface IStageActor {
   dtProcessedAt: string;      // 처리 시각
 }
 
-// 실행 대상 1건: DB 접속 ID + 생성된 쿼리 (템플릿에 arrQueryTemplates 있을 때)
+// 실행 대상 1건: QA/LIVE 접속 ID + 생성된 쿼리 (템플릿에 arrQueryTemplates 있을 때)
 export interface IExecutionTarget {
-  nDbConnectionId: number;
+  nQaDbConnectionId: number;
+  nLiveDbConnectionId: number;
+  /** @deprecated nQaDbConnectionId 로 이관 */
+  nDbConnectionId?: number;
   strQuery: string;
 }
 
