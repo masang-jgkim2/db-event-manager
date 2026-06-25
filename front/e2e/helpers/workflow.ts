@@ -18,6 +18,7 @@ export type TE2eWorkflowConfig = {
   strServiceAbbr: string;
   strServiceRegion: string;
   nDbConnectionIdQa: number;
+  nDbConnectionIdLive?: number;
   dtQaDeployDate: string;
   dtLiveDeployDate: string;
   arrDeployScope?: string[];
@@ -69,7 +70,11 @@ export const fnApiCreateWorkflowInstance = async (
       strEventName,
       strInputValues: '',
       strGeneratedQuery: 'SELECT 1 AS n_e2e;',
-      arrExecutionTargets: [{ nDbConnectionId: objCfg.nDbConnectionIdQa, strQuery: 'SELECT 1 AS n_e2e;' }],
+      arrExecutionTargets: [{
+        nQaDbConnectionId: objCfg.nDbConnectionIdQa,
+        nLiveDbConnectionId: objCfg.nDbConnectionIdLive ?? objCfg.nDbConnectionIdQa,
+        strQuery: 'SELECT 1 AS n_e2e;',
+      }],
       dtQaDeployDate: objCfg.dtQaDeployDate,
       dtLiveDeployDate: objCfg.dtLiveDeployDate,
       dtDeployDate: objCfg.dtQaDeployDate,

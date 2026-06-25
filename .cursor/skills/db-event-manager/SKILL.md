@@ -38,9 +38,9 @@ release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_li
 ## MSSQL / MySQL 이중 실행
 
 - **실행 진입점**: `fnExecuteQueryWithText`만 사용 (`queryExecutor.ts`). `strDbType`으로 드라이버 분기, 풀은 접속 `nId`별 캐시.
-- **접속 선택**: `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?, strServiceAbbr?)` — 인스턴스 Step2 `strServiceAbbr`로 서비스 전용→공통 fallback. 세트 1개여도 `nDbConnectionId`+서비스+kind; ID 없으면 **GAME**. `fnFindActiveConnection`(종류 무관·첫 건)은 비결정적이므로 실행 경로에서 사용하지 않음.
-- **접속 등록**: `products.strDbType`(mssql/mysql)과 접속의 `strDbType`이 **일치**해야 함. 키: **프로덕트 + strServiceAbbr(서비스 구분, 선택) + env + kind + host + DB명**. DK/KR·DK/G 등 서비스별 QA/LIVE가 다르면 `strServiceAbbr` 지정. 비우면 공통 fallback.
-- **DB 접속 저장 성능**: MySQL 모드에서 `fnCommitOneDbConnectionToMysql` 1행만 반영 — `fnAwaitMysqlDocFlush`/전체 `fnRelationalWriteFullFromMemory` 대기 금지.
+- **접속 선택**: `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?, strServiceAbbr?, nServiceId?)` — 인스턴스 **`nServiceId` 우선**, 스냅샷 `strServiceAbbr` fallback. 서비스 전용→공통 fallback.
+- **접속 등록·이벤트 생성**: payload **`nServiceId`**(공통=비움). **`strServiceAbbr` 단독 API → 400**. 중복: 프로덕트+서비스+env+kind+**host+DB명**. 유틸: `utils/serviceId.ts`, `fnResolveConnectionServiceFieldsForWrite`.
+- **DB 접속 저장 성능**: MySQL `fnCommitOneDbConnectionToMysql` 1행만.
 - **시스템 DB**: `db/systemDb.ts`는 마이그레이션용 **MSSQL 전용**. 타깃 게임 DB 실행과 별개.
 - **DB 스키마 정합성**: `docs/SCHEMA-DATA-REVIEW.md` (인메모리/타입 vs `docs/schema.sql`).
 - **data JSON ↔ 모듈 ↔ 시드·중복**: `docs/DATA-JSON-MAP.md`
@@ -53,8 +53,15 @@ release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_li
 1. **메타 vs 게임 분리**: `DATA_MYSQL_*` ≠ 화면 접속 행. 연결 테스트 실패를 메타 `.env`만으로 설명하지 말 것.
 2. **`''@IP (Using password: NO)`** + Heidi 성공 → `mysqlServerProbe`(4.0.x) → `mysqlGameConnection` 레거시. 풀 캐시·GRANT는 그 다음.
 3. **저장**: `fnCommitOneDbConnectionToMysql` 1행 UPSERT. `DELETE FROM db_connection` 전체·`fnAwaitMysqlDocFlush` 금지. FK는 **삭제** 시만.
-4. **중복 등록**: 프로덕트+서비스(선택)+env+kind+host+DB명 — host+DB명까지 같을 때만 409.
+4. **중복 등록**: 프로덕트+**nServiceId**(선택)+env+kind+host+DB명 — host+DB명까지 같을 때만 409. UI `fnFindDuplicateDbConnectionInList`.
 5. 규칙 상세: `.cursor/rules/domain-db-connection.mdc`
+
+## 서비스 구분 ID (`nServiceId`) — Phase E
+
+- **마스터**: `IService.nServiceId` ↔ MySQL `product_service.n_id`. `db_connection`·`event_instance` FK.
+- **등록·생성 경로**: DB 접속·QueryPage·`POST /api/event-instances` — **`nServiceId` 필수**(프로덕트에 서비스 있을 때). 약자 단독 → 400.
+- **실행·레거시**: `fnServiceAbbrsCompatible` dual-read. 나의 대시보드 표시는 **스냅샷**(`strServiceAbbr`/`strProductName`) 유지.
+- **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장.
 
 ## 회원 가입·승인 (Phase A)
 
@@ -113,6 +120,7 @@ backend/src/
   db/mysqlDocPersist.ts                 # 전체 플러시·`fnScheduleMysqlEventInstanceReplace`·`fnAwaitMysqlEventInstanceFlush`
   data/eventInstances.ts                # `fnCommitEventInstancesToStore` — 미러+event_instance* 치환
   data/metaJsonMysqlReconcile.ts        # JSON 미러 ↔ MySQL 병합(기동·CLI)
+  utils/serviceId.ts                    # nServiceId·ForWrite/dual-read
   data/bootstrapDataStore.ts            # 기동 하이드레이트·reconcile
   data/roles.ts                           # 인메모리 역할/권한
   data/activityLogs.ts                    # HTTP 활동 로그(메모리+배치 JSON, `fnFlushActivityLogsToDisk`)
@@ -123,9 +131,9 @@ front/src/
   types/eventDashboardCustom.ts           # 맞춤 카드 스키마(ICustomEventDashboardCard·strSummaryGroupKey·ICustomDashboardEventGroup)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
   pages/EventPage.tsx                     # 쿼리 템플릿 CRUD (/events) — 목록 서비스 구분 컬럼·연결 DB picker
-  pages/QueryPage.tsx                     # 이벤트 생성 (Step2 서비스 구분·Step4 접속 미리보기·payload nProductId)
+  pages/QueryPage.tsx                     # 이벤트 생성 (Step2 nServiceId·payload nServiceId)
   utils/countryPlatformLabel.ts           # STR_SERVICE_SCOPE_LABEL·약자/리전 포맷
-  utils/dbConnectionScope.ts              # 접속 범위 검증·템플릿 picker·fnListTemplateServiceScopeAbbrs
+  utils/dbConnectionScope.ts              # 접속 범위·fnFindDuplicateDbConnectionInList·템플릿 picker
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, 번호 컬럼 fnMakeIndexColumn — 기본 PK nId)
   components/RequestWithLongPressButton.tsx  # 재미 모드 시 롱프레스 재요청
   components/SettingsDrawer.tsx          # 굳굳 설정 (Web Push·재미 모드)

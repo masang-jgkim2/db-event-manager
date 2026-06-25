@@ -18,20 +18,40 @@ import { fnTestDbConnection } from '../db/dbManager';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
 import { fnGetDbConnectionDeleteBlockReason } from '../db/mysqlRelationalSync';
-import { fnResolveConnectionServiceFields } from '../utils/serviceId';
+import {
+  fnResolveConnectionServiceFieldsForWrite,
+  STR_SERVICE_ID_WRITE_REQUIRED,
+} from '../utils/serviceId';
+import { fnNormalizeExecutionTargetConnFields, fnNormalizeQueryTemplateConnFields } from '../utils/queryTemplateConnections';
 
 const fnIsPermanentlyRemoved = (e: { bPermanentlyRemoved?: boolean } | undefined): boolean =>
   Boolean(e?.bPermanentlyRemoved);
 
+const fnConnectionIdUsedInTemplateSet = (
+  q: { nQaDbConnectionId?: number; nLiveDbConnectionId?: number; nDbConnectionId?: number },
+  nId: number,
+): boolean => {
+  const objNorm = fnNormalizeQueryTemplateConnFields(q);
+  return objNorm.nQaDbConnectionId === nId || objNorm.nLiveDbConnectionId === nId;
+};
+
+const fnConnectionIdUsedInExecutionTarget = (
+  t: { nQaDbConnectionId?: number; nLiveDbConnectionId?: number; nDbConnectionId?: number },
+  nId: number,
+): boolean => {
+  const objNorm = fnNormalizeExecutionTargetConnFields(t);
+  return objNorm.nQaDbConnectionId === nId || objNorm.nLiveDbConnectionId === nId;
+};
+
 const fnGetDbConnectionDeleteBlockReasonFromMemory = (nDbConnectionId: number): string | null => {
   for (const objTpl of arrEvents) {
-    if (objTpl.arrQueryTemplates?.some((q) => q.nDbConnectionId === nDbConnectionId)) {
+    if (objTpl.arrQueryTemplates?.some((q) => fnConnectionIdUsedInTemplateSet(q, nDbConnectionId))) {
       return '이 DB 접속 정보는 쿼리 템플릿에서 사용 중입니다. 쿼리 템플릿을 먼저 삭제하세요.';
     }
   }
   for (const inst of arrEventInstances) {
     if (fnIsPermanentlyRemoved(inst)) continue;
-    if (inst.arrExecutionTargets?.some((t) => t.nDbConnectionId === nDbConnectionId)) {
+    if (inst.arrExecutionTargets?.some((t) => fnConnectionIdUsedInExecutionTarget(t, nDbConnectionId))) {
       return '이 DB 접속 정보는 이벤트 인스턴스에서 사용 중입니다. 이벤트를 영구 삭제한 뒤 다시 시도하세요.';
     }
   }
@@ -135,14 +155,14 @@ const fnMismatchProductDbTypeMessage = (nProductId: number, strConnDbType: strin
   return null;
 };
 
-/** 국가/플랫폼 — nServiceId 우선, 없으면 strServiceAbbr */
-const fnResolveServiceForConnection = (
+/** 등록·수정 — nServiceId만 (약자 단독 거부) */
+const fnResolveServiceForConnectionWrite = (
   nProductId: number,
   nServiceId?: number | null,
   strServiceAbbr?: string | null,
 ): { nServiceId?: number; strServiceAbbr?: string } | { strError: string } => {
   const objProduct = arrProducts.find((p) => p.nId === nProductId);
-  return fnResolveConnectionServiceFields(objProduct, nServiceId, strServiceAbbr);
+  return fnResolveConnectionServiceFieldsForWrite(objProduct, nServiceId, strServiceAbbr);
 };
 
 // DB 접속 정보 추가
@@ -164,7 +184,7 @@ export const fnCreateDbConnection = async (req: Request, res: Response): Promise
     }
 
     const strKindVal = strKind && ARR_DB_KIND.includes(strKind) ? strKind : 'GAME';
-    const objSvcResolved = fnResolveServiceForConnection(Number(nProductId), nServiceId, strServiceAbbr);
+    const objSvcResolved = fnResolveServiceForConnectionWrite(Number(nProductId), nServiceId, strServiceAbbr);
     if ('strError' in objSvcResolved) {
       res.status(400).json({ bSuccess: false, strMessage: objSvcResolved.strError });
       return;
@@ -285,20 +305,28 @@ export const fnUpdateDbConnection = async (req: Request, res: Response): Promise
     const strNextKind =
       strKind !== undefined && ARR_DB_KIND.includes(strKind) ? strKind : objConn.strKind;
     const bServiceFieldsSent = strServiceAbbr !== undefined || nServiceId !== undefined;
-    let strNextSvc = fnNormalizeServiceAbbr(objConn.strServiceAbbr);
+    let strNextSvc: string | undefined = fnNormalizeServiceAbbr(objConn.strServiceAbbr) || undefined;
     let nNextSvcId = objConn.nServiceId;
     if (bServiceFieldsSent) {
-      const objSvcResolved = fnResolveServiceForConnection(
-        objConn.nProductId,
-        nServiceId !== undefined ? nServiceId : objConn.nServiceId,
-        strServiceAbbr !== undefined ? strServiceAbbr : objConn.strServiceAbbr,
-      );
-      if ('strError' in objSvcResolved) {
-        res.status(400).json({ bSuccess: false, strMessage: objSvcResolved.strError });
+      if (strServiceAbbr !== undefined && nServiceId === undefined) {
+        res.status(400).json({ bSuccess: false, strMessage: STR_SERVICE_ID_WRITE_REQUIRED });
         return;
       }
-      strNextSvc = fnNormalizeServiceAbbr(objSvcResolved.strServiceAbbr);
-      nNextSvcId = objSvcResolved.nServiceId;
+      if (nServiceId !== undefined) {
+        const nRaw = nServiceId == null || nServiceId === '' ? 0 : Number(nServiceId);
+        if (nRaw <= 0) {
+          strNextSvc = undefined;
+          nNextSvcId = undefined;
+        } else {
+          const objSvcResolved = fnResolveServiceForConnectionWrite(objConn.nProductId, nRaw, null);
+          if ('strError' in objSvcResolved) {
+            res.status(400).json({ bSuccess: false, strMessage: objSvcResolved.strError });
+            return;
+          }
+          strNextSvc = fnNormalizeServiceAbbr(objSvcResolved.strServiceAbbr);
+          nNextSvcId = objSvcResolved.nServiceId;
+        }
+      }
     }
     const objDupUpdate = fnFindDuplicateDbConnection(
       objConn.nProductId,

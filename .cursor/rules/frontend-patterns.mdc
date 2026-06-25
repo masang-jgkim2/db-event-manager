@@ -39,10 +39,10 @@ front/src/
 
 - **원칙**: 해당 권한이 있을 때만 버튼/관리 컬럼 노출. 없으면 버튼 숨김(API도 동일 권한으로 403).
 - **페이지 접근**: `PermissionRoute`에 보기 권한만 지정. 예: `product.view`, `user.view`, `role.view`, `db_connection.view`|`db.manage`, `event_template.view`, `instance.view`|`instance.create`.
-- **DB 접속 정보 페이지**: … 모달·테이블에 **서비스 구분** `strServiceAbbr`(FH/KR, DK/KR, DK/G 등; 비우면 `전체(미지정)` fallback). UI 라벨 상수 `STR_SERVICE_SCOPE_LABEL` (`utils/countryPlatformLabel.ts`).
-- **프로덕트 페이지**: `arrServices` 목록·모달 — 동일 **서비스 구분** 라벨.
-- **쿼리 템플릿 (`EventPage`)**: 목록 **서비스 구분** 컬럼 = 세트 연결 DB의 `strServiceAbbr` 집계(템플릿 자체 필드 없음). 모달 필터·연결 DB picker는 `fnFilterConnectionsForTemplatePicker`.
-- **QueryPage (D1)**: Step2 **서비스 구분** — 약자(FH/KR, LH/KR, DK/KR, DK/G) 주 표기, QA/LIVE 접속 없는 항목 disabled. Step4 **DB 접속 미리보기**(`fnBuildInstanceConnectionPreview`). 생성 payload는 `nProductId`만(프로덕트명 서버 derive).
+- **DB 접속 정보 페이지**: 모달 **서비스 구분** = `nServiceId` Select(`#id 약자 · 리전`). **중복 경고**는 **호스트+DB명**까지 같을 때만(백엔드 `fnFindDuplicateDbConnection` 동일; `dbConnectionScope.fnFindDuplicateDbConnectionInList`). env·kind만 같고 host/DB 다르면 추가 가능(라그하임 QA GAME 샤드). UI 라벨 `STR_SERVICE_SCOPE_LABEL`.
+- **프로덕트 페이지**: `arrServices` — `nServiceId`·약자·리전.
+- **쿼리 템플릿 (`EventPage`)**: 연결 DB picker = `fnFilterConnectionsForTemplatePicker` — **종류·호스트·DB명**별 행(샤드 다건). 동일 endpoint만 QA 우선 1건.
+- **QueryPage (D1)**: Step2 **서비스 구분** — `nServiceId` Select; QA/LIVE 접속 없는 항목 disabled. 생성 payload: **`nServiceId`**(+ `nProductId` 등); **`strServiceAbbr` 미전송**(서버 derive·스냅샷). Step4 접속 미리보기(`fnBuildInstanceConnectionPreview`) — 미구현 시 문서만.
 - **회원 가입·승인**: `/register`(공개), 로그인 403 `pending_approval`/`rejected`/`no_roles` → `LoginPage` 안내. `UserPage` «승인 대기» 탭·승인/거절 = `user.approve`|`user.manage`; 역할 선택 UI에서 `guest` 제외.
 
 ```typescript

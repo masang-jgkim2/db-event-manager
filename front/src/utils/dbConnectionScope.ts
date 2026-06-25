@@ -1,4 +1,4 @@
-import type { IEventTemplate, IDbConnection, IService, TDbConnectionKind } from '../types';
+import type { IEventTemplate, IDbConnection, IQueryTemplateItem, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
 
 /** product.arrServices 조회용 — arrServices 생략 가능 */
@@ -30,11 +30,14 @@ export const fnDeriveTemplateConnFilterAbbr = (
   arrProducts?: readonly TProductServiceLookup[],
 ): string | undefined => {
   const arrSets =
-    objTemplate.arrQueryTemplates?.filter((s) => s.nDbConnectionId && s.nDbConnectionId > 0) ?? [];
+    objTemplate.arrQueryTemplates?.filter((s) => {
+      const objNorm = fnNormalizeQueryTemplateItem(s);
+      return objNorm.nQaDbConnectionId > 0;
+    }) ?? [];
   if (!arrSets.length) return undefined;
   const setAbbrs = new Set<string>();
   for (const s of arrSets) {
-    const objConn = arrConnections.find((c) => c.nId === s.nDbConnectionId);
+    const objConn = arrConnections.find((c) => c.nId === fnNormalizeQueryTemplateItem(s).nQaDbConnectionId);
     if (!objConn) continue;
     const strResolved = fnResolveConnectionServiceAbbr(objConn, arrProducts);
     if (strResolved) setAbbrs.add(strResolved);
@@ -51,13 +54,13 @@ export const fnListTemplateServiceScopeAbbrs = (
 ): string[] => {
   const arrSets =
     objTemplate.arrQueryTemplates?.filter(
-      (s) => s.nDbConnectionId && (s.strQueryTemplate ?? '').trim(),
+      (s) => fnNormalizeQueryTemplateItem(s).nQaDbConnectionId > 0 && (s.strQueryTemplate ?? '').trim(),
     ) ?? [];
   if (!arrSets.length) return [];
   const setSeen = new Set<string>();
   const arrOut: string[] = [];
   for (const s of arrSets) {
-    const objConn = arrConnections.find((c) => c.nId === s.nDbConnectionId);
+    const objConn = arrConnections.find((c) => c.nId === fnNormalizeQueryTemplateItem(s).nQaDbConnectionId);
     if (!objConn) continue;
     const strKey = fnResolveConnectionServiceAbbr(objConn, arrProducts);
     const strDedupe = strKey || (objConn.nServiceId ? `#${objConn.nServiceId}` : '');
@@ -158,6 +161,107 @@ export const fnFindConnectionById = (
   nId: number,
 ): IDbConnection | undefined => arrConnections.find((c) => c.nId === nId);
 
+/** 템플릿 세트 — QA/LIVE id 정규화 */
+export const fnNormalizeQueryTemplateItem = (raw: Partial<IQueryTemplateItem>): IQueryTemplateItem => ({
+  nQaDbConnectionId: Number(raw.nQaDbConnectionId ?? raw.nDbConnectionId) || 0,
+  nLiveDbConnectionId: Number(raw.nLiveDbConnectionId) || 0,
+  strDefaultItems: raw.strDefaultItems,
+  strQueryTemplate: raw.strQueryTemplate ?? '',
+});
+
+export const fnNormalizeExecutionTargetItem = (
+  raw: Partial<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number; strQuery: string }>,
+): { nQaDbConnectionId: number; nLiveDbConnectionId: number; strQuery: string } => ({
+  nQaDbConnectionId: Number(raw.nQaDbConnectionId ?? raw.nDbConnectionId) || 0,
+  nLiveDbConnectionId: Number(raw.nLiveDbConnectionId) || 0,
+  strQuery: raw.strQuery ?? '',
+});
+
+/** 템플릿 세트 유효성 — QA/LIVE id + 쿼리 본문 */
+export const fnIsValidQueryTemplateSet = (s: Partial<IQueryTemplateItem>): boolean => {
+  const objNorm = fnNormalizeQueryTemplateItem(s);
+  return Boolean((s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0);
+};
+
+/** 명시된 접속 id가 프로덕트·env·서비스 범위에서 유효한지 */
+export const fnIsExplicitEnvConnectionValid = (
+  arrConnections: IDbConnection[],
+  nProductId: number,
+  nConnId: number,
+  strEnv: 'qa' | 'live',
+  strServiceAbbr?: string | null,
+  nServiceId?: number | null,
+): boolean => {
+  if (!nConnId) return false;
+  const objConn = fnFindConnectionById(arrConnections, nConnId);
+  return Boolean(
+    objConn &&
+    objConn.nProductId === nProductId &&
+    objConn.strEnv === strEnv &&
+    objConn.bIsActive &&
+    fnConnectionMatchesServiceScope(objConn, strServiceAbbr, nServiceId),
+  );
+};
+
+/** 실행 대상 탭 라벨 — QA/LIVE 연결 id */
+export const fnFormatExecutionTargetConnLabel = (
+  raw: Partial<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number }>,
+): string => {
+  const obj = fnNormalizeExecutionTargetItem({ ...raw, strQuery: '' });
+  if (obj.nQaDbConnectionId && obj.nLiveDbConnectionId) {
+    return ` (QA #${obj.nQaDbConnectionId} / LIVE #${obj.nLiveDbConnectionId})`;
+  }
+  if (obj.nQaDbConnectionId) return ` (QA #${obj.nQaDbConnectionId})`;
+  return '';
+};
+
+/** QA 접속과 동일 DB명·kind·서비스 LIVE 활성 접속 */
+export const fnFindLivePairForQaConnection = (
+  arrConnections: readonly IDbConnection[],
+  objQa: IDbConnection,
+): IDbConnection | undefined =>
+  arrConnections.find(
+    (c) =>
+      c.nProductId === objQa.nProductId &&
+      c.strEnv === 'live' &&
+      c.bIsActive &&
+      (c.strKind ?? 'GAME') === (objQa.strKind ?? 'GAME') &&
+      c.strDatabase.trim() === objQa.strDatabase.trim() &&
+      fnConnectionMatchesServiceScope(c, objQa.strServiceAbbr, objQa.nServiceId),
+  );
+
+/** env별 연결 DB Select 옵션 */
+export const fnFilterConnectionsForTemplatePickerByEnv = (
+  arrConnections: IDbConnection[],
+  nProductId: number,
+  strEnv: 'qa' | 'live',
+  strServiceAbbr?: string | null,
+  arrProducts?: readonly TProductServiceLookup[],
+): IDbConnection[] => {
+  const strSvc = fnNormalizeServiceAbbr(strServiceAbbr);
+  const objProduct = arrProducts?.find((p) => p.nId === nProductId);
+  const nFilterSvcId =
+    strSvc && objProduct?.arrServices?.length
+      ? objProduct.arrServices.find((s) => fnServiceAbbrsCompatible(s.strAbbr, strSvc))?.nServiceId
+      : undefined;
+  const bHasServiceFilter = Boolean(strSvc) || (nFilterSvcId != null && nFilterSvcId > 0);
+  return arrConnections
+    .filter(
+      (c) =>
+        c.nProductId === nProductId &&
+        c.strEnv === strEnv &&
+        c.bIsActive &&
+        (bHasServiceFilter
+          ? fnConnectionMatchesServiceScope(c, strSvc || undefined, nFilterSvcId)
+          : true),
+    )
+    .sort((a, b) => {
+      const strKa = `${a.strKind ?? 'GAME'}|${a.strHost}|${a.strDatabase}`;
+      const strKb = `${b.strKind ?? 'GAME'}|${b.strHost}|${b.strDatabase}`;
+      return strKa.localeCompare(strKb);
+    });
+};
+
 /** 프로덕트+환경+종류+서비스 범위 기준 활성 접속 1건 (서비스 전용 → 공통 fallback) */
 export const fnFindActiveConnectionByKindAndService = (
   arrConnections: IDbConnection[],
@@ -245,14 +349,14 @@ export type TInstanceConnectionPreviewRow = {
   objConn?: IDbConnection;
 };
 
-/** Step4 QA/LIVE 접속 미리보기 — 템플릿 세트·서비스 구분·반영 범위 기준 */
+/** Step4 QA/LIVE 접속 미리보기 — 템플릿 세트에 명시된 QA/LIVE id */
 export const fnBuildInstanceConnectionPreview = (
   arrConnections: IDbConnection[],
   nProductId: number,
-  strServiceAbbr: string,
+  _strServiceAbbr: string,
   arrDeployScope: Array<'qa' | 'live'>,
-  arrSets: Array<{ nDbConnectionId: number }>,
-  nServiceId?: number | null,
+  arrSets: Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number }>,
+  _nServiceId?: number | null,
 ): TInstanceConnectionPreviewRow[] => {
   const arrScope = arrDeployScope.filter((e): e is 'qa' | 'live' => e === 'qa' || e === 'live');
   const arrRows: TInstanceConnectionPreviewRow[] = [];
@@ -264,28 +368,26 @@ export const fnBuildInstanceConnectionPreview = (
         nSetIndex: 0,
         strKind: 'GAME',
         strEnv,
-        objConn: fnResolveExecuteConnection(arrConnections, nProductId, strEnv, null, strServiceAbbr, nServiceId),
+        objConn: fnResolveExecuteConnection(arrConnections, nProductId, strEnv, null, _strServiceAbbr, _nServiceId),
       });
     }
     return arrRows;
   }
 
   arrSets.forEach((s, nIdx) => {
-    const objTpl = fnFindConnectionById(arrConnections, s.nDbConnectionId);
-    const strKind = objTpl?.strKind ?? 'GAME';
+    const objNorm = fnNormalizeQueryTemplateItem(s);
+    const objQaTpl = fnFindConnectionById(arrConnections, objNorm.nQaDbConnectionId);
+    const strKind = objQaTpl?.strKind ?? 'GAME';
     for (const strEnv of arrScope) {
+      const nConnId = strEnv === 'qa' ? objNorm.nQaDbConnectionId : objNorm.nLiveDbConnectionId;
+      const objConn = fnFindConnectionById(arrConnections, nConnId);
       arrRows.push({
         nSetIndex: nIdx,
         strKind,
         strEnv,
-        objConn: fnResolveExecuteConnection(
-          arrConnections,
-          nProductId,
-          strEnv,
-          s.nDbConnectionId,
-          strServiceAbbr,
-          nServiceId,
-        ),
+        objConn: objConn?.nProductId === nProductId && objConn.strEnv === strEnv && objConn.bIsActive
+          ? objConn
+          : undefined,
       });
     }
   });
@@ -294,7 +396,7 @@ export const fnBuildInstanceConnectionPreview = (
 
 const OBJ_ENV_PICK_PRIORITY: Record<string, number> = { qa: 0, live: 1, dev: 2 };
 
-/** 쿼리 템플릿 연결 DB Select — 프로덕트·서비스 구분·종류 슬롯당 1행(QA 우선, env는 이벤트 생성 시 매칭) */
+/** 쿼리 템플릿 연결 DB Select — 프로덕트·서비스 필터 후 종류·호스트·DB명별 행 (동일 endpoint는 QA 우선 1건) */
 export const fnFilterConnectionsForTemplatePicker = (
   arrConnections: IDbConnection[],
   nProductId: number,
@@ -321,7 +423,7 @@ export const fnFilterConnectionsForTemplatePicker = (
     const strSvcKey =
       fnResolveConnectionServiceAbbr(c, arrProducts) ||
       (c.nServiceId ? `sid:${c.nServiceId}` : '_common');
-    const strKey = `${strSvcKey}|${c.strKind ?? 'GAME'}`;
+    const strKey = `${strSvcKey}|${c.strKind ?? 'GAME'}|${c.strHost.trim()}|${c.strDatabase.trim()}`;
     const objExisting = mapBest.get(strKey);
     if (!objExisting) {
       mapBest.set(strKey, c);
@@ -353,8 +455,38 @@ export const fnMergeTemplatePickerConnections = (
     if (objConn) mapOut.set(nId, objConn);
   }
   return [...mapOut.values()].sort((a, b) => {
-    const strKa = `${a.strKind ?? 'GAME'}|${a.strHost}|${a.nId}`;
-    const strKb = `${b.strKind ?? 'GAME'}|${b.strHost}|${b.nId}`;
+    const strKa = `${a.strEnv}|${a.strKind ?? 'GAME'}|${a.strHost}|${a.nId}`;
+    const strKb = `${b.strEnv}|${b.strKind ?? 'GAME'}|${b.strHost}|${b.nId}`;
     return strKa.localeCompare(strKb);
+  });
+};
+
+/** 백엔드 fnFindDuplicateDbConnection 과 동일 — 호스트·DB명까지 같을 때만 중복 */
+export const fnFindDuplicateDbConnectionInList = (
+  arrConnections: readonly IDbConnection[],
+  objCriteria: {
+    nProductId: number;
+    strEnv: IDbConnection['strEnv'];
+    strKind: TDbConnectionKind;
+    strHost: string;
+    strDatabase: string;
+    strServiceAbbr?: string;
+    nExcludeId?: number;
+  },
+  arrProducts?: readonly TProductServiceLookup[],
+): IDbConnection | undefined => {
+  const strHostNorm = objCriteria.strHost.trim();
+  const strDbNorm = objCriteria.strDatabase.trim();
+  if (!strHostNorm || !strDbNorm) return undefined;
+
+  const strSvcNorm = fnNormalizeServiceAbbr(objCriteria.strServiceAbbr);
+  return arrConnections.find((c) => {
+    if (c.nId === objCriteria.nExcludeId) return false;
+    if (c.nProductId !== objCriteria.nProductId) return false;
+    if (c.strEnv !== objCriteria.strEnv) return false;
+    if ((c.strKind ?? 'GAME') !== objCriteria.strKind) return false;
+    if (c.strHost.trim() !== strHostNorm) return false;
+    if (c.strDatabase.trim() !== strDbNorm) return false;
+    return fnResolveConnectionServiceAbbr(c, arrProducts) === strSvcNorm;
   });
 };
