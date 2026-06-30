@@ -1,0 +1,1194 @@
+[
+  {
+    "nId": 1,
+    "dtAt": "2026-06-30T07:09:31.215Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances/stream",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 2,
+    "dtAt": "2026-06-30T07:09:31.505Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances/stream",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 3,
+    "dtAt": "2026-06-30T07:09:34.003Z",
+    "strMethod": "DELETE",
+    "strPath": "/api/event-instances/343",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 4,
+    "dtAt": "2026-06-30T07:09:46.417Z",
+    "strMethod": "DELETE",
+    "strPath": "/api/event-instances/343",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 5,
+    "dtAt": "2026-06-30T07:10:05.931Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "user"
+  },
+  {
+    "nId": 6,
+    "dtAt": "2026-06-30T07:10:10.391Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "auth"
+  },
+  {
+    "nId": 7,
+    "dtAt": "2026-06-30T07:10:10.791Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 8,
+    "dtAt": "2026-06-30T07:10:10.795Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 9,
+    "dtAt": "2026-06-30T07:10:10.799Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 10,
+    "dtAt": "2026-06-30T07:10:10.802Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 11,
+    "dtAt": "2026-06-30T07:10:10.806Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 12,
+    "dtAt": "2026-06-30T07:10:10.808Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 13,
+    "dtAt": "2026-06-30T07:10:10.815Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 14,
+    "dtAt": "2026-06-30T07:10:10.818Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 15,
+    "dtAt": "2026-06-30T07:10:12.098Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "auth"
+  },
+  {
+    "nId": 16,
+    "dtAt": "2026-06-30T07:10:13.260Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "auth"
+  },
+  {
+    "nId": 17,
+    "dtAt": "2026-06-30T07:10:13.684Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 18,
+    "dtAt": "2026-06-30T07:10:13.688Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 19,
+    "dtAt": "2026-06-30T07:10:13.691Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 20,
+    "dtAt": "2026-06-30T07:10:13.694Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 21,
+    "dtAt": "2026-06-30T07:10:13.697Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 22,
+    "dtAt": "2026-06-30T07:10:13.699Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 23,
+    "dtAt": "2026-06-30T07:10:13.705Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 24,
+    "dtAt": "2026-06-30T07:10:13.707Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 25,
+    "dtAt": "2026-06-30T07:10:14.489Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/logout",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "auth"
+  },
+  {
+    "nId": 26,
+    "dtAt": "2026-06-30T07:10:15.674Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "dba01",
+    "arrActorRoles": null,
+    "strCategory": "auth"
+  },
+  {
+    "nId": 27,
+    "dtAt": "2026-06-30T07:10:39.637Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "dba01",
+    "arrActorRoles": null,
+    "strCategory": "auth"
+  },
+  {
+    "nId": 28,
+    "dtAt": "2026-06-30T07:11:03.273Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "dba01",
+    "arrActorRoles": null,
+    "strCategory": "auth"
+  },
+  {
+    "nId": 29,
+    "dtAt": "2026-06-30T07:11:09.925Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "user"
+  },
+  {
+    "nId": 30,
+    "dtAt": "2026-06-30T07:11:18.378Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "auth"
+  },
+  {
+    "nId": 31,
+    "dtAt": "2026-06-30T07:11:18.674Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 32,
+    "dtAt": "2026-06-30T07:11:18.675Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 33,
+    "dtAt": "2026-06-30T07:11:18.677Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 34,
+    "dtAt": "2026-06-30T07:11:21.969Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 35,
+    "dtAt": "2026-06-30T07:11:21.971Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 36,
+    "dtAt": "2026-06-30T07:11:21.973Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 37,
+    "dtAt": "2026-06-30T07:11:22.589Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 38,
+    "dtAt": "2026-06-30T07:11:22.592Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 39,
+    "dtAt": "2026-06-30T07:11:22.595Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 40,
+    "dtAt": "2026-06-30T07:11:24.005Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 41,
+    "dtAt": "2026-06-30T07:11:24.012Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 42,
+    "dtAt": "2026-06-30T07:11:25.079Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 43,
+    "dtAt": "2026-06-30T07:11:25.081Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 44,
+    "dtAt": "2026-06-30T07:11:25.083Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 45,
+    "dtAt": "2026-06-30T07:11:26.616Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "dba01",
+    "arrActorRoles": null,
+    "strCategory": "auth"
+  },
+  {
+    "nId": 46,
+    "dtAt": "2026-06-30T07:11:28.993Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 47,
+    "dtAt": "2026-06-30T07:11:28.995Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 48,
+    "dtAt": "2026-06-30T07:11:28.998Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 49,
+    "dtAt": "2026-06-30T07:11:29.225Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 50,
+    "dtAt": "2026-06-30T07:11:29.227Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 51,
+    "dtAt": "2026-06-30T07:11:31.067Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 52,
+    "dtAt": "2026-06-30T07:11:32.145Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 53,
+    "dtAt": "2026-06-30T07:11:33.119Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 54,
+    "dtAt": "2026-06-30T07:11:33.122Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 55,
+    "dtAt": "2026-06-30T07:11:33.123Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 56,
+    "dtAt": "2026-06-30T07:11:34.909Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 57,
+    "dtAt": "2026-06-30T07:11:35.416Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 58,
+    "dtAt": "2026-06-30T07:11:35.921Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 59,
+    "dtAt": "2026-06-30T07:11:35.923Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 60,
+    "dtAt": "2026-06-30T07:11:35.925Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 61,
+    "dtAt": "2026-06-30T07:11:35.926Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 62,
+    "dtAt": "2026-06-30T07:11:35.927Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 63,
+    "dtAt": "2026-06-30T07:11:35.928Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 64,
+    "dtAt": "2026-06-30T07:11:35.932Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 65,
+    "dtAt": "2026-06-30T07:11:35.934Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 66,
+    "dtAt": "2026-06-30T07:11:37.651Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 67,
+    "dtAt": "2026-06-30T07:11:37.656Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 68,
+    "dtAt": "2026-06-30T07:11:38.193Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 69,
+    "dtAt": "2026-06-30T07:11:38.194Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 70,
+    "dtAt": "2026-06-30T07:11:38.198Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 71,
+    "dtAt": "2026-06-30T07:11:38.200Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 72,
+    "dtAt": "2026-06-30T07:11:39.290Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 73,
+    "dtAt": "2026-06-30T07:11:39.293Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 74,
+    "dtAt": "2026-06-30T07:11:40.630Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 75,
+    "dtAt": "2026-06-30T07:11:40.632Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 76,
+    "dtAt": "2026-06-30T07:11:40.635Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 77,
+    "dtAt": "2026-06-30T07:11:41.383Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 78,
+    "dtAt": "2026-06-30T07:11:41.385Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 79,
+    "dtAt": "2026-06-30T07:11:41.386Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 80,
+    "dtAt": "2026-06-30T07:11:50.032Z",
+    "strMethod": "POST",
+    "strPath": "/api/auth/login",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": "dba01",
+    "arrActorRoles": null,
+    "strCategory": "auth"
+  },
+  {
+    "nId": 81,
+    "dtAt": "2026-06-30T07:12:03.548Z",
+    "strMethod": "GET",
+    "strPath": "/api/products",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 82,
+    "dtAt": "2026-06-30T07:12:03.550Z",
+    "strMethod": "GET",
+    "strPath": "/api/events",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "event"
+  },
+  {
+    "nId": 83,
+    "dtAt": "2026-06-30T07:12:03.552Z",
+    "strMethod": "GET",
+    "strPath": "/api/db-connections",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "ops"
+  },
+  {
+    "nId": 84,
+    "dtAt": "2026-06-30T07:12:05.538Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 85,
+    "dtAt": "2026-06-30T07:12:05.542Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 86,
+    "dtAt": "2026-06-30T07:12:05.927Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 87,
+    "dtAt": "2026-06-30T07:12:06.205Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 88,
+    "dtAt": "2026-06-30T07:12:06.207Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 89,
+    "dtAt": "2026-06-30T07:12:06.210Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 90,
+    "dtAt": "2026-06-30T07:12:06.212Z",
+    "strMethod": "GET",
+    "strPath": "/api/roles",
+    "nStatusCode": 200,
+    "nActorUserId": 1,
+    "strActorUserId": "admin",
+    "arrActorRoles": [
+      "admin"
+    ],
+    "strCategory": "user"
+  },
+  {
+    "nId": 91,
+    "dtAt": "2026-06-30T07:26:53.924Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances/stream",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 92,
+    "dtAt": "2026-06-30T07:26:53.957Z",
+    "strMethod": "GET",
+    "strPath": "/api/event-instances/stream",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "event"
+  },
+  {
+    "nId": 93,
+    "dtAt": "2026-06-30T07:28:03.927Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "user"
+  },
+  {
+    "nId": 94,
+    "dtAt": "2026-06-30T07:28:05.950Z",
+    "strMethod": "GET",
+    "strPath": "/api/users",
+    "nStatusCode": 401,
+    "nActorUserId": null,
+    "strActorUserId": null,
+    "arrActorRoles": null,
+    "strCategory": "user"
+  }
+]
