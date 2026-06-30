@@ -49,8 +49,9 @@ event_created → qa_requested → qa_deployed → qa_verified
 
 ## QA/LIVE 실행·접속 (`fnExecuteAndDeploy`)
 
-- 접속: **`fnResolveExecuteConnection(..., strServiceAbbr)`** — 인스턴스 Step2. 단일·다중 세트 세트별 `nDbConnectionId`+서비스+kind(레거시 GAME).
-- **생성 검증**: `fnCreateInstance` — `arrDeployScope` env별·세트 kind별 접속 없으면 400.
+- 세트·실행 대상: **`nQaDbConnectionId` + `nLiveDbConnectionId`** (레거시 `nDbConnectionId` → QA dual-read). 실행 env별 `fnGetConnIdForDeployEnv`.
+- 접속 검증: `fnValidateQaLiveConnectionPair` — 템플릿 CUD·DBA 인스턴스 `arrExecutionTargets` 수정.
+- **생성 검증**: `fnCreateInstance` — `arrDeployScope` env별 세트 QA/LIVE id·활성 접속.
 - **성공**: `qa_deployed`/`live_deployed` + `objExecutionResult`(`strConnectionSummary` 선택).
 - **실패**: 상태 유지 + `arrStatusLogs`에 실패 행 — `bSuccess: false`, `strError`, `strConnectionSummary`, 부분 `arrQueryResults`. `fnSaveEventInstances` + `fnBroadcastInstanceUpdate`.
 

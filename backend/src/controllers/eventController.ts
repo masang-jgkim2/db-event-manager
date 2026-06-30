@@ -7,6 +7,10 @@ import {
 import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances, fnCommitEventInstancesToStore, type IEventInstance } from '../data/eventInstances';
 import { arrProducts } from '../data/products';
 import { fnFindConnectionById } from '../data/dbConnections';
+import {
+  fnNormalizeQueryTemplateConnFields,
+  fnValidateQaLiveConnectionPair,
+} from '../utils/queryTemplateConnections';
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
@@ -105,15 +109,13 @@ const fnValidateTemplateQueryConnections = (
 ): string | null => {
   if (!Array.isArray(arrQueryTemplates)) return null;
   for (const objSet of arrQueryTemplates) {
-    const nConnId = Number(objSet.nDbConnectionId);
-    if (!nConnId) return '연결 DB를 선택해주세요.';
-    const objConn = fnFindConnectionById(nConnId);
-    if (!objConn || objConn.nProductId !== nProductId) {
-      return `연결 DB(#${nConnId})가 선택한 프로덕트와 일치하지 않습니다.`;
-    }
-    if (!objConn.bIsActive) {
-      return `연결 DB(#${nConnId})가 비활성 상태입니다.`;
-    }
+    const objNorm = fnNormalizeQueryTemplateConnFields(objSet);
+    const strErr = fnValidateQaLiveConnectionPair(
+      nProductId,
+      objNorm.nQaDbConnectionId,
+      objNorm.nLiveDbConnectionId,
+    );
+    if (strErr) return strErr;
   }
   return null;
 };
@@ -322,9 +324,17 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       objTpl.strDefaultItems = req.body.strDefaultItems;
     }
     if (req.body.arrQueryTemplates !== undefined) {
-      objTpl.arrQueryTemplates = Array.isArray(req.body.arrQueryTemplates)
+      const arrIncoming = Array.isArray(req.body.arrQueryTemplates)
         ? req.body.arrQueryTemplates
         : undefined;
+      if (arrIncoming?.length) {
+        const strConnErr = fnValidateTemplateQueryConnections(objTpl.nProductId, arrIncoming);
+        if (strConnErr) {
+          res.status(400).json({ bSuccess: false, strMessage: strConnErr });
+          return;
+        }
+      }
+      objTpl.arrQueryTemplates = arrIncoming;
     }
 
     const bSingleMode = req.body.strQueryTemplate !== undefined

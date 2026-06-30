@@ -116,11 +116,13 @@ CREATE TABLE IF NOT EXISTS event_template_query_set (
   n_id                BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_event_template_id INT           NOT NULL,
   n_sort              INT           NOT NULL DEFAULT 0 COMMENT 'arrQueryTemplates 순서',
-  n_db_connection_id  INT           NOT NULL COMMENT 'IQueryTemplateItem.nDbConnectionId',
+  n_db_connection_id  INT           NOT NULL COMMENT 'IQueryTemplateItem.nQaDbConnectionId (QA)',
+  n_live_db_connection_id INT       NOT NULL COMMENT 'IQueryTemplateItem.nLiveDbConnectionId',
   str_default_items   TEXT          NULL,
   str_query_template  MEDIUMTEXT    NOT NULL,
   CONSTRAINT fk_etqs_template FOREIGN KEY (n_event_template_id) REFERENCES event_template(n_id) ON DELETE CASCADE,
   CONSTRAINT fk_etqs_dbconn FOREIGN KEY (n_db_connection_id) REFERENCES db_connection(n_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_etqs_dbconn_live FOREIGN KEY (n_live_db_connection_id) REFERENCES db_connection(n_id) ON DELETE RESTRICT,
   KEY idx_etqs_template (n_event_template_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='events.json arrQueryTemplates[]';
@@ -170,10 +172,12 @@ CREATE TABLE IF NOT EXISTS event_instance_execution_target (
   n_id              BIGINT        NOT NULL AUTO_INCREMENT PRIMARY KEY,
   n_instance_id     INT           NOT NULL,
   n_sort            INT           NOT NULL DEFAULT 0,
-  n_db_connection_id INT          NOT NULL,
+  n_db_connection_id INT          NOT NULL COMMENT 'nQaDbConnectionId',
+  n_live_db_connection_id INT     NOT NULL COMMENT 'nLiveDbConnectionId',
   str_query         MEDIUMTEXT    NOT NULL,
   CONSTRAINT fk_eiet_instance FOREIGN KEY (n_instance_id) REFERENCES event_instance(n_id) ON DELETE CASCADE,
   CONSTRAINT fk_eiet_dbconn FOREIGN KEY (n_db_connection_id) REFERENCES db_connection(n_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_eiet_dbconn_live FOREIGN KEY (n_live_db_connection_id) REFERENCES db_connection(n_id) ON DELETE RESTRICT,
   KEY idx_eiet_instance (n_instance_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='JSON arrExecutionTargets[]';
@@ -233,3 +237,7 @@ CREATE TABLE IF NOT EXISTS user_ui_preference (
 COMMENT='userUiPreferences.json mapByUserId';
 
 -- 과거 doc JSON 테이블(dqpm_products 등)·구 UNIQUE(str_name) 가 남아 있으면 수동 DROP / ALTER 권장.
+-- QA/LIVE id 컬럼은 런타임 `mysqlAppDataAccess.ts` ALTER로도 보강. 수동 적용 예:
+-- ALTER TABLE event_template_query_set ADD COLUMN n_live_db_connection_id INT NULL AFTER n_db_connection_id;
+-- ALTER TABLE event_instance_execution_target ADD COLUMN n_live_db_connection_id INT NULL AFTER n_db_connection_id;
+-- 배포 후 데이터: backend `node dist/scripts/backfillQaLiveConnections.js` (docs/DEPLOYMENT.md)

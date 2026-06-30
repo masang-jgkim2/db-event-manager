@@ -26,3 +26,21 @@ FLUSH PRIVILEGES;
 -- 확인
 SHOW DATABASES LIKE 'dqpm_qa';
 SELECT user, host FROM mysql.user WHERE user = 'dqpm_qa';
+
+
+GRANT USAGE ON *.* TO 'dqpm'@'%';
+GRANT SELECT  ON `lh\_game\_svr\_galaxy`.* TO 'dqpm'@'%';
+SET PASSWORD FOR 'dqpm'@'%' = PASSWORD('dqpm123!@#');
+FLUSH PRIVILEGES;
+
+
+GRANT USAGE ON *.* TO 'dqpm'@'%';
+GRANT SELECT  ON `lh\_game\_svr\_hermes`.* TO 'dqpm'@'%';
+SET PASSWORD FOR 'dqpm'@'%' = PASSWORD('dqpm123!@#');
+FLUSH PRIVILEGES;
+
+CREATE USER 'dqpm'@'%' IDENTIFIED BY 'dqpm123!@#';
+GRANT USAGE ON *.* TO 'dqpm'@'%';
+GRANT SELECT  ON `lh\_web\_event`.* TO 'dqpm'@'%';
+GRANT SELECT  ON `lh\_web\_user`.* TO 'dqpm'@'%';
+FLUSH PRIVILEGES;

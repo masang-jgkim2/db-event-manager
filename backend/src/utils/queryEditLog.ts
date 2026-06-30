@@ -1,5 +1,6 @@
 import type { IEventInstance } from '../data/eventInstances';
 import type { IQueryTemplateItem } from '../data/events';
+import { fnNormalizeQueryTemplateConnFields } from './queryTemplateConnections';
 
 /** DBA 쿼리 직접 수정 이력 — 진행 로그 diff 표시용 */
 export interface IQueryEditLog {
@@ -61,15 +62,22 @@ const fnTemplateToInstanceQueryShape = (
   obj: TTemplateQueryFields,
 ): Pick<IEventInstance, 'strGeneratedQuery' | 'arrExecutionTargets'> => {
   const arrSets = obj.arrQueryTemplates?.filter(
-    (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
+    (s) => {
+      const objNorm = fnNormalizeQueryTemplateConnFields(s);
+      return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+    },
   ) ?? [];
   if (arrSets.length) {
     return {
       strGeneratedQuery: arrSets[0]?.strQueryTemplate ?? '',
-      arrExecutionTargets: arrSets.map((s) => ({
-        nDbConnectionId: s.nDbConnectionId,
-        strQuery: s.strQueryTemplate ?? '',
-      })),
+      arrExecutionTargets: arrSets.map((s) => {
+        const objNorm = fnNormalizeQueryTemplateConnFields(s);
+        return {
+          nQaDbConnectionId: objNorm.nQaDbConnectionId,
+          nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          strQuery: s.strQueryTemplate ?? '',
+        };
+      }),
     };
   }
   return { strGeneratedQuery: obj.strQueryTemplate ?? '' };
@@ -91,15 +99,20 @@ export const fnTemplateQueryBodyChanged = (
   objAfter: TTemplateQueryFields,
 ): boolean => {
   const fnKey = (obj: TTemplateQueryFields): string => {
-    const arrSets = obj.arrQueryTemplates?.filter(
-      (s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId,
-    ) ?? [];
+    const arrSets = obj.arrQueryTemplates?.filter((s) => {
+      const objNorm = fnNormalizeQueryTemplateConnFields(s);
+      return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+    }) ?? [];
     if (arrSets.length) {
-      return JSON.stringify(arrSets.map((s) => ({
-        nDbConnectionId: s.nDbConnectionId,
-        strDefaultItems: (s.strDefaultItems ?? '').trim(),
-        strQueryTemplate: fnNorm(s.strQueryTemplate ?? ''),
-      })));
+      return JSON.stringify(arrSets.map((s) => {
+        const objNorm = fnNormalizeQueryTemplateConnFields(s);
+        return {
+          nQaDbConnectionId: objNorm.nQaDbConnectionId,
+          nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          strDefaultItems: (s.strDefaultItems ?? '').trim(),
+          strQueryTemplate: fnNorm(s.strQueryTemplate ?? ''),
+        };
+      }));
     }
     return JSON.stringify({
       strDefaultItems: (obj.strDefaultItems ?? '').trim(),

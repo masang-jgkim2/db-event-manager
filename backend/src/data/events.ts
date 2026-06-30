@@ -31,9 +31,12 @@ export interface ITemplateStatusLog {
   objQueryEdit?: IQueryEditLog;
 }
 
-/** 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
+/** 템플릿 내 쿼리 1세트: QA/LIVE DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
 export interface IQueryTemplateItem {
-  nDbConnectionId: number;
+  nQaDbConnectionId: number;
+  nLiveDbConnectionId: number;
+  /** @deprecated nQaDbConnectionId 로 이관 */
+  nDbConnectionId?: number;
   /** 이 세트용 기본값 예시 (이벤트 생성 시 입력란 채울 때, 템플릿 기본값 없으면 첫 세트 값 사용) */
   strDefaultItems?: string;
   strQueryTemplate: string;
@@ -67,6 +70,34 @@ const ARR_TEMPLATE_STATUS: TTemplateStatus[] = ['template_created', 'confirm_req
 export const fnResolveTemplateStatus = (raw: Pick<IEventTemplate, 'strStatus'>): TTemplateStatus =>
   raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
 
+/** 레거시 단일 id → QA/LIVE 필드 (events 모듈 순환 참조 회피용 인라인) */
+const fnNormalizeQueryTemplateItemInline = (s: IQueryTemplateItem): IQueryTemplateItem => ({
+  ...s,
+  nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
+  nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
+});
+
+const fnFindLivePairInline = (
+  arrConns: readonly IDbConnection[],
+  objQa: IDbConnection,
+): IDbConnection | undefined =>
+  arrConns.find(
+    (c) =>
+      c.nProductId === objQa.nProductId &&
+      c.strEnv === 'live' &&
+      c.bIsActive &&
+      (c.strKind ?? 'GAME') === (objQa.strKind ?? 'GAME') &&
+      c.strDatabase.trim() === objQa.strDatabase.trim(),
+  );
+
+/** 세트 배열 — QA/LIVE id 정규화 + 레거시 nDbConnectionId 이관 */
+export const fnNormalizeQueryTemplateItems = (
+  arrSets?: IQueryTemplateItem[],
+): IQueryTemplateItem[] | undefined => {
+  if (!arrSets?.length) return undefined;
+  return arrSets.map((s) => fnNormalizeQueryTemplateItemInline(s));
+};
+
 /** 레거시 행·미설정 → 기존 템플릿은 DBA 리뷰 완료로 간주 */
 export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEventTemplate, 'nId'>): IEventTemplate => {
   const strStatus =
@@ -82,7 +113,7 @@ export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEv
     strInputFormat: raw.strInputFormat ?? 'item_number',
     strDefaultItems: raw.strDefaultItems ?? '',
     strQueryTemplate: raw.strQueryTemplate ?? '',
-    arrQueryTemplates: raw.arrQueryTemplates,
+    arrQueryTemplates: fnNormalizeQueryTemplateItems(raw.arrQueryTemplates),
     dtCreatedAt: raw.dtCreatedAt ?? new Date().toISOString(),
     strCreatedBy: raw.strCreatedBy,
     nCreatedByUserId: raw.nCreatedByUserId,
@@ -98,16 +129,18 @@ const STR_FILE = 'events.json';
 /** 기존 단일 쿼리/기본값 → 쿼리 템플릿 세트 1건으로 이전 (JSON→MySQL 임포트 시 `arrDbConnections` 스냅샷 전달) */
 export const fnMigrateToQuerySetsWithConnections = (
   raw: IEventTemplate[],
-  arrConns: Pick<IDbConnection, 'nId' | 'nProductId' | 'bIsActive'>[],
+  arrConns: readonly IDbConnection[],
 ): IEventTemplate[] =>
   raw.map((e) => {
     if (e.arrQueryTemplates?.length) return e;
     if (!e.strQueryTemplate?.trim()) return e;
-    const firstConn = arrConns.find((c) => c.nProductId === e.nProductId && c.bIsActive);
+    const firstConn = arrConns.find((c) => c.nProductId === e.nProductId && c.bIsActive && c.strEnv === 'qa');
+    const objLive = firstConn ? fnFindLivePairInline(arrConns, firstConn) : undefined;
     return {
       ...e,
       arrQueryTemplates: [{
-        nDbConnectionId: firstConn?.nId ?? 0,
+        nQaDbConnectionId: firstConn?.nId ?? 0,
+        nLiveDbConnectionId: objLive?.nId ?? 0,
         strDefaultItems: e.strDefaultItems ?? '',
         strQueryTemplate: e.strQueryTemplate,
       }],

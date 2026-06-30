@@ -4,7 +4,7 @@ import {
   fnReloadEventInstancesFromDiskIfEmpty,
   TEventStatus, IStageActor, IEventInstance,
 } from '../data/eventInstances';
-import { fnResolveExecuteConnection, fnFindConnectionById, fnHasEnvConnectionForKindAndService, fnHasEnvConnectionForService } from '../data/dbConnections';
+import { fnResolveExecuteConnection, fnFindConnectionById, fnHasEnvConnectionForService } from '../data/dbConnections';
 import { arrProducts } from '../data/products';
 import { arrEvents, fnIsTemplateReadyForInstance } from '../data/events';
 import { fnExecuteQueryWithText } from '../services/queryExecutor';
@@ -14,7 +14,14 @@ import { IQueryExecutionResult, IDbConnection } from '../types';
 import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
 import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
 import { fnBuildMssqlGrantScriptForSql } from '../utils/grantScriptFromSql';
-import { fnResolveConnectionServiceFields } from '../utils/serviceId';
+import { fnResolveConnectionServiceFieldsForWrite } from '../utils/serviceId';
+import {
+  fnGetConnIdForDeployEnv,
+  fnNormalizeExecutionTargetConnFields,
+  fnNormalizeQueryTemplateConnFields,
+  fnValidateQaLiveConnectionPair,
+} from '../utils/queryTemplateConnections';
+import type { IExecutionTarget } from '../data/eventInstances';
 const STR_MSG_INSTANCE_MYSQL_FAIL =
   '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.';
 
@@ -109,6 +116,22 @@ const fnSummarizeDbConnection = (objConn: IDbConnection | undefined): string | u
   return `${objConn.strKind ?? 'GAME'} | ${objConn.strDbType} | ${objConn.strHost}:${objConn.nPort}/${objConn.strDatabase}`;
 };
 
+/** 세트 실행 대상 — 템플릿에 명시된 QA/LIVE 접속 id 직접 사용 */
+const fnFindExecutionTargetConnection = (
+  objTarget: IExecutionTarget,
+  strEnv: 'qa' | 'live',
+  nProductId: number,
+): IDbConnection | undefined => {
+  const objNorm = fnNormalizeExecutionTargetConnFields(objTarget);
+  const nConnId = fnGetConnIdForDeployEnv(objNorm, strEnv);
+  if (!nConnId) return undefined;
+  const objConn = fnFindConnectionById(nConnId);
+  if (!objConn || objConn.nProductId !== nProductId || objConn.strEnv !== strEnv || !objConn.bIsActive) {
+    return undefined;
+  }
+  return objConn;
+};
+
 /** 실행 실패 시 상태 유지 + 진행 이력에 남김(SSE 동기화) */
 const fnAppendQueryExecutionFailureLog = async (
   objInstance: IEventInstance,
@@ -190,7 +213,15 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
 
     const nProdId = Number(nProductId) || 0;
     const objProduct = arrProducts.find((p) => p.nId === nProdId);
-    const objSvcResolved = fnResolveConnectionServiceFields(objProduct, nServiceId, strServiceAbbr);
+    const arrProductServices = objProduct?.arrServices ?? [];
+    if (arrProductServices.length > 0 && !(Number(nServiceId) > 0)) {
+      res.status(400).json({
+        bSuccess: false,
+        strMessage: '서비스 구분(nServiceId)을 선택해주세요.',
+      });
+      return;
+    }
+    const objSvcResolved = fnResolveConnectionServiceFieldsForWrite(objProduct, nServiceId, strServiceAbbr);
     if ('strError' in objSvcResolved) {
       res.status(400).json({ bSuccess: false, strMessage: objSvcResolved.strError });
       return;
@@ -218,17 +249,18 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
     const arrTargetsRaw = Array.isArray(arrExecutionTargets) ? arrExecutionTargets : [];
-    if (arrTargetsRaw.length > 0 && strInstSvc) {
+    if (arrTargetsRaw.length > 0) {
       for (const strScopeEnv of arrDeployScope) {
         for (const t of arrTargetsRaw) {
-          const objTplConn = fnFindConnectionById(Number(t.nDbConnectionId));
-          const strKind = objTplConn?.strKind ?? 'GAME';
-          if (!fnHasEnvConnectionForKindAndService(nProdId, strInstSvc, strScopeEnv, strKind, nInstSvcId)) {
+          const objNorm = fnNormalizeExecutionTargetConnFields(t);
+          const nConnId = fnGetConnIdForDeployEnv(objNorm, strScopeEnv);
+          const objConn = fnFindConnectionById(nConnId);
+          if (!objConn || objConn.strEnv !== strScopeEnv || !objConn.bIsActive) {
             res.status(400).json({
               bSuccess: false,
               strMessage:
-                `쿼리 세트(${strKind})에 ${strScopeEnv.toUpperCase()} DB 접속이 없습니다. ` +
-                `서비스 구분「${strInstSvc}」·종류「${strKind}」 접속을 등록해주세요.`,
+                `쿼리 세트에 ${strScopeEnv.toUpperCase()} DB 접속(#${nConnId || '없음'})이 없거나 비활성입니다. ` +
+                `템플릿 QA/LIVE 연결 DB를 확인해주세요.`,
             });
             return;
           }
@@ -565,8 +597,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       }
     }
 
-    // 쿼리 실행: 다중 세트(arrExecutionTargets 2개 이상)면 세트별 fnResolveExecuteConnection으로 접속 해석 후 실행
-    // 쿼리 세트 1개면 동일 규칙
+    // 쿼리 실행: 세트별 템플릿에 명시된 QA/LIVE 접속 id 직접 사용
     let objExecResult: IQueryExecutionResult;
     const strWaitStatus = objRequiredStatus[strEnv];
     let strSuccessConnSummary: string | undefined;
@@ -574,22 +605,17 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
     const nSetCount = objInstance.arrExecutionTargets?.length ?? 0;
 
     if (nSetCount === 1) {
-      // 쿼리 세트 1개: 세트의 nDbConnectionId로 접속 해석(다중 세트와 동일), 없으면 GAME
-      const objDbConn = fnResolveExecuteConnection(
-        nProductId,
-        strEnv,
-        objInstance.arrExecutionTargets![0].nDbConnectionId,
-        objInstance.strServiceAbbr,
-        objInstance.nServiceId,
-      );
+      const objTarget = objInstance.arrExecutionTargets![0];
+      const objDbConn = fnFindExecutionTargetConnection(objTarget, strEnv, nProductId);
       if (!objDbConn) {
+        const nConnId = fnGetConnIdForDeployEnv(fnNormalizeExecutionTargetConnFields(objTarget), strEnv);
         res.status(400).json({
           bSuccess: false,
-          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속 정보가 없거나 비활성화 상태입니다. DB 접속 정보를 등록·활성화하세요.`,
+          strMessage: `${objInstance.strProductName}의 ${strEnv.toUpperCase()} DB 접속(#${nConnId})이 없거나 비활성화 상태입니다. 템플릿 QA/LIVE 연결을 확인하세요.`,
         });
         return;
       }
-      const strQuery = objInstance.arrExecutionTargets![0].strQuery;
+      const strQuery = objTarget.strQuery;
       objExecResult = await fnExecuteQueryWithText(objDbConn, strQuery, strEnv, {
         nSetIndex: 1,
         nSetTotal: 1,
@@ -612,7 +638,7 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
       }
       strSuccessConnSummary = fnSummarizeDbConnection(objDbConn);
     } else if (nSetCount > 1) {
-      // 다중 세트: 세트별 nDbConnectionId → fnResolveExecuteConnection(프로덕트·요청 env·종류 일치 규칙)
+      // 다중 세트: 세트별 QA/LIVE 명시 접속
       const bStream = req.query.stream === '1';
       if (bStream) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -629,15 +655,10 @@ export const fnExecuteAndDeploy = async (req: Request, res: Response): Promise<v
 
       for (let i = 0; i < objInstance.arrExecutionTargets!.length; i++) {
         const t = objInstance.arrExecutionTargets![i];
-        const objConn = fnResolveExecuteConnection(
-          nProductId,
-          strEnv,
-          t.nDbConnectionId,
-          objInstance.strServiceAbbr,
-          objInstance.nServiceId,
-        );
+        const objConn = fnFindExecutionTargetConnection(t, strEnv, nProductId);
         if (!objConn) {
-          const strMsg = `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} DB 접속을 해석할 수 없습니다. (접속 ID: ${t.nDbConnectionId}, 프로덕트·환경·활성 상태를 확인하세요.)`;
+          const nConnId = fnGetConnIdForDeployEnv(fnNormalizeExecutionTargetConnFields(t), strEnv);
+          const strMsg = `쿼리 세트 ${i + 1}: ${strEnv.toUpperCase()} DB 접속(#${nConnId})을 사용할 수 없습니다. 템플릿 QA/LIVE 연결을 확인하세요.`;
           const objFailResult: IQueryExecutionResult = {
             bSuccess: false,
             strEnv,
@@ -978,7 +999,22 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
       }
       if (req.body.arrExecutionTargets !== undefined) {
-        objInstance.arrExecutionTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        const arrTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        if (arrTargets?.length) {
+          for (const t of arrTargets) {
+            const objNorm = fnNormalizeExecutionTargetConnFields(t);
+            const strErr = fnValidateQaLiveConnectionPair(
+              objInstance.nProductId,
+              objNorm.nQaDbConnectionId,
+              objNorm.nLiveDbConnectionId,
+            );
+            if (strErr) {
+              res.status(400).json({ bSuccess: false, strMessage: strErr });
+              return;
+            }
+          }
+        }
+        objInstance.arrExecutionTargets = arrTargets;
         if (objInstance.arrExecutionTargets?.length) {
           objInstance.strGeneratedQuery = objInstance.arrExecutionTargets[0].strQuery;
         }
@@ -1059,7 +1095,10 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
       const strInputFormat = (objTemplate?.strInputFormat ?? 'item_number') as TInputFormatForItems;
-      const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => (s.strQueryTemplate ?? '').trim() && s.nDbConnectionId) ?? [];
+      const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => {
+        const objNorm = fnNormalizeQueryTemplateConnFields(s);
+        return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+      }) ?? [];
       if (arrSets.length > 0) {
         const MULTI_INPUT_DELIMITER = '\u0001';
         const arrParts = (objInstance.strInputValues ?? '').split(MULTI_INPUT_DELIMITER).map((s) => s.trim());
@@ -1075,7 +1114,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
             objInstance.strServiceRegion,
             strInputFormat,
           );
-          return { nDbConnectionId: s.nDbConnectionId, strQuery };
+          return { nQaDbConnectionId: s.nQaDbConnectionId, nLiveDbConnectionId: s.nLiveDbConnectionId, strQuery };
         });
         objInstance.arrExecutionTargets = arrTargets;
         objInstance.strGeneratedQuery = arrTargets[0]?.strQuery ?? '';

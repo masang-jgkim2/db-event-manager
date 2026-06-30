@@ -1,0 +1,9 @@
+[
+  {
+    "nId": 1,
+    "strUserId": "admin",
+    "strPassword": "$2b$10$50uuzuQ5m39oLEGndOcqduCAUJkiT/.fdgnJVstME8n1ukb2aXiqe",
+    "strDisplayName": "관리자",
+    "dtCreatedAt": "2026-06-30T07:09:28.899Z"
+  }
+]

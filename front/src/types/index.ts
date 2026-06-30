@@ -342,9 +342,12 @@ export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
   { value: 'none', label: '입력 없음' },
 ];
 
-// 템플릿 내 쿼리 1세트: DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿
+// 템플릿 내 쿼리 1세트: QA/LIVE DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿
 export interface IQueryTemplateItem {
-  nDbConnectionId: number;
+  nQaDbConnectionId: number;
+  nLiveDbConnectionId: number;
+  /** @deprecated nQaDbConnectionId 로 이관 */
+  nDbConnectionId?: number;
   strDefaultItems?: string;
   strQueryTemplate: string;
 }
@@ -575,7 +578,7 @@ export interface IEventInstance {
   strEventName: string;
   strInputValues: string;
   strGeneratedQuery: string;
-  arrExecutionTargets?: Array<{ nDbConnectionId: number; strQuery: string }>;
+  arrExecutionTargets?: Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number; strQuery: string }>;
   /** @deprecated dtQaDeployDate / dtLiveDeployDate 분리 후 하위 호환용 */
   dtDeployDate: string;
   dtQaDeployDate?: string;          // QA 반영 날짜 (이 시각 이전에 QA 실행 허용)
