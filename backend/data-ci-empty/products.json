@@ -1,0 +1,115 @@
+[
+  {
+    "nId": 1,
+    "strName": "출조낚시왕",
+    "strDescription": "낚시 게임",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 1001,
+        "strAbbr": "FH/KR",
+        "strRegion": "국내"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 2,
+    "strName": "DK온라인",
+    "strDescription": "MMORPG",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 2001,
+        "strAbbr": "DK/KR",
+        "strRegion": "국내"
+      },
+      {
+        "nServiceId": 2002,
+        "strAbbr": "DK/G",
+        "strRegion": "스팀"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 3,
+    "strName": "콜오브카오스",
+    "strDescription": "전략 게임",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 3001,
+        "strAbbr": "CC/KR",
+        "strRegion": "국내"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 4,
+    "strName": "아스다스토리",
+    "strDescription": "MMORPG",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 4001,
+        "strAbbr": "AD/G",
+        "strRegion": "글로벌"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 5,
+    "strName": "에이스온라인",
+    "strDescription": "비행 슈팅 MMORPG",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 5001,
+        "strAbbr": "AO/KR",
+        "strRegion": "국내"
+      },
+      {
+        "nServiceId": 5002,
+        "strAbbr": "AO/EU",
+        "strRegion": "유럽"
+      },
+      {
+        "nServiceId": 5003,
+        "strAbbr": "AO/JP",
+        "strRegion": "일본"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 6,
+    "strName": "라그하임",
+    "strDescription": "MMORPG",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 6001,
+        "strAbbr": "LH/KR",
+        "strRegion": "국내"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  },
+  {
+    "nId": 7,
+    "strName": "스키드러시",
+    "strDescription": "레이싱 게임",
+    "strDbType": "mysql",
+    "arrServices": [
+      {
+        "nServiceId": 7001,
+        "strAbbr": "SR",
+        "strRegion": "국내"
+      }
+    ],
+    "dtCreatedAt": "2026-06-30T07:09:29.011Z"
+  }
+]
