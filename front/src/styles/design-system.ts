@@ -595,10 +595,10 @@ export function fnBuildDesignSystem(
       trackHoverBg:          arrP[IDX_HOVER],
     },
 
-    // 페이지네이션 — 활성은 중성 배경 + primary 글자(Cursor)
+    // 페이지네이션 — 활성·비활성 숫자 밝기 동일, 선택은 배경만 약하게
     Pagination: {
-      itemActiveBg:          objCursor.strMenuItemSelected,
-      itemActiveColor:       strPrimary,
+      itemActiveBg:          objCursor.strMenuItemHover,
+      itemActiveColor:       objCursor.strMenuItemColor,
       itemActiveColorDisabled: objCursor.strMenuItemColor,
       colorText:             objCursor.strMenuItemColor,
       colorTextDisabled:     bDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)',
