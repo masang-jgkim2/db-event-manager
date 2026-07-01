@@ -1,0 +1,198 @@
+[
+  {
+    "nRoleId": 2,
+    "strPermission": "my_dashboard.view"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "my_dashboard.detail"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "my_dashboard.confirm"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "my_dashboard.execute_qa"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "my_dashboard.execute_live"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "product.view"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "event_template.view"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "instance.create"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "my_dashboard.view"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "my_dashboard.detail"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "my_dashboard.edit"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "my_dashboard.request_confirm"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "event_template.request_confirm"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "instance.approve_qa"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "instance.verify_qa"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "instance.approve_live"
+  },
+  {
+    "nRoleId": 3,
+    "strPermission": "instance.verify_live"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "product.view"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "event_template.view"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "instance.create"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "my_dashboard.view"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "my_dashboard.detail"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "my_dashboard.edit"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "my_dashboard.request_confirm"
+  },
+  {
+    "nRoleId": 4,
+    "strPermission": "event_template.request_confirm"
+  },
+  {
+    "nRoleId": 6,
+    "strPermission": "my_dashboard.view"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "event_template.view"
+  },
+  {
+    "nRoleId": 2,
+    "strPermission": "event_template.confirm"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "product.view"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "product.manage"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "event_template.view"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "event_template.manage"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "user.manage"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "db.manage"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.create"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "my_dashboard.view"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "my_dashboard.detail"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "my_dashboard.edit"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "my_dashboard.request_confirm"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.approve_qa"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.execute_qa"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.verify_qa"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.approve_live"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.execute_live"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "instance.verify_live"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "system.save_test_seed"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "activity.view"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "activity.clear"
+  },
+  {
+    "nRoleId": 1,
+    "strPermission": "user.approve"
+  }
+]

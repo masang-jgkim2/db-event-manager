@@ -1,6 +1,7 @@
 /**
  * 템플릿 세트·인스턴스 실행 대상 — nDbConnectionId → nQaDbConnectionId + nLiveDbConnectionId
- * 사용: cd backend && npm run backfill-qa-live-connections
+ * 사용: cd backend && npm run build && node dist/scripts/backfillQaLiveConnections.js
+ * EC2(QA/LIVE): node dist/scripts/backfillQaLiveConnections.js (tsx 없음 — docs/DEPLOYMENT.md)
  * 주의: LIVE 자동 매핑은 동일 DB명·kind·서비스 기준 — LH 게임 샤드 등은 실행 후 수동 검토
  */
 import '../loadEnv';

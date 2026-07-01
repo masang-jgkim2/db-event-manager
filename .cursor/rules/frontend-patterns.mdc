@@ -41,7 +41,7 @@ front/src/
 - **페이지 접근**: `PermissionRoute`에 보기 권한만 지정. 예: `product.view`, `user.view`, `role.view`, `db_connection.view`|`db.manage`, `event_template.view`, `instance.view`|`instance.create`.
 - **DB 접속 정보 페이지**: 모달 **서비스 구분** = `nServiceId` Select(`#id 약자 · 리전`). **중복 경고**는 **호스트+DB명**까지 같을 때만(백엔드 `fnFindDuplicateDbConnection` 동일; `dbConnectionScope.fnFindDuplicateDbConnectionInList`). env·kind만 같고 host/DB 다르면 추가 가능(라그하임 QA GAME 샤드). UI 라벨 `STR_SERVICE_SCOPE_LABEL`.
 - **프로덕트 페이지**: `arrServices` — `nServiceId`·약자·리전.
-- **쿼리 템플릿 (`EventPage`)**: 연결 DB picker = `fnFilterConnectionsForTemplatePicker` — **종류·호스트·DB명**별 행(샤드 다건). 동일 endpoint만 QA 우선 1건.
+- **쿼리 템플릿 (`EventPage`)**: 세트당 **QA/LIVE 연결 Select**(`nQaDbConnectionId`/`nLiveDbConnectionId`). picker = `fnFilterConnectionsForTemplatePickerByEnv` + `DbConnectionSelectOption`. QA 선택 시 `fnFindLivePairForQaConnection`으로 LIVE 자동 채움.
 - **QueryPage (D1)**: Step2 **서비스 구분** — `nServiceId` Select; QA/LIVE 접속 없는 항목 disabled. 생성 payload: **`nServiceId`**(+ `nProductId` 등); **`strServiceAbbr` 미전송**(서버 derive·스냅샷). Step4 접속 미리보기(`fnBuildInstanceConnectionPreview`) — 미구현 시 문서만.
 - **회원 가입·승인**: `/register`(공개), 로그인 403 `pending_approval`/`rejected`/`no_roles` → `LoginPage` 안내. `UserPage` «승인 대기» 탭·승인/거절 = `user.approve`|`user.manage`; 역할 선택 UI에서 `guest` 제외.
 
@@ -54,7 +54,7 @@ const bCanCreate = fnHas('product.create') || fnHas('product.manage');
 // 테이블 관리 컬럼: bCanEdit || bCanDelete 일 때만 컬럼 추가, 버튼은 각 권한별
 ```
 
-- **나의 대시보드**: 상세 → `my_dashboard.detail`, 수정(`event_created`만) → `my_dashboard.edit`, QA/LIVE 요청·실행·확인 → `my_dashboard.request_*` / `execute_*` / `verify_*`, DBA 쿼리 수정 → `my_dashboard.query_edit`, 숨김/복원 → `my_dashboard.hide`, **삭제** → `my_dashboard.delete_any`/`instance.delete_own`. 템플릿 리뷰·승인은 `EventPage`(`event_template.*`).
+- **나의 대시보드**: 상세 → `my_dashboard.detail`, 수정(`event_created`만) → `my_dashboard.edit`, QA/LIVE 요청·실행·확인 → `my_dashboard.request_*` / `execute_*` / `verify_*`, DBA 쿼리 수정 → `my_dashboard.query_edit`(`arrExecutionTargets` 있으면 세트+QA/LIVE Select, 없으면 SQL만), 숨김/복원 → `my_dashboard.hide`, **삭제** → `my_dashboard.delete_any`/`instance.delete_own`. 템플릿 리뷰·승인은 `EventPage`(`event_template.*`).
 
 ## Zustand 스토어 패턴
 
