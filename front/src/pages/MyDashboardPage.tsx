@@ -717,24 +717,31 @@ const InstanceStepper = ({
             }
       }
     >
-      {!bCardMode && (
-        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
-          <Space size={4}>
-            {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
-              const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
-              return opt ? <DqpmTag key={s} tone={opt.strTagVariant} style={{ fontSize: 11 }}>{opt.label}</DqpmTag> : null;
-            })}
-          </Space>
-          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
-          <Space size={4}>
-            {fnRenderStatusIcon(objInstance.strStatus, 12)}
-            <DqpmTag tone={OBJ_STATUS_CONFIG[objInstance.strStatus].strTagVariant} style={{ fontSize: 11 }}>
-              {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
-            </DqpmTag>
-          </Space>
-        </div>
-      )}
+      <div
+        className="dqpm-instance-steps-meta"
+        style={{
+          marginBottom: bCardMode ? 8 : 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
+        <Space size={4} wrap>
+          {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
+            const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
+            return opt ? <DqpmTag key={s} tone={opt.strTagVariant} style={{ fontSize: 11 }}>{opt.label}</DqpmTag> : null;
+          })}
+        </Space>
+        <Text type="secondary" style={{ fontSize: 12, marginLeft: bCardMode ? 0 : 8 }}>상태:</Text>
+        <Space size={4}>
+          {fnRenderStatusIcon(objInstance.strStatus, 12)}
+          <DqpmTag tone={OBJ_STATUS_CONFIG[objInstance.strStatus].strTagVariant} style={{ fontSize: 11 }}>
+            {OBJ_STATUS_CONFIG[objInstance.strStatus].strLabel}
+          </DqpmTag>
+        </Space>
+      </div>
       <Steps
         orientation="horizontal"
         titlePlacement={bCardMode ? undefined : 'horizontal'}
