@@ -999,7 +999,22 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         objInstance.strGeneratedQuery = req.body.strGeneratedQuery;
       }
       if (req.body.arrExecutionTargets !== undefined) {
-        objInstance.arrExecutionTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        const arrTargets = Array.isArray(req.body.arrExecutionTargets) ? req.body.arrExecutionTargets : undefined;
+        if (arrTargets?.length) {
+          for (const t of arrTargets) {
+            const objNorm = fnNormalizeExecutionTargetConnFields(t);
+            const strErr = fnValidateQaLiveConnectionPair(
+              objInstance.nProductId,
+              objNorm.nQaDbConnectionId,
+              objNorm.nLiveDbConnectionId,
+            );
+            if (strErr) {
+              res.status(400).json({ bSuccess: false, strMessage: strErr });
+              return;
+            }
+          }
+        }
+        objInstance.arrExecutionTargets = arrTargets;
         if (objInstance.arrExecutionTargets?.length) {
           objInstance.strGeneratedQuery = objInstance.arrExecutionTargets[0].strQuery;
         }

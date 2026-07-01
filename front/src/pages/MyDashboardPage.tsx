@@ -656,27 +656,85 @@ const fnBuildSteps = (objInstance: IEventInstance) => {
   return { arrSteps, nStep, bFinished };
 };
 
-// 이벤트별 진행 상태 스테퍼 컴포넌트 — 행 인라인 확장용
-const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
+// 이벤트별 진행 상태 스테퍼 — 테이블 행 확장 / 카드 보기
+const InstanceStepper = ({
+  objInstance,
+  bCardMode = false,
+}: {
+  objInstance: IEventInstance;
+  /** 카드 보기: 아이콘만 + 툴팁, 전체 흐름 가로 */
+  bCardMode?: boolean;
+}) => {
   const { arrSteps, nStep, bFinished } = fnBuildSteps(objInstance);
   const { token } = antdTheme.useToken();
 
+  const arrStepItems = arrSteps.map((s, nIdx) => {
+    const bActive = nIdx <= nStep;
+    const strIconColor = bActive
+      ? fnStatusTimelineColor(s.strStatus)
+      : token.colorTextQuaternary;
+    const strStepTooltip = s.strSubLabel ? `${s.strLabel} ${s.strSubLabel}` : s.strLabel;
+    const nodeIcon = fnRenderStatusIcon(s.strStatus, bCardMode ? 14 : 16, String(strIconColor));
+    return {
+      icon: bCardMode ? (
+        <Tooltip title={strStepTooltip} placement="top">
+          <span className="dqpm-step-icon-tooltip-target">{nodeIcon}</span>
+        </Tooltip>
+      ) : (
+        nodeIcon
+      ),
+      ...(bCardMode
+        ? {}
+        : {
+            title: (
+              <span>
+                {s.strLabel}
+                {s.strSubLabel ? (
+                  <span style={{ display: 'block', fontSize: 10, opacity: 0.72 }}>{s.strSubLabel}</span>
+                ) : null}
+              </span>
+            ),
+          }),
+      status: ((): 'wait' | 'finish' | 'process' => {
+        if (nIdx < nStep) return 'finish';
+        if (nIdx === nStep) return bFinished ? 'finish' : 'process';
+        return 'wait';
+      })(),
+    };
+  });
+
   return (
-    <div style={{
-      padding: '12px 24px 16px',
-      background: token.colorFillAlter,
-      borderTop: `1px solid ${token.colorBorderSecondary}`,
-      borderBottom: `1px solid ${token.colorBorderSecondary}`,
-    }}>
-      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div
+      className={bCardMode ? 'dqpm-instance-steps dqpm-instance-steps-card' : 'dqpm-instance-steps dqpm-instance-steps-table'}
+      style={
+        bCardMode
+          ? { paddingTop: 4 }
+          : {
+              padding: '12px 24px 16px',
+              background: token.colorFillAlter,
+              borderTop: `1px solid ${token.colorBorderSecondary}`,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            }
+      }
+    >
+      <div
+        className="dqpm-instance-steps-meta"
+        style={{
+          marginBottom: bCardMode ? 8 : 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
         <Text type="secondary" style={{ fontSize: 12 }}>반영 범위:</Text>
-        <Space size={4}>
+        <Space size={4} wrap>
           {(objInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
             const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
             return opt ? <DqpmTag key={s} tone={opt.strTagVariant} style={{ fontSize: 11 }}>{opt.label}</DqpmTag> : null;
           })}
         </Space>
-        <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>상태:</Text>
+        <Text type="secondary" style={{ fontSize: 12, marginLeft: bCardMode ? 0 : 8 }}>상태:</Text>
         <Space size={4}>
           {fnRenderStatusIcon(objInstance.strStatus, 12)}
           <DqpmTag tone={OBJ_STATUS_CONFIG[objInstance.strStatus].strTagVariant} style={{ fontSize: 11 }}>
@@ -685,24 +743,13 @@ const InstanceStepper = ({ objInstance }: { objInstance: IEventInstance }) => {
         </Space>
       </div>
       <Steps
+        orientation="horizontal"
+        titlePlacement={bCardMode ? undefined : 'horizontal'}
         current={nStep}
         status={bFinished ? 'finish' : 'process'}
         size="small"
-        items={arrSteps.map((s, nIdx) => {
-          const bActive = nIdx <= nStep;
-          const strIconColor = bActive
-            ? fnStatusTimelineColor(s.strStatus)
-            : token.colorTextQuaternary;
-          return {
-          icon: fnRenderStatusIcon(s.strStatus, 16, String(strIconColor)),
-          title: s.strLabel,
-          status: ((): 'wait' | 'finish' | 'process' => {
-            if (nIdx < nStep) return 'finish';
-            if (nIdx === nStep) return bFinished ? 'finish' : 'process';
-            return 'wait';
-          })(),
-        };
-        })}
+        ellipsis={bCardMode}
+        items={arrStepItems}
       />
     </div>
   );
@@ -2041,7 +2088,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     </Space>
                     {objSelectedRow?.nId === r.nId && (
                       <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${token.colorBorderSecondary}` }} onClick={(e) => e.stopPropagation()}>
-                        <InstanceStepper objInstance={r} />
+                        <InstanceStepper objInstance={r} bCardMode />
                       </div>
                     )}
                   </Card>

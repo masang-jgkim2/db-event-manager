@@ -42,7 +42,8 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 1. 작업 브랜치 → **`qa` MR** → 머지 (파이프라인 `validate_job` 통과)
 2. **`qa` → `release/0.0.1` MR** → 머지
 3. GitLab **`release/0.0.1` 파이프라인** — `build_qa` → `deploy_to_qa` 성공
-4. https://qa-db.masanggames.co.kr 동작 확인
+4. **QA/LIVE backfill** (아래 절) — `n_live_db_connection_id` 등 데이터 반영
+5. https://qa-db.masanggames.co.kr 동작 확인
 
 ### shared/backend.env (Slack·시크릿 — git 배포와 별도)
 
@@ -93,9 +94,40 @@ release/0.0.1 ──MR──▶ main     (merge 후 build_live 파이프라인)
 3. GitLab **CI/CD → Pipelines** (`main` 브랜치) — `build_live` 성공 확인
 4. 같은 파이프라인에서 **`deploy_to_live` job ▶ Play** 클릭 (자동 배포 아님)
 5. LIVE EC2 `shared/backend.env` — CORS·Slack·`DQPM_PUBLIC_BASE_URL` LIVE 값 확인
-6. https://db.masanggames.co.kr · https://db-api.masanggames.co.kr/api/health 확인
+6. **QA/LIVE backfill** (아래 절) — QA와 동일
+7. https://db.masanggames.co.kr · https://db-api.masanggames.co.kr/api/health 확인
 
 > 초기 LIVE EC2 셋업(nginx·Deployment Group·`backend.env` 최초 작성)은 아래 「LIVE 셋업 시 QA와 다른 점」 참고.
+
+## QA/LIVE DB 접속 id backfill (배포 직후 1회)
+
+템플릿 세트·인스턴스 실행 대상에 **QA/LIVE 접속 id**(`nQaDbConnectionId` / `nLiveDbConnectionId`)를 채우는 마이그레이션.  
+**QA·LIVE EC2 각각** CodeDeploy 직후 실행. EC2에는 `tsx` 없음 → **`node dist/...`** 사용.
+
+```bash
+cd /masang/masanggames.co.kr/db-manager/current/backend
+
+# 스크립트 존재 확인 (없으면 배포 커밋 미반영)
+ls -la dist/scripts/backfillQaLiveConnections.js
+
+# masang 유저 권장 (.env = shared/backend.env)
+node dist/scripts/backfillQaLiveConnections.js
+# 또는: npm run backfill-qa-live-connections  (package.json이 node dist/... 인 빌드)
+
+sudo systemctl restart dqpm-backend
+```
+
+**성공 로그 예**: `MySQL QA/LIVE 컬럼 반영 완료` · `JSON 미러 저장 완료`
+
+| 경고 | 조치 |
+|------|------|
+| `LIVE 페어 없음` | QA와 DB명·kind·서비스가 같은 LIVE 접속 등록 여부 확인 (LH 게임 샤드 등 host 다른 페어는 **수동**) |
+| `tsx: command not found` | `npm run` 대신 위 `node dist/...` 사용 |
+
+**대상**: `arrQueryTemplates` / `arrExecutionTargets`가 **이미 있는** 행만.  
+`strGeneratedQuery`만 있는 레거시 인스턴스(API 테스트 등)는 변환하지 않음.
+
+**로컬 개발**: `cd backend && npm run build && node dist/scripts/backfillQaLiveConnections.js` (또는 `tsx src/scripts/...`)
 
 ## 서버 디렉토리 구조
 

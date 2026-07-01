@@ -62,6 +62,7 @@ release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_li
 - **등록·생성 경로**: DB 접속·QueryPage·`POST /api/event-instances` — **`nServiceId` 필수**(프로덕트에 서비스 있을 때). 약자 단독 → 400.
 - **실행·레거시**: `fnServiceAbbrsCompatible` dual-read. 나의 대시보드 표시는 **스냅샷**(`strServiceAbbr`/`strProductName`) 유지.
 - **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장.
+- **QA/LIVE 접속 id**: 템플릿·인스턴스 세트당 `nQaDbConnectionId`/`nLiveDbConnectionId`. 배포 후 EC2: `node dist/scripts/backfillQaLiveConnections.js` (`docs/DEPLOYMENT.md`). 유틸 `queryTemplateConnections.ts` · UI `DbConnectionSelectOption.tsx`.
 
 ## 회원 가입·승인 (Phase A)
 
@@ -74,7 +75,7 @@ release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_li
 
 - **쿼리 템플릿**: 3단계 (`template_created` → `confirm_requested` → `dba_confirmed`). **D1**: `dba_confirmed`만 `QueryPage`·`POST /api/event-instances` 허용. 전이 `PATCH /api/events/:id/status`. **D2**: 승인 후 `PUT /api/events/:id`로 쿼리·세트 변경 시 `confirm_requested` 자동 전이. 리뷰 대기 중 DBA 쿼리 수정은 `PUT /api/events/:id/query` + `objQueryEdit` 로그 (`EventPage`).
 - **이벤트 인스턴스**: **7단계** (`event_created` → qa_* → live_* → `live_verified`). 템플릿 컨펌은 인스턴스에 없음(D7: 레거시 confirm/dba → `event_created`). **재요청**: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
-- **쿼리 실행**: QA/LIVE는 `fnResolveExecuteConnection(..., strServiceAbbr)`(단일·다중 세트·kind별). `QueryPage`·`fnCreateInstance`에서 서비스·종류별 접속 검증. 실패 시 상태 유지 + `arrStatusLogs`에 오류·접속 요약 기록; 성공 이력에 선택 `strConnectionSummary`.
+- **쿼리 실행**: QA/LIVE는 세트별 **QA/LIVE id 직접 사용**(`fnGetConnIdForDeployEnv`). 레거시 단일 쿼리만 `fnResolveExecuteConnection` fallback. `fnValidateQaLiveConnectionPair`로 템플릿·DBA 수정 검증.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
 - **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸.
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
