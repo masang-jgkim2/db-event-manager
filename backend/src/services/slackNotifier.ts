@@ -74,9 +74,25 @@ const fnGetStatusLabel = (strStatus: TEventStatus, bPermanentlyRemoved?: boolean
   bPermanentlyRemoved ? '영구 삭제' : (OBJ_STATUS_LABEL[strStatus] ?? strStatus)
 );
 
-const fnGetPublicBaseUrl = (): string | null => {
-  const strBase = process.env.DQPM_PUBLIC_BASE_URL?.trim().replace(/\/$/, '');
+const fnTrimPublicBaseUrl = (strRaw?: string): string | null => {
+  const strBase = strRaw?.trim().replace(/\/$/, '');
   return strBase || null;
+};
+
+/** 공통 fallback — 템플릿 알림 등 환경 구분 없는 링크 */
+const fnGetPublicBaseUrl = (): string | null => (
+  fnTrimPublicBaseUrl(process.env.DQPM_PUBLIC_BASE_URL)
+);
+
+/** 인스턴스 상태별 대시보드 링크 — QA/LIVE EC2가 같은 webhook을 쓰거나 env가 하나만 있을 때도 올바른 호스트 */
+export const fnGetPublicBaseUrlForInstanceStatus = (strStatus: TEventStatus): string | null => {
+  const strDefault = fnTrimPublicBaseUrl(process.env.DQPM_PUBLIC_BASE_URL);
+  const strQa = fnTrimPublicBaseUrl(process.env.DQPM_PUBLIC_BASE_URL_QA);
+  const strLive = fnTrimPublicBaseUrl(process.env.DQPM_PUBLIC_BASE_URL_LIVE);
+
+  if (strStatus.startsWith('qa_')) return strQa || strDefault || null;
+  if (strStatus.startsWith('live_')) return strLive || strDefault || null;
+  return strDefault || strQa || strLive || null;
 };
 
 const fnParseNotifyStatuses = <T extends string>(
@@ -182,7 +198,7 @@ export const fnBuildSlackInstancePayload = (
     'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
   >,
 ): Record<string, unknown> => {
-  const strBase = fnGetPublicBaseUrl();
+  const strBase = fnGetPublicBaseUrlForInstanceStatus(objInstance.strStatus);
   return fnBuildSlackBlockKitPayload({
     strTitle,
     strSubjectLabel: '이벤트',
