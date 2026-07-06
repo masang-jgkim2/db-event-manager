@@ -63,6 +63,8 @@ describe('slackNotifier', () => {
     delete process.env.SLACK_NOTIFY_PRODUCT_STATUSES;
     delete process.env.SLACK_NOTIFY_DBA_TEMPLATE_STATUSES;
     delete process.env.DQPM_PUBLIC_BASE_URL;
+    delete process.env.DQPM_PUBLIC_BASE_URL_QA;
+    delete process.env.DQPM_PUBLIC_BASE_URL_LIVE;
   });
 
   afterAll(() => {
@@ -164,6 +166,45 @@ describe('slackNotifier', () => {
     expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/ad');
     const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
     expect(objBody.blocks?.[0]?.text?.text).toBe('QA 반영 완료');
+  });
+
+  it('qa_deployed·live_deployed 는 상태별 공개 URL 을 사용한다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_FH = 'https://hooks.slack.com/services/fh';
+    process.env.DQPM_PUBLIC_BASE_URL = 'https://wrong.example.com';
+    process.env.DQPM_PUBLIC_BASE_URL_QA = 'https://qa-db.example.com';
+    process.env.DQPM_PUBLIC_BASE_URL_LIVE = 'https://db.example.com';
+    const { fnNotifySlackInstanceUpdate } = await import('../services/slackNotifier');
+
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strServiceAbbr: 'FH/KR', strStatus: 'qa_deployed' },
+      true,
+    );
+    let objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    let objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].url).toBe('https://qa-db.example.com/my-dashboard?nInstanceId=42');
+
+    fnFetchMock.mockClear();
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strServiceAbbr: 'FH/KR', strStatus: 'live_deployed' },
+      true,
+    );
+    objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].url).toBe('https://db.example.com/my-dashboard?nInstanceId=42');
+  });
+
+  it('DQPM_PUBLIC_BASE_URL 없으면 대시보드 버튼(actions)을 넣지 않는다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_FH = 'https://hooks.slack.com/services/fh';
+    const { fnNotifySlackInstanceUpdate } = await import('../services/slackNotifier');
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strServiceAbbr: 'FH/KR', strStatus: 'live_deployed' },
+      true,
+    );
+    const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions).toBeUndefined();
   });
 
   it('SR QA 반영 완료는 sr 프로덕트 채널로 보낸다', async () => {
