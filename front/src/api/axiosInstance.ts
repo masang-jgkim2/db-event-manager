@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { fnHandleSessionExpiredFromApi } from '../utils/authSessionExpiry';
 
 /**
  * Vite dev 또는 기본 preview 포트: API는 항상 `/api/...` 상대 경로만 사용.
@@ -130,8 +131,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    const strRequestUrl = String(error.config?.url ?? '');
     if (error.response?.status === 401) {
-      localStorage.removeItem('strToken');
+      fnHandleSessionExpiredFromApi(strRequestUrl);
     }
     if (
       error.response?.status === 403
