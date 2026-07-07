@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Typography, message, Space, theme } from 'antd';
 import { UserOutlined, LockOutlined, DatabaseOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { bShowLoginDefaultAccountHint } from '../config/loginUi';
 import { ruleUserIdCharsOnly } from '../utils/userIdInput';
+import { fnConsumeSessionExpiredFlag } from '../utils/authSessionExpiry';
 
 const { Title, Text } = Typography;
 
@@ -19,11 +20,25 @@ const LoginPage = () => {
   const [bIsSubmitting, setBIsSubmitting] = useState(false);
   const fnLogin = useAuthStore((state) => state.fnLogin);
   const [messageApi, contextHolder] = message.useMessage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token } = theme.useToken();
   const strPrimaryColor = useThemeStore((s) => s.strPrimaryColor);
   const bIsDark = useThemeStore((s) => s.strMode === 'dark');
   // 테마별 페이지 배경 — 본문·카드는 token으로 대비 확보
   const strPageBackground = `radial-gradient(ellipse 110% 70% at 50% -18%, ${strPrimaryColor}40 0%, transparent 52%), ${token.colorBgLayout}`;
+
+  useEffect(() => {
+    const bSessionExpired =
+      searchParams.get('session') === 'expired' || fnConsumeSessionExpiredFlag();
+    if (!bSessionExpired) return;
+
+    messageApi.warning('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.');
+    if (searchParams.get('session') === 'expired') {
+      const objNext = new URLSearchParams(searchParams);
+      objNext.delete('session');
+      setSearchParams(objNext, { replace: true });
+    }
+  }, [messageApi, searchParams, setSearchParams]);
 
   // 로그인 폼 제출 처리
   const fnHandleSubmit = async (objValues: ILoginFormValues) => {
