@@ -27,6 +27,8 @@ import {
   fnMergeTemplateQueryFromBody,
   fnSnapshotTemplateQueryBefore,
   fnTemplateQueryBodyChanged,
+  type IQueryEditLog,
+  type TTemplateQueryFields,
 } from '../utils/queryEditLog';
 import { fnNotifySlackTemplateStatus } from '../services/slackNotifier';
 
@@ -55,6 +57,7 @@ const fnRevertTemplateToReapproval = (
   objTpl: IEventTemplate,
   objActor: ITemplateStageActor,
   strComment: string,
+  objQueryEdit?: IQueryEditLog,
 ): void => {
   objTpl.strStatus = 'confirm_requested';
   objTpl.objConfirmer = null;
@@ -64,6 +67,7 @@ const fnRevertTemplateToReapproval = (
     nChangedByUserId: objActor.nUserId,
     strComment,
     dtChangedAt: objActor.dtProcessedAt,
+    ...(objQueryEdit ? { objQueryEdit } : {}),
   });
 };
 
@@ -256,6 +260,7 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     const bQueryFieldsInBody = fnBodyHasTemplateQueryFields(req.body);
     const objMergedQuery = fnMergeTemplateQueryFromBody(objTpl, req.body);
     const bQueryWouldChange = bQueryFieldsInBody && fnTemplateQueryBodyChanged(objTpl, objMergedQuery);
+    const objQuerySnapshotBefore = bQueryWouldChange ? fnSnapshotTemplateQueryBefore(objTpl) : null;
 
     // 리뷰 대기 중 쿼리·세트는 전용 API만 허용
     if (strTplStatus === 'confirm_requested' && bQueryWouldChange) {
@@ -316,7 +321,21 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
     let bReapprovalRequired = false;
     if (strTplStatus === 'dba_confirmed' && bQueryWouldChange) {
       const objActor = fnMakeTemplateActor(req);
-      fnRevertTemplateToReapproval(arrEvents[nIndex], objActor, '승인 후 쿼리·세트 변경 — DBA 재승인 필요');
+      let objQueryEdit = objQuerySnapshotBefore
+        ? fnBuildTemplateQueryEditLog(objQuerySnapshotBefore, arrEvents[nIndex])
+        : null;
+      if (!objQueryEdit) {
+        objQueryEdit = {
+          strBefore: '(세트 연결·입력 설정)',
+          strAfter: '(연결 DB·입력 ID/형식·기본값 변경)',
+        };
+      }
+      fnRevertTemplateToReapproval(
+        arrEvents[nIndex],
+        objActor,
+        '승인 후 쿼리·세트 변경 — DBA 재승인 필요',
+        objQueryEdit,
+      );
       bReapprovalRequired = true;
       console.log(`[쿼리 템플릿] D2 재승인 | #${nId} | dba_confirmed → confirm_requested`);
     }
@@ -370,6 +389,14 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
     }
 
     const objQueryBefore = fnSnapshotTemplateQueryBefore(objTpl);
+    const strInputFormatBefore = objTpl.strInputFormat;
+    const objFieldsBefore: TTemplateQueryFields = {
+      strQueryTemplate: objTpl.strQueryTemplate,
+      strDefaultItems: objTpl.strDefaultItems,
+      arrQueryTemplates: objTpl.arrQueryTemplates
+        ? objTpl.arrQueryTemplates.map((s) => ({ ...s }))
+        : undefined,
+    };
 
     if (req.body.strQueryTemplate !== undefined) {
       objTpl.strQueryTemplate = req.body.strQueryTemplate;
@@ -384,6 +411,10 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       if (arrIncoming?.length) {
         const strConnErr = fnValidateTemplateQueryConnections(objTpl.nProductId, arrIncoming);
         if (strConnErr) {
+          // 검증 실패 시 메모리 원복
+          objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
+          objTpl.strDefaultItems = objFieldsBefore.strDefaultItems;
+          objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
           res.status(400).json({ bSuccess: false, strMessage: strConnErr });
           return;
         }
@@ -397,16 +428,39 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       objTpl.arrQueryTemplates = undefined;
     }
 
-    const objQueryEdit = fnBuildTemplateQueryEditLog(objQueryBefore, objTpl);
-    if (!objQueryEdit) {
+    // PUT /events 와 동일 — 입력 ID·형식 정규화 + 템플릿 format 동기화
+    if (Array.isArray(objTpl.arrQueryTemplates) && objTpl.arrQueryTemplates.length > 0) {
+      const objNormSets = fnNormalizeSetsForPersist(
+        objTpl.arrQueryTemplates,
+        objTpl.strInputFormat || 'item_number',
+      );
+      objTpl.arrQueryTemplates = objNormSets.arrSets;
+      objTpl.strInputFormat = objNormSets.strInputFormat;
+    }
+
+    if (!fnTemplateQueryBodyChanged(objFieldsBefore, objTpl)) {
+      // 메모리에 쓴 값을 원복 (정규화만 해도 참조가 바뀔 수 있음)
+      objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
+      objTpl.strDefaultItems = objFieldsBefore.strDefaultItems;
+      objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
+      objTpl.strInputFormat = strInputFormatBefore;
       res.status(400).json({ bSuccess: false, strMessage: '쿼리 내용이 변경되지 않았습니다.' });
       return;
+    }
+
+    // SQL 텍스트 diff — 세트 추가·삭제도 포함. 연결/입력 ID만 바뀐 경우 요약 로그
+    let objQueryEdit = fnBuildTemplateQueryEditLog(objQueryBefore, objTpl);
+    if (!objQueryEdit) {
+      objQueryEdit = {
+        strBefore: '(세트 연결·입력 설정)',
+        strAfter: '(연결 DB·입력 ID/형식·기본값 변경)',
+      };
     }
 
     const objActor = fnMakeTemplateActor(req);
     let bReapprovalRequired = false;
     if (strTplStatus === 'dba_confirmed') {
-      fnRevertTemplateToReapproval(objTpl, objActor, '승인 후 DBA 쿼리 수정 — DBA 재승인 필요');
+      fnRevertTemplateToReapproval(objTpl, objActor, '승인 후 DBA 쿼리 수정 — DBA 재승인 필요', objQueryEdit);
       bReapprovalRequired = true;
       console.log(`[쿼리 템플릿] D2 재승인 | #${nId} | dba_confirmed → confirm_requested (query API)`);
     } else {
