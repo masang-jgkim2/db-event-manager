@@ -413,7 +413,7 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
         if (strConnErr) {
           // 검증 실패 시 메모리 원복
           objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
-          objTpl.strDefaultItems = objFieldsBefore.strDefaultItems;
+          objTpl.strDefaultItems = objFieldsBefore.strDefaultItems ?? '';
           objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
           res.status(400).json({ bSuccess: false, strMessage: strConnErr });
           return;
@@ -441,7 +441,7 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
     if (!fnTemplateQueryBodyChanged(objFieldsBefore, objTpl)) {
       // 메모리에 쓴 값을 원복 (정규화만 해도 참조가 바뀔 수 있음)
       objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
-      objTpl.strDefaultItems = objFieldsBefore.strDefaultItems;
+      objTpl.strDefaultItems = objFieldsBefore.strDefaultItems ?? '';
       objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
       objTpl.strInputFormat = strInputFormatBefore;
       res.status(400).json({ bSuccess: false, strMessage: '쿼리 내용이 변경되지 않았습니다.' });
