@@ -147,11 +147,19 @@ export const fnEnsureTestQaLiveConnPair = async (
 
 export const fnTemplateSetBody = (
   objPair: TTestQaLiveConnPair,
-  body: { strQueryTemplate: string; strDefaultItems?: string },
+  body: {
+    strQueryTemplate: string;
+    strDefaultItems?: string;
+    strInputId?: string;
+    strInputFormat?: string;
+  },
 ) => ({
   nQaDbConnectionId: objPair.nQaId,
   nLiveDbConnectionId: objPair.nLiveId,
-  ...body,
+  strInputId: body.strInputId ?? 'items',
+  strInputFormat: body.strInputFormat ?? 'item_number',
+  strDefaultItems: body.strDefaultItems,
+  strQueryTemplate: body.strQueryTemplate,
 });
 
 export const fnExecutionTargetBody = (

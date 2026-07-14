@@ -35,8 +35,8 @@ import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
 import { DqpmTag } from '../components/DqpmTag';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
-import type { IEventTemplate, IService, TDeployScope, TTemplateStatus } from '../types';
-import { ARR_DEPLOY_SCOPE_OPTIONS, OBJ_TEMPLATE_STATUS_CONFIG } from '../types';
+import type { IEventTemplate, IService, TDeployScope, TTemplateStatus, TInputFormat } from '../types';
+import { ARR_DEPLOY_SCOPE_OPTIONS, OBJ_TEMPLATE_STATUS_CONFIG, ARR_INPUT_FORMATS } from '../types';
 import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
 import {
   fnBuildInstanceConnectionPreview,
@@ -373,13 +373,18 @@ const QueryPage = () => {
     }
   };
 
-  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride로 세트별 입력 사용
-  const fnApplyTemplate = (strTemplate: string, strItemsOverride?: string): string => {
+  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride·세트 format/id 사용
+  const fnApplyTemplate = (
+    strTemplate: string,
+    strItemsOverride?: string,
+    strFmtOverride?: string,
+    strInputIdOverride?: string,
+  ): string => {
     const strRaw = strItemsOverride !== undefined ? strItemsOverride : strInputValues;
-    const strFmt = objSelectedEvent?.strInputFormat ?? 'item_number';
-    // {{date}} 치환: QA 날짜 우선, 없으면 LIVE 날짜
+    const strFmt = (strFmtOverride || objSelectedEvent?.strInputFormat || 'item_number') as TInputFormat;
+    const strInputId = strInputIdOverride || 'items';
     const strDateOnly = (strQaDeployDate || strLiveDeployDate || strDeployDate).slice(0, 10);
-    let str = fnReplaceItemsInTemplate(strTemplate, strRaw, strFmt);
+    let str = fnReplaceItemsInTemplate(strTemplate, strRaw, strFmt, strInputId);
     str = str.replace(/\{\{date\}\}/g, strDateOnly);
     str = str.replace(/\{\{event_name\}\}/g, strEventName);
     str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
@@ -436,15 +441,23 @@ const QueryPage = () => {
       return;
     }
 
-    // 입력값 검증: 다중 세트면 세트별 입력 모두 필수, 단일이면 strInputValues
-    if (objSelectedEvent.strInputFormat !== 'none') {
-      if (bMultiQuery) {
-        const bAllFilled = arrInputValues.length === arrSets.length && arrInputValues.every((v) => (v ?? '').trim().length > 0);
-        if (!bAllFilled) {
-          messageApi.warning('모든 쿼리 세트의 입력값을 입력해주세요.');
-          return;
-        }
-      } else if (!strInputValues.trim()) {
+    // 입력값 검증: 세트별 형식(none 제외) 또는 단일
+    if (bMultiQuery) {
+      const bMissing = arrSets.some((s, i) => {
+        const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
+        if ((objNorm.strInputFormat ?? 'item_number') === 'none') return false;
+        return !(arrInputValues[i] ?? '').trim();
+      });
+      if (bMissing) {
+        messageApi.warning('모든 쿼리 세트의 입력값을 입력해주세요.');
+        return;
+      }
+    } else {
+      const objFirst = arrSets[0]
+        ? fnNormalizeQueryTemplateItem(arrSets[0], objSelectedEvent.strInputFormat)
+        : null;
+      const strFmt = objFirst?.strInputFormat ?? objSelectedEvent.strInputFormat ?? 'item_number';
+      if (strFmt !== 'none' && !strInputValues.trim()) {
         messageApi.warning('입력값을 입력해주세요.');
         return;
       }
@@ -456,9 +469,14 @@ const QueryPage = () => {
     if (bMultiQuery) {
       for (let i = 0; i < arrSets.length; i++) {
         const s = arrSets[i];
-        const objNorm = fnNormalizeQueryTemplateItem(s);
+        const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
         const strItems = (arrInputValues[i] ?? '').trim();
-        const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strItems);
+        const q = fnApplyTemplate(
+          (s.strQueryTemplate ?? '').trim(),
+          strItems,
+          objNorm.strInputFormat,
+          objNorm.strInputId,
+        );
         arrTargets.push({
           nQaDbConnectionId: objNorm.nQaDbConnectionId,
           nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
@@ -472,8 +490,13 @@ const QueryPage = () => {
       }).join('\n\n');
     } else if (arrSets.length === 1) {
       const s = arrSets[0];
-      const objNorm = fnNormalizeQueryTemplateItem(s);
-      const q = fnApplyTemplate((s.strQueryTemplate ?? '').trim(), strInputValues.trim());
+      const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
+      const q = fnApplyTemplate(
+        (s.strQueryTemplate ?? '').trim(),
+        strInputValues.trim(),
+        objNorm.strInputFormat,
+        objNorm.strInputId,
+      );
       arrTargets.push({
         nQaDbConnectionId: objNorm.nQaDbConnectionId,
         nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
@@ -556,9 +579,10 @@ const QueryPage = () => {
   };
 
   // 입력 형식에 맞는 placeholder
-  const fnGetInputPlaceholder = (): string => {
-    if (!objSelectedEvent) return '';
-    switch (objSelectedEvent.strInputFormat) {
+  const fnGetInputPlaceholder = (strFmt?: TInputFormat): string => {
+    const strUse = strFmt || objSelectedEvent?.strInputFormat;
+    if (!strUse) return '';
+    switch (strUse) {
       case 'item_number':
         return '줄바꿈·쉼표 입력. \'{{items}}\'·({{items}})→7902, 9471 / VALUES {{items}}→(7902), (9471)\n예:\n7902\n9471';
       case 'item_string':
@@ -569,6 +593,10 @@ const QueryPage = () => {
         return '';
     }
   };
+
+  const fnGetInputFormatLabel = (strFmt: TInputFormat | string | undefined): string =>
+    ARR_INPUT_FORMATS.find((f) => f.value === strFmt)?.label || String(strFmt ?? '');
+
 
   const arrUserRoles = user?.arrRoles || [];
   const arrUserPermissions = user?.arrPermissions || [];
@@ -978,50 +1006,64 @@ const QueryPage = () => {
                   </Form.Item>
                 )}
 
-                {/* 쿼리 템플릿에 맞는 입력 공간: 다중 세트면 탭으로 세트별, 단일이면 1개 */}
-                {objSelectedEvent.strInputFormat !== 'none' && (
-                  bMultiQuery ? (
+                {/* 쿼리 세트별 입력 (세트 입력 형식·ID 기준) */}
+                {(() => {
+                  const arrSetsForInput = arrSets.map((s) =>
+                    fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat),
+                  );
+                  const bAnyInput = arrSetsForInput.some((s) => (s.strInputFormat ?? 'item_number') !== 'none')
+                    || (!bMultiQuery && (arrSetsForInput[0]?.strInputFormat ?? objSelectedEvent.strInputFormat) !== 'none');
+                  if (!bAnyInput) return null;
+
+                  if (bMultiQuery) {
+                    const arrTabs = arrSetsForInput
+                      .map((objNorm, idx) => ({ objNorm, idx }))
+                      .filter(({ objNorm }) => (objNorm.strInputFormat ?? 'item_number') !== 'none');
+                    if (arrTabs.length === 0) return null;
+                    return (
+                      <Form.Item
+                        label={
+                          <Space>
+                            <Text strong>쿼리 세트별 입력값</Text>
+                            <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
+                          </Space>
+                        }
+                      >
+                        <Tabs
+                          type="card"
+                          items={arrTabs.map(({ objNorm, idx }) => ({
+                            key: String(idx),
+                            label: `세트 ${idx + 1} · {{${objNorm.strInputId}}} · ${fnGetInputFormatLabel(objNorm.strInputFormat)}`,
+                            children: (
+                              <TextArea
+                                value={arrInputValues[idx] ?? ''}
+                                onChange={(e) => {
+                                  const next = [...arrInputValues];
+                                  while (next.length <= idx) next.push('');
+                                  next[idx] = e.target.value;
+                                  setArrInputValues(next);
+                                }}
+                                rows={objNorm.strInputFormat === 'item_string' ? 6 : 3}
+                                placeholder={fnGetInputPlaceholder(objNorm.strInputFormat)}
+                                className={STR_CODE_BLOCK_CLASS}
+                                style={objSqlFormInputStyle}
+                              />
+                            ),
+                          }))}
+                        />
+                      </Form.Item>
+                    );
+                  }
+
+                  const objFirst = arrSetsForInput[0];
+                  const strFmt = objFirst?.strInputFormat ?? objSelectedEvent.strInputFormat;
+                  const strId = objFirst?.strInputId ?? 'items';
+                  if (strFmt === 'none') return null;
+                  return (
                     <Form.Item
                       label={
                         <Space>
-                          <Text strong>쿼리 세트별 입력값</Text>
-                          {objSelectedEvent.strInputFormat === 'item_number' && ' — 번호'}
-                          {objSelectedEvent.strInputFormat === 'item_string' && ' — 문자열'}
-                          {objSelectedEvent.strInputFormat === 'date' && ' — 날짜값'}
-                          <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
-                        </Space>
-                      }
-                    >
-                      <Tabs
-                        type="card"
-                        items={arrSets.map((_, idx) => ({
-                          key: String(idx),
-                          label: `쿼리 세트 ${idx + 1}`,
-                          children: (
-                            <TextArea
-                              value={arrInputValues[idx] ?? ''}
-                              onChange={(e) => {
-                                const next = [...arrInputValues];
-                                while (next.length <= idx) next.push('');
-                                next[idx] = e.target.value;
-                                setArrInputValues(next);
-                              }}
-                              rows={objSelectedEvent.strInputFormat === 'item_string' ? 6 : 3}
-                              placeholder={fnGetInputPlaceholder()}
-                              className={STR_CODE_BLOCK_CLASS}
-                              style={objSqlFormInputStyle}
-                            />
-                          ),
-                        }))}
-                      />
-                    </Form.Item>
-                  ) : (
-                    <Form.Item
-                      label={
-                        <Space>
-                          {objSelectedEvent.strInputFormat === 'item_number' && '번호'}
-                          {objSelectedEvent.strInputFormat === 'item_string' && '문자열'}
-                          {objSelectedEvent.strInputFormat === 'date' && '날짜값'}
+                          <Text strong>{`{{${strId}}}`} · {fnGetInputFormatLabel(strFmt)}</Text>
                           <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
@@ -1034,14 +1076,14 @@ const QueryPage = () => {
                       <TextArea
                         value={strInputValues}
                         onChange={(e) => setStrInputValues(e.target.value)}
-                        rows={objSelectedEvent.strInputFormat === 'item_string' ? 8 : 4}
-                        placeholder={fnGetInputPlaceholder()}
+                        rows={strFmt === 'item_string' ? 8 : 4}
+                        placeholder={fnGetInputPlaceholder(strFmt)}
                         className={STR_CODE_BLOCK_CLASS}
                         style={objSqlInputStyle}
                       />
                     </Form.Item>
-                  )
-                )}
+                  );
+                })()}
               </Form>
 
               {bCanCreate ? (

@@ -164,6 +164,8 @@ const fnMain = async () => {
       arrQueryTemplates: [{
         nQaDbConnectionId: nConnQa,
         nLiveDbConnectionId: nConnLive,
+        strInputId: 'items',
+        strInputFormat: 'none',
         strDefaultItems: '',
         strQueryTemplate: STR_QUERY_TEMPLATE,
       }],

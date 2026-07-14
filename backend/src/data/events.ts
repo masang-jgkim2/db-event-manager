@@ -20,6 +20,7 @@ export interface ITemplateStageActor {
 }
 
 import type { IQueryEditLog } from '../utils/queryEditLog';
+import { fnNormalizeQuerySetInputFields } from '../utils/querySetInput';
 
 export interface ITemplateStatusLog {
   strStatus: TTemplateStatus;
@@ -31,13 +32,20 @@ export interface ITemplateStatusLog {
   objQueryEdit?: IQueryEditLog;
 }
 
-/** 템플릿 내 쿼리 1세트: QA/LIVE DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
+/** 세트 입력 ID 기본값 — SQL {{items}} (utils/querySetInput 과 동일) */
+export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
+
+/** 템플릿 내 쿼리 1세트: QA/LIVE + 입력 ID·형식 + (선택) 기본값 + 쿼리 */
 export interface IQueryTemplateItem {
   nQaDbConnectionId: number;
   nLiveDbConnectionId: number;
   /** @deprecated nQaDbConnectionId 로 이관 */
   nDbConnectionId?: number;
-  /** 이 세트용 기본값 예시 (이벤트 생성 시 입력란 채울 때, 템플릿 기본값 없으면 첫 세트 값 사용) */
+  /** 입력 슬롯 ID — 플레이스홀더 {{strInputId}} (기본 items) */
+  strInputId?: string;
+  /** 세트별 입력 형식 (템플릿 strInputFormat 은 레거시 dual-read) */
+  strInputFormat?: string;
+  /** 이 세트용 기본값 예시 */
   strDefaultItems?: string;
   strQueryTemplate: string;
 }
@@ -50,10 +58,12 @@ export interface IEventTemplate {
   strDescription: string;
   strCategory: string;
   strType: string;
+  /** @deprecated 세트 strInputFormat. 목록·레거시 호환(보통 첫 세트) */
   strInputFormat: string;
+  /** @deprecated 세트 strDefaultItems */
   strDefaultItems: string;
   strQueryTemplate: string;           // 레거시 호환용 (세트 사용 시 비움)
-  arrQueryTemplates?: IQueryTemplateItem[];  // 실제 사용: 세트 1개 이상
+  arrQueryTemplates?: IQueryTemplateItem[];  // 세트: 입력 ID·형식·값·쿼리
   dtCreatedAt: string;
   /** 생성 시 로그인 사용자 표시명 */
   strCreatedBy?: string;
@@ -71,11 +81,19 @@ export const fnResolveTemplateStatus = (raw: Pick<IEventTemplate, 'strStatus'>):
   raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
 
 /** 레거시 단일 id → QA/LIVE 필드 (events 모듈 순환 참조 회피용 인라인) */
-const fnNormalizeQueryTemplateItemInline = (s: IQueryTemplateItem): IQueryTemplateItem => ({
-  ...s,
-  nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
-  nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
-});
+const fnNormalizeQueryTemplateItemInline = (
+  s: IQueryTemplateItem,
+  strTemplateFormatFallback: string = 'item_number',
+): IQueryTemplateItem => {
+  const objInput = fnNormalizeQuerySetInputFields(s, strTemplateFormatFallback);
+  return {
+    ...s,
+    nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
+    nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
+    strInputId: objInput.strInputId,
+    strInputFormat: objInput.strInputFormat,
+  };
+};
 
 const fnFindLivePairInline = (
   arrConns: readonly IDbConnection[],
@@ -90,18 +108,26 @@ const fnFindLivePairInline = (
       c.strDatabase.trim() === objQa.strDatabase.trim(),
   );
 
-/** 세트 배열 — QA/LIVE id 정규화 + 레거시 nDbConnectionId 이관 */
+/** 세트 배열 — QA/LIVE id + 입력 ID·형식 정규화 (템플릿 format dual-read) */
 export const fnNormalizeQueryTemplateItems = (
   arrSets?: IQueryTemplateItem[],
+  strTemplateFormatFallback: string = 'item_number',
 ): IQueryTemplateItem[] | undefined => {
   if (!arrSets?.length) return undefined;
-  return arrSets.map((s) => fnNormalizeQueryTemplateItemInline(s));
+  return arrSets.map((s) => fnNormalizeQueryTemplateItemInline(s, strTemplateFormatFallback));
 };
 
 /** 레거시 행·미설정 → 기존 템플릿은 DBA 리뷰 완료로 간주 */
 export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEventTemplate, 'nId'>): IEventTemplate => {
   const strStatus =
     raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
+  const strTplFormat = raw.strInputFormat ?? 'item_number';
+  const arrSets = fnNormalizeQueryTemplateItems(raw.arrQueryTemplates, strTplFormat);
+  // 목록 호환: 템플릿 format이 비어 있으면 첫 세트 format으로 채움
+  const strInputFormat =
+    arrSets?.[0]?.strInputFormat?.trim()
+    || strTplFormat
+    || 'item_number';
   return {
     nId: raw.nId,
     nProductId: raw.nProductId ?? 0,
@@ -110,10 +136,10 @@ export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEv
     strDescription: raw.strDescription ?? '',
     strCategory: raw.strCategory ?? '',
     strType: raw.strType ?? '',
-    strInputFormat: raw.strInputFormat ?? 'item_number',
+    strInputFormat,
     strDefaultItems: raw.strDefaultItems ?? '',
     strQueryTemplate: raw.strQueryTemplate ?? '',
-    arrQueryTemplates: fnNormalizeQueryTemplateItems(raw.arrQueryTemplates),
+    arrQueryTemplates: arrSets,
     dtCreatedAt: raw.dtCreatedAt ?? new Date().toISOString(),
     strCreatedBy: raw.strCreatedBy,
     nCreatedByUserId: raw.nCreatedByUserId,

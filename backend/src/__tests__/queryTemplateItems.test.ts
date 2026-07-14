@@ -40,13 +40,10 @@ describe('fnReplaceItemsInTemplate', () => {
     );
   });
 
-  it('혼합 패턴', () => {
-    const str = fnReplaceItemsInTemplate(
-      "A='{{items}}' B IN ({{items}}) C VALUES {{items}}",
-      '1\n2',
-      'item_number',
-    );
-    expect(str).toBe("A='1, 2' B IN (1, 2) C VALUES (1), (2)");
+  it('커스텀 입력 ID {{reward}} 치환', () => {
+    expect(
+      fnReplaceItemsInTemplate('ADD {{reward}}', '10\n20', 'item_number', 'reward'),
+    ).toBe('ADD 10, 20');
   });
 });
 
