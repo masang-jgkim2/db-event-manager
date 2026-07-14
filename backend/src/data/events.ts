@@ -20,6 +20,7 @@ export interface ITemplateStageActor {
 }
 
 import type { IQueryEditLog } from '../utils/queryEditLog';
+import { fnNormalizeQuerySetInputFields } from '../utils/querySetInput';
 
 export interface ITemplateStatusLog {
   strStatus: TTemplateStatus;
@@ -80,11 +81,19 @@ export const fnResolveTemplateStatus = (raw: Pick<IEventTemplate, 'strStatus'>):
   raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
 
 /** 레거시 단일 id → QA/LIVE 필드 (events 모듈 순환 참조 회피용 인라인) */
-const fnNormalizeQueryTemplateItemInline = (s: IQueryTemplateItem): IQueryTemplateItem => ({
-  ...s,
-  nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
-  nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
-});
+const fnNormalizeQueryTemplateItemInline = (
+  s: IQueryTemplateItem,
+  strTemplateFormatFallback: string = 'item_number',
+): IQueryTemplateItem => {
+  const objInput = fnNormalizeQuerySetInputFields(s, strTemplateFormatFallback);
+  return {
+    ...s,
+    nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
+    nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
+    strInputId: objInput.strInputId,
+    strInputFormat: objInput.strInputFormat,
+  };
+};
 
 const fnFindLivePairInline = (
   arrConns: readonly IDbConnection[],
@@ -99,18 +108,26 @@ const fnFindLivePairInline = (
       c.strDatabase.trim() === objQa.strDatabase.trim(),
   );
 
-/** 세트 배열 — QA/LIVE id 정규화 + 레거시 nDbConnectionId 이관 */
+/** 세트 배열 — QA/LIVE id + 입력 ID·형식 정규화 (템플릿 format dual-read) */
 export const fnNormalizeQueryTemplateItems = (
   arrSets?: IQueryTemplateItem[],
+  strTemplateFormatFallback: string = 'item_number',
 ): IQueryTemplateItem[] | undefined => {
   if (!arrSets?.length) return undefined;
-  return arrSets.map((s) => fnNormalizeQueryTemplateItemInline(s));
+  return arrSets.map((s) => fnNormalizeQueryTemplateItemInline(s, strTemplateFormatFallback));
 };
 
 /** 레거시 행·미설정 → 기존 템플릿은 DBA 리뷰 완료로 간주 */
 export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEventTemplate, 'nId'>): IEventTemplate => {
   const strStatus =
     raw.strStatus && ARR_TEMPLATE_STATUS.includes(raw.strStatus) ? raw.strStatus : 'dba_confirmed';
+  const strTplFormat = raw.strInputFormat ?? 'item_number';
+  const arrSets = fnNormalizeQueryTemplateItems(raw.arrQueryTemplates, strTplFormat);
+  // 목록 호환: 템플릿 format이 비어 있으면 첫 세트 format으로 채움
+  const strInputFormat =
+    arrSets?.[0]?.strInputFormat?.trim()
+    || strTplFormat
+    || 'item_number';
   return {
     nId: raw.nId,
     nProductId: raw.nProductId ?? 0,
@@ -119,10 +136,10 @@ export const fnNormalizeEventTemplate = (raw: Partial<IEventTemplate> & Pick<IEv
     strDescription: raw.strDescription ?? '',
     strCategory: raw.strCategory ?? '',
     strType: raw.strType ?? '',
-    strInputFormat: raw.strInputFormat ?? 'item_number',
+    strInputFormat,
     strDefaultItems: raw.strDefaultItems ?? '',
     strQueryTemplate: raw.strQueryTemplate ?? '',
-    arrQueryTemplates: fnNormalizeQueryTemplateItems(raw.arrQueryTemplates),
+    arrQueryTemplates: arrSets,
     dtCreatedAt: raw.dtCreatedAt ?? new Date().toISOString(),
     strCreatedBy: raw.strCreatedBy,
     nCreatedByUserId: raw.nCreatedByUserId,
