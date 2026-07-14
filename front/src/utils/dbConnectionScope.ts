@@ -1,5 +1,6 @@
 import type { IEventTemplate, IDbConnection, IQueryTemplateItem, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
+import { fnNormalizeQuerySetInputFields } from './querySetInput';
 
 /** product.arrServices 조회용 — arrServices 생략 가능 */
 export type TProductServiceLookup = {
@@ -161,13 +162,21 @@ export const fnFindConnectionById = (
   nId: number,
 ): IDbConnection | undefined => arrConnections.find((c) => c.nId === nId);
 
-/** 템플릿 세트 — QA/LIVE id 정규화 */
-export const fnNormalizeQueryTemplateItem = (raw: Partial<IQueryTemplateItem>): IQueryTemplateItem => ({
-  nQaDbConnectionId: Number(raw.nQaDbConnectionId ?? raw.nDbConnectionId) || 0,
-  nLiveDbConnectionId: Number(raw.nLiveDbConnectionId) || 0,
-  strDefaultItems: raw.strDefaultItems,
-  strQueryTemplate: raw.strQueryTemplate ?? '',
-});
+/** 템플릿 세트 — QA/LIVE id + 입력 ID·형식 정규화 */
+export const fnNormalizeQueryTemplateItem = (
+  raw: Partial<IQueryTemplateItem>,
+  strTemplateFormatFallback: string = 'item_number',
+): IQueryTemplateItem => {
+  const objInput = fnNormalizeQuerySetInputFields(raw, strTemplateFormatFallback);
+  return {
+    nQaDbConnectionId: Number(raw.nQaDbConnectionId ?? raw.nDbConnectionId) || 0,
+    nLiveDbConnectionId: Number(raw.nLiveDbConnectionId) || 0,
+    strInputId: objInput.strInputId,
+    strInputFormat: objInput.strInputFormat,
+    strDefaultItems: raw.strDefaultItems,
+    strQueryTemplate: raw.strQueryTemplate ?? '',
+  };
+};
 
 export const fnNormalizeExecutionTargetItem = (
   raw: Partial<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; nDbConnectionId?: number; strQuery: string }>,

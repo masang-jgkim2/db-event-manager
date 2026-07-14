@@ -11,6 +11,10 @@ import {
   fnNormalizeQueryTemplateConnFields,
   fnValidateQaLiveConnectionPair,
 } from '../utils/queryTemplateConnections';
+import {
+  fnIsValidQuerySetInputId,
+  fnNormalizeQuerySetInputFields,
+} from '../utils/querySetInput';
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
