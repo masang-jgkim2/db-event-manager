@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS event_template_query_set (
   n_sort              INT           NOT NULL DEFAULT 0 COMMENT 'arrQueryTemplates 순서',
   n_db_connection_id  INT           NOT NULL COMMENT 'IQueryTemplateItem.nQaDbConnectionId (QA)',
   n_live_db_connection_id INT       NOT NULL COMMENT 'IQueryTemplateItem.nLiveDbConnectionId',
+  str_input_id        VARCHAR(64)   NOT NULL DEFAULT 'items' COMMENT 'IQueryTemplateItem.strInputId',
+  str_input_format    VARCHAR(64)   NOT NULL DEFAULT 'item_number' COMMENT '세트별 입력 형식',
   str_default_items   TEXT          NULL,
   str_query_template  MEDIUMTEXT    NOT NULL,
   CONSTRAINT fk_etqs_template FOREIGN KEY (n_event_template_id) REFERENCES event_template(n_id) ON DELETE CASCADE,

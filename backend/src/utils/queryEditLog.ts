@@ -109,6 +109,8 @@ export const fnTemplateQueryBodyChanged = (
         return {
           nQaDbConnectionId: objNorm.nQaDbConnectionId,
           nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          strInputId: (s.strInputId ?? 'items').trim() || 'items',
+          strInputFormat: (s.strInputFormat ?? '').trim(),
           strDefaultItems: (s.strDefaultItems ?? '').trim(),
           strQueryTemplate: fnNorm(s.strQueryTemplate ?? ''),
         };

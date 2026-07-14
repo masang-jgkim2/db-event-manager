@@ -225,6 +225,39 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     );
     console.log('[DATA_MYSQL] 컬럼 추가 | event_instance_execution_target.n_live_db_connection_id');
   }
+
+  // 세트별 입력 ID·형식
+  const [etqsInputIdCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template_query_set' AND COLUMN_NAME = 'str_input_id'`,
+  );
+  if (Number((etqsInputIdCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template_query_set
+       ADD COLUMN str_input_id VARCHAR(64) NOT NULL DEFAULT 'items'
+         COMMENT 'IQueryTemplateItem.strInputId' AFTER n_live_db_connection_id`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template_query_set.str_input_id');
+  }
+  const [etqsInputFmtCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template_query_set' AND COLUMN_NAME = 'str_input_format'`,
+  );
+  if (Number((etqsInputFmtCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template_query_set
+       ADD COLUMN str_input_format VARCHAR(64) NOT NULL DEFAULT 'item_number'
+         COMMENT 'IQueryTemplateItem.strInputFormat' AFTER str_input_id`,
+    );
+    // 레거시: 템플릿 format → 세트 format 백필
+    await pool.query(
+      `UPDATE event_template_query_set qs
+       INNER JOIN event_template t ON t.n_id = qs.n_event_template_id
+       SET qs.str_input_format = COALESCE(NULLIF(TRIM(t.str_input_format), ''), 'item_number')
+       WHERE qs.str_input_format = 'item_number' OR qs.str_input_format IS NULL OR qs.str_input_format = ''`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template_query_set.str_input_format (+ 템플릿 format 백필)');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {

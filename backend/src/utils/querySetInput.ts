@@ -1,6 +1,7 @@
-import type { IQueryTemplateItem } from '../data/events';
-import { STR_DEFAULT_QUERY_SET_INPUT_ID } from '../data/events';
 import type { TInputFormatForItems } from './queryTemplateItems';
+
+/** 세트 입력 ID 기본값 — SQL 플레이스홀더 {{items}} */
+export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
 
 const ARR_FORMATS: TInputFormatForItems[] = ['item_number', 'item_string', 'date', 'none'];
 const REG_INPUT_ID = /^[a-z][a-z0-9_]{0,31}$/;
@@ -24,9 +25,9 @@ export const fnNormalizeQuerySetInputFormat = (
 
 /** 세트 정규화 — 입력 ID·형식 dual-read (템플릿 format fallback) */
 export const fnNormalizeQuerySetInputFields = (
-  objSet: Partial<IQueryTemplateItem>,
+  objSet: { strInputId?: string; strInputFormat?: string },
   strTemplateFormatFallback: string = 'item_number',
-): Pick<IQueryTemplateItem, 'strInputId' | 'strInputFormat'> => ({
+): { strInputId: string; strInputFormat: TInputFormatForItems } => ({
   strInputId: fnNormalizeQuerySetInputId(objSet.strInputId),
   strInputFormat: fnNormalizeQuerySetInputFormat(objSet.strInputFormat, strTemplateFormatFallback),
 });

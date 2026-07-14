@@ -32,7 +32,7 @@ export interface ITemplateStatusLog {
   objQueryEdit?: IQueryEditLog;
 }
 
-/** 세트 입력 ID 기본값 — SQL {{items}} */
+/** 세트 입력 ID 기본값 — SQL {{items}} (utils/querySetInput 과 동일) */
 export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
 
 /** 템플릿 내 쿼리 1세트: QA/LIVE + 입력 ID·형식 + (선택) 기본값 + 쿼리 */

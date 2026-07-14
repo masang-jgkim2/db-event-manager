@@ -228,7 +228,33 @@ const QueryTemplatesTabContent = ({
               {arrLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
             </Select>
           </Form.Item>
-          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
+          <Form.Item
+            {...restField}
+            name={[name, 'strInputId']}
+            label="입력 ID"
+            rules={[
+              { required: true, message: '입력 ID를 입력하세요.' },
+              { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '소문자로 시작, 소문자·숫자·_ (최대 32자)' },
+            ]}
+            extra="SQL 플레이스홀더 {{입력ID}} (기본 items)"
+            initialValue="items"
+          >
+            <Input className={STR_CODE_BLOCK_CLASS} placeholder="items" style={objSqlFieldStyle} />
+          </Form.Item>
+          <Form.Item
+            {...restField}
+            name={[name, 'strInputFormat']}
+            label="입력 형식"
+            rules={[{ required: true, message: '입력 형식을 선택하세요.' }]}
+            initialValue="item_number"
+          >
+            <Select placeholder="입력 형식 선택">
+              {ARR_INPUT_FORMATS.map((obj) => (
+                <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 입력값 (예시, 선택)">
             <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
           </Form.Item>
           <Form.Item
@@ -240,7 +266,7 @@ const QueryTemplatesTabContent = ({
             <TextArea
               className={STR_CODE_BLOCK_CLASS}
               rows={4}
-              placeholder="{{items}}, {{date}} 등 치환 가능"
+              placeholder="{{items}} 또는 {{입력ID}}, {{date}} 등 치환 가능"
               style={objSqlFieldStyle}
             />
           </Form.Item>
@@ -264,7 +290,14 @@ const QueryTemplatesTabContent = ({
       activeKey={activeKey}
       onTabClick={(key) => {
         if (key === QUERY_TABS_ADD_KEY) {
-          add({ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
+          add({
+            nQaDbConnectionId: undefined,
+            nLiveDbConnectionId: undefined,
+            strInputId: 'items',
+            strInputFormat: 'item_number',
+            strQueryTemplate: '',
+            strDefaultItems: '',
+          });
           justAddedRef.current = true;
           setActiveKey(QUERY_TABS_ADD_KEY);
         } else {
@@ -627,22 +660,41 @@ const EventPage = () => {
       if (bMulti) {
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: objEvent.arrQueryTemplates?.map((s) => fnNormalizeQueryTemplateItem(s)),
+          arrQueryTemplates: objEvent.arrQueryTemplates?.map((s) =>
+            fnNormalizeQueryTemplateItem(s, objEvent.strInputFormat),
+          ),
         });
       } else {
         // 기존 단일 템플릿 → 다중 폼에 1세트로 표시 (연결 DB는 사용자가 선택)
         const strQuery = objEvent.strQueryTemplate ?? '';
         const strDefault = objEvent.strDefaultItems ?? '';
+        const strFmt = objEvent.strInputFormat ?? 'item_number';
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
+          arrQueryTemplates: [{
+            nQaDbConnectionId: undefined,
+            nLiveDbConnectionId: undefined,
+            strQueryTemplate: strQuery,
+            strDefaultItems: strDefault,
+            strInputId: 'items',
+            strInputFormat: strFmt,
+          }],
         });
       }
     } else {
       setObjEditEvent(null);
       setStrQueryMode('multi');
       form.resetFields();
-      form.setFieldsValue({ arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
+      form.setFieldsValue({
+        arrQueryTemplates: [{
+          nQaDbConnectionId: undefined,
+          nLiveDbConnectionId: undefined,
+          strQueryTemplate: '',
+          strDefaultItems: '',
+          strInputId: 'items',
+          strInputFormat: 'item_number',
+        }],
+      });
     }
     setBModalOpen(true);
   }, [form, arrDbConnections, arrProducts]);
@@ -703,7 +755,7 @@ const EventPage = () => {
     const arrSets = fnFilterValidTemplateSets(objTpl.arrQueryTemplates);
     if (arrSets.length) {
       setArrQueryEditSets(arrSets.map((s) => ({
-        ...fnNormalizeQueryTemplateItem(s),
+        ...fnNormalizeQueryTemplateItem(s, objTpl.strInputFormat),
         strDefaultItems: s.strDefaultItems,
         strQueryTemplate: s.strQueryTemplate ?? '',
       })));
@@ -733,15 +785,21 @@ const EventPage = () => {
       const payload: Record<string, unknown> = arrQueryEditSets.length
         ? {
             arrQueryTemplates: arrQueryEditSets.map((s) => {
-              const objNorm = fnNormalizeQueryTemplateItem(s);
+              const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
               return {
                 nQaDbConnectionId: objNorm.nQaDbConnectionId,
                 nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+                strInputId: objNorm.strInputId,
+                strInputFormat: objNorm.strInputFormat,
                 strDefaultItems: s.strDefaultItems,
                 strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
               };
             }),
             strQueryTemplate: '',
+            strInputFormat: fnNormalizeQueryTemplateItem(
+              arrQueryEditSets[0] ?? {},
+              objQueryEditTemplate.strInputFormat,
+            ).strInputFormat,
           }
         : { strQueryTemplate: strQueryEditValue.trim(), strDefaultItems: objQueryEditTemplate.strDefaultItems ?? '' };
       const result = await fnUpdateEventQuery(objQueryEditTemplate.nId, payload);
@@ -785,10 +843,18 @@ const EventPage = () => {
               .map((s: IQueryTemplateItem) => ({
                 nQaDbConnectionId: Number(s.nQaDbConnectionId),
                 nLiveDbConnectionId: Number(s.nLiveDbConnectionId),
+                strInputId: (s.strInputId ?? 'items').trim() || 'items',
+                strInputFormat: s.strInputFormat ?? 'item_number',
                 strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
                 strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
               }))
           : undefined;
+      }
+
+      // 종류·유형은 템플릿, 입력 형식은 첫 세트 동기화(목록·레거시)
+      if (!bQueryLocked && Array.isArray(objEventData.arrQueryTemplates) && (objEventData.arrQueryTemplates as IQueryTemplateItem[]).length > 0) {
+        const arrSets = objEventData.arrQueryTemplates as IQueryTemplateItem[];
+        objEventData.strInputFormat = arrSets[0]?.strInputFormat ?? 'item_number';
       }
 
       if (!bQueryLocked && bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
@@ -1003,11 +1069,24 @@ const EventPage = () => {
       ),
     },
     {
-      title: '입력 형식',
-      dataIndex: 'strInputFormat',
+      title: '입력',
       key: 'strInputFormat',
-      width: 160,
-      render: (str: TInputFormat) => fnGetInputFormatLabel(str),
+      width: 168,
+      render: (_: unknown, objRecord: IEventTemplate) => {
+        const arrSets = objRecord.arrQueryTemplates?.filter((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objRecord.strInputFormat);
+          return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+        }) ?? [];
+        if (arrSets.length === 0) {
+          return fnGetInputFormatLabel(objRecord.strInputFormat);
+        }
+        const arrLabel = arrSets.map((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objRecord.strInputFormat);
+          return `${objNorm.strInputId}:${fnGetInputFormatLabel(objNorm.strInputFormat ?? objRecord.strInputFormat)}`;
+        });
+        const strUnique = Array.from(new Set(arrLabel));
+        return strUnique.length === 1 ? strUnique[0] : strUnique.join(', ');
+      },
     },
     {
       title: '쿼리',
@@ -1214,7 +1293,7 @@ const EventPage = () => {
           </Form.Item>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 name="strCategory"
                 label="이벤트 종류"
@@ -1227,7 +1306,7 @@ const EventPage = () => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 name="strType"
                 label="이벤트 유형"
@@ -1240,20 +1319,11 @@ const EventPage = () => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="strInputFormat"
-                label="입력 형식"
-                rules={[{ required: true, message: '입력 형식을 선택해주세요.' }]}
-              >
-                <Select placeholder="입력 형식 선택">
-                  {ARR_INPUT_FORMATS.map((obj) => (
-                    <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
           </Row>
+          {/* 입력 ID·형식은 쿼리 세트별 — 템플릿 strInputFormat은 저장 시 첫 세트에서 동기화 */}
+          <Form.Item name="strInputFormat" hidden>
+            <Input />
+          </Form.Item>
 
           <Form.Item name="strDescription" label="설명">
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
@@ -1376,7 +1446,10 @@ const EventPage = () => {
             {arrQueryEditSets.length > 0 ? (
               <Tabs
                 items={arrQueryEditSets.map((objSet, idx) => {
-                  const objNorm = fnNormalizeQueryTemplateItem(objSet);
+                  const objNorm = fnNormalizeQueryTemplateItem(
+                    objSet,
+                    objQueryEditTemplate?.strInputFormat,
+                  );
                   return {
                     key: String(idx),
                     label: `세트 ${idx + 1}`,
@@ -1418,6 +1491,26 @@ const EventPage = () => {
                             </Select>
                           </div>
                           <div>
+                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                              입력 ID / 형식
+                            </Text>
+                            <Space wrap>
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                style={{ width: 140 }}
+                                value={objNorm.strInputId ?? 'items'}
+                                onChange={(e) => fnPatchQueryEditSet(idx, { strInputId: e.target.value })}
+                                placeholder="items"
+                              />
+                              <Select
+                                style={{ width: 140 }}
+                                value={objNorm.strInputFormat ?? 'item_number'}
+                                onChange={(str) => fnPatchQueryEditSet(idx, { strInputFormat: str })}
+                                options={ARR_INPUT_FORMATS.map((o) => ({ value: o.value, label: o.label }))}
+                              />
+                            </Space>
+                          </div>
+                          <div>
                             <div
                               style={{
                                 display: 'flex',
@@ -1426,7 +1519,9 @@ const EventPage = () => {
                                 marginBottom: 4,
                               }}
                             >
-                              <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                쿼리 (플레이스홀더 {`{{${objNorm.strInputId ?? 'items'}}}`})
+                              </Text>
                               <Button
                                 size="small"
                                 icon={<CopyOutlined />}
