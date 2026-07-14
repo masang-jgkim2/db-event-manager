@@ -15,6 +15,49 @@ export interface IQueryEditLog {
 
 const fnNorm = (str: string): string => str.replace(/\r\n/g, '\n');
 
+/** SQL 배열 LCS 기반 diff — 중간 세트 삭제 시 인덱스 밀림 노이즈 제거 */
+const fnDiffSqlSets = (
+  arrBefore: string[],
+  arrAfter: string[],
+): NonNullable<IQueryEditLog['arrSetChanges']> => {
+  const nB = arrBefore.length;
+  const nA = arrAfter.length;
+  const arrDp: number[][] = Array.from({ length: nB + 1 }, () => Array(nA + 1).fill(0));
+  for (let i = nB - 1; i >= 0; i--) {
+    for (let j = nA - 1; j >= 0; j--) {
+      arrDp[i][j] = arrBefore[i] === arrAfter[j]
+        ? arrDp[i + 1][j + 1] + 1
+        : Math.max(arrDp[i + 1][j], arrDp[i][j + 1]);
+    }
+  }
+  const arrOut: NonNullable<IQueryEditLog['arrSetChanges']> = [];
+  let i = 0;
+  let j = 0;
+  while (i < nB && j < nA) {
+    if (arrBefore[i] === arrAfter[j]) {
+      i++;
+      j++;
+      continue;
+    }
+    if (arrDp[i + 1][j] >= arrDp[i][j + 1]) {
+      arrOut.push({ nSetIndex: i, strBefore: arrBefore[i], strAfter: '' });
+      i++;
+    } else {
+      arrOut.push({ nSetIndex: j, strBefore: '', strAfter: arrAfter[j] });
+      j++;
+    }
+  }
+  while (i < nB) {
+    arrOut.push({ nSetIndex: i, strBefore: arrBefore[i], strAfter: '' });
+    i++;
+  }
+  while (j < nA) {
+    arrOut.push({ nSetIndex: j, strBefore: '', strAfter: arrAfter[j] });
+    j++;
+  }
+  return arrOut;
+};
+
 /** 수정 직전 쿼리 스냅샷 */
 export const fnSnapshotQueryBefore = (
   obj: Pick<IEventInstance, 'strGeneratedQuery' | 'arrExecutionTargets'>,
@@ -37,12 +80,14 @@ export const fnBuildQueryEditLog = (
   objBefore: IQueryEditLog,
   obj: Pick<IEventInstance, 'strGeneratedQuery' | 'arrExecutionTargets'>,
 ): IQueryEditLog | null => {
-  if (objBefore.arrSetChanges?.length) {
-    const arrTargets = obj.arrExecutionTargets ?? [];
-    const arrOut = objBefore.arrSetChanges.map((chg) => {
-      const strAfter = fnNorm(arrTargets[chg.nSetIndex]?.strQuery ?? '');
-      return { ...chg, strAfter };
-    }).filter((c) => c.strBefore !== c.strAfter);
+  const arrTargets = obj.arrExecutionTargets ?? [];
+  const bHadSets = (objBefore.arrSetChanges?.length ?? 0) > 0;
+  const bHasSets = arrTargets.length > 0;
+
+  if (bHadSets || bHasSets) {
+    const arrBeforeSql = (objBefore.arrSetChanges ?? []).map((c) => fnNorm(c.strBefore ?? ''));
+    const arrAfterSql = arrTargets.map((t) => fnNorm(t.strQuery ?? ''));
+    const arrOut = fnDiffSqlSets(arrBeforeSql, arrAfterSql);
     return arrOut.length > 0 ? { arrSetChanges: arrOut } : null;
   }
 
