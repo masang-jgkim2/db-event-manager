@@ -31,13 +31,20 @@ export interface ITemplateStatusLog {
   objQueryEdit?: IQueryEditLog;
 }
 
-/** 템플릿 내 쿼리 1세트: QA/LIVE DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿 */
+/** 세트 입력 ID 기본값 — SQL {{items}} */
+export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
+
+/** 템플릿 내 쿼리 1세트: QA/LIVE + 입력 ID·형식 + (선택) 기본값 + 쿼리 */
 export interface IQueryTemplateItem {
   nQaDbConnectionId: number;
   nLiveDbConnectionId: number;
   /** @deprecated nQaDbConnectionId 로 이관 */
   nDbConnectionId?: number;
-  /** 이 세트용 기본값 예시 (이벤트 생성 시 입력란 채울 때, 템플릿 기본값 없으면 첫 세트 값 사용) */
+  /** 입력 슬롯 ID — 플레이스홀더 {{strInputId}} (기본 items) */
+  strInputId?: string;
+  /** 세트별 입력 형식 (템플릿 strInputFormat 은 레거시 dual-read) */
+  strInputFormat?: string;
+  /** 이 세트용 기본값 예시 */
   strDefaultItems?: string;
   strQueryTemplate: string;
 }
@@ -50,10 +57,12 @@ export interface IEventTemplate {
   strDescription: string;
   strCategory: string;
   strType: string;
+  /** @deprecated 세트 strInputFormat. 목록·레거시 호환(보통 첫 세트) */
   strInputFormat: string;
+  /** @deprecated 세트 strDefaultItems */
   strDefaultItems: string;
   strQueryTemplate: string;           // 레거시 호환용 (세트 사용 시 비움)
-  arrQueryTemplates?: IQueryTemplateItem[];  // 실제 사용: 세트 1개 이상
+  arrQueryTemplates?: IQueryTemplateItem[];  // 세트: 입력 ID·형식·값·쿼리
   dtCreatedAt: string;
   /** 생성 시 로그인 사용자 표시명 */
   strCreatedBy?: string;
