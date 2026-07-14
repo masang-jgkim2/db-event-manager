@@ -342,12 +342,19 @@ export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
   { value: 'none', label: '입력 없음' },
 ];
 
-// 템플릿 내 쿼리 1세트: QA/LIVE DB 연결 + (선택) 기본 아이템값 + 쿼리 템플릿
+/** 세트 입력 ID 기본값 — SQL 플레이스홀더 {{items}} */
+export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
+
+// 템플릿 내 쿼리 1세트: QA/LIVE DB + 입력 ID·형식 + (선택) 기본값 + 쿼리
 export interface IQueryTemplateItem {
   nQaDbConnectionId: number;
   nLiveDbConnectionId: number;
   /** @deprecated nQaDbConnectionId 로 이관 */
   nDbConnectionId?: number;
+  /** 입력 슬롯 ID — 플레이스홀더 {{strInputId}} (기본 items) */
+  strInputId?: string;
+  /** 이 세트의 입력 형식 (템플릿 strInputFormat 은 레거시 dual-read) */
+  strInputFormat?: TInputFormat;
   strDefaultItems?: string;
   strQueryTemplate: string;
 }
@@ -377,12 +384,14 @@ export interface IEventTemplate {
   strProductName?: string;
   strEventLabel: string;          // 이벤트 이름 (예: 어워드 이벤트 종료(아이템))
   strDescription: string;
-  strCategory: TEventCategory;    // 이벤트 종류 (아이템/퀘스트)
-  strType: TEventType;            // 이벤트 유형 (삭제/지급/초기화)
-  strInputFormat: TInputFormat;   // 입력 형식
-  strDefaultItems: string;        // 기본 아이템 값 (예시값)
+  strCategory: TEventCategory;    // 이벤트 종류 (아이템/퀘스트) — 템플릿 전체
+  strType: TEventType;            // 이벤트 유형 (삭제/지급/초기화) — 템플릿 전체
+  /** @deprecated 세트 strInputFormat 사용. 목록·레거시 호환용(보통 첫 세트) */
+  strInputFormat: TInputFormat;
+  /** @deprecated 세트 strDefaultItems 사용 */
+  strDefaultItems: string;
   strQueryTemplate: string;       // SQL 쿼리 템플릿 (레거시 단일)
-  arrQueryTemplates?: IQueryTemplateItem[];  // 종류별 쿼리 템플릿 (있으면 이걸 사용)
+  arrQueryTemplates?: IQueryTemplateItem[];  // 세트(입력 ID·형식·값·쿼리)
   dtCreatedAt: string;
   strCreatedBy?: string;
   nCreatedByUserId?: number;

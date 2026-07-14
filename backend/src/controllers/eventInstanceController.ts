@@ -21,6 +21,7 @@ import {
   fnNormalizeQueryTemplateConnFields,
   fnValidateQaLiveConnectionPair,
 } from '../utils/queryTemplateConnections';
+import { fnNormalizeQuerySetInputFields } from '../utils/querySetInput';
 import type { IExecutionTarget } from '../data/eventInstances';
 const STR_MSG_INSTANCE_MYSQL_FAIL =
   '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.';
@@ -950,9 +951,10 @@ const fnApplyQueryTemplate = (
   strProductName: string,
   strServiceRegion: string,
   strInputFormat: TInputFormatForItems = 'item_number',
+  strInputId: string = 'items',
 ): string => {
   const strDateOnly = strDeployDate.slice(0, 10);  // YYYY-MM-DD 부분만
-  let strQuery = fnReplaceItemsInTemplate(strTemplate, strInputValues, strInputFormat);
+  let strQuery = fnReplaceItemsInTemplate(strTemplate, strInputValues, strInputFormat, strInputId);
   strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
   strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
   strQuery = strQuery.replace(/\{\{abbr\}\}/g, strServiceAbbr);
@@ -1094,7 +1096,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
 
     if (bInputChanged || bDateChanged) {
       const objTemplate = arrEvents.find((e) => e.nId === objInstance.nEventTemplateId);
-      const strInputFormat = (objTemplate?.strInputFormat ?? 'item_number') as TInputFormatForItems;
+      const strTplFormat = (objTemplate?.strInputFormat ?? 'item_number') as TInputFormatForItems;
       const arrSets = objTemplate?.arrQueryTemplates?.filter((s) => {
         const objNorm = fnNormalizeQueryTemplateConnFields(s);
         return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
@@ -1104,6 +1106,7 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         const arrParts = (objInstance.strInputValues ?? '').split(MULTI_INPUT_DELIMITER).map((s) => s.trim());
         const arrTargets = arrSets.map((s, i) => {
           const strItems = arrParts[i] ?? arrParts[0] ?? '';
+          const objInput = fnNormalizeQuerySetInputFields(s, strTplFormat);
           const strQuery = fnApplyQueryTemplate(
             (s.strQueryTemplate ?? '').trim(),
             strItems,
@@ -1112,7 +1115,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
             objInstance.strServiceAbbr,
             objInstance.strProductName,
             objInstance.strServiceRegion,
-            strInputFormat,
+            objInput.strInputFormat as TInputFormatForItems,
+            objInput.strInputId,
           );
           return { nQaDbConnectionId: s.nQaDbConnectionId, nLiveDbConnectionId: s.nLiveDbConnectionId, strQuery };
         });
@@ -1121,6 +1125,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       } else {
         const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
         if (strTemplate) {
+          const objFirst = objTemplate?.arrQueryTemplates?.[0];
+          const objInput = fnNormalizeQuerySetInputFields(objFirst ?? {}, strTplFormat);
           objInstance.strGeneratedQuery = fnApplyQueryTemplate(
             strTemplate,
             objInstance.strInputValues,
@@ -1129,7 +1135,8 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
             objInstance.strServiceAbbr,
             objInstance.strProductName,
             objInstance.strServiceRegion,
-            strInputFormat,
+            objInput.strInputFormat as TInputFormatForItems,
+            objInput.strInputId,
           );
           objInstance.arrExecutionTargets = undefined;
         }

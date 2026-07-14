@@ -372,9 +372,20 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         const nLive = fnResolveDbConnId(e.nProductId, objNorm.nLiveDbConnectionId, arrDbConnections);
         if (nQa <= 0 || nLive <= 0) continue;
         await conn.execute(
-          `INSERT INTO event_template_query_set (n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_default_items, str_query_template)
-           VALUES (?,?,?,?,?,?)`,
-          [e.nId, nSort, nQa, nLive, q.strDefaultItems ?? null, q.strQueryTemplate ?? ''],
+          `INSERT INTO event_template_query_set (
+             n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
+             str_input_id, str_input_format, str_default_items, str_query_template
+           ) VALUES (?,?,?,?,?,?,?,?)`,
+          [
+            e.nId,
+            nSort,
+            nQa,
+            nLive,
+            (q.strInputId ?? 'items').trim() || 'items',
+            (q.strInputFormat ?? e.strInputFormat ?? 'item_number').trim() || 'item_number',
+            q.strDefaultItems ?? null,
+            q.strQueryTemplate ?? '',
+          ],
         );
         nSort += 1;
       }
@@ -971,7 +982,8 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
      FROM event_template ORDER BY n_id`,
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
-    `SELECT n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id, str_default_items, str_query_template
+    `SELECT n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
+            str_input_id, str_input_format, str_default_items, str_query_template
      FROM event_template_query_set ORDER BY n_event_template_id, n_sort`,
   );
   const mapQ = new Map<number, IQueryTemplateItem[]>();
@@ -992,6 +1004,8 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
       fnNormalizeQueryTemplateConnFields({
         nQaDbConnectionId: nQa,
         nLiveDbConnectionId: nLive,
+        strInputId: q.str_input_id != null ? String(q.str_input_id) : 'items',
+        strInputFormat: q.str_input_format != null ? String(q.str_input_format) : undefined,
         strDefaultItems: q.str_default_items != null ? String(q.str_default_items) : undefined,
         strQueryTemplate: String(q.str_query_template ?? ''),
       }),
