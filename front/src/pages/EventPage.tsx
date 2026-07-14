@@ -228,35 +228,47 @@ const QueryTemplatesTabContent = ({
               {arrLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
             </Select>
           </Form.Item>
-          <Form.Item
-            {...restField}
-            name={[name, 'strInputId']}
-            label="입력 ID"
-            rules={[
-              { required: true, message: '입력 ID를 입력하세요.' },
-              { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '소문자로 시작, 소문자·숫자·_ (최대 32자)' },
-            ]}
-            extra="SQL 플레이스홀더 {{입력ID}} (기본 items)"
-            initialValue="items"
-          >
-            <Input className={STR_CODE_BLOCK_CLASS} placeholder="items" style={objSqlFieldStyle} />
-          </Form.Item>
-          <Form.Item
-            {...restField}
-            name={[name, 'strInputFormat']}
-            label="입력 형식"
-            rules={[{ required: true, message: '입력 형식을 선택하세요.' }]}
-            initialValue="item_number"
-          >
-            <Select placeholder="입력 형식 선택">
-              {ARR_INPUT_FORMATS.map((obj) => (
-                <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 입력값 (예시, 선택)">
-            <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={6}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strInputId']}
+                label="입력 ID"
+                tooltip="SQL 플레이스홀더 {{입력ID}} (기본 items)"
+                rules={[
+                  { required: true, message: '입력 ID를 입력하세요.' },
+                  { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '소문자·숫자·_ (최대 32자)' },
+                ]}
+                initialValue="items"
+              >
+                <Input className={STR_CODE_BLOCK_CLASS} placeholder="items" style={objSqlFieldStyle} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strInputFormat']}
+                label="입력 형식"
+                rules={[{ required: true, message: '입력 형식을 선택하세요.' }]}
+                initialValue="item_number"
+              >
+                <Select placeholder="형식">
+                  {ARR_INPUT_FORMATS.map((obj) => (
+                    <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strDefaultItems']}
+                label="기본 입력값 (예시, 선택)"
+              >
+                <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item
             {...restField}
             name={[name, 'strQueryTemplate']}
