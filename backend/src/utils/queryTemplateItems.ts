@@ -1,10 +1,14 @@
-/** 쿼리 템플릿 {{items}} 치환용 입력 정규화 — item_number/item_string */
+/** 쿼리 템플릿 {{inputId}} 치환용 입력 정규화 — item_number/item_string */
 export type TInputFormatForItems = 'item_number' | 'item_string' | 'date' | 'none';
 
-/** comma: 쉼표 목록 | comma_quoted_inner: '{{items}}' 안쪽 | values: VALUES 행 */
+/** comma: 쉼표 목록 | comma_quoted_inner: '{{id}}' 안쪽 | values: VALUES 행 */
 type TItemsJoinMode = 'comma' | 'comma_quoted_inner' | 'values';
 
-const PLACEHOLDER_ITEMS = '{{items}}';
+const STR_DEFAULT_INPUT_ID = 'items';
+
+const fnBuildPlaceholder = (strInputId: string): string => `{{${strInputId}}}`;
+
+const fnEscapeRegExp = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const fnParseItemParts = (strRaw: string): string[] =>
   strRaw
@@ -13,36 +17,35 @@ const fnParseItemParts = (strRaw: string): string[] =>
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-const fnIsQuotedItemsPlaceholder = (strTemplate: string, nIndex: number): boolean => {
+const fnIsQuotedItemsPlaceholder = (strTemplate: string, nIndex: number, nPhLen: number): boolean => {
   let i = nIndex - 1;
   while (i >= 0 && /\s/.test(strTemplate[i])) i--;
   if (i < 0 || strTemplate[i] !== "'") return false;
 
-  let j = nIndex + PLACEHOLDER_ITEMS.length;
+  let j = nIndex + nPhLen;
   while (j < strTemplate.length && /\s/.test(strTemplate[j])) j++;
   return j < strTemplate.length && strTemplate[j] === "'";
 };
 
-const fnIsParenWrappedItemsPlaceholder = (strTemplate: string, nIndex: number): boolean => {
+const fnIsParenWrappedItemsPlaceholder = (strTemplate: string, nIndex: number, nPhLen: number): boolean => {
   let i = nIndex - 1;
   while (i >= 0 && /\s/.test(strTemplate[i])) i--;
   if (i < 0 || strTemplate[i] !== '(') return false;
 
-  let j = nIndex + PLACEHOLDER_ITEMS.length;
+  let j = nIndex + nPhLen;
   while (j < strTemplate.length && /\s/.test(strTemplate[j])) j++;
   return j < strTemplate.length && strTemplate[j] === ')';
 };
 
 const fnIsValuesItemsPlaceholder = (strTemplate: string, nIndex: number): boolean => {
   const strBefore = strTemplate.slice(0, nIndex).replace(/\s+$/, '');
-  // VALUES 바로 뒤 같은 줄 `-- 주석` 허용 (다음 줄 {{items}} 인 경우)
   return /\bVALUES(?:\s--[^\r\n]*)?$/i.test(strBefore);
 };
 
-const fnDetectItemsJoinMode = (strTemplate: string, nIndex: number): TItemsJoinMode => {
+const fnDetectItemsJoinMode = (strTemplate: string, nIndex: number, nPhLen: number): TItemsJoinMode => {
   if (fnIsValuesItemsPlaceholder(strTemplate, nIndex)) return 'values';
-  if (fnIsQuotedItemsPlaceholder(strTemplate, nIndex)) return 'comma_quoted_inner';
-  if (fnIsParenWrappedItemsPlaceholder(strTemplate, nIndex)) return 'comma';
+  if (fnIsQuotedItemsPlaceholder(strTemplate, nIndex, nPhLen)) return 'comma_quoted_inner';
+  if (fnIsParenWrappedItemsPlaceholder(strTemplate, nIndex, nPhLen)) return 'comma';
   return 'comma';
 };
 
@@ -66,31 +69,36 @@ const fnFormatItemsChunk = (
     return arrParts.map((s) => fnEscapeSqlString(s)).join(', ');
   }
 
-  // comma — ({{items}}), IN ({{items}}) 등
   if (strInputFormat === 'item_string') {
     return arrParts.map((s) => `'${fnEscapeSqlString(s)}'`).join(', ');
   }
   return arrParts.join(', ');
 };
 
-/** 템플릿 패턴별 {{items}} 치환 */
+/** 템플릿 패턴별 {{strInputId}} 치환 (기본 items) */
 export const fnReplaceItemsInTemplate = (
   strTemplate: string,
   strRaw: string,
   strInputFormat: TInputFormatForItems = 'item_number',
+  strInputId: string = STR_DEFAULT_INPUT_ID,
 ): string => {
+  const strId = (strInputId || STR_DEFAULT_INPUT_ID).trim() || STR_DEFAULT_INPUT_ID;
+  const strPh = fnBuildPlaceholder(strId);
+  const nPhLen = strPh.length;
+  const rePh = new RegExp(fnEscapeRegExp(strPh), 'g');
+
   const strTrimmed = strRaw.trim();
   if (!strTrimmed || strInputFormat === 'none' || strInputFormat === 'date') {
-    return strTemplate.replace(/\{\{items\}\}/g, strTrimmed);
+    return strTemplate.replace(rePh, strTrimmed);
   }
 
   const arrParts = fnParseItemParts(strRaw);
   if (arrParts.length === 0) {
-    return strTemplate.replace(/\{\{items\}\}/g, '');
+    return strTemplate.replace(rePh, '');
   }
 
-  return strTemplate.replace(/\{\{items\}\}/g, (_match, nOffset: number) =>
-    fnFormatItemsChunk(arrParts, strInputFormat, fnDetectItemsJoinMode(strTemplate, nOffset)),
+  return strTemplate.replace(rePh, (_match, nOffset: number) =>
+    fnFormatItemsChunk(arrParts, strInputFormat, fnDetectItemsJoinMode(strTemplate, nOffset, nPhLen)),
   );
 };
 
