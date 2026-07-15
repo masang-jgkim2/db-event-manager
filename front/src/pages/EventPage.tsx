@@ -148,6 +148,8 @@ type TQueryTemplatesTabContentProps = {
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
+  /** 검증 실패 시 세트 index → 탭 key 매핑용 (index로 탭 전환) */
+  tabKeysRef: React.MutableRefObject<string[]>;
 };
 
 const fnFilterValidTemplateSets = (arrSets?: IQueryTemplateItem[]) =>
@@ -165,9 +167,13 @@ const QueryTemplatesTabContent = ({
   activeKey,
   setActiveKey,
   justAddedRef,
+  tabKeysRef,
 }: TQueryTemplatesTabContentProps) => {
   const { token } = theme.useToken();
   const objSqlFieldStyle = fnCodeSurfaceStyle(token, 12);
+
+  // 세트 index → 탭 key 캐시 (검증 실패 시 해당 세트 탭으로 전환)
+  tabKeysRef.current = fields.map((f) => String(f.key));
 
   useEffect(() => {
     if (justAddedRef.current && fields.length > 0) {
@@ -188,6 +194,8 @@ const QueryTemplatesTabContent = ({
     ...fields.map(({ key, name, ...restField }) => ({
       key: String(key),
       label: `세트 ${name + 1}`,
+      // 비활성 탭도 마운트 — 미방문 세트의 폼 필드가 저장 payload에서 누락되는 문제 방지
+      forceRender: true,
       children: (
         <div style={{ paddingTop: 8 }}>
           {fields.length > 1 && (
@@ -351,6 +359,8 @@ const EventPage = () => {
   /** 쿼리 템플릿 탭 활성 키 (세트 1, 세트 2, … 또는 __add__) */
   const [strQueryTabsActiveKey, setStrQueryTabsActiveKey] = useState('0');
   const bQueryTabsJustAddedRef = useRef(false);
+  /** 쿼리 세트 탭 index → key 매핑 (검증 실패 시 문제 세트 탭으로 전환) */
+  const arrQueryTabKeysRef = useRef<string[]>([]);
 
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditTemplate, setObjQueryEditTemplate] = useState<IEventTemplate | null>(null);
@@ -891,17 +901,15 @@ const EventPage = () => {
         arrQueryPayload = bMulti
           ? (objValues.arrQueryTemplates ?? [])
               .map((s: IQueryTemplateItem) => fnNormalizeQueryTemplateItem(s))
-              .filter((s: IQueryTemplateItem) => {
-                const objNorm = fnNormalizeQueryTemplateItem(s);
-                return objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (s.strQueryTemplate ?? '').trim();
-              })
-              .map((s: IQueryTemplateItem) => ({
-                nQaDbConnectionId: Number(s.nQaDbConnectionId),
-                nLiveDbConnectionId: Number(s.nLiveDbConnectionId),
-                strInputId: (s.strInputId ?? 'items').trim() || 'items',
-                strInputFormat: s.strInputFormat ?? 'item_number',
-                strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
-                strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+              .filter((objNorm: IQueryTemplateItem) =>
+                objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (objNorm.strQueryTemplate ?? '').trim())
+              .map((objNorm: IQueryTemplateItem) => ({
+                nQaDbConnectionId: objNorm.nQaDbConnectionId,
+                nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+                strInputId: (objNorm.strInputId ?? 'items').trim() || 'items',
+                strInputFormat: objNorm.strInputFormat ?? 'item_number',
+                strQueryTemplate: (objNorm.strQueryTemplate ?? '').trim(),
+                strDefaultItems: (objNorm.strDefaultItems ?? '').trim() || undefined,
               }))
           : undefined;
 
@@ -988,8 +996,22 @@ const EventPage = () => {
       } else {
         messageApi.error(result.strMessage);
       }
-    } catch {
-      // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
+    } catch (err) {
+      // 유효성 검사 실패 — 비활성(숨김) 세트 탭의 에러는 화면에 안 보이므로 해당 탭으로 전환·안내
+      const arrErrorFields = (err as { errorFields?: Array<{ name: (string | number)[] }> })?.errorFields ?? [];
+      const objSetError = arrErrorFields.find((f) => f.name?.[0] === 'arrQueryTemplates');
+      if (objSetError) {
+        const nErrSetIdx = Number(objSetError.name[1]);
+        const strTabKey = arrQueryTabKeysRef.current[nErrSetIdx];
+        if (strTabKey) setStrQueryTabsActiveKey(strTabKey);
+        messageApi.warning(`세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
+      } else if (arrErrorFields.length > 0) {
+        messageApi.warning('필수 입력 항목을 확인해주세요.');
+      } else {
+        // 필드 에러 없이 거부(폼 구조 변경 중 재검증 등) — 저장이 조용히 무반응되는 것을 방지
+        console.error('[템플릿 저장] 검증 실패(필드 정보 없음)', err);
+        messageApi.warning('저장을 완료하지 못했습니다. 다시 시도해주세요.');
+      }
     } finally {
       setBSavingTemplate(false);
     }
@@ -1510,6 +1532,7 @@ const EventPage = () => {
                           activeKey={strQueryTabsActiveKey}
                           setActiveKey={setStrQueryTabsActiveKey}
                           justAddedRef={bQueryTabsJustAddedRef}
+                          tabKeysRef={arrQueryTabKeysRef}
                         />
                       )}
                     </Form.List>
