@@ -801,6 +801,32 @@ const EventPage = () => {
         return;
       }
     }
+
+    // 저장 대상(연결·입력ID/형식·쿼리)만 정규화 키로 비교 — 미리보기 입력값은 저장 안 하므로 제외.
+    // 변경이 없으면 전용 API(쿼리 필수 변경)를 호출해 400을 받는 대신 조용히 닫는다.
+    const fnEditSetsKey = (arrSets?: IQueryTemplateItem[]): string =>
+      JSON.stringify(
+        fnFilterValidTemplateSets(arrSets).map((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
+          return {
+            nQaDbConnectionId: objNorm.nQaDbConnectionId,
+            nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+            strInputId: objNorm.strInputId,
+            strInputFormat: objNorm.strInputFormat,
+            strDefaultItems: (s.strDefaultItems ?? '').trim(),
+            strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
+          };
+        }),
+      );
+    const bQueryEditChanged = arrQueryEditSets.length
+      ? fnEditSetsKey(objQueryEditTemplate.arrQueryTemplates) !== fnEditSetsKey(arrQueryEditSets)
+      : (objQueryEditTemplate.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim() !== strQueryEditValue.trim();
+    if (!bQueryEditChanged) {
+      messageApi.info('변경 사항이 없습니다.');
+      setBQueryEditOpen(false);
+      return;
+    }
+
     setBSavingQueryEdit(true);
     try {
       const payload: Record<string, unknown> = arrQueryEditSets.length
