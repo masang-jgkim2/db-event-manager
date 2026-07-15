@@ -1585,45 +1585,50 @@ const EventPage = () => {
                               {arrQueryEditLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
                             </Select>
                           </div>
-                          <div>
-                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                              입력 ID / 형식
-                            </Text>
-                            <Space wrap>
+                          <Row gutter={12}>
+                            <Col span={6}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                입력 ID
+                              </Text>
                               <Input
                                 className={STR_CODE_BLOCK_CLASS}
-                                style={{ width: 140 }}
                                 value={objNorm.strInputId ?? 'items'}
                                 onChange={(e) => fnPatchQueryEditSet(idx, { strInputId: e.target.value })}
                                 placeholder="items"
+                                style={objSqlFieldStyle}
                               />
+                            </Col>
+                            <Col span={6}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                입력 형식
+                              </Text>
                               <Select
-                                style={{ width: 140 }}
+                                style={{ width: '100%' }}
                                 value={objNorm.strInputFormat ?? 'item_number'}
                                 onChange={(str) => fnPatchQueryEditSet(idx, { strInputFormat: str })}
                                 options={ARR_INPUT_FORMATS.map((o) => ({ value: o.value, label: o.label }))}
                               />
-                            </Space>
-                          </div>
-                          <div>
-                            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                              미리보기 입력값 (저장 안 함)
-                            </Text>
-                            <Input
-                              className={STR_CODE_BLOCK_CLASS}
-                              style={objSqlFieldStyle}
-                              value={arrQueryEditPreviewInputs[idx] ?? ''}
-                              onChange={(e) => {
-                                setArrQueryEditPreviewInputs((prev) => {
-                                  const next = [...prev];
-                                  while (next.length <= idx) next.push('');
-                                  next[idx] = e.target.value;
-                                  return next;
-                                });
-                              }}
-                              placeholder="예: 1,2,3 — 화면 미리보기만 (기본값은 «수정»에서)"
-                            />
-                          </div>
+                            </Col>
+                            <Col span={12}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                미리보기 입력값 (저장 안 함)
+                              </Text>
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                style={objSqlFieldStyle}
+                                value={arrQueryEditPreviewInputs[idx] ?? ''}
+                                onChange={(e) => {
+                                  setArrQueryEditPreviewInputs((prev) => {
+                                    const next = [...prev];
+                                    while (next.length <= idx) next.push('');
+                                    next[idx] = e.target.value;
+                                    return next;
+                                  });
+                                }}
+                                placeholder="예: 1,2,3"
+                              />
+                            </Col>
+                          </Row>
                           {(() => {
                             const strTemplateSql = (objSet.strQueryTemplate ?? '').trim();
                             const strPreviewInput = (arrQueryEditPreviewInputs[idx] ?? '').trim();
