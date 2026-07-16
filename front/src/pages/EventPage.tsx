@@ -59,6 +59,7 @@ import {
   fnNormalizeQueryTemplateItem,
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
+import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -147,6 +148,8 @@ type TQueryTemplatesTabContentProps = {
   activeKey: string;
   setActiveKey: (k: string) => void;
   justAddedRef: React.MutableRefObject<boolean>;
+  /** 검증 실패 시 세트 index → 탭 key 매핑용 (index로 탭 전환) */
+  tabKeysRef: React.MutableRefObject<string[]>;
 };
 
 const fnFilterValidTemplateSets = (arrSets?: IQueryTemplateItem[]) =>
@@ -164,9 +167,13 @@ const QueryTemplatesTabContent = ({
   activeKey,
   setActiveKey,
   justAddedRef,
+  tabKeysRef,
 }: TQueryTemplatesTabContentProps) => {
   const { token } = theme.useToken();
   const objSqlFieldStyle = fnCodeSurfaceStyle(token, 12);
+
+  // 세트 index → 탭 key 캐시 (검증 실패 시 해당 세트 탭으로 전환)
+  tabKeysRef.current = fields.map((f) => String(f.key));
 
   useEffect(() => {
     if (justAddedRef.current && fields.length > 0) {
@@ -187,6 +194,8 @@ const QueryTemplatesTabContent = ({
     ...fields.map(({ key, name, ...restField }) => ({
       key: String(key),
       label: `세트 ${name + 1}`,
+      // 비활성 탭도 마운트 — 미방문 세트의 폼 필드가 저장 payload에서 누락되는 문제 방지
+      forceRender: true,
       children: (
         <div style={{ paddingTop: 8 }}>
           {fields.length > 1 && (
@@ -228,9 +237,47 @@ const QueryTemplatesTabContent = ({
               {arrLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
             </Select>
           </Form.Item>
-          <Form.Item {...restField} name={[name, 'strDefaultItems']} label="기본 아이템값 (예시, 선택)">
-            <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
-          </Form.Item>
+          <Row gutter={12}>
+            <Col span={6}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strInputId']}
+                label="입력 ID"
+                tooltip="SQL 플레이스홀더 {{입력ID}} (기본 items)"
+                rules={[
+                  { required: true, message: '입력 ID를 입력하세요.' },
+                  { pattern: /^[a-z][a-z0-9_]{0,31}$/, message: '소문자·숫자·_ (최대 32자)' },
+                ]}
+                initialValue="items"
+              >
+                <Input className={STR_CODE_BLOCK_CLASS} placeholder="items" style={objSqlFieldStyle} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strInputFormat']}
+                label="입력 형식"
+                rules={[{ required: true, message: '입력 형식을 선택하세요.' }]}
+                initialValue="item_number"
+              >
+                <Select placeholder="형식">
+                  {ARR_INPUT_FORMATS.map((obj) => (
+                    <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                {...restField}
+                name={[name, 'strDefaultItems']}
+                label="기본 입력값 (예시, 선택)"
+              >
+                <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item
             {...restField}
             name={[name, 'strQueryTemplate']}
@@ -240,7 +287,7 @@ const QueryTemplatesTabContent = ({
             <TextArea
               className={STR_CODE_BLOCK_CLASS}
               rows={4}
-              placeholder="{{items}}, {{date}} 등 치환 가능"
+              placeholder="{{items}} 또는 {{입력ID}}, {{date}} 등 치환 가능"
               style={objSqlFieldStyle}
             />
           </Form.Item>
@@ -264,7 +311,14 @@ const QueryTemplatesTabContent = ({
       activeKey={activeKey}
       onTabClick={(key) => {
         if (key === QUERY_TABS_ADD_KEY) {
-          add({ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' });
+          add({
+            nQaDbConnectionId: undefined,
+            nLiveDbConnectionId: undefined,
+            strInputId: 'items',
+            strInputFormat: 'item_number',
+            strQueryTemplate: '',
+            strDefaultItems: '',
+          });
           justAddedRef.current = true;
           setActiveKey(QUERY_TABS_ADD_KEY);
         } else {
@@ -305,12 +359,16 @@ const EventPage = () => {
   /** 쿼리 템플릿 탭 활성 키 (세트 1, 세트 2, … 또는 __add__) */
   const [strQueryTabsActiveKey, setStrQueryTabsActiveKey] = useState('0');
   const bQueryTabsJustAddedRef = useRef(false);
+  /** 쿼리 세트 탭 index → key 매핑 (검증 실패 시 문제 세트 탭으로 전환) */
+  const arrQueryTabKeysRef = useRef<string[]>([]);
 
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditTemplate, setObjQueryEditTemplate] = useState<IEventTemplate | null>(null);
   const [strQueryEditValue, setStrQueryEditValue] = useState('');
-  /** DBA 쿼리 수정 — 세트별 쿼리·QA/LIVE 연결 (confirm_requested 시 일반 수정 모달 대신) */
+  /** DBA 세트 연결·미리보기 — 세트별 쿼리·QA/LIVE 연결 */
   const [arrQueryEditSets, setArrQueryEditSets] = useState<IQueryTemplateItem[]>([]);
+  /** 미리보기 전용 입력값 — 기본값(strDefaultItems)과 분리, 저장하지 않음 */
+  const [arrQueryEditPreviewInputs, setArrQueryEditPreviewInputs] = useState<string[]>([]);
   const [bSavingQueryEdit, setBSavingQueryEdit] = useState(false);
 
   const arrEvents = useEventStore((s) => s.arrEvents);
@@ -336,6 +394,7 @@ const EventPage = () => {
   const bCanOpenDashboard = fnHas('my_dashboard.view');
 
   const { token } = theme.useToken();
+  const objSqlFieldStyle = fnCodeSurfaceStyle(token, 12);
 
   useEffect(() => {
     if (bStatusFilterInitializedRef.current) return;
@@ -433,7 +492,7 @@ const EventPage = () => {
     }
     if (bCanConfirm && (strStatus === 'confirm_requested' || strStatus === 'dba_confirmed')) {
       arrButtons.push(
-        <Tooltip key="query-edit" title="쿼리 수정">
+        <Tooltip key="query-edit" title="연결·입력 미리보기">
           <Button
             type="text"
             icon={<CodeOutlined />}
@@ -627,22 +686,41 @@ const EventPage = () => {
       if (bMulti) {
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: objEvent.arrQueryTemplates?.map((s) => fnNormalizeQueryTemplateItem(s)),
+          arrQueryTemplates: objEvent.arrQueryTemplates?.map((s) =>
+            fnNormalizeQueryTemplateItem(s, objEvent.strInputFormat),
+          ),
         });
       } else {
         // 기존 단일 템플릿 → 다중 폼에 1세트로 표시 (연결 DB는 사용자가 선택)
         const strQuery = objEvent.strQueryTemplate ?? '';
         const strDefault = objEvent.strDefaultItems ?? '';
+        const strFmt = objEvent.strInputFormat ?? 'item_number';
         form.setFieldsValue({
           ...objEvent,
-          arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: strQuery, strDefaultItems: strDefault }],
+          arrQueryTemplates: [{
+            nQaDbConnectionId: undefined,
+            nLiveDbConnectionId: undefined,
+            strQueryTemplate: strQuery,
+            strDefaultItems: strDefault,
+            strInputId: 'items',
+            strInputFormat: strFmt,
+          }],
         });
       }
     } else {
       setObjEditEvent(null);
       setStrQueryMode('multi');
       form.resetFields();
-      form.setFieldsValue({ arrQueryTemplates: [{ nQaDbConnectionId: undefined, nLiveDbConnectionId: undefined, strQueryTemplate: '', strDefaultItems: '' }] });
+      form.setFieldsValue({
+        arrQueryTemplates: [{
+          nQaDbConnectionId: undefined,
+          nLiveDbConnectionId: undefined,
+          strQueryTemplate: '',
+          strDefaultItems: '',
+          strInputId: 'items',
+          strInputFormat: 'item_number',
+        }],
+      });
     }
     setBModalOpen(true);
   }, [form, arrDbConnections, arrProducts]);
@@ -703,14 +781,16 @@ const EventPage = () => {
     const arrSets = fnFilterValidTemplateSets(objTpl.arrQueryTemplates);
     if (arrSets.length) {
       setArrQueryEditSets(arrSets.map((s) => ({
-        ...fnNormalizeQueryTemplateItem(s),
+        ...fnNormalizeQueryTemplateItem(s, objTpl.strInputFormat),
         strDefaultItems: s.strDefaultItems,
         strQueryTemplate: s.strQueryTemplate ?? '',
       })));
+      setArrQueryEditPreviewInputs(arrSets.map((s) => s.strDefaultItems ?? ''));
       setStrQueryEditValue('');
     } else {
       setStrQueryEditValue(objTpl.strQueryTemplate ?? '');
       setArrQueryEditSets([]);
+      setArrQueryEditPreviewInputs([objTpl.strDefaultItems ?? '']);
     }
     setBQueryEditOpen(true);
   };
@@ -722,26 +802,61 @@ const EventPage = () => {
   const fnSaveTemplateQueryEdit = async () => {
     if (!objQueryEditTemplate) return;
     if (arrQueryEditSets.length > 0) {
-      const bAllValid = arrQueryEditSets.every((s) => fnIsValidQueryTemplateSet(s));
+      const bAllValid = arrQueryEditSets.every((s) => {
+        const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
+        return objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0;
+      });
       if (!bAllValid) {
-        messageApi.warning('모든 세트에 QA/LIVE 연결 DB와 쿼리를 입력해주세요.');
+        messageApi.warning('모든 세트에 QA/LIVE 연결 DB를 선택해주세요.');
         return;
       }
     }
+
+    // 저장 대상(연결·입력ID/형식·쿼리)만 정규화 키로 비교 — 미리보기 입력값은 저장 안 하므로 제외.
+    // 변경이 없으면 전용 API(쿼리 필수 변경)를 호출해 400을 받는 대신 조용히 닫는다.
+    const fnEditSetsKey = (arrSets?: IQueryTemplateItem[]): string =>
+      JSON.stringify(
+        fnFilterValidTemplateSets(arrSets).map((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
+          return {
+            nQaDbConnectionId: objNorm.nQaDbConnectionId,
+            nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+            strInputId: objNorm.strInputId,
+            strInputFormat: objNorm.strInputFormat,
+            strDefaultItems: (s.strDefaultItems ?? '').trim(),
+            strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
+          };
+        }),
+      );
+    const bQueryEditChanged = arrQueryEditSets.length
+      ? fnEditSetsKey(objQueryEditTemplate.arrQueryTemplates) !== fnEditSetsKey(arrQueryEditSets)
+      : (objQueryEditTemplate.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim() !== strQueryEditValue.trim();
+    if (!bQueryEditChanged) {
+      messageApi.info('변경 사항이 없습니다.');
+      setBQueryEditOpen(false);
+      return;
+    }
+
     setBSavingQueryEdit(true);
     try {
       const payload: Record<string, unknown> = arrQueryEditSets.length
         ? {
             arrQueryTemplates: arrQueryEditSets.map((s) => {
-              const objNorm = fnNormalizeQueryTemplateItem(s);
+              const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
               return {
                 nQaDbConnectionId: objNorm.nQaDbConnectionId,
                 nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+                strInputId: objNorm.strInputId,
+                strInputFormat: objNorm.strInputFormat,
                 strDefaultItems: s.strDefaultItems,
                 strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
               };
             }),
             strQueryTemplate: '',
+            strInputFormat: fnNormalizeQueryTemplateItem(
+              arrQueryEditSets[0] ?? {},
+              objQueryEditTemplate.strInputFormat,
+            ).strInputFormat,
           }
         : { strQueryTemplate: strQueryEditValue.trim(), strDefaultItems: objQueryEditTemplate.strDefaultItems ?? '' };
       const result = await fnUpdateEventQuery(objQueryEditTemplate.nId, payload);
@@ -771,28 +886,103 @@ const EventPage = () => {
 
       const objEventData: Record<string, unknown> = { ...objValues };
 
-      const bQueryLocked = objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested';
+      const bConfirmRequested = !!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested');
+      // 리뷰 대기: 일반 유저는 쿼리 잠금, DBA는 «수정»에서 SQL 저장 시 전용 API 사용
+      const bQueryLocked = bConfirmRequested && !bCanConfirm;
+      const bDbaSaveQueryViaApi = bConfirmRequested && bCanConfirm;
+
+      let arrQueryPayload: IQueryTemplateItem[] | undefined;
+      let strSingleQuery = '';
+      let strSingleDefault = '';
+
       if (!bQueryLocked) {
-        objEventData.strQueryTemplate = bMulti ? '' : (objValues.strQueryTemplate ?? '');
-        objEventData.strDefaultItems = bMulti ? '' : (objValues.strDefaultItems ?? '');
-        objEventData.arrQueryTemplates = bMulti
+        strSingleQuery = bMulti ? '' : (objValues.strQueryTemplate ?? '');
+        strSingleDefault = bMulti ? '' : (objValues.strDefaultItems ?? '');
+        arrQueryPayload = bMulti
           ? (objValues.arrQueryTemplates ?? [])
               .map((s: IQueryTemplateItem) => fnNormalizeQueryTemplateItem(s))
-              .filter((s: IQueryTemplateItem) => {
-                const objNorm = fnNormalizeQueryTemplateItem(s);
-                return objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (s.strQueryTemplate ?? '').trim();
-              })
-              .map((s: IQueryTemplateItem) => ({
-                nQaDbConnectionId: Number(s.nQaDbConnectionId),
-                nLiveDbConnectionId: Number(s.nLiveDbConnectionId),
-                strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
-                strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+              .filter((objNorm: IQueryTemplateItem) =>
+                objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (objNorm.strQueryTemplate ?? '').trim())
+              .map((objNorm: IQueryTemplateItem) => ({
+                nQaDbConnectionId: objNorm.nQaDbConnectionId,
+                nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+                strInputId: (objNorm.strInputId ?? 'items').trim() || 'items',
+                strInputFormat: objNorm.strInputFormat ?? 'item_number',
+                strQueryTemplate: (objNorm.strQueryTemplate ?? '').trim(),
+                strDefaultItems: (objNorm.strDefaultItems ?? '').trim() || undefined,
               }))
           : undefined;
+
+        if (!bDbaSaveQueryViaApi) {
+          objEventData.strQueryTemplate = strSingleQuery;
+          objEventData.strDefaultItems = strSingleDefault;
+          objEventData.arrQueryTemplates = arrQueryPayload;
+        }
       }
 
-      if (!bQueryLocked && bMulti && (!objEventData.arrQueryTemplates || (objEventData.arrQueryTemplates as unknown[]).length === 0)) {
+      // 종류·유형은 템플릿, 입력 형식은 첫 세트 동기화(목록·레거시)
+      if (!bQueryLocked && !bDbaSaveQueryViaApi && Array.isArray(objEventData.arrQueryTemplates) && (objEventData.arrQueryTemplates as IQueryTemplateItem[]).length > 0) {
+        const arrSets = objEventData.arrQueryTemplates as IQueryTemplateItem[];
+        objEventData.strInputFormat = arrSets[0]?.strInputFormat ?? 'item_number';
+      }
+
+      if (!bQueryLocked && bMulti && (!arrQueryPayload || arrQueryPayload.length === 0)) {
         messageApi.warning('QA/LIVE 연결 DB와 쿼리 템플릿을 1세트 이상 입력해주세요.');
+        return;
+      }
+
+      if (objEditEvent && bDbaSaveQueryViaApi) {
+        // 메타(종류·유형·설명 등)는 일반 PUT, 쿼리·세트는 전용 API(변경 있을 때만)
+        delete objEventData.strQueryTemplate;
+        delete objEventData.strDefaultItems;
+        delete objEventData.arrQueryTemplates;
+        delete objEventData.strInputFormat;
+
+        const resultMeta = await fnUpdateEvent(objEditEvent.nId, objEventData as Parameters<typeof fnUpdateEvent>[1]);
+        if (!resultMeta.bSuccess) {
+          messageApi.error(resultMeta.strMessage);
+          return;
+        }
+
+        const fnSetKey = (arr?: IQueryTemplateItem[]) => JSON.stringify(
+          (arr ?? [])
+            .map((s) => fnNormalizeQueryTemplateItem(s, objEditEvent.strInputFormat))
+            .filter((s) => (s.strQueryTemplate ?? '').trim() && s.nQaDbConnectionId && s.nLiveDbConnectionId)
+            .map((s) => ({
+              nQaDbConnectionId: s.nQaDbConnectionId,
+              nLiveDbConnectionId: s.nLiveDbConnectionId,
+              strInputId: s.strInputId,
+              strInputFormat: s.strInputFormat,
+              strDefaultItems: (s.strDefaultItems ?? '').trim(),
+              strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
+            })),
+        );
+        const bQueryChanged = arrQueryPayload?.length
+          ? fnSetKey(objEditEvent.arrQueryTemplates) !== fnSetKey(arrQueryPayload)
+          : ((objEditEvent.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim() !== strSingleQuery.trim()
+            || (objEditEvent.strDefaultItems ?? '').trim() !== strSingleDefault.trim());
+
+        if (!bQueryChanged) {
+          messageApi.success(resultMeta.strMessage);
+          fnCloseModal();
+          return;
+        }
+
+        const objQueryBody: Record<string, unknown> = arrQueryPayload?.length
+          ? {
+              arrQueryTemplates: arrQueryPayload,
+              strQueryTemplate: '',
+              strInputFormat: arrQueryPayload[0]?.strInputFormat ?? 'item_number',
+            }
+          : { strQueryTemplate: strSingleQuery.trim(), strDefaultItems: strSingleDefault };
+
+        const resultQuery = await fnUpdateEventQuery(objEditEvent.nId, objQueryBody);
+        if (resultQuery.bSuccess) {
+          messageApi.success(resultQuery.strMessage || resultMeta.strMessage);
+          fnCloseModal();
+        } else {
+          messageApi.error(resultQuery.strMessage);
+        }
         return;
       }
 
@@ -806,8 +996,22 @@ const EventPage = () => {
       } else {
         messageApi.error(result.strMessage);
       }
-    } catch {
-      // 유효성 검사 실패 — Ant Design Form이 자체 인라인 에러 표시
+    } catch (err) {
+      // 유효성 검사 실패 — 비활성(숨김) 세트 탭의 에러는 화면에 안 보이므로 해당 탭으로 전환·안내
+      const arrErrorFields = (err as { errorFields?: Array<{ name: (string | number)[] }> })?.errorFields ?? [];
+      const objSetError = arrErrorFields.find((f) => f.name?.[0] === 'arrQueryTemplates');
+      if (objSetError) {
+        const nErrSetIdx = Number(objSetError.name[1]);
+        const strTabKey = arrQueryTabKeysRef.current[nErrSetIdx];
+        if (strTabKey) setStrQueryTabsActiveKey(strTabKey);
+        messageApi.warning(`세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
+      } else if (arrErrorFields.length > 0) {
+        messageApi.warning('필수 입력 항목을 확인해주세요.');
+      } else {
+        // 필드 에러 없이 거부(폼 구조 변경 중 재검증 등) — 저장이 조용히 무반응되는 것을 방지
+        console.error('[템플릿 저장] 검증 실패(필드 정보 없음)', err);
+        messageApi.warning('저장을 완료하지 못했습니다. 다시 시도해주세요.');
+      }
     } finally {
       setBSavingTemplate(false);
     }
@@ -1003,11 +1207,24 @@ const EventPage = () => {
       ),
     },
     {
-      title: '입력 형식',
-      dataIndex: 'strInputFormat',
+      title: '입력',
       key: 'strInputFormat',
-      width: 160,
-      render: (str: TInputFormat) => fnGetInputFormatLabel(str),
+      width: 168,
+      render: (_: unknown, objRecord: IEventTemplate) => {
+        const arrSets = objRecord.arrQueryTemplates?.filter((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objRecord.strInputFormat);
+          return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
+        }) ?? [];
+        if (arrSets.length === 0) {
+          return fnGetInputFormatLabel(objRecord.strInputFormat);
+        }
+        const arrLabel = arrSets.map((s) => {
+          const objNorm = fnNormalizeQueryTemplateItem(s, objRecord.strInputFormat);
+          return `${objNorm.strInputId}:${fnGetInputFormatLabel(objNorm.strInputFormat ?? objRecord.strInputFormat)}`;
+        });
+        const strUnique = Array.from(new Set(arrLabel));
+        return strUnique.length === 1 ? strUnique[0] : strUnique.join(', ');
+      },
     },
     {
       title: '쿼리',
@@ -1214,7 +1431,7 @@ const EventPage = () => {
           </Form.Item>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 name="strCategory"
                 label="이벤트 종류"
@@ -1227,7 +1444,7 @@ const EventPage = () => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Form.Item
                 name="strType"
                 label="이벤트 유형"
@@ -1240,20 +1457,11 @@ const EventPage = () => {
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                name="strInputFormat"
-                label="입력 형식"
-                rules={[{ required: true, message: '입력 형식을 선택해주세요.' }]}
-              >
-                <Select placeholder="입력 형식 선택">
-                  {ARR_INPUT_FORMATS.map((obj) => (
-                    <Select.Option key={obj.value} value={obj.value}>{obj.label}</Select.Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
           </Row>
+          {/* 입력 ID·형식은 쿼리 세트별 — 템플릿 strInputFormat은 저장 시 첫 세트에서 동기화 */}
+          <Form.Item name="strInputFormat" hidden>
+            <Input />
+          </Form.Item>
 
           <Form.Item name="strDescription" label="설명">
             <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
@@ -1265,7 +1473,11 @@ const EventPage = () => {
               showIcon
               style={{ marginBottom: 12 }}
               message="쿼리 리뷰 대기 중"
-              description="쿼리·세트·QA/LIVE 연결은 일반 «수정»으로 변경할 수 없습니다. 목록의 «쿼리 수정» 버튼(DBA 전용)에서 쿼리와 QA/LIVE 연결을 수정하세요."
+              description={
+                bCanConfirm
+                  ? '템플릿 SQL·세트·연결은 아래에서 수정할 수 있습니다(저장 시 DBA 쿼리 API). «연결·입력 미리보기»는 연결·입력 ID·실행 미리보기용입니다.'
+                  : '쿼리·세트·QA/LIVE 연결은 일반 «수정»으로 변경할 수 없습니다. DBA «연결·입력 미리보기»에서 연결·입력 설정을 변경합니다.'
+              }
             />
           )}
 
@@ -1279,7 +1491,8 @@ const EventPage = () => {
             />
           )}
 
-          {!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested') && (
+          {/* confirm_requested: SQL은 이 모달에서 확인(DBA는 수정), 연결·입력 ID는 «쿼리 수정» */}
+          {!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && !bCanConfirm) && (
           <Tabs
             activeKey={strQueryMode}
             onChange={(k) => setStrQueryMode(k as TQueryMode)}
@@ -1319,6 +1532,7 @@ const EventPage = () => {
                           activeKey={strQueryTabsActiveKey}
                           setActiveKey={setStrQueryTabsActiveKey}
                           justAddedRef={bQueryTabsJustAddedRef}
+                          tabKeysRef={arrQueryTabKeysRef}
                         />
                       )}
                     </Form.List>
@@ -1335,7 +1549,7 @@ const EventPage = () => {
         title={(
           <Space>
             <CodeOutlined />
-            DBA 쿼리 수정
+            연결·입력 미리보기
             {objQueryEditTemplate && (
               <>
                 {fnRenderTemplateStatusIcon(fnResolveTemplateStatus(objQueryEditTemplate), 12)}
@@ -1369,14 +1583,17 @@ const EventPage = () => {
               message={`템플릿: ${objQueryEditTemplate.strEventLabel}`}
               description={
                 fnResolveTemplateStatus(objQueryEditTemplate) === 'dba_confirmed'
-                  ? '승인 완료 템플릿입니다. 쿼리·QA/LIVE 연결을 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 세트 추가·삭제는 «수정» 모달을 사용하세요.'
-                  : '쿼리·QA/LIVE 연결 수정이 가능합니다. 변경 이력이 진행 로그에 diff와 함께 기록되며 템플릿 상태는 유지됩니다.'
+                  ? '승인 완료 템플릿입니다. QA/LIVE·입력 ID/형식을 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 템플릿 SQL·세트 추가·삭제·기본값은 «수정» 모달을 사용하세요.'
+                  : 'QA/LIVE 연결·입력 ID/형식을 수정합니다. 아래 미리보기 입력값은 저장되지 않습니다. 템플릿 SQL·기본값은 «수정» 모달에서 편집하세요.'
               }
             />
             {arrQueryEditSets.length > 0 ? (
               <Tabs
                 items={arrQueryEditSets.map((objSet, idx) => {
-                  const objNorm = fnNormalizeQueryTemplateItem(objSet);
+                  const objNorm = fnNormalizeQueryTemplateItem(
+                    objSet,
+                    objQueryEditTemplate?.strInputFormat,
+                  );
                   return {
                     key: String(idx),
                     label: `세트 ${idx + 1}`,
@@ -1417,33 +1634,105 @@ const EventPage = () => {
                               {arrQueryEditLiveConnections.map((c) => fnRenderConnectionSelectOption(c, arrProducts))}
                             </Select>
                           </div>
-                          <div>
-                            <div
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                marginBottom: 4,
-                              }}
-                            >
-                              <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
-                              <Button
-                                size="small"
-                                icon={<CopyOutlined />}
-                                onClick={() => fnCopyQueryText(objSet.strQueryTemplate ?? '')}
-                              >
-                                복사
-                              </Button>
-                            </div>
-                            <SqlLineNumberArea
-                              strValue={objSet.strQueryTemplate ?? ''}
-                              fnOnChange={(strNext) => fnPatchQueryEditSet(idx, { strQueryTemplate: strNext })}
-                              nFontSize={13}
-                              nMinRows={10}
-                              nMaxRows={25}
-                              strPlaceholder="SQL 쿼리를 입력하세요..."
-                            />
-                          </div>
+                          <Row gutter={12}>
+                            <Col span={6}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                입력 ID
+                              </Text>
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                value={objNorm.strInputId ?? 'items'}
+                                onChange={(e) => fnPatchQueryEditSet(idx, { strInputId: e.target.value })}
+                                placeholder="items"
+                                style={objSqlFieldStyle}
+                              />
+                            </Col>
+                            <Col span={6}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                입력 형식
+                              </Text>
+                              <Select
+                                style={{ width: '100%' }}
+                                value={objNorm.strInputFormat ?? 'item_number'}
+                                onChange={(str) => fnPatchQueryEditSet(idx, { strInputFormat: str })}
+                                options={ARR_INPUT_FORMATS.map((o) => ({ value: o.value, label: o.label }))}
+                              />
+                            </Col>
+                            <Col span={12}>
+                              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                                미리보기 입력값 (저장 안 함)
+                              </Text>
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                style={objSqlFieldStyle}
+                                value={arrQueryEditPreviewInputs[idx] ?? ''}
+                                onChange={(e) => {
+                                  setArrQueryEditPreviewInputs((prev) => {
+                                    const next = [...prev];
+                                    while (next.length <= idx) next.push('');
+                                    next[idx] = e.target.value;
+                                    return next;
+                                  });
+                                }}
+                                placeholder="예: 1,2,3"
+                              />
+                            </Col>
+                          </Row>
+                          {(() => {
+                            const strTemplateSql = (objSet.strQueryTemplate ?? '').trim();
+                            const strPreviewInput = (arrQueryEditPreviewInputs[idx] ?? '').trim();
+                            const strFmt = (objNorm.strInputFormat ?? 'item_number') as TInputFormat;
+                            const bSubstituted = strPreviewInput.length > 0;
+                            const strPreviewQuery = bSubstituted
+                              ? fnReplaceItemsInTemplate(
+                                objSet.strQueryTemplate ?? '',
+                                strPreviewInput,
+                                strFmt,
+                                objNorm.strInputId ?? 'items',
+                              )
+                              : strTemplateSql;
+                            const strPreviewLabel = bSubstituted
+                              ? '실행될 쿼리 (미리보기)'
+                              : `쿼리 (플레이스홀더 {{${objNorm.strInputId ?? 'items'}}} — 입력값 있으면 치환)`;
+                            return (
+                              <div>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    marginBottom: 4,
+                                  }}
+                                >
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {strPreviewLabel}
+                                  </Text>
+                                  {strPreviewQuery ? (
+                                    <Button
+                                      size="small"
+                                      icon={<CopyOutlined />}
+                                      onClick={() => fnCopyQueryText(strPreviewQuery)}
+                                    >
+                                      복사
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                {strPreviewQuery ? (
+                                  <SqlLineNumberArea
+                                    strValue={strPreviewQuery}
+                                    bReadOnly
+                                    nFontSize={12}
+                                    nMinRows={6}
+                                    nMaxRows={18}
+                                  />
+                                ) : (
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    이 세트에 저장된 템플릿 SQL이 없습니다. «수정» 모달에서 확인하세요.
+                                  </Text>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </Space>
                       </div>
                     ),
@@ -1451,27 +1740,61 @@ const EventPage = () => {
                 })}
               />
             ) : (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 4,
-                  }}
-                >
-                  <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
-                  <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopyQueryText(strQueryEditValue)}>복사</Button>
-                </div>
-                <SqlLineNumberArea
-                  strValue={strQueryEditValue}
-                  fnOnChange={setStrQueryEditValue}
-                  nFontSize={13}
-                  nMinRows={10}
-                  nMaxRows={25}
-                  strPlaceholder="SQL 쿼리를 입력하세요..."
-                />
-              </>
+              (() => {
+                const strPreviewInput = (arrQueryEditPreviewInputs[0] ?? '').trim();
+                const strFmt = (objQueryEditTemplate.strInputFormat ?? 'item_number') as TInputFormat;
+                const strPreviewQuery = strPreviewInput
+                  ? fnReplaceItemsInTemplate(strQueryEditValue, strPreviewInput, strFmt, 'items')
+                  : strQueryEditValue;
+                return (
+                  <div>
+                    <div style={{ marginBottom: 8 }}>
+                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                        미리보기 입력값 (저장 안 함)
+                      </Text>
+                      <Input
+                        className={STR_CODE_BLOCK_CLASS}
+                        style={objSqlFieldStyle}
+                        value={arrQueryEditPreviewInputs[0] ?? ''}
+                        onChange={(e) => setArrQueryEditPreviewInputs([e.target.value])}
+                        placeholder="예: 1,2,3"
+                      />
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Text type="secondary" style={{ fontSize: 12 }}>실행될 쿼리 (미리보기)</Text>
+                      {strPreviewQuery ? (
+                        <Button
+                          size="small"
+                          icon={<CopyOutlined />}
+                          onClick={() => fnCopyQueryText(strPreviewQuery)}
+                        >
+                          복사
+                        </Button>
+                      ) : null}
+                    </div>
+                    {strPreviewQuery ? (
+                      <SqlLineNumberArea
+                        strValue={strPreviewQuery}
+                        bReadOnly
+                        nFontSize={12}
+                        nMinRows={6}
+                        nMaxRows={18}
+                      />
+                    ) : (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        템플릿 SQL은 «수정» 모달에서 확인·편집하세요.
+                      </Text>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </Space>
         )}
