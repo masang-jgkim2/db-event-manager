@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
+import LabeledSwitch from '../components/LabeledSwitch';
 import { ProductNameTag } from '../components/ProductNameTag';
 import { DqpmTag } from '../components/DqpmTag';
 import {
@@ -32,8 +33,12 @@ import {
   fnFindDuplicateDbConnectionInList,
   fnNormalizeServiceAbbr,
 } from '../utils/dbConnectionScope';
+import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 
 const { Text } = Typography;
+
+/** 계정별 — DB 접속 목록 자동 연결 점검(30초 주기) ON/OFF, 기본 OFF */
+const STR_STORAGE_AUTO_MONITOR = 'db-conn-auto-monitor';
 
 const OBJ_KIND_COLOR: Record<TDbConnectionKind, string> = {
   GAME: 'blue',
@@ -85,6 +90,9 @@ const DbConnectionPage = () => {
   const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
   const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
   const [mapMonitorStatus, setMapMonitorStatus] = useState<Record<number, TMonitorStatus>>({});
+  const [bAutoMonitor, setBAutoMonitor] = useState(
+    () => fnScopedStorageGetItem(STR_STORAGE_AUTO_MONITOR) === '1',
+  );
   const [bSaving, setBSaving] = useState(false);
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
@@ -113,6 +121,11 @@ const DbConnectionPage = () => {
   const bShowConnectionColumn = fnHas('db_connection.view') || fnHas('db.manage');
   /** 연결 테스트 API 호출(자동 점검·행 펼침 시 실행) — 테스트 또는 관리 */
   const bCanRunConnectionTest = fnHas('db_connection.test') || fnHas('db.manage');
+
+  const fnSetAutoMonitor = useCallback((bOn: boolean) => {
+    setBAutoMonitor(bOn);
+    fnScopedStorageSetItem(STR_STORAGE_AUTO_MONITOR, bOn ? '1' : '0');
+  }, []);
 
   // 목록 조회
   const fnLoad = useCallback(async () => {
@@ -350,9 +363,9 @@ const DbConnectionPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 선택 id·권한만 반응
   }, [objSelectedRow?.nId, bCanRunConnectionTest]);
 
-  // 탭이 보일 때 주기 점검 — 파란점(정상) / 빨간점(실패·무응답). pending 일괄 갱신 없음(깜빡임 방지)
+  // 탭이 보일 때 주기 점검 — 기본 OFF, 켜면 활성 접속 전체(타임아웃 12초)
   useEffect(() => {
-    if (!bCanRunConnectionTest) return undefined;
+    if (!bCanRunConnectionTest || !bAutoMonitor) return undefined;
 
     const fnPoll = async () => {
       if (typeof document !== 'undefined' && document.hidden) return;
@@ -388,7 +401,7 @@ const DbConnectionPage = () => {
       window.clearInterval(nTimerId);
       document.removeEventListener('visibilitychange', fnVis);
     };
-  }, [bCanRunConnectionTest]);
+  }, [bCanRunConnectionTest, bAutoMonitor]);
 
   // 선택된 행 아래에 표시할 연결 테스트 상태/결과 패널
   const fnRenderTestPanel = (r: IDbConnection) => {
@@ -457,7 +470,10 @@ const DbConnectionPage = () => {
     return (
       <div style={{ padding: '12px 24px', background: 'var(--ant-color-fill-quaternary)', color: 'var(--ant-color-text-secondary)' }}>
         <Text type="secondary">
-          행을 선택하면 연결 테스트가 실행되고, 결과가 여기에 표시됩니다. 연결 열은 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 자동 점검합니다.
+          행을 클릭하면 연결 테스트가 실행되고 결과가 여기에 표시됩니다.
+          {bAutoMonitor
+            ? ` 자동 점검 ON — 「연결」열은 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다 갱신됩니다.`
+            : ' 자동 점검 OFF — 「연결」열 색은 행 클릭 테스트 후에만 갱신됩니다.'}
         </Text>
       </div>
     );
@@ -551,14 +567,14 @@ const DbConnectionPage = () => {
               const strConnAddr = `${r.strHost}:${r.nPort}`;
               const strTip =
                 strSt === 'ok'
-                  ? `연결 정상 · ${strConnAddr} / ${r.strDatabase} (자동 점검, 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다)`
+                  ? `연결 정상 · ${strConnAddr} / ${r.strDatabase}${bAutoMonitor ? ` (자동 점검, 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다)` : ' (행 클릭 테스트)'}`
                   : strSt === 'fail'
                     ? `연결 실패 · ${strConnAddr} / ${r.strDatabase} · 무응답 또는 타임아웃(${N_MONITOR_TIMEOUT_MS / 1000}초)`
                     : strSt === 'pending'
                       ? '점검 중…'
                       : bCanRunConnectionTest
-                        ? '점검 전'
-                        : '연결 테스트(db_connection.test) 권한이 있으면 자동 점검·색 표시';
+                        ? (bAutoMonitor ? '점검 전' : '행 클릭 시 테스트 · 자동 점검 꺼짐')
+                        : '연결 테스트(db_connection.test) 권한이 있으면 색 표시';
               const strColor =
                 strSt === 'ok'
                   ? fnSemanticColor('info', token)
@@ -655,19 +671,31 @@ const DbConnectionPage = () => {
         nodeDescription={
           bShowConnectionColumn && bCanRunConnectionTest ? (
             <>
-              「연결」열은 db_connection.view로 표시됩니다. 브라우저가 연결 테스트 API를 약 {N_MONITOR_INTERVAL_MS / 1000}초마다 호출해 DB 응답을 표시합니다(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점). 탭이 백그라운드일 때는 화면으로 돌아올 때 다시 점검합니다. 행을 펼치면 수동 테스트와 상세 결과를 볼 수 있습니다(db_connection.test).
+              「연결」열은 db_connection.view로 표시됩니다. 행을 클릭하면 해당 접속만 연결 테스트합니다. 자동 점검(약 {N_MONITOR_INTERVAL_MS / 1000}초마다 전체 활성 접속)은 기본 꺼짐 — 필요 시 우측 토글을 켜세요(타임아웃 {N_MONITOR_TIMEOUT_MS / 1000}초, 무응답·오류 시 빨간 점).
             </>
           ) : bShowConnectionColumn ? (
-            <>「연결」열은 보기 권한으로 표시됩니다. 자동 점검·색·행 펼침 테스트는 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
+            <>「연결」열은 보기 권한으로 표시됩니다. 행 클릭 테스트·자동 점검은 db_connection.test(또는 db.manage) 권한이 있을 때만 동작합니다.</>
           ) : (
             <>DB 접속 목록은 db_connection.view(또는 db.manage) 권한이 필요합니다.</>
           )
         }
         nodeExtra={
-          bCanCreate ? (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
-              새로운 DB 접속 정보
-            </Button>
+          bCanRunConnectionTest || bCanCreate ? (
+            <Space direction="vertical" size={8} style={{ alignItems: 'flex-end' }}>
+              {bCanCreate ? (
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => fnOpenModal()}>
+                  새로운 DB 접속 정보
+                </Button>
+              ) : null}
+              {bCanRunConnectionTest ? (
+                <LabeledSwitch
+                  strLabel="자동 연결"
+                  bChecked={bAutoMonitor}
+                  onChange={fnSetAutoMonitor}
+                  strTooltip={`활성 접속을 약 ${N_MONITOR_INTERVAL_MS / 1000}초마다 자동 테스트 (기본 꺼짐)`}
+                />
+              ) : null}
+            </Space>
           ) : undefined
         }
       >
