@@ -18,6 +18,7 @@ alwaysApply: false
 - **SQL 블록**: `fnCodeSurfaceStyle(token)` / `fnSqlEditorReadonlyStyle` · class `dqpm-font-mono` (`queryEditorTokens.ts`)
 - **검토표**: `docs/CURSOR-UI-AUDIT.md`
 - **CRUD 골격**: `CrudPageShell` + `CrudListToolbar` (Segmented·Form 필터)
+- **헤더 토글**: `LabeledSwitch` — 라벨+Switch (`ActivityPage` 실시간 갱신, `DbConnectionPage` 자동 연결). SettingsDrawer 풀폭 행과는 별개.
 
 ## 프로젝트 구조
 
