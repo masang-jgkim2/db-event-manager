@@ -948,30 +948,47 @@ export const fnReplaceActivityLogsOnly = async (
   }
 };
 
+const STR_DB_CONNECTION_SELECT =
+  `n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
+            str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at`;
+
+const fnMapDbConnectionRowFromSql = (r: RowDataPacket): IDbConnection => ({
+  nId: Number(r.n_id),
+  nProductId: Number(r.n_product_id),
+  strProductName: String(r.str_product_name),
+  nServiceId: r.n_service_id != null ? Number(r.n_service_id) : null,
+  strServiceAbbr: r.str_service_abbr != null ? String(r.str_service_abbr) : undefined,
+  strKind: r.str_kind as IDbConnection['strKind'],
+  strEnv: r.str_env as IDbConnection['strEnv'],
+  strDbType: r.str_db_type as IDbConnection['strDbType'],
+  strHost: String(r.str_host),
+  nPort: Number(r.n_port),
+  strDatabase: String(r.str_database),
+  strUser: String(r.str_user),
+  strPassword: String(r.str_password),
+  bIsActive: Boolean(r.b_is_active),
+  dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
+  dtUpdatedAt: new Date(r.dt_updated_at as string | Date).toISOString(),
+});
+
 export const fnRelationalLoadDbConnections = async (pool: Pool): Promise<IDbConnection[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT n_id, n_product_id, str_product_name, n_service_id, str_service_abbr, str_kind, str_env, str_db_type, str_host, n_port,
-            str_database, str_user, str_password, b_is_active, dt_created_at, dt_updated_at
-     FROM db_connection ORDER BY n_id`,
+    `SELECT ${STR_DB_CONNECTION_SELECT} FROM db_connection ORDER BY n_id`,
   );
-  return (rows as RowDataPacket[]).map((r) => ({
-    nId: Number(r.n_id),
-    nProductId: Number(r.n_product_id),
-    strProductName: String(r.str_product_name),
-    nServiceId: r.n_service_id != null ? Number(r.n_service_id) : null,
-    strServiceAbbr: r.str_service_abbr != null ? String(r.str_service_abbr) : undefined,
-    strKind: r.str_kind as IDbConnection['strKind'],
-    strEnv: r.str_env as IDbConnection['strEnv'],
-    strDbType: r.str_db_type as IDbConnection['strDbType'],
-    strHost: String(r.str_host),
-    nPort: Number(r.n_port),
-    strDatabase: String(r.str_database),
-    strUser: String(r.str_user),
-    strPassword: String(r.str_password),
-    bIsActive: Boolean(r.b_is_active),
-    dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
-    dtUpdatedAt: new Date(r.dt_updated_at as string | Date).toISOString(),
-  }));
+  return (rows as RowDataPacket[]).map(fnMapDbConnectionRowFromSql);
+};
+
+/** 연결 테스트 직전 1행만 재로드 — 전체 SELECT 부하 방지 */
+export const fnRelationalLoadDbConnectionById = async (
+  pool: Pool,
+  nId: number,
+): Promise<IDbConnection | undefined> => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT ${STR_DB_CONNECTION_SELECT} FROM db_connection WHERE n_id = ? LIMIT 1`,
+    [nId],
+  );
+  const r = (rows as RowDataPacket[])[0];
+  return r ? fnMapDbConnectionRowFromSql(r) : undefined;
 };
 
 export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate[]> => {

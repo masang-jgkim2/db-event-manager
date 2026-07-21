@@ -7,7 +7,7 @@ import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
 import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
 import {
   fnDeleteDbConnectionRowFromMysql,
-  fnRelationalLoadDbConnections,
+  fnRelationalLoadDbConnectionById,
   fnSyncDbConnectionsOnlyToMysql,
   fnUpsertDbConnectionRowToMysql,
 } from '../db/mysqlRelationalSync';
@@ -130,8 +130,9 @@ export const fnRefreshDbConnectionByIdFromMysql = async (
 ): Promise<IDbConnection | undefined> => {
   if (!fnIsMysqlStore()) return fnFindConnectionById(nId);
   const pool = fnGetMysqlAppPool();
-  const arrFromDb = fnNormalizeConnections(await fnRelationalLoadDbConnections(pool));
-  const row = arrFromDb.find((c) => c.nId === nId);
+  const rowRaw = await fnRelationalLoadDbConnectionById(pool, nId);
+  if (!rowRaw) return undefined;
+  const row = fnNormalizeConnections([rowRaw])[0];
   if (!row) return undefined;
   const nIdx = arrDbConnections.findIndex((c) => c.nId === nId);
   if (nIdx >= 0) arrDbConnections[nIdx] = row;

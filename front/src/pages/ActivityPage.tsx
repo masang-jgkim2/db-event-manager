@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Typography, message, Form, Select, Button, Space, DatePicker, Pagination, Switch, Modal,
+  Typography, message, Form, Select, Button, Space, DatePicker, Pagination, Modal,
 } from 'antd';
 import { HistoryOutlined } from '@ant-design/icons';
 import CrudPageShell from '../components/CrudPageShell';
+import LabeledSwitch from '../components/LabeledSwitch';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -343,10 +344,11 @@ const ActivityPage = () => {
         nodeIcon={<HistoryOutlined />}
         nodeDescription="HTTP 메서드·경로·응답 코드 기준 기록입니다. 실시간 갱신을 켜 두면 SSE로 신규 로그가 쌓일 때 목록을 다시 불러옵니다. 필터는 시각·활동 분류·HTTP 메서드·행위자·HTTP 상태를 조합해 조회합니다."
         nodeExtra={(
-          <Space align="center" size="small">
-            <Text type="secondary" style={{ fontSize: 12 }}>실시간 갱신</Text>
-            <Switch checked={bRealtime} onChange={setBRealtime} />
-          </Space>
+          <LabeledSwitch
+            strLabel="실시간 갱신"
+            bChecked={bRealtime}
+            onChange={setBRealtime}
+          />
         )}
       >
         <Form
