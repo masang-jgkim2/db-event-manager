@@ -1,9 +1,9 @@
 #!/bin/bash
 # 운영자가 SSH 접속해서 수동으로 실행하는 긴급 롤백 스크립트.
-# masang 유저가 직접 호출할 경우 sudoers.d에 등록되어 있어야 함.
+# ubuntu 유저가 직접 호출할 경우 sudoers.d에 등록되어 있어야 함(런타임은 www-data, 운영자는 ubuntu).
 set -e
 
-PROJECT_DIR="/masang/masanggames.co.kr/db-manager"
+PROJECT_DIR="/masang/masanggames.co.kr/internal-db-event-manager"
 RELEASES_DIR="${PROJECT_DIR}/releases"
 SYMLINK="${PROJECT_DIR}/current"
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_DIR="/masang/masanggames.co.kr/db-manager"
+PROJECT_DIR="/masang/masanggames.co.kr/internal-db-event-manager"
 SYMLINK="${PROJECT_DIR}/current"
 
 echo "## =========================================="
