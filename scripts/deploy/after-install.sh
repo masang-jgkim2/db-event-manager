@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_DIR="/masang/masanggames.co.kr/db-manager"
+PROJECT_DIR="/masang/masanggames.co.kr/internal-db-event-manager"
 RELEASES_DIR="${PROJECT_DIR}/releases"
 SHARED_DIR="${PROJECT_DIR}/shared"
 STAGING_DIR="${RELEASES_DIR}/staging"
@@ -48,9 +48,9 @@ fi
 ln -sfn "$SHARED_DIR/data" "$RELEASE_DIR/backend/data"
 echo "## backend/data → shared/data 심볼릭 링크: OK"
 
-# 권한 (런타임 user = masang)
+# 권한 (런타임 user = www-data)
 echo "## 파일 권한 설정"
-chown -R masang:masang "$RELEASE_DIR"
+chown -R www-data:www-data "$RELEASE_DIR"
 find "$RELEASE_DIR" -type f -exec chmod 644 {} \;
 find "$RELEASE_DIR" -type d -exec chmod 755 {} \;
 # 스크립트 실행 권한
