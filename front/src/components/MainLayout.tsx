@@ -47,11 +47,11 @@ const objRoleLabel: Record<string, { strText: string; strColor: string }> = {
 function fnResolveHeaderUserDisplay(
   strDisplayName: string | undefined,
   strUserId: string | undefined,
-  strRoleCode: string,
+  strRoleLabel: string,
 ) {
   const strHeaderDisplayName = strDisplayName?.trim() ?? '';
-  const strRoleNorm = strRoleCode.trim();
-  // 표시명과 역할 한글 라벨이 같으면 태그를 숨기던 기존 동작 → 역할 코드는 항상 구분 가능
+  const strRoleNorm = strRoleLabel.trim();
+  // 사용자 표시명과 역할 표시명이 같으면 태그 숨김
   const bShowRoleTag =
     Boolean(strRoleNorm) && strRoleNorm.toLowerCase() !== strHeaderDisplayName.toLowerCase();
   const strUserHoverHint =
@@ -350,8 +350,8 @@ const MainLayout = () => {
   };
 
   const { strHeaderDisplayName, bShowRoleTag, strUserHoverHint } = useMemo(
-    () => fnResolveHeaderUserDisplay(user?.strDisplayName, user?.strUserId, strFirstRole),
-    [user?.strDisplayName, user?.strUserId, strFirstRole],
+    () => fnResolveHeaderUserDisplay(user?.strDisplayName, user?.strUserId, objRole.strText),
+    [user?.strDisplayName, user?.strUserId, objRole.strText],
   );
 
   // 사이드 폭에 맞춰 로고 글자 크기 조절(좁게 당기면 자동으로 줄어듦)
@@ -514,7 +514,7 @@ const MainLayout = () => {
                   />
                 </Tooltip>
                 <Text strong>{strHeaderDisplayName || user?.strUserId}</Text>
-                {bShowRoleTag ? <Tag color={objRole.strColor}>{strFirstRole}</Tag> : null}
+                {bShowRoleTag ? <Tag color={objRole.strColor}>{objRole.strText}</Tag> : null}
               </Space>
             </Dropdown>
             {/* UI 설정 버튼 */}
