@@ -35,6 +35,8 @@ export interface IUserRow {
   strEmail?: string | null;
   strStatus?: TUserStatus;
   dtCreatedAt: string;
+  /** 마지막 로그인 성공 시각 (ISO) — 재시작·로그아웃에도 유지 */
+  dtLastLoginAt?: string | null;
 }
 
 const STR_FILE = 'users.json';
@@ -147,15 +149,16 @@ const fnSyncUsersOnlyToMysql = async (
     for (const row of arrRows) {
       const strDt = fnToMysqlDatetime6(row.dtCreatedAt || new Date().toISOString());
       await conn.execute(
-        `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at)
-         VALUES (?,?,?,?,?,?,?)
+        `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at, dt_last_login_at)
+         VALUES (?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
            str_user_id = VALUES(str_user_id),
            str_password = VALUES(str_password),
            str_display_name = VALUES(str_display_name),
            str_email = VALUES(str_email),
            str_status = VALUES(str_status),
-           dt_created_at = VALUES(dt_created_at)`,
+           dt_created_at = VALUES(dt_created_at),
+           dt_last_login_at = COALESCE(VALUES(dt_last_login_at), users.dt_last_login_at)`,
         [
           row.nId,
           row.strUserId,
@@ -164,6 +167,7 @@ const fnSyncUsersOnlyToMysql = async (
           row.strEmail ?? null,
           row.strStatus ?? STR_USER_STATUS_ACTIVE,
           strDt,
+          row.dtLastLoginAt ? fnToMysqlDatetime6(row.dtLastLoginAt) : null,
         ],
       );
     }
@@ -204,6 +208,7 @@ const fnUserRowFromDbLoad = (row: {
   strEmail?: string | null;
   strStatus?: string;
   dtCreatedAt: string;
+  dtLastLoginAt?: string | null;
 }): IUserRow => ({
   nId: row.nId,
   strUserId: row.strUserId,
@@ -213,6 +218,7 @@ const fnUserRowFromDbLoad = (row: {
   strStatus:
     typeof row.strStatus === 'string' ? (row.strStatus as TUserStatus) : STR_USER_STATUS_ACTIVE,
   dtCreatedAt: row.dtCreatedAt,
+  dtLastLoginAt: row.dtLastLoginAt ?? null,
 });
 
 const fnUserRowFromJsonRecord = (raw: Record<string, unknown>): IUserRow | null => {
@@ -226,7 +232,9 @@ const fnUserRowFromJsonRecord = (raw: Record<string, unknown>): IUserRow | null 
   const strEmail = typeof raw.strEmail === 'string' ? raw.strEmail : null;
   const strStatus =
     typeof raw.strStatus === 'string' ? (raw.strStatus as TUserStatus) : STR_USER_STATUS_ACTIVE;
-  return { nId, strUserId, strPassword, strDisplayName, strEmail, strStatus, dtCreatedAt };
+  const dtLastLoginAt =
+    typeof raw.dtLastLoginAt === 'string' ? raw.dtLastLoginAt : null;
+  return { nId, strUserId, strPassword, strDisplayName, strEmail, strStatus, dtCreatedAt, dtLastLoginAt };
 };
 
 /**
@@ -288,6 +296,7 @@ export const fnGetUsersWithRoles = (strStatusFilter?: TUserStatus): IUser[] =>
       strEmail: u.strEmail ?? null,
       strStatus: u.strStatus ?? STR_USER_STATUS_ACTIVE,
       dtCreatedAt: new Date(u.dtCreatedAt),
+      dtLastLoginAt: u.dtLastLoginAt ? new Date(u.dtLastLoginAt) : null,
       arrRoles: fnGetRoleCodesByRoleIds(fnGetRoleIdsByUserId(u.nId)),
     }));
 
@@ -313,12 +322,35 @@ export const fnFindUserByStrUserId = (strUserId: string): IUser | undefined => {
     strEmail: row.strEmail ?? null,
     strStatus: row.strStatus ?? STR_USER_STATUS_ACTIVE,
     dtCreatedAt: new Date(row.dtCreatedAt),
+    dtLastLoginAt: row.dtLastLoginAt ? new Date(row.dtLastLoginAt) : null,
     arrRoles: fnGetRoleCodesByRoleIds(fnGetRoleIdsByUserId(row.nId)),
   };
 };
 
 export const fnFindUserRowById = (nId: number): IUserRow | undefined =>
   arrUsers.find((u) => u.nId === nId);
+
+/**
+ * 로그인 성공 시 최근 로그인 시각 기록 — 메타 DB 1행 UPDATE (전체 users 치환 없음)
+ */
+export const fnRecordUserLastLoginAt = async (nUserId: number): Promise<void> => {
+  if (nUserId <= 0) return;
+  const row = arrUsers.find((u) => u.nId === nUserId);
+  if (!row) return;
+  const strIso = new Date().toISOString();
+  row.dtLastLoginAt = strIso;
+  if (fnIsMysqlStore()) {
+    const pool = fnGetMysqlAppPool();
+    await pool.execute('UPDATE users SET dt_last_login_at = ? WHERE n_id = ?', [
+      fnToMysqlDatetime6(strIso),
+      nUserId,
+    ]);
+    fnMirrorJsonToDisk(STR_FILE, arrUsers);
+  } else {
+    fnSaveUsers();
+  }
+  console.log(`[users] 최근 로그인 기록 | nId=${nUserId} | ${strIso}`);
+};
 
 /** 사용자 역할 수정 후 저장 */
 export const fnSaveUserAndRoles = (nUserId: number, arrRoleIds: number[]) => {
