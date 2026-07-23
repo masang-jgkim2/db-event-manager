@@ -77,7 +77,7 @@ release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_li
 - **이벤트 인스턴스**: **7단계** (`event_created` → qa_* → live_* → `live_verified`). 템플릿 컨펌은 인스턴스에 없음(D7: 레거시 confirm/dba → `event_created`). **재요청**: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
 - **쿼리 실행**: QA/LIVE는 세트별 **QA/LIVE id 직접 사용**(`fnGetConnIdForDeployEnv`). 레거시 단일 쿼리만 `fnResolveExecuteConnection` fallback. `fnValidateQaLiveConnectionPair`로 템플릿·DBA 수정 검증.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
-- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸.
+- **실시간 업데이트**: SSE로 인스턴스 상태 변경을 즉시 반영; 사용자 목록 접속은 `GET /api/users/presence-stream` + `user_presence`/`presence_snapshot`. 온라인은 인증 요청마다 `fnTouchUserPresence`, **로그아웃(`POST /api/auth/logout`)은 `fnMarkUserOffline`으로 즉시 오프라인 SSE**(`authController`); 로그아웃 요청에는 `authMiddleware`에서 터치 생략. 탭 종료 등은 `userPresence.ts` 스윕·`USER_ONLINE_WINDOW_MS`(기본 30초)로만 소멸. UserPage「최근 접속일」은 presence가 아니라 **로그인 성공 시** `users.dt_last_login_at`(`fnRecordUserLastLoginAt`, 메타 1행 UPDATE) — 로그아웃·재시작에도 유지.
 - **UI 설정 동기화**: `dbem:u{nUserId}:` + `GET`/`PUT /api/auth/ui-preferences` — `DATA_STORE=json`이면 `userUiPreferences.json`, **mysql**이면 `user_ui_preference`(+ 변경 시 전체 메타 스냅샷과 별도 경량 치환)
 - **Web Push 구독**: `GET/POST/DELETE /api/push/*` — json=`notificationSubscriptions.json`(레거시 `pushSubscriptions.json` 1회 이관), **mysql**=`notification_subscription`. ON/OFF는 `user_ui_preference` 키 `db-event-manager-web-push-enabled`. VAPID는 `.env`만.
 - **인앱 알림 목록**: **mysql**=`user_notification` + `GET/PATCH /api/notifications`·SSE `notification_appended`; **json**은 브라우저 `localStorage`만. 1순위 적재 조건은 `eventInstanceNotificationEligibility`·프론트 `fnShouldNotifyEventInstanceProgress` 동일. **DBA 쿼리 직접 수정**(strStatus 불변)은 `fnBroadcastInstanceUpdate(_, false)`로 «상태 변경» 인앱·Web Push만 생략(중복 노트 완화).
@@ -152,7 +152,7 @@ front/src/
   config/loginUi.ts                       # `VITE_SHOW_LOGIN_DEFAULT_ACCOUNT_HINT` — 로그인 admin 안내
   hooks/useEventStream.ts                 # SSE 연결 훅
   hooks/useUserPresenceStream.ts          # 사용자 접속 SSE
-  pages/UserPage.tsx                      # 연결 점 + presence·승인 대기 탭(approve/reject)
+  pages/UserPage.tsx                      # 온라인 점(presence) + 최근 접속일(dtLastLoginAt)·승인 대기 탭
   pages/RegisterPage.tsx                  # 공개 가입(사내 이메일)
   controllers/registrationController.ts   # register·check-register
   services/onboardingBootstrap.ts         # guest·user.approve 기동 보정

@@ -44,7 +44,10 @@ interface IUserRow {
   arrRoles: string[];
   arrPermissions: string[];
   dtCreatedAt: string;
+  /** 마지막 로그인 성공 시각 (메타 DB 영속) */
+  dtLastLoginAt?: string | null;
   bOnline?: boolean;
+  /** 실시간 presence용 — 최근 접속일 컬럼에는 쓰지 않음 */
   strLastSeenAt?: string | null;
 }
 
@@ -82,13 +85,14 @@ const UserPage = () => {
   const bCanViewUsers = fnHas('user.view') || fnHas('user.manage');
   const bCanApprove = fnHas('user.approve') || fnHas('user.manage');
 
+  // presence는 온라인 점만 갱신 — dtLastLoginAt(영속 최근 로그인)은 덮어쓰지 않음
   const fnOnPresenceSnapshot = useCallback((arrRows: { nUserId: number; bOnline: boolean; strLastSeenAt: string | null }[]) => {
     setArrUsers((prev) => {
       const mapRows = new Map(arrRows.map((r) => [r.nUserId, r]));
       return prev.map((u) => {
         const p = mapRows.get(u.nId);
         if (!p) return u;
-        return { ...u, bOnline: p.bOnline, strLastSeenAt: p.strLastSeenAt ?? undefined };
+        return { ...u, bOnline: p.bOnline };
       });
     });
   }, []);
@@ -96,9 +100,7 @@ const UserPage = () => {
   const fnOnPresenceDelta = useCallback((row: { nUserId: number; bOnline: boolean; strLastSeenAt: string | null }) => {
     setArrUsers((prev) =>
       prev.map((u) =>
-        u.nId === row.nUserId
-          ? { ...u, bOnline: row.bOnline, strLastSeenAt: row.strLastSeenAt ?? undefined }
-          : u,
+        u.nId === row.nUserId ? { ...u, bOnline: row.bOnline } : u,
       ),
     );
   }, []);
@@ -339,16 +341,16 @@ const UserPage = () => {
           },
           {
             title: '최근 접속일',
-            key: 'strLastSeenAt',
+            key: 'dtLastLoginAt',
             width: 150,
             render: (_: unknown, r: IUserRow) => (
-              <Text type={r.strLastSeenAt ? undefined : 'secondary'} style={{ fontSize: 12 }}>
-                {fnFormatLastAccess(r.strLastSeenAt)}
+              <Text type={r.dtLastLoginAt ? undefined : 'secondary'} style={{ fontSize: 12 }}>
+                {fnFormatLastAccess(r.dtLastLoginAt)}
               </Text>
             ),
             sorter: (a: IUserRow, b: IUserRow) => {
-              const nA = a.strLastSeenAt ? new Date(a.strLastSeenAt).getTime() : 0;
-              const nB = b.strLastSeenAt ? new Date(b.strLastSeenAt).getTime() : 0;
+              const nA = a.dtLastLoginAt ? new Date(a.dtLastLoginAt).getTime() : 0;
+              const nB = b.dtLastLoginAt ? new Date(b.dtLastLoginAt).getTime() : 0;
               return nA - nB;
             },
           },

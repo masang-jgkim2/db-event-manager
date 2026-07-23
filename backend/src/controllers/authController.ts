@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ILoginRequest, IJwtPayload } from '../types';
-import { fnFindUserByStrUserId, fnReloadUsersFromMysql } from '../data/users';
+import { fnFindUserByStrUserId, fnReloadUsersFromMysql, fnRecordUserLastLoginAt } from '../data/users';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnPushActivityLog } from '../data/activityLogs';
 import { fnMarkUserOffline, fnTouchUserPresence } from '../services/userPresence';
@@ -91,6 +91,7 @@ export const fnLogin = async (req: Request, res: Response): Promise<void> => {
       arrActorRoles: objUser.arrRoles?.length ? [...objUser.arrRoles] : null,
     });
 
+    await fnRecordUserLastLoginAt(objUser.nId);
     fnTouchUserPresence(objUser.nId);
 
     res.json({
