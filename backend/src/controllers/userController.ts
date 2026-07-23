@@ -33,6 +33,7 @@ export const fnGetUsers = async (req: Request, res: Response): Promise<void> => 
       arrRoles:       u.arrRoles,
       arrPermissions: fnGetMergedPermissions(u.arrRoles),
       dtCreatedAt:    u.dtCreatedAt,
+      dtLastLoginAt:  u.dtLastLoginAt ? u.dtLastLoginAt.toISOString() : null,
       bOnline:        fnIsUserOnlineByPresence(u.nId),
       strLastSeenAt:  fnGetUserLastSeenIso(u.nId),
     }));

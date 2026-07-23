@@ -145,6 +145,18 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     console.log('[DATA_MYSQL] 컬럼 추가 | users.str_email, users.str_status');
   }
 
+  const [userLastLoginCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'dt_last_login_at'`,
+  );
+  if (Number((userLastLoginCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE users
+       ADD COLUMN dt_last_login_at DATETIME(6) NULL COMMENT '마지막 로그인 성공 시각' AFTER dt_created_at`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | users.dt_last_login_at');
+  }
+
   const [instRemovedCol] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance' AND COLUMN_NAME = 'b_permanently_removed'`,
