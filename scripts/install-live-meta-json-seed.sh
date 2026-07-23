@@ -3,7 +3,7 @@
 # products·dbConnections 의 nServiceId(1~13) 가 MySQL과 일치해야 기동 시 reconcile 덮어쓰기 방지
 set -e
 
-PROJECT_DIR="${PROJECT_DIR:-/masang/masanggames.co.kr/db-manager}"
+PROJECT_DIR="${PROJECT_DIR:-/masang/masanggames.co.kr/internal-db-event-manager}"
 SHARED_DATA="${SHARED_DATA:-${PROJECT_DIR}/shared/data}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SEED_DIR="${SCRIPT_DIR}/live_meta_json_seed"
