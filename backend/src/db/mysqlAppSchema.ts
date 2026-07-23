@@ -40,6 +40,7 @@ COMMENT='products.json arrServices[]'`,
   str_email         VARCHAR(255)  NULL,
   str_status        VARCHAR(32)   NOT NULL DEFAULT 'active' COMMENT 'active|pending_approval|…',
   dt_created_at     DATETIME(6)   NOT NULL,
+  dt_last_login_at  DATETIME(6)   NULL COMMENT '마지막 로그인 성공 시각',
   UNIQUE KEY uq_users_str_user_id (str_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='users.json'`,

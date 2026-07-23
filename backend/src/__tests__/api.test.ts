@@ -66,6 +66,21 @@ describe('API 전체 테스트', () => {
       strAdminToken = res.body.strToken;
     });
 
+    it('로그인 성공 후 사용자 목록 dtLastLoginAt 기록', async () => {
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ strUserId: 'admin', strPassword: OBJ_PASSWORDS.admin });
+      expect(loginRes.status).toBe(200);
+      const listRes = await request(app)
+        .get('/api/users')
+        .set('Authorization', `Bearer ${loginRes.body.strToken}`);
+      expect(listRes.status).toBe(200);
+      const objAdmin = (listRes.body.arrUsers as Array<{ strUserId: string; dtLastLoginAt?: string | null }>)
+        .find((u) => u.strUserId === 'admin');
+      expect(objAdmin?.dtLastLoginAt).toBeTruthy();
+      expect(Number.isNaN(Date.parse(objAdmin!.dtLastLoginAt!))).toBe(false);
+    });
+
     it('GM(gm01) 로그인 → 200, arrRoles에 game_manager', async () => {
       const res = await request(app)
         .post('/api/auth/login')
