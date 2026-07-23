@@ -49,6 +49,8 @@ export interface IUser {
   strStatus?: import('./userStatus').TUserStatus;
   arrRoles: string[];             // 역할 코드 배열 (멀티 역할 지원, 예: ['admin', 'dba'])
   dtCreatedAt: Date;
+  /** 마지막 로그인 성공 시각 */
+  dtLastLoginAt?: Date | null;
 }
 
 // JWT 페이로드 (토큰에 포함)

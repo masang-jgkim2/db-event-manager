@@ -32,6 +32,8 @@ export interface IUserRowJson {
   strEmail?: string | null;
   strStatus?: string;
   dtCreatedAt: string;
+  /** 마지막 로그인 성공 시각 (ISO) */
+  dtLastLoginAt?: string | null;
 }
 
 /** roles.json 행 */
@@ -281,7 +283,8 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
   for (const u of p.arrUsers) {
     const strDt = fnToMysqlDatetime6Required(u.dtCreatedAt, new Date().toISOString());
     await conn.execute(
-      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at) VALUES (?,?,?,?,?,?,?)`,
+      `INSERT INTO users (n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at, dt_last_login_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
       [
         u.nId,
         u.strUserId,
@@ -290,6 +293,7 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         u.strEmail ?? null,
         u.strStatus ?? 'active',
         strDt,
+        fnToMysqlDatetime6(u.dtLastLoginAt ?? null),
       ],
     );
   }
@@ -1221,7 +1225,8 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
 
 export const fnRelationalLoadUsers = async (pool: Pool): Promise<IUserRowJson[]> => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    'SELECT n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at FROM users ORDER BY n_id',
+    `SELECT n_id, str_user_id, str_password, str_display_name, str_email, str_status, dt_created_at, dt_last_login_at
+     FROM users ORDER BY n_id`,
   );
   return (rows as RowDataPacket[]).map((r) => ({
     nId: Number(r.n_id),
@@ -1231,6 +1236,9 @@ export const fnRelationalLoadUsers = async (pool: Pool): Promise<IUserRowJson[]>
     strEmail: r.str_email != null ? String(r.str_email) : null,
     strStatus: r.str_status != null ? String(r.str_status) : 'active',
     dtCreatedAt: new Date(r.dt_created_at as string | Date).toISOString(),
+    dtLastLoginAt: r.dt_last_login_at != null
+      ? new Date(r.dt_last_login_at as string | Date).toISOString()
+      : null,
   }));
 };
 
