@@ -21,19 +21,20 @@ description: Database Query Process Manager(DQPM) 프로젝트 전체 컨텍스�
 
 ## QA/LIVE 배포 (GitLab MR — direct push 금지)
 
-상세: `docs/DEPLOYMENT.md`
+상세: `docs/DEPLOYMENT.md` · 규칙: `.cursor/rules/gitlab-deploy-mr.mdc`
 
 ```
-작업 브랜치 ──MR──▶ qa (validate_job만) ──MR──▶ release/0.0.1 ──▶ QA CodeDeploy 자동
-release/0.0.1 ──MR──▶ main ──▶ build_live ──▶ deploy_to_live ▶수동
+피처(내부개발) ──MR──▶ qa              ← QA 반영 (validate_job만)
+qa             ──MR──▶ release/0.0.1   ← QA 배포 (build_qa + deploy_to_qa)
+release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy_to_live ▶수동)
 ```
 
-- **`qa` MR 머지 ≠ QA 배포** — EC2 반영은 **`release/0.0.1` MR** 후에만.
-- **Slack·시크릿** — git 미포함. EC2 `shared/backend.env` 수동 + `restart dqpm-backend`.
-- QA 릴리스 브랜치: **`release/0.0.1`만** (`release/0.0.2` 등 사용 안 함).
-- MR → `qa`: `validate_job`. MR → `release/0.0.1`: `build_qa` + `deploy_to_qa`.
-- LIVE: `main` 머지 후 GitLab **`deploy_to_live` ▶ 수동 클릭**.
-- 에이전트: `git push gitlab qa|release/*|main` 하지 않음 — MR URL만 안내.
+- **운영 릴리스 브랜치**: **`release/0.0.1`** (당분간 유지). 버전 라인 변경 시 문서·CI·이 절을 함께 갱신.
+- **`qa` MR 머지 ≠ QA EC2** — QA 서버 반영은 **`qa` → `release/0.0.1` MR** 머지 후.
+- **LIVE**: `release/0.0.1` → `main` 머지 후 파이프라인에서 **`deploy_to_live` ▶ Play** (자동 아님).
+- MR 소스 브랜치는 반드시 `qa` / `release/0.0.1` (promote 브랜치 대체 금지).
+- **Slack·시크릿** — git 미포함. EC2 `shared/backend.env` 수동 + (env만 변경 시) `restart dqpm-backend`.
+- 에이전트: `git push gitlab qa|release/*|main` 하지 않음 — MR 생성(또는 프리필 URL)만.
 
 ## MSSQL / MySQL 이중 실행
 
