@@ -9,12 +9,29 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 | QA   | https://qa-db.masanggames.co.kr | https://qa-db-api.masanggames.co.kr | **`release/0.0.1`** (`release/*`·`hotfix/*` push → 자동) |
 | LIVE | https://db.masanggames.co.kr    | https://db-api.masanggames.co.kr    | `main` (수동 승인) |
 
-- **QA 배포용 릴리스 브랜치**: `release/0.0.1` (현재). `release/0.0.2` 등 다른 release 브랜치는 사용하지 않음.
+- **QA 배포용 릴리스 브랜치**: **`release/0.0.1`** (당분간 유지). 버전 라인을 바꿀 수는 있으나, 변경 전까지는 이 브랜치만 사용. 변경 시 CI·문서를 함께 갱신.
 - **빌드 검증만**: `qa` 브랜치 push, 또는 **`qa`를 타겟으로 한 MR** (`validate_job`)
 
-## 브랜치·MR 절차 (QA 반영)
+## 브랜치·MR 절차 (요약)
 
-**direct push 금지** — `qa`, `release/*`는 GitLab 보호 브랜치. 반드시 MR로 merge.
+**direct push 금지** — `qa`, `release/*`, `main`은 MR로만.
+
+```
+피처(내부개발) ──MR──▶ qa              ← QA 반영 (validate_job만, EC2 아님)
+qa             ──MR──▶ release/0.0.1   ← QA 배포 (build_qa + deploy_to_qa)
+release/0.0.1  ──MR──▶ main            ← LIVE 코드 → deploy_to_live ▶수동
+```
+
+| 단계 | 소스 | 타깃 | 결과 |
+|------|------|------|------|
+| 1. QA 반영 | `feat/*` 등 | **`qa`** | `validate_job` |
+| 2. QA 배포 | **`qa`** | **`release/0.0.1`** | QA EC2 CodeDeploy |
+| 3. LIVE 배포 | **`release/0.0.1`** | **`main`** | `build_live` → **`deploy_to_live` ▶ Play** |
+
+- 에이전트·로컬에서 `git push gitlab qa` / `release/*` / `main` **하지 않음** — MR만 (소스는 해당 브랜치 이름 그대로).
+- `release/0.0.1` merge 후 QA EC2 `dqpm-backend` 재시작은 CodeDeploy `application-start.sh`가 처리.
+
+## 브랜치·MR 절차 (QA 상세)
 
 ```
 작업 브랜치 ──MR──▶ qa          (validate_job: backend/front 빌드)
@@ -23,7 +40,7 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 
 | 단계 | 소스 | 타겟 | CI |
 |------|------|------|-----|
-| 1. 통합 | `feat/*`, `fix/*` 등 | **`qa`** | MR 파이프라인 `validate_job` |
+| 1. QA 반영 | `feat/*`, `fix/*` 등 | **`qa`** | MR 파이프라인 `validate_job` |
 | 2. QA 배포 | **`qa`** | **`release/0.0.1`** | `release/0.0.1` push → S3 + CodeDeploy QA |
 
 - 에이전트·로컬에서 `git push gitlab qa` / `git push gitlab release/0.0.1` **하지 않음** — MR URL만 안내.
@@ -33,8 +50,8 @@ GitLab CI/CD + AWS CodeDeploy + EC2(라라벨 공존) 운영 매뉴얼.
 
 | 착각 | 실제 |
 |------|------|
-| `qa`에 MR 머지 = QA 서버 반영됨 | **`qa` MR은 빌드 검증(`validate_job`)만**. QA EC2 배포는 **`release/0.0.1` MR 머지 후**에만 일어남 |
-| `main`에 머지 = QA 배포 | **`main`은 LIVE 전용**. QA와 무관 |
+| `qa`에 MR 머지 = QA 서버 반영됨 | **QA 반영**(`qa` MR)은 빌드 검증만. **QA 배포**는 **`qa` → `release/0.0.1` MR** 머지 후 |
+| `main`에 머지 = QA 배포 | **`main`은 LIVE**. QA와 무관. LIVE는 `release/0.0.1` → `main` 후 `deploy_to_live` ▶ |
 | GitLab 파이프라인 성공 = Slack 동작 | **Slack·JWT 등은 git에 없음**. EC2 `shared/backend.env` 수동 설정 + (env만 바꿨으면) `systemctl restart dqpm-backend` |
 
 **QA 반영 체크리스트 (코드)**

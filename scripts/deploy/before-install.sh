@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PROJECT_DIR="/masang/masanggames.co.kr/db-manager"
+PROJECT_DIR="/masang/masanggames.co.kr/internal-db-event-manager"
 RELEASES_DIR="${PROJECT_DIR}/releases"
 SHARED_DIR="${PROJECT_DIR}/shared"
 STAGING_DIR="${RELEASES_DIR}/staging"
@@ -17,8 +17,15 @@ mkdir -p "$RELEASES_DIR"
 mkdir -p "$SHARED_DIR/data"
 mkdir -p "$SHARED_DIR/logs"
 
-# 소유권 설정 (codedeploy-agent는 root, 런타임은 masang)
-chown -R masang:masang "$PROJECT_DIR"
+# 소유권 설정 (codedeploy-agent는 root, 런타임은 www-data)
+chown -R www-data:www-data "$PROJECT_DIR"
+
+# backend.env 만 root 소유·그룹 www-data 읽기전용(640) — 런타임은 읽기만, www-data(=Laravel 공용) 변조 방지
+# (위 chown -R 이 www-data 로 되돌리므로 매 배포 여기서 재고정)
+if [ -f "$SHARED_DIR/backend.env" ]; then
+    chown root:www-data "$SHARED_DIR/backend.env"
+    chmod 640           "$SHARED_DIR/backend.env"
+fi
 
 # 이전 staging 잔여 디렉토리 정리
 if [ -d "$STAGING_DIR" ]; then
@@ -59,8 +66,8 @@ if [ ! -f "$SHARED_DIR/backend.env" ]; then
     echo "## [WARNING] ${SHARED_DIR}/backend.env 파일이 없습니다."
     echo "## 최초 배포 후 운영자가 다음 명령으로 작성 필요:"
     echo "##   sudo vi ${SHARED_DIR}/backend.env"
-    echo "##   sudo chown masang:masang ${SHARED_DIR}/backend.env"
-    echo "##   sudo chmod 600 ${SHARED_DIR}/backend.env"
+    echo "##   sudo chown root:www-data ${SHARED_DIR}/backend.env"
+    echo "##   sudo chmod 640 ${SHARED_DIR}/backend.env"
 fi
 
 echo ""

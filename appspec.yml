@@ -3,13 +3,13 @@ os: linux
 
 files:
   - source: /
-    destination: /masang/masanggames.co.kr/db-manager/releases/staging
+    destination: /masang/masanggames.co.kr/internal-db-event-manager/releases/staging
     overwrite: true
 
 permissions:
-  - object: /masang/masanggames.co.kr/db-manager/releases/staging
-    owner: masang
-    group: masang
+  - object: /masang/masanggames.co.kr/internal-db-event-manager/releases/staging
+    owner: www-data
+    group: www-data
     type:
       - directory
       - file
