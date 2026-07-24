@@ -1,0 +1,25 @@
+---
+description: GitLab QA/LIVE 배포는 3단계 MR만 (피처→qa→release/0.0.1→main). direct push·promote 브랜치 금지.
+alwaysApply: true
+---
+
+# GitLab 배포 MR (3단계)
+
+```
+피처(내부개발) ──MR──▶ qa              ← QA 반영 (validate만, EC2 아님)
+qa             ──MR──▶ release/0.0.1   ← QA 배포 (build_qa + deploy_to_qa)
+release/0.0.1  ──MR──▶ main            ← LIVE 코드 반영 후 deploy_to_live ▶수동
+```
+
+| 단계 | 소스 | 타깃 | 결과 |
+|------|------|------|------|
+| QA 반영 | `feat/*` 등 | **`qa`** | `validate_job`만 |
+| QA 배포 | **`qa`** | **`release/0.0.1`** | QA EC2 CodeDeploy |
+| LIVE 배포 | **`release/0.0.1`** | **`main`** | `build_live` → **`deploy_to_live` ▶ Play** |
+
+- **운영 릴리스 브랜치**: **`release/0.0.1`** (당분간 유지). 나중에 버전 라인을 바꿀 수는 있으나, 바꾸기 전까지 에이전트는 `0.0.1`만 사용.
+- **MR 소스 브랜치 이름 고정**: `qa` / `release/0.0.1` 그대로. tip 복사 promote 브랜치(`chore/qa-to-release-*`)로 대체 금지.
+- **`git push gitlab qa|release/*|main` 금지** — MR만. 피처 브랜치 push + MR 생성은 허용.
+- GitLab API(PAT) 없으면 프리필 생성 URL을 연다:  
+  `.../merge_requests/new?merge_request[source_branch]=…&merge_request[target_branch]=…`
+- 상세·env·backfill: `docs/DEPLOYMENT.md`
