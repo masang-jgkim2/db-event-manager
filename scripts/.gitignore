@@ -1,5 +1,6 @@
-# QA export 산출물 — 호스트·암호화 비밀번호 포함, git 커밋 금지
+﻿# QA/LIVE export 산출물 — 호스트·암호화 비밀번호 포함, git 커밋 금지
 live_meta_db_connection.sql
 qa_meta_rbac_dbconn_seed.sql
 qa_meta_db_connection_seed.sql
 qa_meta_roles_seed.sql
+live_dqpm_*.sql
