@@ -67,7 +67,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE 코드 → deploy_to_l
 CodeDeploy는 **앱 코드만** 배포한다. `backend/.env`는 **저장소에 없고**, EC2에서만 유지한다.
 
 ```
-/masang/masanggames.co.kr/db-manager/shared/backend.env
+/masang/masanggames.co.kr/internal-db-event-manager/shared/backend.env
   ↓ symlink (배포마다 자동)
 .../current/backend/.env
 ```
@@ -122,7 +122,7 @@ release/0.0.1 ──MR──▶ main     (merge 후 build_live 파이프라인)
 **QA·LIVE EC2 각각** CodeDeploy 직후 실행. EC2에는 `tsx` 없음 → **`node dist/...`** 사용.
 
 ```bash
-cd /masang/masanggames.co.kr/db-manager/current/backend
+cd /masang/masanggames.co.kr/internal-db-event-manager/current/backend
 
 # 스크립트 존재 확인 (없으면 배포 커밋 미반영)
 ls -la dist/scripts/backfillQaLiveConnections.js
@@ -148,26 +148,33 @@ sudo systemctl restart dqpm-backend
 
 ## 서버 디렉토리 구조
 
+**QA·LIVE 공통 앱 루트** (CodeDeploy `scripts/deploy/*.sh` · `appspec.yml` 과 동일):
+
+`/masang/masanggames.co.kr/internal-db-event-manager`
+
+> 예전 LIVE 전용 경로 `…/db-manager` 는 **사용하지 않음**. nginx `root` · systemd `WorkingDirectory` · `shared/` 모두 위 경로로 통일.  
+> `deploy_to_live` Passed 인데 UI가 안 바뀌면: `readlink -f …/current` 와 `systemctl cat dqpm-backend` / nginx `root` 가 **같은 트리**인지 확인.
+
 ```
 /masang/masanggames.co.kr/
-├── renewal/                          ← 라라벨 (기존, 건드리지 않음)
-└── db-manager/                       ← DQPM
+├── renewal/                                    ← 라라벨 (기존, 건드리지 않음)
+└── internal-db-event-manager/                  ← DQPM (QA·LIVE)
     ├── releases/
-    │   ├── 20260520_140000/          (각 배포 산출물)
-    │   └── staging/                  (CodeDeploy 임시)
+    │   ├── 20260520_140000/                    (각 배포 산출물)
+    │   └── staging/                            (CodeDeploy 임시)
     ├── shared/
-    │   ├── backend.env               ← 시크릿·환경변수
-    │   ├── data/                     ← backend/data/*.json (영속)
+    │   ├── backend.env                         ← 시크릿·환경변수
+    │   ├── data/                               ← backend/data/*.json (영속)
     │   └── logs/
-    └── current → releases/20260520_140000  (atomic swap)
+    └── current → releases/20260520_140000      (atomic swap)
 ```
 
 ## EC2 초기 셋업 (환경당 1회, root/관리자 수행)
 
 1. **디렉토리 생성**
    ```bash
-   sudo mkdir -p /masang/masanggames.co.kr/db-manager/{releases,shared/{data,logs}}
-   sudo chown -R masang:masang /masang/masanggames.co.kr/db-manager
+   sudo mkdir -p /masang/masanggames.co.kr/internal-db-event-manager/{releases,shared/{data,logs}}
+   sudo chown -R masang:masang /masang/masanggames.co.kr/internal-db-event-manager
    ```
 
 2. **Node.js 설치 — nvm 사용 + /usr/local/bin symlink** (ctrlhub EC2 표준)
@@ -196,12 +203,12 @@ sudo systemctl restart dqpm-backend
 3. **shared/backend.env 작성**
    ```bash
    sudo cp <repo>/deploy/server-setup/backend.env.example \
-           /masang/masanggames.co.kr/db-manager/shared/backend.env
-   sudo vi /masang/masanggames.co.kr/db-manager/shared/backend.env
+           /masang/masanggames.co.kr/internal-db-event-manager/shared/backend.env
+   sudo vi /masang/masanggames.co.kr/internal-db-event-manager/shared/backend.env
    # JWT_SECRET, DB_CONNECTION_PASSWORD_SECRET 강한 랜덤값으로
    # CORS_ALLOWED_ORIGINS QA/LIVE에 맞게
-   sudo chown masang:masang /masang/masanggames.co.kr/db-manager/shared/backend.env
-   sudo chmod 600           /masang/masanggames.co.kr/db-manager/shared/backend.env
+   sudo chown masang:masang /masang/masanggames.co.kr/internal-db-event-manager/shared/backend.env
+   sudo chmod 600           /masang/masanggames.co.kr/internal-db-event-manager/shared/backend.env
    ```
 
 4. **systemd unit 등록**
@@ -277,10 +284,10 @@ QA에서 한 동일 절차를 LIVE EC2에서 반복하되, 아래 항목은 **QA
 PORT=4000
 NODE_ENV=production
 
-# LIVE 전용 — QA와 절대 같으면 안 됨
-JWT_SECRET=3NaB3oduBzKQELGnx4fKKADjV8kmLDGgY4WQol/QzU03Ad4VdZBaYZwA1+cHtu6T
+# LIVE 전용 — QA와 절대 같으면 안 됨 (값은 예시 자리표시자)
+JWT_SECRET=<LIVE_전용_강한_랜덤>
 JWT_EXPIRES_IN=24h
-DB_CONNECTION_PASSWORD_SECRET=AyEzbWCN3vMWhwU43GQk7bq6a8EvZ6kyTcN1f6+Rp6o=
+DB_CONNECTION_PASSWORD_SECRET=<LIVE_전용_강한_랜덤>
 
 # CORS — LIVE 프론트 도메인 (qa- 빠짐)
 CORS_ALLOWED_ORIGINS=https://db.masanggames.co.kr
@@ -367,10 +374,10 @@ sudo journalctl -u dqpm-backend -f
 sudo nginx -t && sudo systemctl reload nginx
 
 # 긴급 롤백 (이전 릴리스로)
-sudo /masang/masanggames.co.kr/db-manager/current/scripts/deploy/rollback.sh --force
+sudo /masang/masanggames.co.kr/internal-db-event-manager/current/scripts/deploy/rollback.sh --force
 
 # 현재 릴리스 확인
-readlink -f /masang/masanggames.co.kr/db-manager/current
+readlink -f /masang/masanggames.co.kr/internal-db-event-manager/current
 ```
 
 ## 주의사항 (라라벨과 공존)
@@ -390,6 +397,10 @@ readlink -f /masang/masanggames.co.kr/db-manager/current
 
 ## 트러블슈팅
 
+- **`deploy_to_live` Passed 인데 LIVE UI/API가 안 바뀜**: CodeDeploy 앱 루트와 nginx/systemd 경로 불일치.  
+  `readlink -f /masang/masanggames.co.kr/internal-db-event-manager/current`,  
+  `systemctl cat dqpm-backend | grep WorkingDirectory`,  
+  nginx `root` 가 모두 **`internal-db-event-manager`** 인지 확인. (레거시 `db-manager` 잔존 주의)
 - **502 Bad Gateway**: `systemctl status dqpm-backend` / `journalctl -u dqpm-backend -n 100`
 - **`status=203/EXEC` / `Failed to locate executable /usr/bin/node`**: nvm 으로 깐 node 가 systemd 가 찾는 경로에 없음. 위 "EC2 초기 셋업 2번"의 symlink 단계 누락. `sudo ln -sf /home/masang/.nvm/versions/node/v20.15.0/bin/node /usr/local/bin/node` 후 `sudo systemctl restart dqpm-backend`.
 - **CORS 오류**: `shared/backend.env`의 `CORS_ALLOWED_ORIGINS`에 정확한 origin(스킴 포함, 슬래시 없이) 등록 확인

@@ -22,4 +22,5 @@ release/0.0.1  ──MR──▶ main            ← LIVE 코드 반영 후 depl
 - **`git push gitlab qa|release/*|main` 금지** — MR만. 피처 브랜치 push + MR 생성은 허용.
 - GitLab API(PAT) 없으면 프리필 생성 URL을 연다:  
   `.../merge_requests/new?merge_request[source_branch]=…&merge_request[target_branch]=…`
-- 상세·env·backfill: `docs/DEPLOYMENT.md`
+- 상세·env·backfill·**EC2 경로**: `docs/DEPLOYMENT.md`  
+  (앱 루트 QA·LIVE 공통 `/masang/masanggames.co.kr/internal-db-event-manager`, 레거시 `db-manager` 금지)
