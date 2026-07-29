@@ -740,6 +740,119 @@ export const fnDeleteEventTemplateFromMysql = async (pool: Pool, nTemplateId: nu
   }
 };
 
+/**
+ * 템플릿 1건 UPSERT + 해당 query_set 교체 — 전체 메타 스냅샷 없음
+ * (인스턴스 FK RESTRICT 때문에 event_template 전체 DELETE 금지)
+ */
+export const fnUpsertEventTemplateToMysql = async (
+  pool: Pool,
+  e: IEventTemplate,
+  arrDbConnections: IDbConnection[],
+): Promise<void> => {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const nCreatorUserId = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? e.nCreatedByUserId : null;
+    await conn.execute(
+      `INSERT INTO event_template (
+        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+        str_status, json_status_logs, json_creator, json_confirmer
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE
+        n_product_id = VALUES(n_product_id),
+        str_product_name = VALUES(str_product_name),
+        str_event_label = VALUES(str_event_label),
+        str_description = VALUES(str_description),
+        str_category = VALUES(str_category),
+        str_type = VALUES(str_type),
+        str_input_format = VALUES(str_input_format),
+        str_default_items = VALUES(str_default_items),
+        str_query_template = VALUES(str_query_template),
+        str_created_by = VALUES(str_created_by),
+        n_created_by_user_id = VALUES(n_created_by_user_id),
+        dt_created_at = VALUES(dt_created_at),
+        str_status = VALUES(str_status),
+        json_status_logs = VALUES(json_status_logs),
+        json_creator = VALUES(json_creator),
+        json_confirmer = VALUES(json_confirmer)`,
+      [
+        e.nId,
+        e.nProductId,
+        e.strProductName,
+        e.strEventLabel,
+        e.strDescription ?? null,
+        e.strCategory,
+        e.strType,
+        e.strInputFormat,
+        e.strDefaultItems || null,
+        e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
+        e.strCreatedBy?.trim() || null,
+        nCreatorUserId,
+        fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
+        e.strStatus ?? 'dba_confirmed',
+        JSON.stringify(e.arrStatusLogs ?? []),
+        e.objCreator ? JSON.stringify(e.objCreator) : null,
+        e.objConfirmer ? JSON.stringify(e.objConfirmer) : null,
+      ],
+    );
+
+    await conn.execute('DELETE FROM event_template_query_set WHERE n_event_template_id = ?', [e.nId]);
+
+    const arrSets = e.arrQueryTemplates?.length ? e.arrQueryTemplates : [];
+    let nInserted = 0;
+    let nSkipped = 0;
+    if (arrSets.length) {
+      let nSort = 0;
+      for (const q of arrSets) {
+        const objNorm = fnNormalizeQueryTemplateConnFields(q);
+        const nQa = fnResolveDbConnId(e.nProductId, objNorm.nQaDbConnectionId, arrDbConnections);
+        const nLive = fnResolveDbConnId(e.nProductId, objNorm.nLiveDbConnectionId, arrDbConnections);
+        if (nQa <= 0 || nLive <= 0) {
+          nSkipped += 1;
+          continue;
+        }
+        await conn.execute(
+          `INSERT INTO event_template_query_set (
+             n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
+             str_input_id, str_input_format, str_default_items, str_query_template
+           ) VALUES (?,?,?,?,?,?,?,?)`,
+          [
+            e.nId,
+            nSort,
+            nQa,
+            nLive,
+            (q.strInputId ?? 'items').trim() || 'items',
+            (q.strInputFormat ?? e.strInputFormat ?? 'item_number').trim() || 'item_number',
+            q.strDefaultItems ?? null,
+            q.strQueryTemplate ?? '',
+          ],
+        );
+        nSort += 1;
+        nInserted += 1;
+      }
+    }
+    if (arrSets.length > 0 && nInserted === 0) {
+      throw new Error(
+        `쿼리 템플릿 #${e.nId} 세트 ${arrSets.length}건의 QA/LIVE 접속 id를 해석할 수 없어 저장하지 않았습니다.`,
+      );
+    }
+    if (nSkipped > 0) {
+      console.warn(
+        `[events] MySQL 템플릿 UPSERT | #${e.nId} | 세트 스킵 ${nSkipped}건 (QA/LIVE 접속 미해석)`,
+      );
+    }
+
+    await conn.commit();
+    console.log(`[events] MySQL event_template UPSERT | #${e.nId} | sets=${nInserted}`);
+  } catch (err: unknown) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+};
+
 /** db_connection 행만 UPSERT — 전체 DELETE 금지(FK: event_instance_execution_target 등) */
 export const fnSyncDbConnectionsOnlyToMysql = async (
   pool: Pool,
