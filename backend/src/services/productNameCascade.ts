@@ -42,7 +42,6 @@ export const fnCascadeProductDisplayName = async (
   }
 
   if (nEvents > 0) {
-    fnSaveEvents();
     if (fnIsMysqlStore()) {
       const pool = fnGetMysqlAppPool();
       await pool.execute('UPDATE event_template SET str_product_name = ? WHERE n_product_id = ?', [
@@ -50,6 +49,8 @@ export const fnCascadeProductDisplayName = async (
         nProductId,
       ]);
       fnMirrorJsonToDisk('events.json', arrEvents);
+    } else {
+      fnSaveEvents();
     }
   }
 

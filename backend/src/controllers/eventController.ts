@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import {
   arrEvents, fnGetNextEventId, fnSaveEvents, fnReloadEventsFromDiskIfEmpty,
-  fnResolveTemplateStatus, fnCommitEventTemplateDeleteToStore,
+  fnResolveTemplateStatus, fnCommitEventTemplateDeleteToStore, fnCommitOneEventTemplateToStore,
   type IEventTemplate, type ITemplateStageActor, type TTemplateStatus,
 } from '../data/events';
 import { arrEventInstances, fnReloadEventInstancesFromDiskIfEmpty, fnSaveEventInstances, fnCommitEventInstancesToStore, type IEventInstance } from '../data/eventInstances';
@@ -18,7 +18,6 @@ import {
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
-import { fnAwaitMysqlDocFlush } from '../db/mysqlDocPersist';
 import { fnGetEventTemplateDeleteBlockReason } from '../db/mysqlRelationalSync';
 import type { TPermission } from '../types';
 import {
@@ -227,15 +226,13 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
     };
 
     arrEvents.push(objNew);
-    fnSaveEvents();
-    if (fnIsMysqlStore()) {
-      try {
-        await fnAwaitMysqlDocFlush();
-      } catch (err: unknown) {
-        console.error('[쿼리 템플릿] 생성 MySQL 반영 실패 |', (err as Error)?.message);
-        res.status(500).json({ bSuccess: false, strMessage: '등록은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
-        return;
-      }
+    try {
+      await fnCommitOneEventTemplateToStore(objNew);
+    } catch (err: unknown) {
+      arrEvents.pop();
+      console.error('[쿼리 템플릿] 생성 MySQL 반영 실패 |', (err as Error)?.message);
+      res.status(500).json({ bSuccess: false, strMessage: '등록은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
+      return;
     }
     res.json({ bSuccess: true, objEvent: objNew });
   } catch (error) {
@@ -340,15 +337,12 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       console.log(`[쿼리 템플릿] D2 재승인 | #${nId} | dba_confirmed → confirm_requested`);
     }
 
-    fnSaveEvents();
-    if (fnIsMysqlStore()) {
-      try {
-        await fnAwaitMysqlDocFlush();
-      } catch (err: unknown) {
-        console.error('[쿼리 템플릿] 수정 MySQL 반영 실패 |', (err as Error)?.message);
-        res.status(500).json({ bSuccess: false, strMessage: '수정은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
-        return;
-      }
+    try {
+      await fnCommitOneEventTemplateToStore(arrEvents[nIndex]);
+    } catch (err: unknown) {
+      console.error('[쿼리 템플릿] 수정 MySQL 반영 실패 |', (err as Error)?.message);
+      res.status(500).json({ bSuccess: false, strMessage: '수정은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.' });
+      return;
     }
     if (bReapprovalRequired) {
       fnNotifySlackTemplateStatus(arrEvents[nIndex]);
@@ -475,15 +469,12 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       console.log(`[쿼리 템플릿] DBA 쿼리 수정 | #${nId} | confirm_requested 유지`);
     }
 
-    fnSaveEvents();
-    if (fnIsMysqlStore()) {
-      try {
-        await fnAwaitMysqlDocFlush();
-      } catch (err: unknown) {
-        console.error('[쿼리 템플릿] DBA 쿼리 수정 MySQL 반영 실패 |', (err as Error)?.message);
-        res.status(500).json({ bSuccess: false, strMessage: '수정은 메모리에 반영됐으나 DB 저장에 실패했습니다.' });
-        return;
-      }
+    try {
+      await fnCommitOneEventTemplateToStore(objTpl);
+    } catch (err: unknown) {
+      console.error('[쿼리 템플릿] DBA 쿼리 수정 MySQL 반영 실패 |', (err as Error)?.message);
+      res.status(500).json({ bSuccess: false, strMessage: '수정은 메모리에 반영됐으나 DB 저장에 실패했습니다.' });
+      return;
     }
 
     if (bReapprovalRequired) {
@@ -620,15 +611,12 @@ export const fnUpdateEventStatus = async (req: Request, res: Response): Promise<
       dtChangedAt: new Date().toISOString(),
     });
 
-    fnSaveEvents();
-    if (fnIsMysqlStore()) {
-      try {
-        await fnAwaitMysqlDocFlush();
-      } catch (err: unknown) {
-        console.error('[쿼리 템플릿] 상태 변경 MySQL 반영 실패 |', (err as Error)?.message);
-        res.status(500).json({ bSuccess: false, strMessage: '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다.' });
-        return;
-      }
+    try {
+      await fnCommitOneEventTemplateToStore(objTpl);
+    } catch (err: unknown) {
+      console.error('[쿼리 템플릿] 상태 변경 MySQL 반영 실패 |', (err as Error)?.message);
+      res.status(500).json({ bSuccess: false, strMessage: '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다.' });
+      return;
     }
 
     console.log(`[쿼리 템플릿] 상태 변경 | #${nId} | ${objTpl.strStatus}`);
