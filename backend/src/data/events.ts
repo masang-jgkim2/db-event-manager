@@ -4,7 +4,7 @@ import { arrDbConnections } from './dbConnections';
 import { fnIsMysqlStore } from './dataStore';
 import { fnCancelMysqlDocFlushForFiles, fnAwaitInFlightMysqlDocFlush } from '../db/mysqlDocPersist';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
-import { fnDeleteEventTemplateFromMysql } from '../db/mysqlRelationalSync';
+import { fnDeleteEventTemplateFromMysql, fnUpsertEventTemplateToMysql } from '../db/mysqlRelationalSync';
 
 /** 템플릿 워크플로: 등록 → 쿼리 리뷰 요청 → DBA 리뷰 완료 */
 export type TTemplateStatus =
@@ -199,11 +199,24 @@ export const fnReloadEventsFromDiskIfEmpty = (): boolean => {
 };
 
 export const fnSaveEvents = () => {
-  fnSaveJson(STR_FILE, arrEvents);
-  // mysql 모드: 정규 테이블 반영(디바운스) + 재기동 시 JSON→MySQL 재적재에 쓰이는 events.json 미러
+  // mysql 모드: 전체 메타 flush 예약 금지 — fnCommitOneEventTemplateToStore / delete 경로 사용
   if (fnIsMysqlStore()) {
     fnMirrorJsonToDisk(STR_FILE, arrEvents);
+    return;
   }
+  fnSaveJson(STR_FILE, arrEvents);
+};
+
+/** 쿼리 템플릿 1건 저장 — event_template·query_set 만 UPSERT (전체 메타 스냅샷 없음) */
+export const fnCommitOneEventTemplateToStore = async (objTemplate: IEventTemplate): Promise<void> => {
+  if (!fnIsMysqlStore()) {
+    fnSaveJson(STR_FILE, arrEvents);
+    return;
+  }
+  fnCancelMysqlDocFlushForFiles(['events.json']);
+  await fnAwaitInFlightMysqlDocFlush();
+  await fnUpsertEventTemplateToMysql(fnGetMysqlAppPool(), objTemplate, [...arrDbConnections]);
+  fnMirrorJsonToDisk(STR_FILE, arrEvents);
 };
 
 export const fnGetNextEventId = (): number =>
