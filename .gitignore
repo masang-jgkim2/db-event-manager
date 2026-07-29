@@ -26,9 +26,9 @@ yarn-error.log*
 .playwright-mcp/
 .claude/
 
-# 서버 셋업 참고 자료 (운영자가 수동 복사 — git 추적 제외)
+# 서버 셋업 참고 자료 — deploy/server-setup/ 는 레포 레퍼런스로 추적, 그 외 deploy/ 산출물은 제외
 # 루트 anchor — scripts/deploy/ 같은 하위 폴더는 매칭하지 않게
-/deploy/
+/deploy/*
 
 # 빌드 산출물 (각 서브패키지에서도 막지만 안전망)
 **/node_modules/
