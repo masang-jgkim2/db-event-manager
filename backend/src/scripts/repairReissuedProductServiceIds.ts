@@ -168,53 +168,60 @@ const fnMain = async (): Promise<void> => {
   console.log('[repair-service-ids] apply 전 백엔드를 중지하세요.');
 
   const { arrProducts, arrConnections, arrInstances, pool } = await fnLoadAll();
-  const objPlan = fnPlanReissuedServiceIdRemaps(
-    arrProducts,
-    arrConnections,
-    arrInstances,
-    ARR_REPAIR_PRODUCT_NAMES,
-  );
+  try {
+    const objPlan = fnPlanReissuedServiceIdRemaps(
+      arrProducts,
+      arrConnections,
+      arrInstances,
+      ARR_REPAIR_PRODUCT_NAMES,
+    );
 
-  for (const str of objPlan.arrSkipped) {
-    console.log(`[repair-service-ids] skip | ${str}`);
+    for (const str of objPlan.arrSkipped) {
+      console.log(`[repair-service-ids] skip | ${str}`);
+    }
+    for (const str of objPlan.arrErrors) {
+      console.error(`[repair-service-ids] error | ${str}`);
+    }
+    if (objPlan.arrErrors.length > 0) {
+      throw new Error(`계획 오류 ${objPlan.arrErrors.length}건 — 수동 확인 후 재실행`);
+    }
+    if (objPlan.arrRemaps.length === 0) {
+      console.log('[repair-service-ids] 복구할 remap 없음');
+      return;
+    }
+
+    fnPrintPlan(objPlan.arrRemaps);
+
+    if (!bApply) {
+      console.log('[repair-service-ids] dry-run 종료. 반영: --apply');
+      return;
+    }
+
+    fnApplyRemapsToProducts(arrProducts, objPlan.arrRemaps);
+    const nAbbr = fnApplyRemapsToConnectionsAbbr(arrConnections, objPlan.arrRemaps);
+
+    fnMirrorJsonToDisk('products.json', arrProducts);
+    fnMirrorJsonToDisk('dbConnections.json', arrConnections);
+
+    if (pool) {
+      await fnPersistMysql(pool, objPlan.arrRemaps);
+    } else {
+      fnSaveJson('products.json', arrProducts);
+      fnSaveJson('dbConnections.json', arrConnections);
+      console.log(`[repair-service-ids] JSON 저장 | abbr갱신=${nAbbr}`);
+    }
+
+    console.log('[repair-service-ids] 완료. 백엔드를 재시작하세요.');
+  } finally {
+    if (pool) await pool.end();
   }
-  for (const str of objPlan.arrErrors) {
-    console.error(`[repair-service-ids] error | ${str}`);
-  }
-  if (objPlan.arrErrors.length > 0) {
-    throw new Error(`계획 오류 ${objPlan.arrErrors.length}건 — 수동 확인 후 재실행`);
-  }
-  if (objPlan.arrRemaps.length === 0) {
-    console.log('[repair-service-ids] 복구할 remap 없음');
-    return;
-  }
-
-  fnPrintPlan(objPlan.arrRemaps);
-
-  if (!bApply) {
-    console.log('[repair-service-ids] dry-run 종료. 반영: --apply');
-    return;
-  }
-
-  fnApplyRemapsToProducts(arrProducts, objPlan.arrRemaps);
-  const nAbbr = fnApplyRemapsToConnectionsAbbr(arrConnections, objPlan.arrRemaps);
-
-  fnMirrorJsonToDisk('products.json', arrProducts);
-  fnMirrorJsonToDisk('dbConnections.json', arrConnections);
-
-  if (pool) {
-    await fnPersistMysql(pool, objPlan.arrRemaps);
-    await pool.end();
-  } else {
-    fnSaveJson('products.json', arrProducts);
-    fnSaveJson('dbConnections.json', arrConnections);
-    console.log(`[repair-service-ids] JSON 저장 | abbr갱신=${nAbbr}`);
-  }
-
-  console.log('[repair-service-ids] 완료. 백엔드를 재시작하세요.');
 };
 
-void fnMain().catch((err: unknown) => {
-  console.error('[repair-service-ids] 실패 |', err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+void fnMain()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err: unknown) => {
+    console.error('[repair-service-ids] 실패 |', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
