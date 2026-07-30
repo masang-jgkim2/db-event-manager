@@ -102,6 +102,8 @@ const DbConnectionPage = () => {
   arrConnectionsRef.current = arrConnections;
 
   const arrProducts = useProductStore((s) => s.arrProducts);
+  const bProductsLoading = useProductStore((s) => s.bLoading);
+  const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
   const nFormProductId = Form.useWatch('nProductId', form);
   const nFormServiceId = Form.useWatch('nServiceId', form);
   const strFormEnv = Form.useWatch('strEnv', form);
@@ -142,6 +144,7 @@ const DbConnectionPage = () => {
   }, [messageApi]);
 
   useEffect(() => { fnLoad(); }, [fnLoad]);
+  useEffect(() => { void fnFetchProducts(); }, [fnFetchProducts]);
   useAutoRefresh(fnLoad);
 
   // 추가/수정 모달 열기
@@ -785,6 +788,7 @@ const DbConnectionPage = () => {
           >
             <Select
               allowClear
+              loading={bProductsLoading}
               placeholder={objFormProduct ? '서비스 선택 (예: DK/KR, DK/G)' : '먼저 프로덕트를 선택하세요'}
               disabled={!objFormProduct}
             >
