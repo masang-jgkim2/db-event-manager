@@ -22,6 +22,7 @@
     "repair-users-from-json": "tsx src/scripts/repairUsersFromJson.ts",
     "merge-asda-product-9-into-4": "tsx src/scripts/mergeAsdaProduct9Into4.ts",
     "backfill-service-ids": "node dist/scripts/backfillServiceIds.js",
+    "repair-reissued-service-ids": "tsx src/scripts/repairReissuedProductServiceIds.ts",
     "backfill-qa-live-connections": "node dist/scripts/backfillQaLiveConnections.js",
     "reconcile-meta-json-mysql": "tsx src/scripts/reconcileMetaJsonMysql.ts",
     "encrypt-db-connections-json": "tsx src/scripts/encryptDbConnectionsJson.ts",
