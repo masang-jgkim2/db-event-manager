@@ -32,6 +32,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 - **운영 릴리스 브랜치**: **`release/0.0.1`** (당분간 유지). 버전 라인 변경 시 문서·CI·이 절을 함께 갱신.
 - **`qa` MR 머지 ≠ QA EC2** — QA 서버 반영은 **`qa` → `release/0.0.1` MR** 머지 후.
 - **LIVE**: `release/0.0.1` → `main` 머지 후 파이프라인에서 **`deploy_to_live` ▶ Play** (자동 아님).
+- **작업 주체**: 피처→`qa`는 에이전트가 처리할 수 있다. `qa`→`release/0.0.1`과 `release/0.0.1`→`main`은 에이전트가 **프리필 MR 링크만 전달**하고 사용자가 생성·머지한다. LIVE Play도 사용자만 실행한다.
 - MR 소스 브랜치는 반드시 `qa` / `release/0.0.1` (promote 브랜치 대체 금지).
 - **Slack·시크릿** — git 미포함. EC2 `shared/backend.env` 수동 + (env만 변경 시) `restart dqpm-backend`.
 - 에이전트: `git push gitlab qa|release/*|main` 하지 않음 — MR 생성(또는 프리필 URL)만.

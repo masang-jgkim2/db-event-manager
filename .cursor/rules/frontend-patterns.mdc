@@ -40,7 +40,7 @@ front/src/
 
 - **원칙**: 해당 권한이 있을 때만 버튼/관리 컬럼 노출. 없으면 버튼 숨김(API도 동일 권한으로 403).
 - **페이지 접근**: `PermissionRoute`에 보기 권한만 지정. 예: `product.view`, `user.view`, `role.view`, `db_connection.view`|`db.manage`, `event_template.view`, `instance.view`|`instance.create`.
-- **DB 접속 정보 페이지**: 모달 **서비스 구분** = `nServiceId` Select(`#id 약자 · 리전`). **중복 경고**는 **호스트+DB명**까지 같을 때만(백엔드 `fnFindDuplicateDbConnection` 동일; `dbConnectionScope.fnFindDuplicateDbConnectionInList`). env·kind만 같고 host/DB 다르면 추가 가능(라그하임 QA GAME 샤드). UI 라벨 `STR_SERVICE_SCOPE_LABEL`.
+- **DB 접속 정보 페이지**: 진입 시 `fnFetchProducts()` 필수(미호출 시 Select가 ID 숫자만 표시). 모달 **서비스 구분** = `nServiceId` Select(`#id 약자 · 리전`). **중복 경고**는 **호스트+DB명**까지 같을 때만(백엔드 `fnFindDuplicateDbConnection` 동일; `dbConnectionScope.fnFindDuplicateDbConnectionInList`). env·kind만 같고 host/DB 다르면 추가 가능(라그하임 QA GAME 샤드). UI 라벨 `STR_SERVICE_SCOPE_LABEL`.
 - **프로덕트 페이지**: `arrServices` — `nServiceId`·약자·리전.
 - **쿼리 템플릿 (`EventPage`)**: 세트당 **QA/LIVE 연결 Select**(`nQaDbConnectionId`/`nLiveDbConnectionId`). picker = `fnFilterConnectionsForTemplatePickerByEnv` + `DbConnectionSelectOption`. QA 선택 시 `fnFindLivePairForQaConnection`으로 LIVE 자동 채움.
 - **⚠️ 멀티셋 저장 함정** (`Form.List` + `Tabs`): 세트 Tabs(`type="card"`)는 비활성 탭을 지연 마운트 → 미방문 세트의 폼 필드가 미등록되어 **저장 payload에서 통째로 누락**된다. 각 세트 탭 item에 **`forceRender: true`** 필수. 검증 실패 catch는 `errorFields`가 빈 경우(구조 변경 중 재검증)도 안내해 무반응 저장을 막는다.
