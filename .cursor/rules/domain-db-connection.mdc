@@ -45,6 +45,10 @@ alwaysApply: false
 - 실행: `fnResolveExecuteConnection(..., strServiceAbbr?, nServiceId?)`. **DK/KR 전용은 DK/G에 매칭 안 됨**.
 - `fnHasEnvConnectionForService` / `fnHasEnvConnectionForKindAndService` — nServiceId 포함.
 
+## 프론트 — DB 접속 페이지
+
+- 진입 시 **`fnFetchProducts()` 필수** (`DbConnectionPage`). 미호출이면 `nServiceId`만 있어 Select가 `#1 FH/KR · …` 대신 숫자만 표시된다.
+
 ## 코드 위치
 
-`dbConnectionController.ts`, `data/dbConnections.ts`, `utils/serviceId.ts`, `db/mysqlRelationalSync.ts`, `front/src/utils/dbConnectionScope.ts`
+`dbConnectionController.ts`, `data/dbConnections.ts`, `utils/serviceId.ts`, `db/mysqlRelationalSync.ts`, `front/src/utils/dbConnectionScope.ts`, `front/src/pages/DbConnectionPage.tsx`

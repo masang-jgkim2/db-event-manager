@@ -13,10 +13,13 @@ release/0.0.1  ──MR──▶ main            ← LIVE 코드 반영 후 depl
 
 | 단계 | 소스 | 타깃 | 결과 |
 |------|------|------|------|
-| QA 반영 | `feat/*` 등 | **`qa`** | `validate_job`만 |
-| QA 배포 | **`qa`** | **`release/0.0.1`** | QA EC2 CodeDeploy |
-| LIVE 배포 | **`release/0.0.1`** | **`main`** | `build_live` → **`deploy_to_live` ▶ Play** |
+| QA 반영 | `feat/*` 등 | **`qa`** | 에이전트가 MR 생성·머지, `validate_job`만 |
+| QA 배포 | **`qa`** | **`release/0.0.1`** | 에이전트는 MR 링크만 전달, 사용자가 생성·머지 |
+| LIVE 배포 | **`release/0.0.1`** | **`main`** | 에이전트는 MR 링크만 전달, 사용자가 생성·머지·Play |
 
+- **「QA 반영」 ≠ 「QA 배포」** — QA 배포 요청을 피처→`qa` 머지로 완료 처리하지 않는다.
+- **승격 작업 주체 고정**: 에이전트는 `qa→release/0.0.1`, `release/0.0.1→main` MR을 생성·머지하거나 파이프라인을 실행하지 않는다. 프리필 MR 링크와 이후 사용자 할 일만 안내한다.
+- **`deploy_to_live` ▶ Play는 사용자만 실행**한다.
 - **운영 릴리스 브랜치**: **`release/0.0.1`** (당분간 유지). 나중에 버전 라인을 바꿀 수는 있으나, 바꾸기 전까지 에이전트는 `0.0.1`만 사용.
 - **MR 소스 브랜치 이름 고정**: `qa` / `release/0.0.1` 그대로. tip 복사 promote 브랜치(`chore/qa-to-release-*`)로 대체 금지.
 - **`git push gitlab qa|release/*|main` 금지** — MR만. 피처 브랜치 push + MR 생성은 허용.
