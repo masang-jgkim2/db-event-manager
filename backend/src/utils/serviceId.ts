@@ -69,15 +69,17 @@ export const fnFindServiceByAbbr = (
   return objProduct.arrServices.find((s) => fnServiceAbbrsCompatible(s.strAbbr, strNorm));
 };
 
-/** 프로덕트 수정 시 서비스 ID 유지·신규 할당 */
+/** 프로덕트 수정 시 서비스 ID 유지·신규 할당 (약자 변경만이면 ID 유지) */
 export const fnMergeProductServices = (
   arrExisting: IService[],
   arrIncoming: IService[],
   fnNextId: () => number,
 ): IService[] =>
   arrIncoming.map((objIn) => {
-    if (objIn.nServiceId != null && objIn.nServiceId > 0) {
-      const objById = arrExisting.find((s) => s.nServiceId === objIn.nServiceId);
+    // Form hidden 등으로 문자열이 올 수 있음
+    const nInId = Number(objIn.nServiceId);
+    if (nInId > 0) {
+      const objById = arrExisting.find((s) => Number(s.nServiceId) === nInId);
       if (objById) {
         return {
           nServiceId: objById.nServiceId,
@@ -94,7 +96,11 @@ export const fnMergeProductServices = (
         strRegion: objIn.strRegion,
       };
     }
-    return { ...objIn, nServiceId: fnNextId() };
+    return {
+      strAbbr: objIn.strAbbr,
+      strRegion: objIn.strRegion,
+      nServiceId: fnNextId(),
+    };
   });
 
 /** backfill: strServiceAbbr → nServiceId (없으면 undefined) */
