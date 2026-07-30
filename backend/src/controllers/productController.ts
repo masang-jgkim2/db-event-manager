@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { arrProducts, fnFindProductByName, fnGetNextProductId, fnCommitProductsToStore, fnReloadProductsFromDiskIfEmpty } from '../data/products';
 import { fnEnsureAllProductsServiceIds, fnEnsureProductServiceIds, fnGetNextServiceId, fnMergeProductServices } from '../utils/serviceId';
-import { fnCascadeProductDisplayName } from '../services/productNameCascade';
+import {
+  fnCascadeProductDisplayName,
+  fnCascadeProductServiceAbbr,
+} from '../services/productNameCascade';
 
 const fnIsProductPersistConflict = (strMessage: string): boolean =>
   strMessage.includes('사용 중') || strMessage.includes('삭제할 수 없습니다');
@@ -92,6 +95,8 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
     }
     if (strDescription !== undefined) arrProducts[nIndex].strDescription = strDescription;
     if (strDbType      !== undefined) arrProducts[nIndex].strDbType      = strDbType;
+    const arrServicesBefore =
+      arrServices !== undefined ? [...arrProducts[nIndex].arrServices] : [];
     if (arrServices !== undefined) {
       arrProducts[nIndex].arrServices = fnMergeProductServices(
         arrProducts[nIndex].arrServices,
@@ -116,6 +121,17 @@ export const fnUpdateProduct = async (req: Request, res: Response): Promise<void
       await fnCascadeProductDisplayName(nId, strCurrentName);
     } catch (err: unknown) {
       console.error('[products] 프로덕트명 연쇄 반영 실패 |', (err as Error)?.message ?? err);
+    }
+    if (arrServices !== undefined) {
+      try {
+        await fnCascadeProductServiceAbbr(
+          nId,
+          arrServicesBefore,
+          arrProducts[nIndex].arrServices,
+        );
+      } catch (err: unknown) {
+        console.error('[products] 서비스 약자 연쇄 반영 실패 |', (err as Error)?.message ?? err);
+      }
     }
 
     res.json({ bSuccess: true, objProduct: arrProducts[nIndex] });

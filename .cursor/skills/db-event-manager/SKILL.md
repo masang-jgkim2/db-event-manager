@@ -59,10 +59,11 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 
 ## 서비스 구분 ID (`nServiceId`) — Phase E
 
-- **마스터**: `IService.nServiceId` ↔ MySQL `product_service.n_id`. `db_connection`·`event_instance` FK.
+- **마스터**: `IService.nServiceId` ↔ MySQL `product_service.n_id`. `db_connection`·`event_instance` FK. DB 접속은 프로덕트 `arrServices`를 **참조**(반대 아님).
 - **등록·생성 경로**: DB 접속·QueryPage·`POST /api/event-instances` — **`nServiceId` 필수**(프로덕트에 서비스 있을 때). 약자 단독 → 400.
+- **프로덕트 수정**: `ProductPage` Form에 `nServiceId` hidden 유지 → `fnMergeProductServices`가 약자만 바꿔도 **기존 ID 유지**(없으면 신규 발급). 약자 변경 시 `fnCascadeProductServiceAbbr`로 **DB 접속 `strServiceAbbr`만** 연쇄(인스턴스 스냅샷은 유지).
 - **실행·레거시**: `fnServiceAbbrsCompatible` dual-read. 나의 대시보드 표시는 **스냅샷**(`strServiceAbbr`/`strProductName`) 유지.
-- **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장.
+- **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장. 잘못 재발급된 ID는 환경별로 다르므로 자동 통합하지 않고 접속 재선택·수동 복구.
 - **QA/LIVE 접속 id**: 템플릿·인스턴스 세트당 `nQaDbConnectionId`/`nLiveDbConnectionId`. 배포 후 EC2: `node dist/scripts/backfillQaLiveConnections.js` (`docs/DEPLOYMENT.md`). 유틸 `queryTemplateConnections.ts` · UI `DbConnectionSelectOption.tsx`.
 
 ## 회원 가입·승인 (Phase A)
@@ -122,7 +123,8 @@ backend/src/
   db/mysqlDocPersist.ts                 # 전체 플러시·`fnScheduleMysqlEventInstanceReplace`·`fnAwaitMysqlEventInstanceFlush`
   data/eventInstances.ts                # `fnCommitEventInstancesToStore` — 미러+event_instance* 치환
   data/metaJsonMysqlReconcile.ts        # JSON 미러 ↔ MySQL 병합(기동·CLI)
-  utils/serviceId.ts                    # nServiceId·ForWrite/dual-read
+  utils/serviceId.ts                    # nServiceId·ForWrite/dual-read·fnMergeProductServices(약자 변경 시 ID 유지)
+  services/productNameCascade.ts        # 프로덕트명·서비스 약자 연쇄(DB 접속 strServiceAbbr)
   data/bootstrapDataStore.ts            # 기동 하이드레이트·reconcile
   data/roles.ts                           # 인메모리 역할/권한
   data/activityLogs.ts                    # HTTP 활동 로그(메모리+배치 JSON, `fnFlushActivityLogsToDisk`)
@@ -132,6 +134,7 @@ front/src/
   pages/DashboardPage.tsx                 # 이벤트 메뉴 대시보드 (… DnD·리사이즈·계정 스코프 저장소 `fnScopedStorage*`)
   types/eventDashboardCustom.ts           # 맞춤 카드 스키마(ICustomEventDashboardCard·strSummaryGroupKey·ICustomDashboardEventGroup)
   pages/MyDashboardPage.tsx              # 나의 대시보드 (실행 Progress·SSE; 실행 결과 모달: nSetIndex/Total 있으면 쿼리 세트 N 결과로 그룹; SQL 복사 패턴 동일)
+  pages/ProductPage.tsx                   # 프로덕트·서비스 구분(arrServices, nServiceId Form hidden)
   pages/EventPage.tsx                     # 쿼리 템플릿 CRUD (/events) — 목록 서비스 구분 컬럼·연결 DB picker
   pages/QueryPage.tsx                     # 이벤트 생성 (Step2 nServiceId·payload nServiceId)
   utils/countryPlatformLabel.ts           # STR_SERVICE_SCOPE_LABEL·약자/리전 포맷

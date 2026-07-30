@@ -325,6 +325,10 @@ const ProductPage = () => {
                 </div>
                 {fields.map(({ key, name, ...restField }) => (
                   <Row key={key} gutter={8} align="middle" style={{ marginBottom: 8 }}>
+                    {/* 약자만 바꿔도 기존 nServiceId 유지 — 없으면 서버가 신규 ID 발급 */}
+                    <Form.Item {...restField} name={[name, 'nServiceId']} hidden>
+                      <Input type="hidden" />
+                    </Form.Item>
                     <Col span={10}>
                       <Form.Item
                         {...restField}
