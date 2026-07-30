@@ -64,6 +64,18 @@ describe('serviceId', () => {
     expect(arrNew[0].nServiceId).toBe(9999);
   });
 
+  it('fnMergeProductServices — nServiceId 전달 시 약자 변경해도 ID 유지', () => {
+    const arrExisting = [{ nServiceId: 1, strAbbr: 'FH/KR', strRegion: '국내' }];
+    const arrMerged = fnMergeProductServices(
+      arrExisting,
+      // Form hidden 이 문자열로 올 수 있음
+      [{ nServiceId: '1' as unknown as number, strAbbr: 'FISH/KR', strRegion: '국내' }],
+      () => 19,
+    );
+    expect(arrMerged[0].nServiceId).toBe(1);
+    expect(arrMerged[0].strAbbr).toBe('FISH/KR');
+  });
+
   it('fnResolveConnectionServiceFieldsForWrite — nServiceId 우선', () => {
     const arr: IProduct[] = [
       {
