@@ -35,6 +35,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 - **작업 주체**: 피처→`qa`는 에이전트가 처리할 수 있다. `qa`→`release/0.0.1`과 `release/0.0.1`→`main`은 에이전트가 **프리필 MR 링크만 전달**하고 사용자가 생성·머지한다. LIVE Play도 사용자만 실행한다.
 - MR 소스 브랜치는 반드시 `qa` / `release/0.0.1` (promote 브랜치 대체 금지).
 - **Slack·시크릿** — git 미포함. EC2 `shared/backend.env` 수동 + (env만 변경 시) `restart dqpm-backend`.
+- **EC2 앱 루트 (QA·LIVE 공통)**: `/masang/masanggames.co.kr/internal-db-event-manager` (`scripts/deploy`·nginx·systemd 동일). 예전 `…/db-manager` 사용 금지 — 상세 `docs/DEPLOYMENT.md`.
 - 에이전트: `git push gitlab qa|release/*|main` 하지 않음 — MR 생성(또는 프리필 URL)만.
 
 ## MSSQL / MySQL 이중 실행
