@@ -3,7 +3,7 @@ import type { ResultSetHeader } from 'mysql2';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
 import type { IMysqlGameConnection } from '../db/mysqlGameConnection';
-import { fnIsLikelyRowReturningSql, fnPackResultRows } from '../utils/queryResultRows';
+import { fnCountLikelyRowReturningStatements, fnIsLikelyRowReturningSql, fnPackResultRows } from '../utils/queryResultRows';
 
 /** MySQL(mysql2) 서버 메시지 — message보다 sqlMessage가 MSSQL 메시지에 가깝다 */
 const fnGetMysqlServerMessage = (error: any): string => {
@@ -206,26 +206,61 @@ const fnExecuteMssql = async (
     const arrRecordsets = (objResult.recordsets ?? []) as unknown[];
     let nRecordsetCursor = 0;
 
-    return arrQueries.map((strQuery, i) => {
+    const fnAttachRecordset = (objPart: IQueryPartResult, rs: unknown): void => {
+      if (!Array.isArray(rs) || rs.length === 0) return;
+      const objPacked = fnPackResultRows(rs as Record<string, unknown>[]);
+      objPart.arrResultRows = objPacked.arrResultRows;
+      objPart.arrResultColumns = objPacked.arrResultColumns;
+      objPart.bResultTruncated = objPacked.bResultTruncated;
+      if (objPart.nAffectedRows === 0) {
+        objPart.nAffectedRows = objPacked.arrResultRows.length;
+      }
+    };
+
+    // 한 파스 조각에 SELECT/EXEC가 여러 개면 recordset도 여러 개 — 전부 UI 파트로 펼침
+    const arrOut: IQueryPartResult[] = [];
+    for (let i = 0; i < arrQueries.length; i++) {
+      const strQuery = arrQueries[i];
       const nAffectedRows = arrRowsAffected[bNeedsTransaction ? i + 1 : i] ?? 0;
-      const objPart: IQueryPartResult = { nIndex: i, strQuery, nAffectedRows };
-      if (fnIsLikelyRowReturningSql(strQuery)) {
-        while (nRecordsetCursor < arrRecordsets.length) {
-          const rs = arrRecordsets[nRecordsetCursor++];
-          if (Array.isArray(rs) && rs.length > 0) {
-            const objPacked = fnPackResultRows(rs as Record<string, unknown>[]);
-            objPart.arrResultRows = objPacked.arrResultRows;
-            objPart.arrResultColumns = objPacked.arrResultColumns;
-            objPart.bResultTruncated = objPacked.bResultTruncated;
-            if (objPart.nAffectedRows === 0) {
-              objPart.nAffectedRows = objPacked.arrResultRows.length;
-            }
-            break;
-          }
+      const nExpect = fnIsLikelyRowReturningSql(strQuery)
+        ? Math.max(1, fnCountLikelyRowReturningStatements(strQuery))
+        : 0;
+
+      if (nExpect === 0) {
+        arrOut.push({ nIndex: arrOut.length, strQuery, nAffectedRows });
+        continue;
+      }
+
+      const arrWithRows: IQueryPartResult[] = [];
+      for (let k = 0; k < nExpect; k++) {
+        if (nRecordsetCursor >= arrRecordsets.length) break;
+        const rs = arrRecordsets[nRecordsetCursor++];
+        const objPart: IQueryPartResult = {
+          nIndex: 0,
+          strQuery,
+          nAffectedRows: k === 0 ? nAffectedRows : 0,
+        };
+        fnAttachRecordset(objPart, rs);
+        if ((objPart.arrResultRows?.length ?? 0) > 0) {
+          arrWithRows.push(objPart);
         }
       }
-      return objPart;
-    });
+
+      if (arrWithRows.length === 0) {
+        arrOut.push({ nIndex: arrOut.length, strQuery, nAffectedRows });
+        continue;
+      }
+
+      for (let j = 0; j < arrWithRows.length; j++) {
+        const objPart = arrWithRows[j];
+        objPart.nIndex = arrOut.length;
+        if (j > 0) {
+          objPart.strQuery = `-- 결과셋 ${j + 1}\n${strQuery}`;
+        }
+        arrOut.push(objPart);
+      }
+    }
+    return arrOut;
   } catch (error) {
     // 단일 배치이므로 오류 발생 시 MSSQL이 자동 롤백(또는 명시적 ROLLBACK 전송)
     // BEGIN TRAN을 직접 붙인 경우 ROLLBACK으로 명시적 정리

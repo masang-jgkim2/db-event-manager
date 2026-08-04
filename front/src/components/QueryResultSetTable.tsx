@@ -7,19 +7,38 @@ interface IProps {
   objPart: IQueryPartResult;
 }
 
+const fnFormatCell = (v: unknown) => {
+  if (v === null || v === undefined) return <Text type="secondary">NULL</Text>;
+  if (typeof v === 'object') {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+};
+
 /** 쿼리 실행 결과셋(SELECT 등) — arrResultRows가 있을 때만 표시 */
 const QueryResultSetTable = ({ objPart }: IProps) => {
   const arrCols = objPart.arrResultColumns ?? [];
   const arrRows = objPart.arrResultRows ?? [];
   if (arrRows.length === 0 || arrCols.length === 0) return null;
 
-  const arrTableCols = arrCols.map((strCol) => ({
-    title: strCol,
-    dataIndex: strCol,
-    key: strCol,
-    ellipsis: true,
-    render: (v: unknown) => (v === null || v === undefined ? <Text type="secondary">NULL</Text> : String(v)),
-  }));
+  // dataIndex="" 이면 Ant Design이 행 전체를 넘겨 [object Object] 표시됨
+  const arrTableCols = arrCols.map((strCol, nIdx) => {
+    const strKey = strCol.trim() ? strCol : `__col_${nIdx}`;
+    const strTitle = strCol.trim() ? strCol : '(No column name)';
+    return {
+      title: strTitle,
+      key: strKey,
+      ellipsis: true as const,
+      render: (_: unknown, record: Record<string, unknown>) =>
+        fnFormatCell(
+          Object.prototype.hasOwnProperty.call(record, strCol) ? record[strCol] : record[strKey],
+        ),
+    };
+  });
 
   return (
     <div style={{ marginTop: 8 }}>
