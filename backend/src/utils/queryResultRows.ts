@@ -25,9 +25,20 @@ const fnSerializeCell = (v: unknown): TQueryResultCell => {
   return String(v);
 };
 
-/** 행 반환 가능성이 있는 SQL(휴리스틱) */
+/** 행 반환 가능성이 있는 SQL(휴리스틱) — USE/DECLARE 등으로 시작하는 배치 본문의 SELECT·EXEC 포함 */
 export const fnIsLikelyRowReturningSql = (strSql: string): boolean =>
-  /^\s*(SELECT|WITH|SHOW|DESCRIBE|DESC|EXEC|EXECUTE|PRAGMA)\b/is.test(strSql.trim());
+  fnCountLikelyRowReturningStatements(strSql) > 0;
+
+/**
+ * 배치 안 SELECT/EXEC 등 개수 — MSSQL recordset 커서와 1:1로 맞춤
+ * (주석 줄 `--EXEC`·정렬 `'DESC'` 는 미포함 — DESC 단독 토큰 제외)
+ */
+export const fnCountLikelyRowReturningStatements = (strSql: string): number => {
+  const re = /(?:^|[\n;])\s*(SELECT|WITH|SHOW|DESCRIBE|EXEC|EXECUTE|PRAGMA)\b/gi;
+  let n = 0;
+  while (re.exec(strSql) !== null) n += 1;
+  return n;
+};
 
 export const fnPackResultRows = (arrRaw: Record<string, unknown>[]): IPackedQueryResultSet => {
   const bResultTruncated = arrRaw.length > N_QUERY_RESULT_MAX_ROWS;
