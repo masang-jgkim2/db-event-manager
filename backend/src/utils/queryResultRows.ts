@@ -25,24 +25,91 @@ const fnSerializeCell = (v: unknown): TQueryResultCell => {
   return String(v);
 };
 
-/** 행 반환 가능성이 있는 SQL(휴리스틱) */
-export const fnIsLikelyRowReturningSql = (strSql: string): boolean =>
-  /^\s*(SELECT|WITH|SHOW|DESCRIBE|DESC|EXEC|EXECUTE|PRAGMA)\b/is.test(strSql.trim());
+/** Ant Design dataIndex="" 이면 행 객체 전체가 넘어가 [object Object] — 빈 이름은 표시용으로 치환 */
+export const fnSafeResultColumnName = (strName: string, nIndex: number): string => {
+  const strTrim = String(strName ?? '').trim();
+  if (strTrim) return strTrim;
+  return nIndex === 0 ? '(No column name)' : `(No column name ${nIndex + 1})`;
+};
 
+const fnDeduplicateColumnNames = (arrNames: string[]): string[] => {
+  const mapCount = new Map<string, number>();
+  return arrNames.map((strName) => {
+    const nSeen = mapCount.get(strName) ?? 0;
+    mapCount.set(strName, nSeen + 1);
+    if (nSeen === 0) return strName;
+    return `${strName} (${nSeen + 1})`;
+  });
+};
+
+/** 행 반환 가능성이 있는 SQL(휴리스틱) — USE/DECLARE 등으로 시작하는 배치 본문의 SELECT·EXEC 포함 */
+export const fnIsLikelyRowReturningSql = (strSql: string): boolean =>
+  fnCountLikelyRowReturningStatements(strSql) > 0;
+
+/**
+ * 배치 안 SELECT/EXEC 등 개수 — MSSQL recordset 커서와 1:1로 맞춤
+ * (주석 `--EXEC`·`SELECT … INTO` 임시테이블은 미포함 — 클라이언트 결과셋 없음)
+ */
+export const fnCountLikelyRowReturningStatements = (strSql: string): number => {
+  const re = /(?:^|[\n;])\s*(SELECT|WITH|SHOW|DESCRIBE|EXEC|EXECUTE|PRAGMA)\b/gi;
+  let n = 0;
+  let objMatch: RegExpExecArray | null;
+  while ((objMatch = re.exec(strSql)) !== null) {
+    const strKw = objMatch[1].toUpperCase();
+    if (strKw === 'SELECT') {
+      // SELECT … INTO #tmp / ##tmp — rowsAffected만, recordset 없음
+      const strTail = strSql.slice(objMatch.index + objMatch[0].length, objMatch.index + objMatch[0].length + 500);
+      const strBeforeFrom = strTail.split(/\bFROM\b/i)[0] ?? strTail;
+      if (/\bINTO\b/i.test(strBeforeFrom)) continue;
+    }
+    n += 1;
+  }
+  return n;
+};
+
+/**
+ * MSSQL이 무명 컬럼을 빈 키로 합치며 배열로 넣는 경우 펼침 후
+ * 빈 컬럼명을 (No column name)으로 정규화
+ */
 export const fnPackResultRows = (arrRaw: Record<string, unknown>[]): IPackedQueryResultSet => {
   const bResultTruncated = arrRaw.length > N_QUERY_RESULT_MAX_ROWS;
   const arrSlice = bResultTruncated ? arrRaw.slice(0, N_QUERY_RESULT_MAX_ROWS) : arrRaw;
+
+  const arrNormalized = arrSlice.map((row) => {
+    const objOut: Record<string, unknown> = {};
+    let nAnon = 0;
+    for (const [strKey, rawVal] of Object.entries(row)) {
+      if (strKey === '' && Array.isArray(rawVal)) {
+        for (const cell of rawVal) {
+          objOut[fnSafeResultColumnName('', nAnon++)] = cell;
+        }
+        continue;
+      }
+      if (strKey === '') {
+        objOut[fnSafeResultColumnName('', nAnon++)] = rawVal;
+        continue;
+      }
+      objOut[strKey] = rawVal;
+    }
+    return objOut;
+  });
+
   const setCols = new Set<string>();
-  for (const row of arrSlice) {
+  for (const row of arrNormalized) {
     for (const k of Object.keys(row)) setCols.add(k);
   }
-  const arrResultColumns = [...setCols];
-  const arrResultRows = arrSlice.map((row) => {
+  // 첫 행 키 순서 우선(무명 컬럼 펼친 순서 유지), 없으면 set 순회
+  const arrOrderedCols =
+    arrNormalized[0] && Object.keys(arrNormalized[0]).length > 0
+      ? fnDeduplicateColumnNames(Object.keys(arrNormalized[0]))
+      : fnDeduplicateColumnNames([...setCols]);
+
+  const arrResultRows = arrNormalized.map((row) => {
     const objOut: Record<string, TQueryResultCell> = {};
-    for (const col of arrResultColumns) {
+    for (const col of arrOrderedCols) {
       objOut[col] = fnSerializeCell(row[col]);
     }
     return objOut;
   });
-  return { arrResultRows, arrResultColumns, bResultTruncated };
+  return { arrResultRows, arrResultColumns: arrOrderedCols, bResultTruncated };
 };
