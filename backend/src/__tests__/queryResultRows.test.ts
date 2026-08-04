@@ -54,4 +54,15 @@ EXEC dbo.sp_help_jobhistory @start_run_date = @YESTERDAY, @end_run_date = @TODAY
     expect(obj.arrResultColumns).toContain('n_id');
     expect(obj.arrResultColumns).toContain('str_name');
   });
+
+  it('무명 컬럼·배열 셀을 (No column name)으로 정규화', () => {
+    const objVersion = fnPackResultRows([{ '': 'Microsoft SQL Server' }]);
+    expect(objVersion.arrResultColumns).toEqual(['(No column name)']);
+    expect(objVersion.arrResultRows[0]['(No column name)']).toBe('Microsoft SQL Server');
+
+    const objDates = fnPackResultRows([{ '': ['20260728', '20260805'] }]);
+    expect(objDates.arrResultColumns).toEqual(['(No column name)', '(No column name 2)']);
+    expect(objDates.arrResultRows[0]['(No column name)']).toBe('20260728');
+    expect(objDates.arrResultRows[0]['(No column name 2)']).toBe('20260805');
+  });
 });
