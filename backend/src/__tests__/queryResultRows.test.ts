@@ -43,6 +43,16 @@ EXEC dbo.sp_help_jobhistory @start_run_date = @YESTERDAY, @end_run_date = @TODAY
     expect(fnCountLikelyRowReturningStatements(strPart2)).toBe(9);
   });
 
+  it('SELECT INTO 는 결과셋 카운트에서 제외', () => {
+    const strSql = `DROP TABLE IF EXISTS ##t;
+SELECT WorldID, ServerName
+	INTO ##t
+FROM dbo.ConnectInfo
+WHERE 1=1;
+SELECT COUNT(*) AS nCnt FROM ##t`;
+    expect(fnCountLikelyRowReturningStatements(strSql)).toBe(1);
+  });
+
   it('행 패킹·열 수집·상한', () => {
     const arr = Array.from({ length: N_QUERY_RESULT_MAX_ROWS + 5 }, (_, i) => ({
       n_id: i,

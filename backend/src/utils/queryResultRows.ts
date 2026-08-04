@@ -48,12 +48,22 @@ export const fnIsLikelyRowReturningSql = (strSql: string): boolean =>
 
 /**
  * 배치 안 SELECT/EXEC 등 개수 — MSSQL recordset 커서와 1:1로 맞춤
- * (주석 줄 `--EXEC`·정렬 `'DESC'` 는 미포함 — DESC 단독 토큰 제외)
+ * (주석 `--EXEC`·`SELECT … INTO` 임시테이블은 미포함 — 클라이언트 결과셋 없음)
  */
 export const fnCountLikelyRowReturningStatements = (strSql: string): number => {
   const re = /(?:^|[\n;])\s*(SELECT|WITH|SHOW|DESCRIBE|EXEC|EXECUTE|PRAGMA)\b/gi;
   let n = 0;
-  while (re.exec(strSql) !== null) n += 1;
+  let objMatch: RegExpExecArray | null;
+  while ((objMatch = re.exec(strSql)) !== null) {
+    const strKw = objMatch[1].toUpperCase();
+    if (strKw === 'SELECT') {
+      // SELECT … INTO #tmp / ##tmp — rowsAffected만, recordset 없음
+      const strTail = strSql.slice(objMatch.index + objMatch[0].length, objMatch.index + objMatch[0].length + 500);
+      const strBeforeFrom = strTail.split(/\bFROM\b/i)[0] ?? strTail;
+      if (/\bINTO\b/i.test(strBeforeFrom)) continue;
+    }
+    n += 1;
+  }
   return n;
 };
 
