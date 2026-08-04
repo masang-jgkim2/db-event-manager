@@ -525,11 +525,18 @@ export const fnRelationalWriteFullFromMemory = async (pool: Pool): Promise<void>
 /** event_instance* 테이블만 치환 — 전체 메타 스냅샷 FK 오류와 분리 */
 export const fnRelationalReplaceEventInstancesOnly = async (pool: Pool): Promise<void> => {
   const { arrDbConnections } = await import('../data/dbConnections');
-  const { arrEvents } = await import('../data/events');
+  const { arrEvents, fnSaveEvents, fnEnsureEventTemplatesForInstances } = await import('../data/events');
   const { arrEventInstances } = await import('../data/eventInstances');
+
+  // 인스턴스만 치환해도 event_template FK 필요 — 메모리·DB에 없는 템플릿은 스텁으로 보강
+  if (fnEnsureEventTemplatesForInstances(arrEvents, arrEventInstances) > 0) {
+    fnSaveEvents();
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    await fnEnsureMissingEventTemplatesInMysql(conn, arrEvents, arrEventInstances);
     await fnClearEventInstanceTablesRelational(conn);
     await fnInsertEventInstancesRelational(
       conn,
@@ -545,6 +552,96 @@ export const fnRelationalReplaceEventInstancesOnly = async (pool: Pool): Promise
   } finally {
     conn.release();
   }
+};
+
+/**
+ * 스텁 INSERT 전 FK 가드 — product 없으면 실패, 없는 creator는 null
+ * (단위 테스트용 export)
+ */
+export const fnSanitizeEventTemplateStubForMysqlInsert = (
+  e: IEventTemplate,
+  setProductIds: ReadonlySet<number>,
+  setUserIds: ReadonlySet<number>,
+): { nProductId: number; nCreatedByUserId: number | null } => {
+  const nProductId = Number(e.nProductId);
+  if (!(nProductId > 0) || !setProductIds.has(nProductId)) {
+    throw new Error(
+      `[DATA_MYSQL] event_template #${e.nId} 스텁 INSERT 불가 | product #${e.nProductId} 없음`,
+    );
+  }
+  const nCreator = e.nCreatedByUserId && e.nCreatedByUserId > 0 ? Number(e.nCreatedByUserId) : null;
+  const nCreatedByUserId = nCreator && setUserIds.has(nCreator) ? nCreator : null;
+  return { nProductId, nCreatedByUserId };
+};
+
+/** 인스턴스가 참조하는 템플릿이 DB에 없으면 FK용 스텁 INSERT (query_set 없음) */
+const fnEnsureMissingEventTemplatesInMysql = async (
+  conn: PoolConnection,
+  arrEvents: IEventTemplate[],
+  arrEventInstances: IEventInstance[],
+): Promise<void> => {
+  const setNeeded = new Set(
+    arrEventInstances.map((i) => i.nEventTemplateId).filter((n) => Number.isFinite(n) && n > 0),
+  );
+  if (setNeeded.size === 0) return;
+
+  const [arrRows] = await conn.query<RowDataPacket[]>(
+    `SELECT n_id FROM event_template WHERE n_id IN (${[...setNeeded].map(() => '?').join(',')})`,
+    [...setNeeded],
+  );
+  const setHave = new Set((arrRows as RowDataPacket[]).map((r) => Number(r.n_id)));
+  const arrMissing = [...setNeeded].filter((nId) => !setHave.has(nId));
+  if (arrMissing.length === 0) return;
+
+  const [arrProductRows] = await conn.query<RowDataPacket[]>('SELECT n_id FROM product');
+  const setProductIds = new Set((arrProductRows as RowDataPacket[]).map((r) => Number(r.n_id)));
+  const [arrUserRows] = await conn.query<RowDataPacket[]>('SELECT n_id FROM users');
+  const setUserIds = new Set((arrUserRows as RowDataPacket[]).map((r) => Number(r.n_id)));
+
+  const mapEvent = new Map(arrEvents.map((e) => [e.nId, e]));
+  for (const nId of arrMissing) {
+    const e = mapEvent.get(nId);
+    if (!e) {
+      throw new Error(
+        `[DATA_MYSQL] event_template #${nId} DB·메모리 모두 없음 | fnEnsureEventTemplatesForInstances 선행 필요`,
+      );
+    }
+    const { nProductId, nCreatedByUserId } = fnSanitizeEventTemplateStubForMysqlInsert(
+      e,
+      setProductIds,
+      setUserIds,
+    );
+    await conn.execute(
+      `INSERT INTO event_template (
+        n_id, n_product_id, str_product_name, str_event_label, str_description, str_category, str_type,
+        str_input_format, str_default_items, str_query_template, str_created_by, n_created_by_user_id, dt_created_at,
+        str_status, json_status_logs, json_creator, json_confirmer
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE n_id = n_id`,
+      [
+        e.nId,
+        nProductId,
+        e.strProductName,
+        e.strEventLabel,
+        e.strDescription ?? null,
+        e.strCategory,
+        e.strType,
+        e.strInputFormat,
+        e.strDefaultItems || null,
+        e.strQueryTemplate?.trim() ? e.strQueryTemplate : null,
+        e.strCreatedBy?.trim() || null,
+        nCreatedByUserId,
+        fnToMysqlDatetime6Required(e.dtCreatedAt, new Date().toISOString()),
+        e.strStatus ?? 'dba_confirmed',
+        JSON.stringify(e.arrStatusLogs ?? []),
+        e.objCreator ? JSON.stringify(e.objCreator) : null,
+        e.objConfirmer ? JSON.stringify(e.objConfirmer) : null,
+      ],
+    );
+  }
+  console.warn(
+    `[DATA_MYSQL] 인스턴스 FK 보존 | 누락 템플릿 ${arrMissing.length}건 DB 스텁 INSERT | nId=${arrMissing.join(',')}`,
+  );
 };
 
 const fnJsonVal = (raw: unknown): unknown => {
