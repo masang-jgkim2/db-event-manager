@@ -3,7 +3,8 @@ import type { ResultSetHeader } from 'mysql2';
 import { IDbConnection, IQueryExecutionResult, IQueryPartResult } from '../types';
 import { fnGetMssqlConnection, fnGetMysqlConnection, fnInvalidatePool } from '../db/dbManager';
 import type { IMysqlGameConnection } from '../db/mysqlGameConnection';
-import { fnIsLikelyRowReturningSql, fnPackResultRows } from '../utils/queryResultRows';
+import { fnCountLikelyRowReturningStatements, fnIsLikelyRowReturningSql, fnPackResultRows } from '../utils/queryResultRows';
+import { fnBuildMssqlExecuteBatch, fnSqlHasOwnMssqlTransactionControl } from '../utils/mssqlSelfManagedTxn';
 
 /** MySQL(mysql2) 서버 메시지 — message보다 sqlMessage가 MSSQL 메시지에 가깝다 */
 const fnGetMysqlServerMessage = (error: any): string => {
@@ -180,20 +181,20 @@ const fnBuildPartFromMysqlPacket = (
 
 // =============================================
 // MSSQL 트랜잭션 실행
-// 여러 쿼리를 BEGIN TRAN...COMMIT 블록으로 래핑해 단일 배치로 전송.
-// 프로파일러에서 1건으로 보이며 네트워크 왕복도 1회.
+// - 일반 다중 구문: BEGIN TRAN...COMMIT 래핑 후 단일 배치
+// - 자체 BEGIN TRAN/TRY 스크립트: 원문 그대로 (SSMS에 가깝게, 이중 COMMIT/3902 방지)
 // =============================================
 const fnExecuteMssql = async (
   objPool: mssql.ConnectionPool,
-  arrQueries: string[]
+  arrQueries: string[],
+  strRawQuery: string,
+  bSelfManagedTxn: boolean,
 ): Promise<IQueryPartResult[]> => {
-  // 단일 쿼리면 트랜잭션 래퍼 없이 그대로 실행 (불필요한 BEGIN TRAN 제거)
-  const bNeedsTransaction = arrQueries.length > 1;
-
-  // 모든 구문을 세미콜론으로 연결해 하나의 배치 문자열로 합침
-  const strBatch = bNeedsTransaction
-    ? `BEGIN TRAN\n${arrQueries.join(';\n')};\nCOMMIT`
-    : arrQueries[0];
+  const { strBatch, bWrappedTransaction } = fnBuildMssqlExecuteBatch(
+    arrQueries,
+    strRawQuery,
+    bSelfManagedTxn,
+  );
 
   const objRequest = new mssql.Request(objPool);
 
@@ -206,30 +207,64 @@ const fnExecuteMssql = async (
     const arrRecordsets = (objResult.recordsets ?? []) as unknown[];
     let nRecordsetCursor = 0;
 
-    return arrQueries.map((strQuery, i) => {
-      const nAffectedRows = arrRowsAffected[bNeedsTransaction ? i + 1 : i] ?? 0;
-      const objPart: IQueryPartResult = { nIndex: i, strQuery, nAffectedRows };
-      if (fnIsLikelyRowReturningSql(strQuery)) {
-        while (nRecordsetCursor < arrRecordsets.length) {
-          const rs = arrRecordsets[nRecordsetCursor++];
-          if (Array.isArray(rs) && rs.length > 0) {
-            const objPacked = fnPackResultRows(rs as Record<string, unknown>[]);
-            objPart.arrResultRows = objPacked.arrResultRows;
-            objPart.arrResultColumns = objPacked.arrResultColumns;
-            objPart.bResultTruncated = objPacked.bResultTruncated;
-            if (objPart.nAffectedRows === 0) {
-              objPart.nAffectedRows = objPacked.arrResultRows.length;
-            }
-            break;
-          }
+    const fnAttachRecordset = (objPart: IQueryPartResult, rs: unknown): void => {
+      if (!Array.isArray(rs) || rs.length === 0) return;
+      const objPacked = fnPackResultRows(rs as Record<string, unknown>[]);
+      objPart.arrResultRows = objPacked.arrResultRows;
+      objPart.arrResultColumns = objPacked.arrResultColumns;
+      objPart.bResultTruncated = objPacked.bResultTruncated;
+      if (objPart.nAffectedRows === 0) {
+        objPart.nAffectedRows = objPacked.arrResultRows.length;
+      }
+    };
+
+    // 한 파스 조각에 SELECT/EXEC가 여러 개면 recordset도 여러 개 — 전부 UI 파트로 펼침
+    const arrOut: IQueryPartResult[] = [];
+    for (let i = 0; i < arrQueries.length; i++) {
+      const strQuery = arrQueries[i];
+      const nAffectedRows = arrRowsAffected[bWrappedTransaction ? i + 1 : i] ?? 0;
+      const nExpect = fnIsLikelyRowReturningSql(strQuery)
+        ? Math.max(1, fnCountLikelyRowReturningStatements(strQuery))
+        : 0;
+
+      if (nExpect === 0) {
+        arrOut.push({ nIndex: arrOut.length, strQuery, nAffectedRows });
+        continue;
+      }
+
+      const arrWithRows: IQueryPartResult[] = [];
+      for (let k = 0; k < nExpect; k++) {
+        if (nRecordsetCursor >= arrRecordsets.length) break;
+        const rs = arrRecordsets[nRecordsetCursor++];
+        const objPart: IQueryPartResult = {
+          nIndex: 0,
+          strQuery,
+          nAffectedRows: k === 0 ? nAffectedRows : 0,
+        };
+        fnAttachRecordset(objPart, rs);
+        if ((objPart.arrResultRows?.length ?? 0) > 0) {
+          arrWithRows.push(objPart);
         }
       }
-      return objPart;
-    });
+
+      if (arrWithRows.length === 0) {
+        arrOut.push({ nIndex: arrOut.length, strQuery, nAffectedRows });
+        continue;
+      }
+
+      for (let j = 0; j < arrWithRows.length; j++) {
+        const objPart = arrWithRows[j];
+        objPart.nIndex = arrOut.length;
+        if (j > 0) {
+          objPart.strQuery = `-- 결과셋 ${j + 1}\n${strQuery}`;
+        }
+        arrOut.push(objPart);
+      }
+    }
+    return arrOut;
   } catch (error) {
-    // 단일 배치이므로 오류 발생 시 MSSQL이 자동 롤백(또는 명시적 ROLLBACK 전송)
-    // BEGIN TRAN을 직접 붙인 경우 ROLLBACK으로 명시적 정리
-    if (bNeedsTransaction) {
+    // 래핑 TRAN 또는 자체 TRAN 스크립트 실패 시 열린 트랜잭션 정리
+    if (bWrappedTransaction || bSelfManagedTxn) {
       try {
         await new mssql.Request(objPool).query('IF @@TRANCOUNT > 0 ROLLBACK');
       } catch { /* 연결 오류 시 무시 */ }
@@ -291,6 +326,9 @@ export const fnExecuteQueryWithText = async (
   const arrParsed = fnParseQueriesWithLineStarts(strGeneratedQuery);
   const arrQueries = arrParsed.map((p) => p.strQuery);
   const arrNLineStart = arrParsed.map((p) => p.nLineStart);
+  // MSSQL: 스크립트가 BEGIN TRAN/TRY 를 쓰면 원문 배치 (바깥 래핑과 3902 충돌 방지)
+  const bMssqlSelfManagedTxn =
+    objConn.strDbType === 'mssql' && fnSqlHasOwnMssqlTransactionControl(strGeneratedQuery);
 
   if (arrQueries.length === 0) {
     return {
@@ -310,7 +348,10 @@ export const fnExecuteQueryWithText = async (
 
     if (objConn.strDbType === 'mssql') {
       const objPool = await fnGetMssqlConnection(objConn);
-      arrResults = await fnExecuteMssql(objPool, arrQueries);
+      if (bMssqlSelfManagedTxn) {
+        console.log(`[쿼리 실행] MSSQL 원문 배치 | 자체 TRAN/TRY 감지 | ${objConn.strProductName}`);
+      }
+      arrResults = await fnExecuteMssql(objPool, arrQueries, strGeneratedQuery, bMssqlSelfManagedTxn);
     } else if (objConn.strDbType === 'mysql') {
       const objDbConn = await fnGetMysqlConnection(objConn);
       try {
@@ -385,38 +426,44 @@ export const fnExecuteQueryWithText = async (
         ? `[쿼리 세트 ${objBatchContext.nSetIndex}/${objBatchContext.nSetTotal}]`
         : null;
 
-    // ── 오류 행 번호 → 실제 쿼리 내 위치 (MSSQL 배치 + BEGIN TRAN 전제)
+    // ── 오류 행 번호 → 실제 쿼리 내 위치
     // MySQL: 파서가 기록한 해당 구문의 첫 비공백 줄(nErrorLineInSet)
+    // MSSQL 원문 배치: 서버 lineNumber = 원문 줄
+    // MSSQL 래핑 배치: BEGIN TRAN 1줄 오프셋 + 재조립 구분자
     let strLineInfo: string | null = null;
     if (objConn.strDbType === 'mysql' && typeof error?.nErrorLineInSet === 'number') {
       strLineInfo = `[${error.nErrorLineInSet}번째 줄]`;
     } else if (objConn.strDbType === 'mssql' && error?.lineNumber) {
       const nBatchLine: number = error.lineNumber;
-      const bHasTran = arrQueries.length > 1;
-      // BEGIN TRAN 줄이 1줄이므로 트랜잭션 래퍼가 있으면 -1 오프셋
-      const nOffset = bHasTran ? 1 : 0;
-      const nAdjusted = nBatchLine - nOffset;   // 쿼리 본문 기준 줄 번호
-
-      // 각 쿼리의 줄 수 누적합으로 어느 쿼리에 해당하는지 찾기
-      let nAccum = 0;
-      let nQueryIdx = -1;
-      let nLineInQuery = nAdjusted;
-      for (let i = 0; i < arrQueries.length; i++) {
-        const nLines = arrQueries[i].split('\n').length;
-        // 쿼리 사이 세미콜론도 1줄로 간주 (배치 조립 시 ";\n" 추가)
-        const nSepLines = bHasTran && i < arrQueries.length - 1 ? 1 : 0;
-        if (nAdjusted <= nAccum + nLines) {
-          nQueryIdx    = i;
-          nLineInQuery = nAdjusted - nAccum;
-          break;
-        }
-        nAccum += nLines + nSepLines;
-      }
-
-      if (nQueryIdx >= 0) {
-        strLineInfo = `[쿼리 ${nQueryIdx + 1}번 / ${nLineInQuery}번째 줄]`;
+      if (bMssqlSelfManagedTxn) {
+        strLineInfo = `[${nBatchLine}번째 줄]`;
       } else {
-        strLineInfo = `[배치 ${nBatchLine}번째 줄]`;
+        const bHasTran = arrQueries.length > 1;
+        // BEGIN TRAN 줄이 1줄이므로 트랜잭션 래퍼가 있으면 -1 오프셋
+        const nOffset = bHasTran ? 1 : 0;
+        const nAdjusted = nBatchLine - nOffset;   // 쿼리 본문 기준 줄 번호
+
+        // 각 쿼리의 줄 수 누적합으로 어느 쿼리에 해당하는지 찾기
+        let nAccum = 0;
+        let nQueryIdx = -1;
+        let nLineInQuery = nAdjusted;
+        for (let i = 0; i < arrQueries.length; i++) {
+          const nLines = arrQueries[i].split('\n').length;
+          // 쿼리 사이 세미콜론도 1줄로 간주 (배치 조립 시 ";\n" 추가)
+          const nSepLines = bHasTran && i < arrQueries.length - 1 ? 1 : 0;
+          if (nAdjusted <= nAccum + nLines) {
+            nQueryIdx    = i;
+            nLineInQuery = nAdjusted - nAccum;
+            break;
+          }
+          nAccum += nLines + nSepLines;
+        }
+
+        if (nQueryIdx >= 0) {
+          strLineInfo = `[쿼리 ${nQueryIdx + 1}번 / ${nLineInQuery}번째 줄]`;
+        } else {
+          strLineInfo = `[배치 ${nBatchLine}번째 줄]`;
+        }
       }
     }
 
@@ -453,8 +500,10 @@ export const fnExecuteQueryWithText = async (
         `GET /api/event-instances/:id/grant-script 또는 scripts/dqpm_grants_from_queries_mssql.sql [C] FHGame1 절을 DBA 권한으로 실행하세요.`;
     }
 
-    // MSSQL 단일 문장은 BEGIN TRAN 없음 → 롤백 문구 부적절. MySQL은 항상 명시 트랜잭션 사용.
-    const bMssqlBatchTransaction = objConn.strDbType === 'mssql' && arrQueries.length > 1;
+    // MSSQL: 래핑 다중 구문 또는 자체 TRAN 스크립트는 롤백 정리 대상. 단일 단순 문장은 제외.
+    const bMssqlBatchTransaction =
+      objConn.strDbType === 'mssql'
+      && (bMssqlSelfManagedTxn || arrQueries.length > 1);
     const strRollbackMsg =
       objConn.strDbType === 'mysql' || bMssqlBatchTransaction
         ? '트랜잭션이 롤백되어 DB 변경 사항이 없습니다.'
