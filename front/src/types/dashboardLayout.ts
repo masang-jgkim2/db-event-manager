@@ -23,7 +23,7 @@ export interface IProductGroup {
 export interface ICardLabelRow {
   strLabel: string;
   strFieldPath: string;
-  strRender?: 'text' | 'datetime_short' | 'datetime_full' | 'status_tag' | 'tag' | 'env_tag' | 'service_scope';
+  strRender?: 'text' | 'datetime_short' | 'datetime_full' | 'status_tag' | 'tag' | 'env_tag' | 'service_scope' | 'deploy_qa' | 'deploy_live';
   strEmpty?: string;
   strLabelWidth?: string;
   nGridColumn?: number;
