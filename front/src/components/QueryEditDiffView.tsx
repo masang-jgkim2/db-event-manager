@@ -1,6 +1,7 @@
 import { Typography, theme as antdTheme } from 'antd';
 import type { IQueryEditLog } from '../types';
 import { fnDiffChangedLinesOnly } from '../utils/textLineDiff';
+import { fnCoalesceSetChangeDeleteAddPairs } from '../utils/queryEditSetChanges';
 import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 
 const { Text } = Typography;
@@ -53,10 +54,12 @@ type TQueryEditDiffViewProps = {
 
 const QueryEditDiffView = ({ objQueryEdit }: TQueryEditDiffViewProps) => {
   if (objQueryEdit.arrSetChanges?.length) {
+    // 과거 삭제+추가 쪼개기 로그도 줄 단위 diff로 보이도록 합침
+    const arrChanges = fnCoalesceSetChangeDeleteAddPairs(objQueryEdit.arrSetChanges);
     return (
       <>
-        {objQueryEdit.arrSetChanges.map((chg) => (
-          <div key={chg.nSetIndex} style={{ marginTop: 8 }}>
+        {arrChanges.map((chg, nMapIdx) => (
+          <div key={`${chg.nSetIndex}-${nMapIdx}`} style={{ marginTop: 8 }}>
             <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 4 }}>
               쿼리 세트 {chg.nSetIndex + 1}
             </Text>
