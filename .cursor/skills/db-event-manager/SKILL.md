@@ -41,6 +41,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 ## MSSQL / MySQL 이중 실행
 
 - **실행 진입점**: `fnExecuteQueryWithText`만 사용 (`queryExecutor.ts`). `strDbType`으로 드라이버 분기, 풀은 접속 `nId`별 캐시.
+- **MSSQL 배치**: 다중 구문은 `BEGIN TRAN…COMMIT` 래핑. 본문에 `BEGIN TRAN`/`BEGIN TRY`(주석·문자열 제외)면 **원문 그대로** `query()` — 자체 트랜잭션 스크립트와 이중 COMMIT(3902) 충돌 방지 (`mssqlSelfManagedTxn.ts`).
 - **접속 선택**: `fnResolveExecuteConnection(nProductId, strEnv, nDbConnectionId?, strServiceAbbr?, nServiceId?)` — 인스턴스 **`nServiceId` 우선**, 스냅샷 `strServiceAbbr` fallback. 서비스 전용→공통 fallback.
 - **접속 등록·이벤트 생성**: payload **`nServiceId`**(공통=비움). **`strServiceAbbr` 단독 API → 400**. 중복: 프로덕트+서비스+env+kind+**host+DB명**. 유틸: `utils/serviceId.ts`, `fnResolveConnectionServiceFieldsForWrite`.
 - **DB 접속 저장 성능**: MySQL `fnCommitOneDbConnectionToMysql` 1행만.
