@@ -40,6 +40,7 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
+import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
 import {
   fnFilterConnectionsForTemplatePickerByEnv,
   fnFindLivePairForQaConnection,
@@ -204,7 +205,8 @@ const ARR_DASHBOARD_CARD_ROWS: ICardLabelRow[] =
     : [
         { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
         { strLabel: STR_SERVICE_SCOPE_LABEL, strFieldPath: 'strServiceAbbr', strRender: 'service_scope', strEmpty: '-' },
-        { strLabel: '반영 일시', strFieldPath: 'dtDeployDate', strRender: 'datetime_short' },
+        { strLabel: 'QA 반영', strFieldPath: 'dtQaDeployDate', strRender: 'deploy_qa' },
+        { strLabel: 'LIVE 반영', strFieldPath: 'dtLiveDeployDate', strRender: 'deploy_live' },
         { strLabel: '생성자', strFieldPath: 'strCreatedBy', strEmpty: '-' },
       ];
 const STR_CARD_INNER_LAYOUT = objDefaultListOpts?.strCardInnerLayout ?? 'stack';
@@ -1105,8 +1107,15 @@ const MyDashboardPage = () => {
       setArrEditInputValues([]);
     }
     setStrEditDeployDate(r.dtDeployDate);
-    setStrEditQaDeployDate(r.dtQaDeployDate ?? r.dtDeployDate ?? '');
-    setStrEditLiveDeployDate(r.dtLiveDeployDate ?? r.dtDeployDate ?? '');
+    // 전용 필드만 사용. dtDeployDate fallback은 QA/LIVE 둘 다 없을 때만 (표시 헬퍼와 동일)
+    {
+      const strQa = (r.dtQaDeployDate ?? '').trim();
+      const strLive = (r.dtLiveDeployDate ?? '').trim();
+      const strLegacy = (r.dtDeployDate ?? '').trim();
+      const bPureLegacy = !strQa && !strLive;
+      setStrEditQaDeployDate(strQa || (bPureLegacy ? strLegacy : ''));
+      setStrEditLiveDeployDate(strLive || (bPureLegacy ? strLegacy : ''));
+    }
     setStrEditAlloLink(r.strAlloLink ?? '');
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
     setBEditOpen(true);
@@ -1825,11 +1834,16 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       ),
     },
     {
-      title: '반영 일시',
-      dataIndex: 'dtDeployDate',
-      key: 'dtDeployDate',
+      title: 'QA 반영',
+      key: 'dtQaDeployDate',
       width: 140,
-      render: (str: string) => str ? new Date(str).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-',
+      render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'qa', 'short'),
+    },
+    {
+      title: 'LIVE 반영',
+      key: 'dtLiveDeployDate',
+      width: 140,
+      render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'live', 'short'),
     },
     {
       title: '생성자',
@@ -2146,14 +2160,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       </Space>
                     </Descriptions.Item>
                     <Descriptions.Item label="QA 반영 날짜">
-                      {objDetail.dtQaDeployDate
-                        ? new Date(objDetail.dtQaDeployDate).toLocaleString('ko-KR')
-                        : (objDetail.arrDeployScope?.includes('qa') ? '-' : '해당없음')}
+                      {fnFormatDeployDateDisplay(objDetail, 'qa', 'full')}
                     </Descriptions.Item>
                     <Descriptions.Item label="LIVE 반영 날짜">
-                      {objDetail.dtLiveDeployDate
-                        ? new Date(objDetail.dtLiveDeployDate).toLocaleString('ko-KR')
-                        : (objDetail.arrDeployScope?.includes('live') ? '-' : '해당없음')}
+                      {fnFormatDeployDateDisplay(objDetail, 'live', 'full')}
                     </Descriptions.Item>
                     <Descriptions.Item label="상태">
                       <Space size={4} wrap align="center">
