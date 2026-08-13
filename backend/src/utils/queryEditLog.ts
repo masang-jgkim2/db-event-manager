@@ -15,13 +15,32 @@ export interface IQueryEditLog {
 
 const fnNorm = (str: string): string => str.replace(/\r\n/g, '\n');
 
-/** SQL 배열 LCS 기반 diff — 중간 세트 삭제 시 인덱스 밀림 노이즈 제거 */
+/**
+ * 세트 SQL 배열 diff.
+ * - 개수 동일: 인덱스 정렬 — 본문만 바뀌면 replace 1건 (삭제+추가로 쪼개지 않음, #369)
+ * - 개수 상이: LCS — 중간 세트 삭제 시 인덱스 밀림 노이즈 제거
+ */
 const fnDiffSqlSets = (
   arrBefore: string[],
   arrAfter: string[],
 ): NonNullable<IQueryEditLog['arrSetChanges']> => {
   const nB = arrBefore.length;
   const nA = arrAfter.length;
+
+  if (nB === nA) {
+    const arrAligned: NonNullable<IQueryEditLog['arrSetChanges']> = [];
+    for (let nIdx = 0; nIdx < nB; nIdx++) {
+      if (arrBefore[nIdx] !== arrAfter[nIdx]) {
+        arrAligned.push({
+          nSetIndex: nIdx,
+          strBefore: arrBefore[nIdx],
+          strAfter: arrAfter[nIdx],
+        });
+      }
+    }
+    return arrAligned;
+  }
+
   const arrDp: number[][] = Array.from({ length: nB + 1 }, () => Array(nA + 1).fill(0));
   for (let i = nB - 1; i >= 0; i--) {
     for (let j = nA - 1; j >= 0; j--) {
