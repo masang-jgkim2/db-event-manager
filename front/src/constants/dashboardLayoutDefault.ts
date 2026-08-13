@@ -43,9 +43,14 @@ export const OBJ_DEFAULT_DASHBOARD_LAYOUT: IDashboardLayoutRoot = {
           { strLabel: '프로덕트', strFieldPath: 'strProductName', strRender: 'tag', strEmpty: '-' },
           { strLabel: STR_SERVICE_SCOPE_LABEL, strFieldPath: 'strServiceAbbr', strRender: 'service_scope', strEmpty: '-' },
           {
-            strLabel: '반영 일시',
-            strFieldPath: 'dtDeployDate',
-            strRender: 'datetime_short',
+            strLabel: 'QA 반영',
+            strFieldPath: 'dtQaDeployDate',
+            strRender: 'deploy_qa',
+          },
+          {
+            strLabel: 'LIVE 반영',
+            strFieldPath: 'dtLiveDeployDate',
+            strRender: 'deploy_live',
           },
           { strLabel: '상태', strFieldPath: 'strStatus', strRender: 'status_tag' },
           { strLabel: '생성자', strFieldPath: 'strCreatedBy', strEmpty: '-' },
