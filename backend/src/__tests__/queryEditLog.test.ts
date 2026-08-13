@@ -79,6 +79,42 @@ describe('queryEditLog', () => {
     });
   });
 
+  it('세트 개수 동일·본문만 변경 시 replace 1건 (#369)', () => {
+    const strOld = '--아이템\nSELECT 1';
+    const strNew = 'use master;\n--아이템\nSELECT 1';
+    const before = fnSnapshotQueryBefore({
+      strGeneratedQuery: strOld,
+      arrExecutionTargets: [{ nQaDbConnectionId: 1, nLiveDbConnectionId: 2, strQuery: strOld }],
+    });
+    const edit = fnBuildQueryEditLog(before, {
+      strGeneratedQuery: strNew,
+      arrExecutionTargets: [{ nQaDbConnectionId: 1, nLiveDbConnectionId: 2, strQuery: strNew }],
+    });
+    expect(edit).toEqual({
+      arrSetChanges: [{ nSetIndex: 0, strBefore: strOld, strAfter: strNew }],
+    });
+  });
+
+  it('세트 2개 중 1개 본문만 변경 시 해당 세트 replace만', () => {
+    const before = fnSnapshotQueryBefore({
+      strGeneratedQuery: 'A',
+      arrExecutionTargets: [
+        { nQaDbConnectionId: 1, nLiveDbConnectionId: 11, strQuery: 'AAA' },
+        { nQaDbConnectionId: 2, nLiveDbConnectionId: 22, strQuery: 'BBB' },
+      ],
+    });
+    const edit = fnBuildQueryEditLog(before, {
+      strGeneratedQuery: 'A',
+      arrExecutionTargets: [
+        { nQaDbConnectionId: 1, nLiveDbConnectionId: 11, strQuery: 'AAA2' },
+        { nQaDbConnectionId: 2, nLiveDbConnectionId: 22, strQuery: 'BBB' },
+      ],
+    });
+    expect(edit).toEqual({
+      arrSetChanges: [{ nSetIndex: 0, strBefore: 'AAA', strAfter: 'AAA2' }],
+    });
+  });
+
   it('템플릿 세트 삭제 시 본문 변경으로 감지', () => {
     const objBefore = {
       arrQueryTemplates: [
