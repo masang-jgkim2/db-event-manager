@@ -44,6 +44,7 @@ import { useEventStore } from '../stores/useEventStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
+import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
 import { fnApiGetInstances } from '../api/eventInstanceApi';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { fnApiGetUsers } from '../api/userApi';
@@ -2342,11 +2343,18 @@ const DashboardPage = () => {
                                             ellipsis: true,
                                           },
                                           {
-                                            title: '반영일',
-                                            dataIndex: 'dtDeployDate',
+                                            title: 'QA 반영',
+                                            key: 'dtQaDeployDate',
                                             width: 140,
-                                            render: (v: string) =>
-                                              v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—',
+                                            render: (_: unknown, r: IEventInstance) =>
+                                              fnFormatDeployDateDisplay(r, 'qa', 'short'),
+                                          },
+                                          {
+                                            title: 'LIVE 반영',
+                                            key: 'dtLiveDeployDate',
+                                            width: 140,
+                                            render: (_: unknown, r: IEventInstance) =>
+                                              fnFormatDeployDateDisplay(r, 'live', 'short'),
                                           },
                                           {
                                             title: '담당자',

@@ -12,6 +12,7 @@ import { fnRenderStatusIcon } from '../constants/statusIcons';
 import { ProductNameTag } from './ProductNameTag';
 import { InstanceServiceScopeCell } from './InstanceServiceScopeCell';
 import { fnGetInstanceValueByPath } from '../utils/dashboardInstanceField';
+import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
 
 const { Text } = Typography;
 
@@ -55,7 +56,11 @@ export function InstanceCardLabelRows({
     let elValue: React.ReactNode;
 
     const strRender = row.strRender ?? 'text';
-    if (objRaw == null || objRaw === '') {
+    if (strRender === 'deploy_qa') {
+      elValue = <span>{fnFormatDeployDateDisplay(objInstance, 'qa', 'short')}</span>;
+    } else if (strRender === 'deploy_live') {
+      elValue = <span>{fnFormatDeployDateDisplay(objInstance, 'live', 'short')}</span>;
+    } else if (objRaw == null || objRaw === '') {
       elValue = <span>{strEmpty}</span>;
     } else if (strRender === 'datetime_short') {
       elValue = <span>{fnFormatDatetimeShort(objRaw) || strEmpty}</span>;
