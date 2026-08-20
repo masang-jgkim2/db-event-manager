@@ -90,8 +90,13 @@ describe('slackNotifier', () => {
     const objBody = JSON.parse(String(objInit.body));
     expect(objBody.text).toContain('테스트 이벤트');
     expect(objBody.blocks?.[0]?.text?.text).toBe('QA 반영 요청');
+    const objSection = objBody.blocks.find((b: { type: string }) => b.type === 'section');
+    expect(objSection.text.text).toBe('*프로덕트* DK · *ID* #42 · *이벤트* 테스트 이벤트 · *상태* QA 반영');
+    expect(objSection.fields).toBeUndefined();
     const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].text.text).toBe('나의 대시보드에서 보기');
     expect(objActions.elements[0].url).toBe('https://dqpm.example.com/my-dashboard?nInstanceId=42');
+    expect(objActions.elements[0].url).not.toContain('/events?');
   });
 
   it('bNotifyStatusProgress=false 면 DBA 쿼리 수정 등에서 Slack 을 보내지 않는다', async () => {
@@ -231,6 +236,39 @@ describe('slackNotifier', () => {
     expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dk');
   });
 
+  it('LIVE 반영 요청도 DBA 채널에서 나의 대시보드 링크를 쓴다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_DBA = 'https://hooks.slack.com/services/dba';
+    process.env.DQPM_PUBLIC_BASE_URL = 'https://dqpm.example.com';
+    process.env.DQPM_PUBLIC_BASE_URL_LIVE = 'https://db.example.com';
+    const { fnNotifySlackInstanceUpdate } = await import('../services/slackNotifier');
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strStatus: 'live_requested' },
+      true,
+    );
+    expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dba');
+    const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    expect(objBody.blocks?.[0]?.text?.text).toBe('LIVE 반영 요청');
+    const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].text.text).toBe('나의 대시보드에서 보기');
+    expect(objActions.elements[0].url).toBe('https://db.example.com/my-dashboard?nInstanceId=42');
+  });
+
+  it('프로덕트 채널 QA 반영 완료도 나의 대시보드 링크를 쓴다', async () => {
+    process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
+    process.env.SLACK_WEBHOOK_URL_DK = 'https://hooks.slack.com/services/dk';
+    process.env.DQPM_PUBLIC_BASE_URL_QA = 'https://qa-db.example.com';
+    const { fnNotifySlackInstanceUpdate } = await import('../services/slackNotifier');
+    fnNotifySlackInstanceUpdate(
+      { ...objBaseInstance(), strStatus: 'qa_deployed' },
+      true,
+    );
+    const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
+    const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].text.text).toBe('나의 대시보드에서 보기');
+    expect(objActions.elements[0].url).toBe('https://qa-db.example.com/my-dashboard?nInstanceId=42');
+  });
+
   it('DK QA 반영 요청은 DBA 채널만으로 보낸다', async () => {
     process.env.SLACK_NOTIFICATIONS_ENABLED = '1';
     process.env.SLACK_WEBHOOK_URL_DBA = 'https://hooks.slack.com/services/dba';
@@ -256,8 +294,12 @@ describe('slackNotifier', () => {
     expect(fnFetchMock.mock.calls[0][0]).toBe('https://hooks.slack.com/services/dba');
     const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
     expect(objBody.blocks?.[0]?.text?.text).toBe('쿼리 리뷰 요청');
+    const objSection = objBody.blocks.find((b: { type: string }) => b.type === 'section');
+    expect(objSection.text.text).toBe('*프로덕트* DK온라인 · *ID* #7 · *템플릿* 6월 이벤트 템플릿 · *상태* 쿼리 리뷰');
     const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
+    expect(objActions.elements[0].text.text).toBe('쿼리 템플릿에서 보기');
     expect(objActions.elements[0].url).toBe('https://dqpm.example.com/events?nTemplateId=7');
+    expect(objActions.elements[0].url).not.toContain('/my-dashboard');
   });
 
   it('쿼리 템플릿 dba_confirmed 는 Slack 을 보내지 않는다', async () => {
