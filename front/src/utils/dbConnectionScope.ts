@@ -1,6 +1,6 @@
 import type { IEventTemplate, IDbConnection, IQueryTemplateItem, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
-import { fnNormalizeQuerySetInputFields } from './querySetInput';
+import { fnNormalizeQuerySetInputs, fnMirrorLegacyInputFieldsFromSlots } from './querySetInput';
 
 /** product.arrServices 조회용 — arrServices 생략 가능 */
 export type TProductServiceLookup = {
@@ -167,13 +167,15 @@ export const fnNormalizeQueryTemplateItem = (
   raw: Partial<IQueryTemplateItem>,
   strTemplateFormatFallback: string = 'item_number',
 ): IQueryTemplateItem => {
-  const objInput = fnNormalizeQuerySetInputFields(raw, strTemplateFormatFallback);
+  const arrInputs = fnNormalizeQuerySetInputs(raw, strTemplateFormatFallback);
+  const objLegacy = fnMirrorLegacyInputFieldsFromSlots(arrInputs);
   return {
     nQaDbConnectionId: Number(raw.nQaDbConnectionId ?? raw.nDbConnectionId) || 0,
     nLiveDbConnectionId: Number(raw.nLiveDbConnectionId) || 0,
-    strInputId: objInput.strInputId,
-    strInputFormat: objInput.strInputFormat,
-    strDefaultItems: raw.strDefaultItems,
+    arrInputs,
+    strInputId: objLegacy.strInputId,
+    strInputFormat: objLegacy.strInputFormat,
+    strDefaultItems: objLegacy.strDefaultItems ?? raw.strDefaultItems,
     strQueryTemplate: raw.strQueryTemplate ?? '',
   };
 };
@@ -210,6 +212,42 @@ export const fnIsExplicitEnvConnectionValid = (
     objConn.bIsActive &&
     fnConnectionMatchesServiceScope(objConn, strServiceAbbr, nServiceId),
   );
+};
+
+/** FK 보존용 자동 생성 템플릿 — strInputFormat `raw` 전용 (쿼리·세트 없음) */
+export const fnIsEventTemplateFkStub = (obj: Pick<IEventTemplate, 'strInputFormat'>): boolean =>
+  String(obj.strInputFormat ?? '') === 'raw';
+
+export type TTemplateShapeSummary = {
+  bLegacySingle: boolean;
+  nSetCount: number;
+  nMaxActiveSlotsPerSet: number;
+  bMultiSet: boolean;
+  bMultiSlot: boolean;
+};
+
+/** 템플릿 형태 — 레거시 단일 / 세트 수 / 세트당 최대 활성 슬롯 */
+export const fnSummarizeTemplateShape = (obj: IEventTemplate): TTemplateShapeSummary => {
+  const arrValidSets = obj.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+  const bLegacySingle = arrValidSets.length === 0;
+  const nSetCount = bLegacySingle ? 1 : arrValidSets.length;
+  let nMaxActiveSlotsPerSet = 0;
+  if (bLegacySingle) {
+    if ((obj.strInputFormat ?? 'item_number') !== 'none') nMaxActiveSlotsPerSet = 1;
+  } else {
+    for (const s of arrValidSets) {
+      const objNorm = fnNormalizeQueryTemplateItem(s, obj.strInputFormat);
+      const nActive = (objNorm.arrInputs ?? []).filter((sl) => sl.strInputFormat !== 'none').length;
+      nMaxActiveSlotsPerSet = Math.max(nMaxActiveSlotsPerSet, nActive);
+    }
+  }
+  return {
+    bLegacySingle,
+    nSetCount,
+    nMaxActiveSlotsPerSet,
+    bMultiSet: nSetCount >= 2,
+    bMultiSlot: nMaxActiveSlotsPerSet >= 2,
+  };
 };
 
 /** 실행 대상 탭 라벨 — QA/LIVE 연결 id */

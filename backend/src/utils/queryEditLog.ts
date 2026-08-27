@@ -173,6 +173,7 @@ export const fnTemplateQueryBodyChanged = (
         return {
           nQaDbConnectionId: objNorm.nQaDbConnectionId,
           nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+          arrInputs: s.arrInputs,
           strInputId: (s.strInputId ?? 'items').trim() || 'items',
           strInputFormat: (s.strInputFormat ?? '').trim(),
           strDefaultItems: (s.strDefaultItems ?? '').trim(),

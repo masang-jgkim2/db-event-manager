@@ -270,6 +270,20 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     );
     console.log('[DATA_MYSQL] 컬럼 추가 | event_template_query_set.str_input_format (+ 템플릿 format 백필)');
   }
+
+  // 세트 안 다중 입력 슬롯
+  const [etqsArrInputsCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template_query_set' AND COLUMN_NAME = 'json_arr_inputs'`,
+  );
+  if (Number((etqsArrInputsCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_template_query_set
+       ADD COLUMN json_arr_inputs JSON NULL
+         COMMENT 'IQueryTemplateItem.arrInputs[]' AFTER str_default_items`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_template_query_set.json_arr_inputs');
+  }
 };
 
 export const fnMysqlCountProducts = async (pool: Pool): Promise<number> => {

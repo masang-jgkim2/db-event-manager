@@ -30,7 +30,7 @@ import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
-  IEventInstance, TEventStatus, IStageActor,
+  IEventInstance, IEventTemplate, TEventStatus, IStageActor,
   IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage, fnGetInstanceStatusConfig } from '../types';
@@ -45,13 +45,22 @@ import {
   fnFilterConnectionsForTemplatePickerByEnv,
   fnFindLivePairForQaConnection,
   fnFormatExecutionTargetConnLabel,
+  fnIsValidQueryTemplateSet,
   fnMergeTemplatePickerConnections,
   fnNormalizeExecutionTargetItem,
   fnNormalizeServiceAbbr,
   fnResolveConnectionServiceAbbr,
 } from '../utils/dbConnectionScope';
+import { fnNormalizeQuerySetInputs } from '../utils/querySetInput';
+import {
+  fnDecodeInstanceInputValues,
+  fnEncodeInstanceInputValues,
+  fnIsInstanceInputValuesJson,
+  MULTI_SET_INPUT_DELIMITER,
+} from '../utils/instanceInputValues';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useProductStore } from '../stores/useProductStore';
+import { useEventStore } from '../stores/useEventStore';
 import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
 import { fnRenderConnectionSelectOption, OBJ_DB_CONNECTION_SELECT_PROPS } from '../components/DbConnectionSelectOption';
@@ -67,6 +76,7 @@ import type { ICardLabelRow } from '../types/dashboardLayout';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Text } = Typography;
+const { TextArea } = Input;
 
 type TQueryEditTarget = {
   nQaDbConnectionId: number;
@@ -74,10 +84,34 @@ type TQueryEditTarget = {
   strQuery: string;
 };
 
-const { TextArea } = Input;
-
-// 이벤트 생성(QueryPage)과 동일한 다중 세트 입력값 구분자
-const MULTI_INPUT_DELIMITER = '\u0001';
+/** 인스턴스 수정 모달 — 템플릿 세트별 슬롯 ID 힌트 (순서 유지) */
+const fnBuildEditSlotsHintFromTemplate = (
+  r: IEventInstance,
+  objTpl: IEventTemplate | undefined,
+): Array<Array<{ strInputId: string }>> => {
+  const nSets = Math.max(r.arrExecutionTargets?.length ?? 0, 1);
+  if (!objTpl) {
+    return Array.from({ length: nSets }, () => [{ strInputId: 'items' }]);
+  }
+  const strFmt = objTpl.strInputFormat ?? 'item_number';
+  const arrValidSets = objTpl.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+  if (arrValidSets.length === 0) {
+    const arrLegacy = fnNormalizeQuerySetInputs(
+      { strInputId: objTpl.strInputId, strInputFormat: objTpl.strInputFormat },
+      strFmt,
+    ).filter((s) => s.strInputFormat !== 'none');
+    const arrIds = (arrLegacy.length > 0 ? arrLegacy : [{ strInputId: 'items' }]).map((s) => ({
+      strInputId: s.strInputId,
+    }));
+    return Array.from({ length: nSets }, () => arrIds.map((x) => ({ ...x })));
+  }
+  return Array.from({ length: nSets }, (_, i) => {
+    const objSet = arrValidSets[Math.min(i, arrValidSets.length - 1)];
+    const arrSlots = fnNormalizeQuerySetInputs(objSet, strFmt).filter((s) => s.strInputFormat !== 'none');
+    if (arrSlots.length === 0) return [{ strInputId: 'items' }];
+    return arrSlots.map((s) => ({ strInputId: s.strInputId }));
+  });
+};
 
 // Progress 시뮬레이션: 이전 성공 실행 소요(ms)에 비례해 0→99%까지 채움 (이력 없으면 기본값)
 const N_SIM_BASELINE_DEFAULT_MS = 2800;
@@ -773,6 +807,11 @@ const MyDashboardPage = () => {
   const [strEditInputValues, setStrEditInputValues] = useState('');
   /** 다중 쿼리 세트일 때 세트별 입력값 (수정 모달) */
   const [arrEditInputValues, setArrEditInputValues] = useState<string[]>([]);
+  /** 세트별 슬롯 map (JSON 입력값 편집) */
+  const [arrEditSetSlotValues, setArrEditSetSlotValues] = useState<Array<Record<string, string>>>([]);
+  /** 세트별 슬롯 ID 표시 순서 (템플릿 arrInputs 기준) */
+  const [arrEditSlotIdsPerSet, setArrEditSlotIdsPerSet] = useState<string[][]>([]);
+  const [bEditInputJson, setBEditInputJson] = useState(false);
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // 하위 호환 (미사용)
   const [strEditQaDeployDate, setStrEditQaDeployDate] = useState('');
   const [strEditLiveDeployDate, setStrEditLiveDeployDate] = useState('');
@@ -848,6 +887,8 @@ const MyDashboardPage = () => {
   const fnFetchDbConnections = useDbConnectionStore((s) => s.fnFetchDbConnections);
   const arrProducts = useProductStore((s) => s.arrProducts);
   const fnFetchProducts = useProductStore((s) => s.fnFetchProducts);
+  const arrEvents = useEventStore((s) => s.arrEvents);
+  const fnFetchEvents = useEventStore((s) => s.fnFetchEvents);
   const fnSetFilter = useEventInstanceStore((s) => s.fnSetFilter);
   const fnStoreUpdateStatus = useEventInstanceStore((s) => s.fnUpdateStatus);
   const fnStoreExecuteQuery = useEventInstanceStore((s) => s.fnExecuteQuery);
@@ -875,7 +916,8 @@ const MyDashboardPage = () => {
     fnFetchInstances();
     void fnFetchDbConnections();
     void fnFetchProducts();
-  }, [fnFetchInstances, fnFetchDbConnections, fnFetchProducts]);
+    void fnFetchEvents();
+  }, [fnFetchInstances, fnFetchDbConnections, fnFetchProducts, fnFetchEvents]);
 
   // URL ?nId= / ?nInstanceId= — 알림 딥링크·퍼머링크 (같은 페이지에서 쿼리만 바뀔 때도 반응)
   useEffect(() => {
@@ -1090,21 +1132,34 @@ const MyDashboardPage = () => {
     }
   };
 
-  // 수정 모달 열기 (다중 세트면 입력값을 세트별 배열로 분리)
+  // 수정 모달 열기 (JSON 슬롯 / 구 \u0001 dual-read — 슬롯 목록은 템플릿 arrInputs)
   const fnOpenEdit = (r: IEventInstance) => {
     setObjEditInstance(r);
     setStrEditEventName(r.strEventName);
-    const bMulti = (r.arrExecutionTargets?.length ?? 0) > 0;
-    if (bMulti && r.arrExecutionTargets?.length) {
-      const nSets = r.arrExecutionTargets.length;
-      const strInput = r.strInputValues ?? '';
-      const parts = strInput.split(MULTI_INPUT_DELIMITER);
+    const nSets = Math.max(r.arrExecutionTargets?.length ?? 0, 1);
+    const strInput = r.strInputValues ?? '';
+    const objTpl = arrEvents.find((e) => e.nId === r.nEventTemplateId);
+    const arrSlotsHint = fnBuildEditSlotsHintFromTemplate(r, objTpl);
+    const arrSlotIds = arrSlotsHint.map((arr) => arr.map((s) => s.strInputId));
+    setArrEditSlotIdsPerSet(arrSlotIds);
+
+    if (fnIsInstanceInputValuesJson(strInput)) {
+      setBEditInputJson(true);
+      setArrEditSetSlotValues(fnDecodeInstanceInputValues(strInput, arrSlotsHint));
+      setArrEditInputValues([]);
+      setStrEditInputValues('');
+    } else if ((r.arrExecutionTargets?.length ?? 0) > 0) {
+      setBEditInputJson(false);
+      const parts = strInput.split(MULTI_SET_INPUT_DELIMITER);
       const arr = Array.from({ length: nSets }, (_, i) => parts[i] ?? '');
       setArrEditInputValues(arr);
+      setArrEditSetSlotValues([]);
       setStrEditInputValues('');
     } else {
-      setStrEditInputValues(r.strInputValues ?? '');
+      setBEditInputJson(false);
+      setStrEditInputValues(strInput);
       setArrEditInputValues([]);
+      setArrEditSetSlotValues([]);
     }
     setStrEditDeployDate(r.dtDeployDate);
     // 전용 필드만 사용. dtDeployDate fallback은 QA/LIVE 둘 다 없을 때만 (표시 헬퍼와 동일)
@@ -1124,9 +1179,11 @@ const MyDashboardPage = () => {
   // 수정 저장 (다중 세트면 세트별 입력값을 구분자로 합쳐 전송)
   const fnSaveEdit = async () => {
     if (!objEditInstance) return;
-    const strPayloadInputValues = objEditInstance.arrExecutionTargets?.length
-      ? arrEditInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
-      : strEditInputValues;
+    const strPayloadInputValues = bEditInputJson
+      ? fnEncodeInstanceInputValues(arrEditSetSlotValues)
+      : objEditInstance.arrExecutionTargets?.length
+        ? arrEditInputValues.map((v) => (v ?? '').trim()).join(MULTI_SET_INPUT_DELIMITER)
+        : strEditInputValues;
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
       strAlloLink: strEditAlloLink.trim() || undefined,
@@ -2195,9 +2252,24 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               },
               ...(objDetail.arrExecutionTargets?.length
                 ? (() => {
-                    const arrInputParts = (objDetail.strInputValues ?? '').split(MULTI_INPUT_DELIMITER);
+                    const strRaw = objDetail.strInputValues ?? '';
+                    const bJson = fnIsInstanceInputValuesJson(strRaw);
+                    let arrMaps: Array<Record<string, string>> = [];
+                    if (bJson) {
+                      try {
+                        const obj = JSON.parse(strRaw.trim()) as { sets?: Array<Record<string, string>> };
+                        arrMaps = Array.isArray(obj.sets) ? obj.sets : [];
+                      } catch {
+                        arrMaps = [];
+                      }
+                    }
+                    const arrInputParts = bJson ? [] : strRaw.split(MULTI_SET_INPUT_DELIMITER);
                     return objDetail.arrExecutionTargets!.map((t, idx) => {
-                      const strSetInput = arrInputParts[idx] ?? arrInputParts[0] ?? '';
+                      const strSetInput = bJson
+                        ? Object.entries(arrMaps[idx] ?? {})
+                          .map(([strId, strVal]) => `{{${strId}}}\n${strVal}`)
+                          .join('\n\n')
+                        : (arrInputParts[idx] ?? arrInputParts[0] ?? '');
                       return {
                         key: `query-set-${idx}`,
                         label: `쿼리 세트 ${idx + 1}`,
@@ -2469,15 +2541,47 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 <div>
                   <Space style={{ marginBottom: 4 }}>
                     <Text strong>입력값 (아이템/퀘스트)</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>세트별 입력 · 수정 시 쿼리 자동 재생성</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>세트·슬롯별 입력 · 수정 시 쿼리 자동 재생성</Text>
                   </Space>
                   <Tabs
                     type="card"
                     style={{ marginTop: 8 }}
                     items={objEditInstance.arrExecutionTargets!.map((_, idx) => ({
                       key: String(idx),
-                      label: `세트 ${idx + 1} 입력값`,
-                      children: (
+                      label: `세트 ${idx + 1}`,
+                      children: bEditInputJson ? (
+                        <Space direction="vertical" style={{ width: '100%' }} size="small">
+                          {(() => {
+                            const arrOrdered = arrEditSlotIdsPerSet[idx] ?? [];
+                            const setOrdered = new Set(arrOrdered);
+                            const arrExtra = Object.keys(arrEditSetSlotValues[idx] ?? {}).filter(
+                              (strId) => !setOrdered.has(strId),
+                            );
+                            const arrIds = arrOrdered.length > 0
+                              ? [...arrOrdered, ...arrExtra]
+                              : (arrExtra.length > 0 ? arrExtra : ['items']);
+                            return arrIds.map((strId) => (
+                              <div key={strId}>
+                                <Text type="secondary" style={{ fontSize: 12 }}>{`{{${strId}}}`}</Text>
+                                <TextArea
+                                  className={STR_CODE_BLOCK_CLASS}
+                                  value={arrEditSetSlotValues[idx]?.[strId] ?? ''}
+                                  onChange={(e) => {
+                                    setArrEditSetSlotValues((prev) => {
+                                      const next = prev.map((m) => ({ ...m }));
+                                      while (next.length <= idx) next.push({});
+                                      next[idx] = { ...next[idx], [strId]: e.target.value };
+                                      return next;
+                                    });
+                                  }}
+                                  rows={3}
+                                  style={objSqlTaEditable13}
+                                />
+                              </div>
+                            ));
+                          })()}
+                        </Space>
+                      ) : (
                         <TextArea
                           className={STR_CODE_BLOCK_CLASS}
                           value={arrEditInputValues[idx] ?? ''}
