@@ -8,8 +8,6 @@ const STR_DEFAULT_INPUT_ID = 'items';
 
 const fnBuildPlaceholder = (strInputId: string): string => `{{${strInputId}}}`;
 
-const fnEscapeRegExp = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 const fnParseItemParts = (strRaw: string): string[] =>
   strRaw
     .trim()
@@ -83,23 +81,57 @@ export const fnReplaceItemsInTemplate = (
   strInputId: string = STR_DEFAULT_INPUT_ID,
 ): string => {
   const strId = (strInputId || STR_DEFAULT_INPUT_ID).trim() || STR_DEFAULT_INPUT_ID;
-  const strPh = fnBuildPlaceholder(strId);
-  const nPhLen = strPh.length;
-  const rePh = new RegExp(fnEscapeRegExp(strPh), 'g');
-
-  const strTrimmed = strRaw.trim();
-  if (!strTrimmed || strInputFormat === 'none' || strInputFormat === 'date') {
-    return strTemplate.replace(rePh, strTrimmed);
-  }
-
-  const arrParts = fnParseItemParts(strRaw);
-  if (arrParts.length === 0) {
-    return strTemplate.replace(rePh, '');
-  }
-
-  return strTemplate.replace(rePh, (_match, nOffset: number) =>
-    fnFormatItemsChunk(arrParts, strInputFormat, fnDetectItemsJoinMode(strTemplate, nOffset, nPhLen)),
+  return fnReplaceAllInputsInTemplate(
+    strTemplate,
+    [{ strInputId: strId, strInputFormat }],
+    { [strId]: strRaw },
   );
+};
+
+/**
+ * 원본 템플릿 기준으로 슬롯별 치환 (순차 치환 시 VALUES/따옴표 문맥 깨짐 방지).
+ * VALUES ({{a}},{{b}}) + 목록 zip 은 1차 비지원 — 슬롯별 독립 치환만.
+ */
+export const fnReplaceAllInputsInTemplate = (
+  strTemplate: string,
+  arrInputs: Array<{ strInputId: string; strInputFormat: TInputFormatForItems }>,
+  mapValues: Record<string, string>,
+): string => {
+  type TMatch = { nStart: number; nEnd: number; strReplacement: string };
+  const arrMatches: TMatch[] = [];
+
+  for (const objSlot of arrInputs) {
+    const strId = (objSlot.strInputId || STR_DEFAULT_INPUT_ID).trim() || STR_DEFAULT_INPUT_ID;
+    const strPh = fnBuildPlaceholder(strId);
+    const nPhLen = strPh.length;
+    const strRaw = mapValues[strId] ?? '';
+    const strFmt = objSlot.strInputFormat;
+    let nFrom = 0;
+    while (nFrom <= strTemplate.length) {
+      const nIdx = strTemplate.indexOf(strPh, nFrom);
+      if (nIdx < 0) break;
+      const strTrimmed = strRaw.trim();
+      let strReplacement = '';
+      if (!strTrimmed || strFmt === 'none' || strFmt === 'date') {
+        strReplacement = strTrimmed;
+      } else {
+        const arrParts = fnParseItemParts(strRaw);
+        strReplacement = arrParts.length === 0
+          ? ''
+          : fnFormatItemsChunk(arrParts, strFmt, fnDetectItemsJoinMode(strTemplate, nIdx, nPhLen));
+      }
+      arrMatches.push({ nStart: nIdx, nEnd: nIdx + nPhLen, strReplacement });
+      nFrom = nIdx + nPhLen;
+    }
+  }
+
+  if (arrMatches.length === 0) return strTemplate;
+  arrMatches.sort((a, b) => b.nStart - a.nStart);
+  let strOut = strTemplate;
+  for (const obj of arrMatches) {
+    strOut = strOut.slice(0, obj.nStart) + obj.strReplacement + strOut.slice(obj.nEnd);
+  }
+  return strOut;
 };
 
 export const fnNormalizeItemsForTemplate = (

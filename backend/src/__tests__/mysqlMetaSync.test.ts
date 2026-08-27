@@ -30,6 +30,7 @@ import {
   fnRelationalLoadActivityLogs,
   fnRelationalLoadProducts,
   fnRelationalLoadUsers,
+  fnRelationalLoadEvents,
   fnRelationalLoadUserUiRoot,
   fnRelationalReplaceUserUiOnly,
   fnSyncProductsOnlyToMysql,
@@ -116,8 +117,14 @@ const fnBuildMinimalPayload = (): IRelationalImportPayload => {
         {
           nQaDbConnectionId: N_DB_CONN,
           nLiveDbConnectionId: N_DB_CONN_LIVE,
-          strDefaultItems: '',
-          strQueryTemplate: 'SELECT 1',
+          arrInputs: [
+            { strInputId: 'item_id', strInputFormat: 'item_number', strDefaultItems: '1' },
+            { strInputId: 'qty', strInputFormat: 'item_number', strDefaultItems: '2' },
+          ],
+          strInputId: 'item_id',
+          strInputFormat: 'item_number',
+          strDefaultItems: '1',
+          strQueryTemplate: 'SELECT {{item_id}}, {{qty}}',
         },
       ],
       dtCreatedAt: strDt,
@@ -243,6 +250,29 @@ describeMysql('메타 MySQL 동기화 (RUN_MYSQL_META_TESTS=1 + DATA_MYSQL_*)', 
       [N_INSTANCE],
     );
     expect((irows as RowDataPacket[]).length).toBe(1);
+  });
+
+  it('event_template_query_set — json_arr_inputs + str_input_* 미러', async () => {
+    await fnMysqlImportRelationalPayload(pool, fnBuildMinimalPayload());
+    const [qrows] = await pool.query<RowDataPacket[]>(
+      `SELECT str_input_id, str_input_format, str_default_items, json_arr_inputs
+       FROM event_template_query_set WHERE n_event_template_id = ?`,
+      [N_TEMPLATE],
+    );
+    expect((qrows as RowDataPacket[]).length).toBe(1);
+    const q = (qrows as RowDataPacket[])[0];
+    expect(String(q.str_input_id)).toBe('item_id');
+    expect(String(q.str_input_format)).toBe('item_number');
+    expect(String(q.str_default_items)).toBe('1');
+    const arrJson = typeof q.json_arr_inputs === 'string'
+      ? JSON.parse(q.json_arr_inputs)
+      : q.json_arr_inputs;
+    expect(Array.isArray(arrJson)).toBe(true);
+    expect(arrJson.map((s: { strInputId: string }) => s.strInputId)).toEqual(['item_id', 'qty']);
+
+    const arrEvents = await fnRelationalLoadEvents(pool);
+    const objTpl = arrEvents.find((e) => e.nId === N_TEMPLATE);
+    expect(objTpl?.arrQueryTemplates?.[0]?.arrInputs?.map((s) => s.strInputId)).toEqual(['item_id', 'qty']);
   });
 
   it('동일 페이로드 재적재(전체 치환) 후에도 건수 유지', async () => {

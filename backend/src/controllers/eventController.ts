@@ -13,7 +13,9 @@ import {
 } from '../utils/queryTemplateConnections';
 import {
   fnIsValidQuerySetInputId,
-  fnNormalizeQuerySetInputFields,
+  fnNormalizeQuerySetInputs,
+  fnMirrorLegacyInputFieldsFromSlots,
+  fnFindDuplicateInputIdsInSet,
 } from '../utils/querySetInput';
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
@@ -127,14 +129,29 @@ const fnValidateTemplateQueryConnections = (
     if (strIdRaw && !fnIsValidQuerySetInputId(strIdRaw)) {
       return '입력 ID는 영문 소문자로 시작하며 소문자·숫자·밑줄만 가능합니다 (최대 32자).';
     }
-    if (!(objSet.strInputFormat ?? '').trim()) {
+    const arrSlots = Array.isArray(objSet.arrInputs) ? objSet.arrInputs : [];
+    if (arrSlots.length > 0) {
+      const strDup = fnFindDuplicateInputIdsInSet(arrSlots);
+      if (strDup) {
+        return `세트 안 입력 ID가 중복됩니다: ${strDup}`;
+      }
+      for (const objSlot of arrSlots) {
+        const strSlotId = (objSlot.strInputId ?? '').trim();
+        if (!strSlotId || !fnIsValidQuerySetInputId(strSlotId)) {
+          return '각 입력 슬롯 ID는 영문 소문자로 시작하며 소문자·숫자·밑줄만 가능합니다 (최대 32자).';
+        }
+        if (!(objSlot.strInputFormat ?? '').trim()) {
+          return '각 입력 슬롯에 형식을 지정해주세요.';
+        }
+      }
+    } else if (!(objSet.strInputFormat ?? '').trim()) {
       return '각 쿼리 세트에 입력 형식을 지정해주세요.';
     }
   }
   return null;
 };
 
-/** 세트 저장 전 — 입력 ID·형식 정규화 + 템플릿 format(첫 세트) 산출 */
+/** 세트 저장 전 — 입력 슬롯 정규화 + 템플릿 format(첫 세트·첫 슬롯) 산출 */
 const fnNormalizeSetsForPersist = (
   arrSets: IQueryTemplateItem[] | undefined,
   strTplFormatFallback: string,
@@ -144,14 +161,16 @@ const fnNormalizeSetsForPersist = (
   }
   const arrNorm = arrSets.map((s) => {
     const objConn = fnNormalizeQueryTemplateConnFields(s);
-    const objInput = fnNormalizeQuerySetInputFields(s, strTplFormatFallback);
+    const arrInputs = fnNormalizeQuerySetInputs(s, strTplFormatFallback);
+    const objLegacy = fnMirrorLegacyInputFieldsFromSlots(arrInputs);
     return {
       ...s,
       nQaDbConnectionId: objConn.nQaDbConnectionId,
       nLiveDbConnectionId: objConn.nLiveDbConnectionId,
-      strInputId: objInput.strInputId,
-      strInputFormat: objInput.strInputFormat,
-      strDefaultItems: (s.strDefaultItems ?? '').trim() || undefined,
+      arrInputs,
+      strInputId: objLegacy.strInputId,
+      strInputFormat: objLegacy.strInputFormat,
+      strDefaultItems: (objLegacy.strDefaultItems ?? (s.strDefaultItems ?? '').trim()) || undefined,
       strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
     };
   });
