@@ -345,16 +345,26 @@ export const ARR_INPUT_FORMATS: { value: TInputFormat; label: string }[] = [
 /** 세트 입력 ID 기본값 — SQL 플레이스홀더 {{items}} */
 export const STR_DEFAULT_QUERY_SET_INPUT_ID = 'items';
 
-// 템플릿 내 쿼리 1세트: QA/LIVE DB + 입력 ID·형식 + (선택) 기본값 + 쿼리
+/** 세트 안 입력 슬롯 1개 — SQL {{strInputId}} */
+export interface IQuerySetInputSlot {
+  strInputId: string;
+  strInputFormat: TInputFormat;
+  strDefaultItems?: string;
+}
+
+// 템플릿 내 쿼리 1세트: QA/LIVE DB + 입력 슬롯(N) + 쿼리
 export interface IQueryTemplateItem {
   nQaDbConnectionId: number;
   nLiveDbConnectionId: number;
   /** @deprecated nQaDbConnectionId 로 이관 */
   nDbConnectionId?: number;
-  /** 입력 슬롯 ID — 플레이스홀더 {{strInputId}} (기본 items) */
+  /** 세트 안 입력 슬롯 (1개 이상). 없으면 strInputId/strInputFormat dual-read */
+  arrInputs?: IQuerySetInputSlot[];
+  /** @deprecated arrInputs[0].strInputId — 레거시·첫 슬롯 미러 */
   strInputId?: string;
-  /** 이 세트의 입력 형식 (템플릿 strInputFormat 은 레거시 dual-read) */
+  /** @deprecated arrInputs[0].strInputFormat */
   strInputFormat?: TInputFormat;
+  /** @deprecated arrInputs[0].strDefaultItems */
   strDefaultItems?: string;
   strQueryTemplate: string;
 }

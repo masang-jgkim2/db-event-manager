@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS event_template_query_set (
   str_input_id        VARCHAR(64)   NOT NULL DEFAULT 'items' COMMENT 'IQueryTemplateItem.strInputId',
   str_input_format    VARCHAR(64)   NOT NULL DEFAULT 'item_number' COMMENT '세트별 입력 형식',
   str_default_items   TEXT          NULL,
+  json_arr_inputs     JSON          NULL COMMENT 'IQueryTemplateItem.arrInputs[]',
   str_query_template  MEDIUMTEXT    NOT NULL,
   CONSTRAINT fk_etqs_template FOREIGN KEY (n_event_template_id) REFERENCES event_template(n_id) ON DELETE CASCADE,
   CONSTRAINT fk_etqs_dbconn FOREIGN KEY (n_db_connection_id) REFERENCES db_connection(n_id) ON DELETE RESTRICT,
