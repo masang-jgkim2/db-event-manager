@@ -96,8 +96,9 @@ const fnBuildEditSlotsHintFromTemplate = (
   const strFmt = objTpl.strInputFormat ?? 'item_number';
   const arrValidSets = objTpl.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
   if (arrValidSets.length === 0) {
+    // 템플릿에는 strInputId 없음 — 형식만 넘기고 ID는 normalize 기본값(items)
     const arrLegacy = fnNormalizeQuerySetInputs(
-      { strInputId: objTpl.strInputId, strInputFormat: objTpl.strInputFormat },
+      { strInputFormat: objTpl.strInputFormat },
       strFmt,
     ).filter((s) => s.strInputFormat !== 'none');
     const arrIds = (arrLegacy.length > 0 ? arrLegacy : [{ strInputId: 'items' }]).map((s) => ({
