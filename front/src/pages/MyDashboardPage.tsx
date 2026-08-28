@@ -26,13 +26,14 @@ import QueryEditDiffView from '../components/QueryEditDiffView';
 import SqlLineNumberArea from '../components/SqlLineNumberArea';
 import QueryResultSetTable from '../components/QueryResultSetTable';
 import RequestWithLongPressButton from '../components/RequestWithLongPressButton';
+import { QuerySetInputSlotRows, type TQuerySetSlotRowItem } from '../components/QuerySetInputSlotRows';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore } from '../stores/useThemeStore';
 import { useEventInstanceStore } from '../stores/useEventInstanceStore';
 import { fnApiExecuteQueryStream, fnApiGetTemplateExecElapsed } from '../api/eventInstanceApi';
 import type {
   IEventInstance, IEventTemplate, TEventStatus, IStageActor,
-  IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission,
+  IQueryExecutionResult, IQueryPartResult, TDeployScope, TPermission, TInputFormat,
 } from '../types';
 import { OBJ_STATUS_CONFIG, ARR_DEPLOY_SCOPE_OPTIONS, fnGetDisplayEnv, OBJ_DISPLAY_ENV_COLOR, fnFormatPermissionErrorMessage, fnGetInstanceStatusConfig } from '../types';
 import { fnRenderStatusIcon } from '../constants/statusIcons';
@@ -53,6 +54,7 @@ import {
   fnResolveConnectionServiceAbbr,
 } from '../utils/dbConnectionScope';
 import { fnNormalizeQuerySetInputs } from '../utils/querySetInput';
+import { fnReplaceAllInputsInTemplate } from '../utils/queryTemplateItems';
 import {
   fnDecodeInstanceInputValues,
   fnEncodeInstanceInputValues,
@@ -70,7 +72,7 @@ import { InstanceCardLabelRows } from '../components/InstanceCardLabelRows';
 import { DqpmTag } from '../components/DqpmTag';
 import { fnRenderConnectionSelectOption, OBJ_DB_CONNECTION_SELECT_PROPS } from '../components/DbConnectionSelectOption';
 import { useDesignSystem } from '../styles/DesignSystemContext';
-import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import { fnCodeSurfaceStyle, fnCodeSurfaceSlotValueStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 import { fnStatusTimelineColor } from '../styles/workflowTimelineColors';
 import {
   fnSemanticColor,
@@ -89,34 +91,87 @@ type TQueryEditTarget = {
   strQuery: string;
 };
 
-/** 인스턴스 수정 모달 — 템플릿 세트별 슬롯 ID 힌트 (순서 유지) */
-const fnBuildEditSlotsHintFromTemplate = (
+/** 인스턴스 수정 모달 — 템플릿 세트별 슬롯 행 (ID·형식 포함) */
+const fnBuildEditSlotRowsFromTemplate = (
   r: IEventInstance,
   objTpl: IEventTemplate | undefined,
-): Array<Array<{ strInputId: string }>> => {
+): TQuerySetSlotRowItem[][] => {
   const nSets = Math.max(r.arrExecutionTargets?.length ?? 0, 1);
   if (!objTpl) {
-    return Array.from({ length: nSets }, () => [{ strInputId: 'items' }]);
+    return Array.from({ length: nSets }, () => [
+      { strInputId: 'items', strInputFormat: 'item_number' as TInputFormat },
+    ]);
   }
   const strFmt = objTpl.strInputFormat ?? 'item_number';
   const arrValidSets = objTpl.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
   if (arrValidSets.length === 0) {
-    // 템플릿에는 strInputId 없음 — 형식만 넘기고 ID는 normalize 기본값(items)
     const arrLegacy = fnNormalizeQuerySetInputs(
       { strInputFormat: objTpl.strInputFormat },
       strFmt,
-    ).filter((s) => s.strInputFormat !== 'none');
-    const arrIds = (arrLegacy.length > 0 ? arrLegacy : [{ strInputId: 'items' }]).map((s) => ({
-      strInputId: s.strInputId,
-    }));
-    return Array.from({ length: nSets }, () => arrIds.map((x) => ({ ...x })));
+    );
+    const arrSlots = arrLegacy.length > 0
+      ? arrLegacy
+      : [{ strInputId: 'items', strInputFormat: 'item_number' as TInputFormat }];
+    return Array.from({ length: nSets }, () =>
+      arrSlots.map((s) => ({ strInputId: s.strInputId, strInputFormat: s.strInputFormat })),
+    );
   }
   return Array.from({ length: nSets }, (_, i) => {
     const objSet = arrValidSets[Math.min(i, arrValidSets.length - 1)];
-    const arrSlots = fnNormalizeQuerySetInputs(objSet, strFmt).filter((s) => s.strInputFormat !== 'none');
-    if (arrSlots.length === 0) return [{ strInputId: 'items' }];
-    return arrSlots.map((s) => ({ strInputId: s.strInputId }));
+    const arrSlots = fnNormalizeQuerySetInputs(objSet, strFmt);
+    if (arrSlots.length === 0) {
+      return [{ strInputId: 'items', strInputFormat: 'item_number' as TInputFormat }];
+    }
+    return arrSlots.map((s) => ({ strInputId: s.strInputId, strInputFormat: s.strInputFormat }));
   });
+};
+
+const fnGetEditTemplateSqlForSet = (
+  objTpl: IEventTemplate | undefined,
+  nSetIdx: number,
+): string => {
+  if (!objTpl) return '';
+  const arrValidSets = objTpl.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+  if (arrValidSets.length === 0) {
+    return (
+      objTpl.strQueryTemplate?.trim()
+      || objTpl.arrQueryTemplates?.[0]?.strQueryTemplate?.trim()
+      || ''
+    );
+  }
+  const objSet = arrValidSets[Math.min(nSetIdx, arrValidSets.length - 1)];
+  return (objSet?.strQueryTemplate ?? '').trim();
+};
+
+/** 수정 모달 — 저장 시 서버가 만들 쿼리를 클라이언트에서 미리보기 */
+const fnApplyEditInstanceQueryPreview = (
+  strTemplate: string,
+  arrSlots: TQuerySetSlotRowItem[],
+  mapValues: Record<string, string>,
+  objCtx: {
+    strQaDeployDate: string;
+    strLiveDeployDate: string;
+    strDeployDate: string;
+    strEventName: string;
+    strServiceAbbr: string;
+    strProductName: string;
+    strServiceRegion: string;
+  },
+): string => {
+  const strTpl = strTemplate.trim();
+  if (!strTpl) return '';
+  const arrActive = arrSlots.filter((s) => s.strInputFormat !== 'none');
+  const bHasSlotValues = arrActive.some((s) => (mapValues[s.strInputId] ?? '').trim().length > 0);
+  let str = arrActive.length > 0 && bHasSlotValues
+    ? fnReplaceAllInputsInTemplate(strTpl, arrActive, mapValues)
+    : strTpl;
+  const strDateOnly = (objCtx.strQaDeployDate || objCtx.strLiveDeployDate || objCtx.strDeployDate).slice(0, 10);
+  str = str.replace(/\{\{date\}\}/g, strDateOnly);
+  str = str.replace(/\{\{event_name\}\}/g, objCtx.strEventName);
+  str = str.replace(/\{\{abbr\}\}/g, objCtx.strServiceAbbr || '');
+  str = str.replace(/\{\{product\}\}/g, objCtx.strProductName || '');
+  str = str.replace(/\{\{region\}\}/g, objCtx.strServiceRegion || '');
+  return str;
 };
 
 // Progress 시뮬레이션: 이전 성공 실행 소요(ms)에 비례해 0→99%까지 채움 (이력 없으면 기본값)
@@ -848,14 +903,10 @@ const MyDashboardPage = () => {
   const [bEditOpen, setBEditOpen] = useState(false);
   const [objEditInstance, setObjEditInstance] = useState<IEventInstance | null>(null);
   const [strEditEventName, setStrEditEventName] = useState('');
-  const [strEditInputValues, setStrEditInputValues] = useState('');
-  /** 다중 쿼리 세트일 때 세트별 입력값 (수정 모달) */
-  const [arrEditInputValues, setArrEditInputValues] = useState<string[]>([]);
-  /** 세트별 슬롯 map (JSON 입력값 편집) */
+  /** 세트별 슬롯 map (JSON·레거시 dual-read 후 편집, 저장 시 JSON) */
   const [arrEditSetSlotValues, setArrEditSetSlotValues] = useState<Array<Record<string, string>>>([]);
-  /** 세트별 슬롯 ID 표시 순서 (템플릿 arrInputs 기준) */
-  const [arrEditSlotIdsPerSet, setArrEditSlotIdsPerSet] = useState<string[][]>([]);
-  const [bEditInputJson, setBEditInputJson] = useState(false);
+  /** 세트별 슬롯 행 (템플릿 arrInputs 기준) */
+  const [arrEditSlotRowsPerSet, setArrEditSlotRowsPerSet] = useState<TQuerySetSlotRowItem[][]>([]);
   const [strEditDeployDate, setStrEditDeployDate] = useState('');  // 하위 호환 (미사용)
   const [strEditQaDeployDate, setStrEditQaDeployDate] = useState('');
   const [strEditLiveDeployDate, setStrEditLiveDeployDate] = useState('');
@@ -910,8 +961,8 @@ const MyDashboardPage = () => {
     [token],
   );
   const objSqlTaEditable13 = React.useMemo(() => fnCodeSurfaceStyle(token, 13), [token]);
-  const objSqlTaEditable13Mt = React.useMemo(
-    () => fnCodeSurfaceStyle(token, 13, { marginTop: 4 }),
+  const objSqlSlotValueInputStyle = React.useMemo(
+    () => fnCodeSurfaceSlotValueStyle(token, 13),
     [token],
   );
 
@@ -1176,35 +1227,16 @@ const MyDashboardPage = () => {
     }
   };
 
-  // 수정 모달 열기 (JSON 슬롯 / 구 \u0001 dual-read — 슬롯 목록은 템플릿 arrInputs)
+  // 수정 모달 열기 — JSON/레거시 dual-read → 슬롯 map (저장 시 JSON 승격)
   const fnOpenEdit = (r: IEventInstance) => {
     setObjEditInstance(r);
     setStrEditEventName(r.strEventName);
-    const nSets = Math.max(r.arrExecutionTargets?.length ?? 0, 1);
     const strInput = r.strInputValues ?? '';
     const objTpl = arrEvents.find((e) => e.nId === r.nEventTemplateId);
-    const arrSlotsHint = fnBuildEditSlotsHintFromTemplate(r, objTpl);
-    const arrSlotIds = arrSlotsHint.map((arr) => arr.map((s) => s.strInputId));
-    setArrEditSlotIdsPerSet(arrSlotIds);
-
-    if (fnIsInstanceInputValuesJson(strInput)) {
-      setBEditInputJson(true);
-      setArrEditSetSlotValues(fnDecodeInstanceInputValues(strInput, arrSlotsHint));
-      setArrEditInputValues([]);
-      setStrEditInputValues('');
-    } else if ((r.arrExecutionTargets?.length ?? 0) > 0) {
-      setBEditInputJson(false);
-      const parts = strInput.split(MULTI_SET_INPUT_DELIMITER);
-      const arr = Array.from({ length: nSets }, (_, i) => parts[i] ?? '');
-      setArrEditInputValues(arr);
-      setArrEditSetSlotValues([]);
-      setStrEditInputValues('');
-    } else {
-      setBEditInputJson(false);
-      setStrEditInputValues(strInput);
-      setArrEditInputValues([]);
-      setArrEditSetSlotValues([]);
-    }
+    const arrSlotRows = fnBuildEditSlotRowsFromTemplate(r, objTpl);
+    const arrSlotsHint = arrSlotRows.map((arr) => arr.map((s) => ({ strInputId: s.strInputId })));
+    setArrEditSlotRowsPerSet(arrSlotRows);
+    setArrEditSetSlotValues(fnDecodeInstanceInputValues(strInput, arrSlotsHint));
     setStrEditDeployDate(r.dtDeployDate);
     // 전용 필드만 사용. dtDeployDate fallback은 QA/LIVE 둘 다 없을 때만 (표시 헬퍼와 동일)
     {
@@ -1220,14 +1252,10 @@ const MyDashboardPage = () => {
     setBEditOpen(true);
   };
 
-  // 수정 저장 (다중 세트면 세트별 입력값을 구분자로 합쳐 전송)
+  // 수정 저장 — 슬롯 map을 JSON으로 저장 (레거시 인스턴스도 승격)
   const fnSaveEdit = async () => {
     if (!objEditInstance) return;
-    const strPayloadInputValues = bEditInputJson
-      ? fnEncodeInstanceInputValues(arrEditSetSlotValues)
-      : objEditInstance.arrExecutionTargets?.length
-        ? arrEditInputValues.map((v) => (v ?? '').trim()).join(MULTI_SET_INPUT_DELIMITER)
-        : strEditInputValues;
+    const strPayloadInputValues = fnEncodeInstanceInputValues(arrEditSetSlotValues);
     const result = await fnStoreUpdateInstance(objEditInstance.nId, {
       strEventName: strEditEventName,
       strAlloLink: strEditAlloLink.trim() || undefined,
@@ -2489,16 +2517,22 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       >
         {objEditInstance && (
           <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="middle">
-            <div>
-              <Text strong>프로덕트</Text>
-              <Input value={objEditInstance.strProductName} disabled style={{ marginTop: 4 }} />
-            </div>
-            <div>
-              <Text strong>{STR_SERVICE_SCOPE_LABEL}</Text>
-              <div style={{ marginTop: 4 }}>
-                <InstanceServiceScopeCell strServiceAbbr={objEditInstance.strServiceAbbr} />
-              </div>
-            </div>
+            <Row gutter={12}>
+              <Col span={6}>
+                <Text strong>이벤트 번호</Text>
+                <Input value={String(objEditInstance.nId)} disabled style={{ marginTop: 4 }} />
+              </Col>
+              <Col span={10}>
+                <Text strong>프로덕트</Text>
+                <Input value={objEditInstance.strProductName} disabled style={{ marginTop: 4 }} />
+              </Col>
+              <Col span={8}>
+                <Text strong>{STR_SERVICE_SCOPE_LABEL}</Text>
+                <div style={{ marginTop: 4 }}>
+                  <InstanceServiceScopeCell strServiceAbbr={objEditInstance.strServiceAbbr} />
+                </div>
+              </Col>
+            </Row>
             <div>
               <Text strong>이벤트 이름</Text>
               <Input value={strEditEventName} onChange={(e) => setStrEditEventName(e.target.value)} style={{ marginTop: 4 }} />
@@ -2581,103 +2615,218 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               </div>
             )}
             {(objEditInstance.arrExecutionTargets?.length ?? 0) > 0 ? (
-              <>
-                <div>
-                  <Space style={{ marginBottom: 4 }}>
-                    <Text strong>입력값 (아이템/퀘스트)</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>세트·슬롯별 입력 · 수정 시 쿼리 자동 재생성</Text>
-                  </Space>
-                  <Tabs
-                    type="card"
-                    style={{ marginTop: 8 }}
-                    items={objEditInstance.arrExecutionTargets!.map((_, idx) => ({
-                      key: String(idx),
-                      label: `세트 ${idx + 1}`,
-                      children: bEditInputJson ? (
-                        <Space direction="vertical" style={{ width: '100%' }} size="small">
-                          {(() => {
-                            const arrOrdered = arrEditSlotIdsPerSet[idx] ?? [];
-                            const setOrdered = new Set(arrOrdered);
-                            const arrExtra = Object.keys(arrEditSetSlotValues[idx] ?? {}).filter(
-                              (strId) => !setOrdered.has(strId),
-                            );
-                            const arrIds = arrOrdered.length > 0
-                              ? [...arrOrdered, ...arrExtra]
-                              : (arrExtra.length > 0 ? arrExtra : ['items']);
-                            return arrIds.map((strId) => (
-                              <div key={strId}>
-                                <Text type="secondary" style={{ fontSize: 12 }}>{`{{${strId}}}`}</Text>
-                                <TextArea
-                                  className={STR_CODE_BLOCK_CLASS}
-                                  value={arrEditSetSlotValues[idx]?.[strId] ?? ''}
-                                  onChange={(e) => {
-                                    setArrEditSetSlotValues((prev) => {
-                                      const next = prev.map((m) => ({ ...m }));
-                                      while (next.length <= idx) next.push({});
-                                      next[idx] = { ...next[idx], [strId]: e.target.value };
-                                      return next;
-                                    });
-                                  }}
-                                  rows={3}
-                                  style={objSqlTaEditable13}
-                                />
-                              </div>
-                            ));
-                          })()}
-                        </Space>
-                      ) : (
-                        <TextArea
-                          className={STR_CODE_BLOCK_CLASS}
-                          value={arrEditInputValues[idx] ?? ''}
-                          onChange={(e) => {
-                            const next = [...arrEditInputValues];
-                            while (next.length <= idx) next.push('');
-                            next[idx] = e.target.value;
-                            setArrEditInputValues(next);
-                          }}
-                          rows={4}
-                          style={objSqlTaEditable13}
-                        />
-                      ),
-                    }))}
-                  />
-                </div>
-                <div>
-                  <Space style={{ marginBottom: 4 }}>
-                    <Text strong>쿼리 (읽기 전용)</Text>
-                  </Space>
-                  <Tabs
-                    type="card"
-                    style={{ marginTop: 8 }}
-                    items={objEditInstance.arrExecutionTargets!.map((t, idx) => ({
+              <div>
+                <Space style={{ marginBottom: 4 }}>
+                  <Text strong>입력값 · 쿼리</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    세트·슬롯별 입력 · 저장 시 쿼리 자동 재생성
+                  </Text>
+                </Space>
+                <Tabs
+                  type="card"
+                  style={{ marginTop: 8 }}
+                  items={objEditInstance.arrExecutionTargets!.map((_, idx) => {
+                    const objEditTpl = arrEvents.find((e) => e.nId === objEditInstance.nEventTemplateId);
+                    const arrSlots = arrEditSlotRowsPerSet[idx] ?? [{ strInputId: 'items', strInputFormat: 'item_number' as TInputFormat }];
+                    const strTemplateSql = fnGetEditTemplateSqlForSet(objEditTpl, idx);
+                    const objPreviewCtx = {
+                      strQaDeployDate: strEditQaDeployDate,
+                      strLiveDeployDate: strEditLiveDeployDate,
+                      strDeployDate: strEditDeployDate,
+                      strEventName: strEditEventName,
+                      strServiceAbbr: objEditInstance.strServiceAbbr ?? '',
+                      strProductName: objEditInstance.strProductName ?? '',
+                      strServiceRegion: objEditInstance.strServiceRegion ?? '',
+                    };
+                    const arrPreviewSlots = arrSlots.filter((s) => s.strInputFormat !== 'none');
+                    const mapSlotValues = arrEditSetSlotValues[idx] ?? {};
+                    const strPreviewQuery = fnApplyEditInstanceQueryPreview(
+                      strTemplateSql,
+                      arrSlots,
+                      mapSlotValues,
+                      objPreviewCtx,
+                    );
+                    const bSubstituted = arrPreviewSlots.some(
+                      (s) => (mapSlotValues[s.strInputId] ?? '').trim().length > 0,
+                    );
+                    const strSlotHint = arrPreviewSlots.length > 0
+                      ? arrPreviewSlots.map((s) => `{{${s.strInputId}}}`).join(', ')
+                      : '{{items}}';
+                    const strPreviewLabel = bSubstituted
+                      ? '실행될 쿼리 (미리보기)'
+                      : `쿼리 (플레이스홀더 ${strSlotHint} — 입력값 있으면 치환)`;
+
+                    return {
                       key: String(idx),
                       label: `쿼리 세트 ${idx + 1}`,
                       children: (
-                        <SqlLineNumberArea
-                          strValue={t.strQuery}
-                          bReadOnly
-                          nFontSize={12}
-                          nMinRows={6}
-                          nMaxRows={18}
-                        />
+                        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                          <QuerySetInputSlotRows
+                            arrSlots={arrSlots}
+                            strThirdColumnLabel="입력값"
+                            objSqlFieldStyle={objSqlTaEditable13}
+                            fnRenderValueCell={(objSlot) => (
+                              <TextArea
+                                className={STR_CODE_BLOCK_CLASS}
+                                value={arrEditSetSlotValues[idx]?.[objSlot.strInputId] ?? ''}
+                                onChange={(e) => {
+                                  setArrEditSetSlotValues((prev) => {
+                                    const next = prev.map((m) => ({ ...m }));
+                                    while (next.length <= idx) next.push({});
+                                    next[idx] = { ...next[idx], [objSlot.strInputId]: e.target.value };
+                                    return next;
+                                  });
+                                }}
+                                placeholder={
+                                  objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                                }
+                                rows={1}
+                                styles={{ textarea: objSqlSlotValueInputStyle }}
+                              />
+                            )}
+                          />
+                          <div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: 4,
+                              }}
+                            >
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {strPreviewLabel}
+                              </Text>
+                              {strPreviewQuery ? (
+                                <Button
+                                  size="small"
+                                  icon={<CopyOutlined />}
+                                  onClick={() => fnCopy(strPreviewQuery)}
+                                >
+                                  복사
+                                </Button>
+                              ) : null}
+                            </div>
+                            {strPreviewQuery ? (
+                              <SqlLineNumberArea
+                                strValue={strPreviewQuery}
+                                bReadOnly
+                                nFontSize={12}
+                                nMinRows={4}
+                                nMaxRows={14}
+                              />
+                            ) : (
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                이 세트에 연결된 템플릿 SQL이 없습니다.
+                              </Text>
+                            )}
+                          </div>
+                        </Space>
                       ),
-                    }))}
-                  />
-                </div>
-              </>
+                    };
+                  })}
+                />
+              </div>
             ) : (
               <div>
                 <Space style={{ marginBottom: 4 }}>
-                  <Text strong>입력값 (아이템/퀘스트)</Text>
-                  <Text type="secondary" style={{ fontSize: 11 }}>수정 시 쿼리 자동 재생성</Text>
+                  <Text strong>입력값 · 쿼리</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>저장 시 쿼리 자동 재생성</Text>
                 </Space>
-                <TextArea
-                  className={STR_CODE_BLOCK_CLASS}
-                  value={strEditInputValues}
-                  onChange={(e) => setStrEditInputValues(e.target.value)}
-                  rows={5}
-                  style={objSqlTaEditable13Mt}
-                />
+                {(() => {
+                  const objEditTpl = arrEvents.find((e) => e.nId === objEditInstance.nEventTemplateId);
+                  const arrSlots = arrEditSlotRowsPerSet[0] ?? [{ strInputId: 'items', strInputFormat: 'item_number' as TInputFormat }];
+                  const strTemplateSql = fnGetEditTemplateSqlForSet(objEditTpl, 0);
+                  const objPreviewCtx = {
+                    strQaDeployDate: strEditQaDeployDate,
+                    strLiveDeployDate: strEditLiveDeployDate,
+                    strDeployDate: strEditDeployDate,
+                    strEventName: strEditEventName,
+                    strServiceAbbr: objEditInstance.strServiceAbbr ?? '',
+                    strProductName: objEditInstance.strProductName ?? '',
+                    strServiceRegion: objEditInstance.strServiceRegion ?? '',
+                  };
+                  const mapSlotValues = arrEditSetSlotValues[0] ?? {};
+                  const arrPreviewSlots = arrSlots.filter((s) => s.strInputFormat !== 'none');
+                  const strPreviewQuery = fnApplyEditInstanceQueryPreview(
+                    strTemplateSql,
+                    arrSlots,
+                    mapSlotValues,
+                    objPreviewCtx,
+                  );
+                  const bSubstituted = arrPreviewSlots.some(
+                    (s) => (mapSlotValues[s.strInputId] ?? '').trim().length > 0,
+                  );
+                  const strSlotHint = arrPreviewSlots.length > 0
+                    ? arrPreviewSlots.map((s) => `{{${s.strInputId}}}`).join(', ')
+                    : '{{items}}';
+                  const strPreviewLabel = bSubstituted
+                    ? '실행될 쿼리 (미리보기)'
+                    : `쿼리 (플레이스홀더 ${strSlotHint} — 입력값 있으면 치환)`;
+                  return (
+                    <Space direction="vertical" style={{ width: '100%', marginTop: 8 }} size="middle">
+                      <QuerySetInputSlotRows
+                        arrSlots={arrSlots}
+                        strThirdColumnLabel="입력값"
+                        objSqlFieldStyle={objSqlTaEditable13}
+                        fnRenderValueCell={(objSlot) => (
+                          <TextArea
+                            className={STR_CODE_BLOCK_CLASS}
+                            value={arrEditSetSlotValues[0]?.[objSlot.strInputId] ?? ''}
+                            onChange={(e) => {
+                              setArrEditSetSlotValues((prev) => {
+                                const next = prev.length > 0 ? prev.map((m) => ({ ...m })) : [{}];
+                                next[0] = { ...next[0], [objSlot.strInputId]: e.target.value };
+                                return next;
+                              });
+                            }}
+                            placeholder={
+                              objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                            }
+                            rows={1}
+                            styles={{ textarea: objSqlSlotValueInputStyle }}
+                          />
+                        )}
+                      />
+                      <div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 4,
+                          }}
+                        >
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {strPreviewLabel}
+                          </Text>
+                          {strPreviewQuery ? (
+                            <Button
+                              size="small"
+                              icon={<CopyOutlined />}
+                              onClick={() => fnCopy(strPreviewQuery)}
+                            >
+                              복사
+                            </Button>
+                          ) : null}
+                        </div>
+                        {strPreviewQuery ? (
+                          <SqlLineNumberArea
+                            strValue={strPreviewQuery}
+                            bReadOnly
+                            nFontSize={12}
+                            nMinRows={4}
+                            nMaxRows={14}
+                          />
+                        ) : (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            연결된 템플릿 SQL이 없습니다.
+                          </Text>
+                        )}
+                      </div>
+                    </Space>
+                  );
+                })()}
               </div>
             )}
           </Space>
