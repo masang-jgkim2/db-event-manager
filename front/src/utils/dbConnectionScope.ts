@@ -1,6 +1,10 @@
 import type { IEventTemplate, IDbConnection, IQueryTemplateItem, IService, TDbConnectionKind } from '../types';
 import { fnFormatDbConnectionCountryPlatform } from './countryPlatformLabel';
-import { fnNormalizeQuerySetInputs, fnMirrorLegacyInputFieldsFromSlots } from './querySetInput';
+import {
+  fnNormalizeQuerySetInputs,
+  fnMirrorLegacyInputFieldsFromSlots,
+  fnResolveMirroredDefaultItems,
+} from './querySetInput';
 
 /** product.arrServices 조회용 — arrServices 생략 가능 */
 export type TProductServiceLookup = {
@@ -175,7 +179,7 @@ export const fnNormalizeQueryTemplateItem = (
     arrInputs,
     strInputId: objLegacy.strInputId,
     strInputFormat: objLegacy.strInputFormat,
-    strDefaultItems: objLegacy.strDefaultItems ?? raw.strDefaultItems,
+    strDefaultItems: fnResolveMirroredDefaultItems(raw, objLegacy),
     strQueryTemplate: raw.strQueryTemplate ?? '',
   };
 };
