@@ -22,6 +22,30 @@ import {
   fnNormalizeExecutionTargetConnFields,
   fnNormalizeQueryTemplateConnFields,
 } from '../utils/queryTemplateConnections';
+import {
+  fnNormalizeQuerySetInputs,
+  fnMirrorLegacyInputFieldsFromSlots,
+} from '../utils/querySetInput';
+
+/** INSERT용 — 레거시 컬럼 미러 + json_arr_inputs (MySQL sync·테스트 공용) */
+export const fnQuerySetInputPersistFields = (
+  q: IQueryTemplateItem,
+  strTplFormat: string,
+): {
+  strInputId: string;
+  strInputFormat: string;
+  strDefaultItems: string | null;
+  jsonArrInputs: string | null;
+} => {
+  const arrInputs = fnNormalizeQuerySetInputs(q, strTplFormat);
+  const objLegacy = fnMirrorLegacyInputFieldsFromSlots(arrInputs);
+  return {
+    strInputId: objLegacy.strInputId,
+    strInputFormat: objLegacy.strInputFormat,
+    strDefaultItems: objLegacy.strDefaultItems ?? q.strDefaultItems ?? null,
+    jsonArrInputs: JSON.stringify(arrInputs),
+  };
+};
 
 /** users.json 행 */
 export interface IUserRowJson {
@@ -375,19 +399,21 @@ const fnInsertPayload = async (conn: PoolConnection, p: IRelationalImportPayload
         const nQa = fnResolveDbConnId(e.nProductId, objNorm.nQaDbConnectionId, arrDbConnections);
         const nLive = fnResolveDbConnId(e.nProductId, objNorm.nLiveDbConnectionId, arrDbConnections);
         if (nQa <= 0 || nLive <= 0) continue;
+        const objPersist = fnQuerySetInputPersistFields(q, e.strInputFormat ?? 'item_number');
         await conn.execute(
           `INSERT INTO event_template_query_set (
              n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
-             str_input_id, str_input_format, str_default_items, str_query_template
-           ) VALUES (?,?,?,?,?,?,?,?)`,
+             str_input_id, str_input_format, str_default_items, json_arr_inputs, str_query_template
+           ) VALUES (?,?,?,?,?,?,?,?,?)`,
           [
             e.nId,
             nSort,
             nQa,
             nLive,
-            (q.strInputId ?? 'items').trim() || 'items',
-            (q.strInputFormat ?? e.strInputFormat ?? 'item_number').trim() || 'item_number',
-            q.strDefaultItems ?? null,
+            objPersist.strInputId,
+            objPersist.strInputFormat,
+            objPersist.strDefaultItems,
+            objPersist.jsonArrInputs,
             q.strQueryTemplate ?? '',
           ],
         );
@@ -909,19 +935,21 @@ export const fnUpsertEventTemplateToMysql = async (
           nSkipped += 1;
           continue;
         }
+        const objPersist = fnQuerySetInputPersistFields(q, e.strInputFormat ?? 'item_number');
         await conn.execute(
           `INSERT INTO event_template_query_set (
              n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
-             str_input_id, str_input_format, str_default_items, str_query_template
-           ) VALUES (?,?,?,?,?,?,?,?)`,
+             str_input_id, str_input_format, str_default_items, json_arr_inputs, str_query_template
+           ) VALUES (?,?,?,?,?,?,?,?,?)`,
           [
             e.nId,
             nSort,
             nQa,
             nLive,
-            (q.strInputId ?? 'items').trim() || 'items',
-            (q.strInputFormat ?? e.strInputFormat ?? 'item_number').trim() || 'item_number',
-            q.strDefaultItems ?? null,
+            objPersist.strInputId,
+            objPersist.strInputFormat,
+            objPersist.strDefaultItems,
+            objPersist.jsonArrInputs,
             q.strQueryTemplate ?? '',
           ],
         );
@@ -1214,7 +1242,7 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
   );
   const [qrows] = await pool.query<RowDataPacket[]>(
     `SELECT n_event_template_id, n_sort, n_db_connection_id, n_live_db_connection_id,
-            str_input_id, str_input_format, str_default_items, str_query_template
+            str_input_id, str_input_format, str_default_items, json_arr_inputs, str_query_template
      FROM event_template_query_set ORDER BY n_event_template_id, n_sort`,
   );
   const mapQ = new Map<number, IQueryTemplateItem[]>();
@@ -1231,10 +1259,22 @@ export const fnRelationalLoadEvents = async (pool: Pool): Promise<IEventTemplate
         nLive = objLive?.nId ?? 0;
       }
     }
+    let arrInputs: IQueryTemplateItem['arrInputs'];
+    if (q.json_arr_inputs != null) {
+      try {
+        const raw = typeof q.json_arr_inputs === 'string'
+          ? JSON.parse(q.json_arr_inputs)
+          : q.json_arr_inputs;
+        if (Array.isArray(raw)) arrInputs = raw as IQueryTemplateItem['arrInputs'];
+      } catch {
+        arrInputs = undefined;
+      }
+    }
     mapQ.get(tid)!.push(
       fnNormalizeQueryTemplateConnFields({
         nQaDbConnectionId: nQa,
         nLiveDbConnectionId: nLive,
+        arrInputs,
         strInputId: q.str_input_id != null ? String(q.str_input_id) : 'items',
         strInputFormat: q.str_input_format != null ? String(q.str_input_format) : undefined,
         strDefaultItems: q.str_default_items != null ? String(q.str_default_items) : undefined,

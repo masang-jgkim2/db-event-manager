@@ -33,17 +33,22 @@ import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useThemeStore, fnGenPalette } from '../stores/useThemeStore';
 import { DqpmTag } from '../components/DqpmTag';
+import { QuerySetInputSlotRows } from '../components/QuerySetInputSlotRows';
 import { fnApiCreateInstance } from '../api/eventInstanceApi';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IEventTemplate, IService, TDeployScope, TTemplateStatus, TInputFormat } from '../types';
-import { ARR_DEPLOY_SCOPE_OPTIONS, OBJ_TEMPLATE_STATUS_CONFIG, ARR_INPUT_FORMATS } from '../types';
-import { fnReplaceItemsInTemplate } from '../utils/queryTemplateItems';
+import { ARR_DEPLOY_SCOPE_OPTIONS, OBJ_TEMPLATE_STATUS_CONFIG } from '../types';
+import { fnReplaceItemsInTemplate, fnReplaceAllInputsInTemplate } from '../utils/queryTemplateItems';
+import { fnEncodeInstanceInputValues } from '../utils/instanceInputValues';
+import { fnNormalizeQuerySetInputs } from '../utils/querySetInput';
 import {
   fnBuildInstanceConnectionPreview,
   fnFormatConnectionEndpoint,
   fnFormatExecutionTargetConnLabel,
   fnIsExplicitEnvConnectionValid,
   fnIsValidQueryTemplateSet,
+  fnIsEventTemplateFkStub,
+  fnSummarizeTemplateShape,
   fnNormalizeExecutionTargetItem,
   fnNormalizeQueryTemplateItem,
   fnHasEnvConnectionForService,
@@ -60,9 +65,6 @@ import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle } fr
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
-
-// 다중 세트 입력값을 서버의 strInputValues 한 필드에 저장할 때 사용하는 구분자
-const MULTI_INPUT_DELIMITER = '\u0001';
 
 const fnResolveTemplateStatus = (obj: IEventTemplate): TTemplateStatus =>
   obj.strStatus ?? 'dba_confirmed';
@@ -108,8 +110,8 @@ const QueryPage = () => {
   // 입력 상태
   const [strEventName, setStrEventName] = useState('');
   const [strInputValues, setStrInputValues] = useState('');
-  /** 다중 쿼리 세트일 때 세트별 입력값 (인덱스 = 세트 순서) */
-  const [arrInputValues, setArrInputValues] = useState<string[]>([]);
+  /** 세트별 슬롯 값 — sets[i][strInputId] */
+  const [arrSetSlotValues, setArrSetSlotValues] = useState<Array<Record<string, string>>>([]);
   const [strDeployDate, setStrDeployDate] = useState('');  // 하위 호환용 (미사용)
   const [strQaDeployDate, setStrQaDeployDate] = useState('');   // QA 반영 날짜 (ISO 8601)
   const [strLiveDeployDate, setStrLiveDeployDate] = useState(''); // LIVE 반영 날짜 (ISO 8601)
@@ -196,7 +198,9 @@ const QueryPage = () => {
   }, [nSelectedProductId, arrEvents]);
 
   const nReadyTemplateCount = useMemo(
-    () => arrProductTemplates.filter((e) => fnResolveTemplateStatus(e) === 'dba_confirmed').length,
+    () => arrProductTemplates.filter(
+      (e) => fnResolveTemplateStatus(e) === 'dba_confirmed' && !fnIsEventTemplateFkStub(e),
+    ).length,
     [arrProductTemplates],
   );
 
@@ -207,7 +211,7 @@ const QueryPage = () => {
   }, [nSelectedEventId, arrEvents]);
 
   const bTemplateReady = objSelectedEvent
-    ? fnResolveTemplateStatus(objSelectedEvent) === 'dba_confirmed'
+    ? fnResolveTemplateStatus(objSelectedEvent) === 'dba_confirmed' && !fnIsEventTemplateFkStub(objSelectedEvent)
     : false;
 
   // 유효한 쿼리 세트 (세트 2개 이상 = 다중, 1개 = 단일)
@@ -215,7 +219,6 @@ const QueryPage = () => {
     if (!objSelectedEvent) return [];
     return objSelectedEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
   }, [objSelectedEvent]);
-  const bMultiQuery = arrSets.length >= 2;
 
   // 이벤트 생성 시 QA/LIVE 체크: 프로덕트 + 서비스 범위 + (다중 세트 시) 종류별
   const bHasQaConnection = useMemo(() => {
@@ -314,7 +317,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
-    setArrInputValues([]);
+    setArrSetSlotValues([]);
     setStrDeployDate('');
     setStrQaDeployDate('');
     setStrLiveDeployDate('');
@@ -342,7 +345,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
-    setArrInputValues([]);
+    setArrSetSlotValues([]);
     setStrDeployDate('');
     setStrQaDeployDate('');
     setStrLiveDeployDate('');
@@ -359,32 +362,59 @@ const QueryPage = () => {
       setStrEventName(fnGenerateEventName(strSelectedAbbr, objEvent.strEventLabel));
 
       const arrNewSets = objEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
-      if (arrNewSets.length >= 2) {
-        setArrInputValues(arrNewSets.map((s) => (s.strDefaultItems ?? '').trim()));
+      if (arrNewSets.length >= 1) {
+        setArrSetSlotValues(
+          arrNewSets.map((s) => {
+            const arrSlots = fnNormalizeQuerySetInputs(s, objEvent.strInputFormat);
+            const strLegacyFallback =
+              (objEvent.strDefaultItems ?? '').trim() || (s.strDefaultItems ?? '').trim();
+            const objMap: Record<string, string> = {};
+            let bAnySlotDefault = false;
+            for (const objSlot of arrSlots) {
+              const strSlotDefault = (objSlot.strDefaultItems ?? '').trim();
+              objMap[objSlot.strInputId] = strSlotDefault;
+              if (strSlotDefault) bAnySlotDefault = true;
+            }
+            if (!bAnySlotDefault && strLegacyFallback) {
+              const objFirstActive =
+                arrSlots.find((slot) => slot.strInputFormat !== 'none') ?? arrSlots[0];
+              if (objFirstActive) objMap[objFirstActive.strInputId] = strLegacyFallback;
+            }
+            return objMap;
+          }),
+        );
         setStrInputValues('');
       } else {
         const strDefault =
           (objEvent.strDefaultItems && objEvent.strDefaultItems.trim()) ||
-          (objEvent.arrQueryTemplates?.[0]?.strDefaultItems?.trim()) ||
           '';
         setStrInputValues(strDefault);
-        setArrInputValues([]);
+        setArrSetSlotValues([]);
       }
     }
   };
 
-  // 치환 적용 헬퍼 (템플릿 문자열 + 입력값 → 최종 쿼리). 다중 세트 시 strItemsOverride·세트 format/id 사용
+  // 치환 적용 — 세트 슬롯 map 또는 레거시 단일 문자열
   const fnApplyTemplate = (
     strTemplate: string,
-    strItemsOverride?: string,
-    strFmtOverride?: string,
-    strInputIdOverride?: string,
+    objOpts?: {
+      arrInputs?: Array<{ strInputId: string; strInputFormat: TInputFormat }>;
+      mapValues?: Record<string, string>;
+      strItemsOverride?: string;
+      strFmtOverride?: string;
+      strInputIdOverride?: string;
+    },
   ): string => {
-    const strRaw = strItemsOverride !== undefined ? strItemsOverride : strInputValues;
-    const strFmt = (strFmtOverride || objSelectedEvent?.strInputFormat || 'item_number') as TInputFormat;
-    const strInputId = strInputIdOverride || 'items';
     const strDateOnly = (strQaDeployDate || strLiveDeployDate || strDeployDate).slice(0, 10);
-    let str = fnReplaceItemsInTemplate(strTemplate, strRaw, strFmt, strInputId);
+    let str: string;
+    if (objOpts?.arrInputs?.length && objOpts.mapValues) {
+      str = fnReplaceAllInputsInTemplate(strTemplate, objOpts.arrInputs, objOpts.mapValues);
+    } else {
+      const strRaw = objOpts?.strItemsOverride !== undefined ? objOpts.strItemsOverride : strInputValues;
+      const strFmt = (objOpts?.strFmtOverride || objSelectedEvent?.strInputFormat || 'item_number') as TInputFormat;
+      const strInputId = objOpts?.strInputIdOverride || 'items';
+      str = fnReplaceItemsInTemplate(strTemplate, strRaw, strFmt, strInputId);
+    }
     str = str.replace(/\{\{date\}\}/g, strDateOnly);
     str = str.replace(/\{\{event_name\}\}/g, strEventName);
     str = str.replace(/\{\{abbr\}\}/g, strSelectedAbbr || '');
@@ -441,41 +471,38 @@ const QueryPage = () => {
       return;
     }
 
-    // 입력값 검증: 세트별 형식(none 제외) 또는 단일
-    if (bMultiQuery) {
+    // 입력값 검증: 세트·슬롯 (none 제외)
+    if (arrSets.length > 0) {
       const bMissing = arrSets.some((s, i) => {
         const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
-        if ((objNorm.strInputFormat ?? 'item_number') === 'none') return false;
-        return !(arrInputValues[i] ?? '').trim();
+        const arrSlots = objNorm.arrInputs ?? [];
+        const objMap = arrSetSlotValues[i] ?? {};
+        return arrSlots.some((objSlot) => {
+          if (objSlot.strInputFormat === 'none') return false;
+          return !(objMap[objSlot.strInputId] ?? '').trim();
+        });
       });
       if (bMissing) {
-        messageApi.warning('모든 쿼리 세트의 입력값을 입력해주세요.');
+        messageApi.warning('모든 입력 슬롯 값을 입력해주세요.');
         return;
       }
-    } else {
-      const objFirst = arrSets[0]
-        ? fnNormalizeQueryTemplateItem(arrSets[0], objSelectedEvent.strInputFormat)
-        : null;
-      const strFmt = objFirst?.strInputFormat ?? objSelectedEvent.strInputFormat ?? 'item_number';
-      if (strFmt !== 'none' && !strInputValues.trim()) {
-        messageApi.warning('입력값을 입력해주세요.');
-        return;
-      }
+    } else if (!strInputValues.trim() && (objSelectedEvent.strInputFormat ?? 'item_number') !== 'none') {
+      messageApi.warning('입력값을 입력해주세요.');
+      return;
     }
 
     let strQuery = '';
     const arrTargets: Array<{ nQaDbConnectionId: number; nLiveDbConnectionId: number; strQuery: string }> = [];
 
-    if (bMultiQuery) {
+    if (arrSets.length > 0) {
       for (let i = 0; i < arrSets.length; i++) {
         const s = arrSets[i];
         const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
-        const strItems = (arrInputValues[i] ?? '').trim();
+        const arrSlots = objNorm.arrInputs ?? [];
+        const objMap = arrSetSlotValues[i] ?? {};
         const q = fnApplyTemplate(
           (s.strQueryTemplate ?? '').trim(),
-          strItems,
-          objNorm.strInputFormat,
-          objNorm.strInputId,
+          { arrInputs: arrSlots, mapValues: objMap },
         );
         arrTargets.push({
           nQaDbConnectionId: objNorm.nQaDbConnectionId,
@@ -488,24 +515,8 @@ const QueryPage = () => {
         const objNorm = fnNormalizeExecutionTargetItem(t);
         return `-- === 세트 ${idx + 1} (QA #${objNorm.nQaDbConnectionId} / LIVE #${objNorm.nLiveDbConnectionId}) ===\n${t.strQuery}`;
       }).join('\n\n');
-    } else if (arrSets.length === 1) {
-      const s = arrSets[0];
-      const objNorm = fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat);
-      const q = fnApplyTemplate(
-        (s.strQueryTemplate ?? '').trim(),
-        strInputValues.trim(),
-        objNorm.strInputFormat,
-        objNorm.strInputId,
-      );
-      arrTargets.push({
-        nQaDbConnectionId: objNorm.nQaDbConnectionId,
-        nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
-        strQuery: q,
-      });
-      setArrExecutionTargets(arrTargets);
-      strQuery = q;
     } else {
-      const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || objSelectedEvent.arrQueryTemplates?.[0]?.strQueryTemplate?.trim() || '';
+      const strTemplate = objSelectedEvent.strQueryTemplate?.trim() || '';
       strQuery = fnApplyTemplate(strTemplate);
       setArrExecutionTargets([]);
     }
@@ -513,8 +524,17 @@ const QueryPage = () => {
 
     setBSubmitting(true);
     try {
-      const strPayloadInputValues = bMultiQuery
-        ? arrInputValues.map((v) => (v ?? '').trim()).join(MULTI_INPUT_DELIMITER)
+      const strPayloadInputValues = arrSets.length > 0
+        ? fnEncodeInstanceInputValues(
+          arrSets.map((_, i) => {
+            const objNorm = fnNormalizeQueryTemplateItem(arrSets[i], objSelectedEvent.strInputFormat);
+            const objMap: Record<string, string> = {};
+            for (const objSlot of objNorm.arrInputs ?? []) {
+              objMap[objSlot.strInputId] = (arrSetSlotValues[i]?.[objSlot.strInputId] ?? '').trim();
+            }
+            return objMap;
+          }),
+        )
         : strInputValues.trim();
       const objPayload: Record<string, unknown> = {
         nEventTemplateId: objSelectedEvent.nId,
@@ -568,7 +588,7 @@ const QueryPage = () => {
     setNSelectedEventId(null);
     setStrEventName('');
     setStrInputValues('');
-    setArrInputValues([]);
+    setArrSetSlotValues([]);
     setStrDeployDate('');
     setStrQaDeployDate('');
     setStrLiveDeployDate('');
@@ -593,9 +613,6 @@ const QueryPage = () => {
         return '';
     }
   };
-
-  const fnGetInputFormatLabel = (strFmt: TInputFormat | string | undefined): string =>
-    ARR_INPUT_FORMATS.find((f) => f.value === strFmt)?.label || String(strFmt ?? '');
 
 
   const arrUserRoles = user?.arrRoles || [];
@@ -759,7 +776,10 @@ const QueryPage = () => {
                 disabled={arrProductTemplates.length === 0}
                 optionLabelProp="label"
               >
-                {arrProductTemplates.map((e) => (
+                {arrProductTemplates.map((e) => {
+                  const bStub = fnIsEventTemplateFkStub(e);
+                  const bReady = fnResolveTemplateStatus(e) === 'dba_confirmed' && !bStub;
+                  return (
                   <Select.Option
                     key={e.nId}
                     value={e.nId}
@@ -770,9 +790,15 @@ const QueryPage = () => {
                       <span>{e.strEventLabel}</span>
                       <DqpmTag color="blue" style={{ fontSize: 11, margin: 0 }}>{e.strCategory}</DqpmTag>
                       <DqpmTag color="red" style={{ fontSize: 11, margin: 0 }}>{e.strType}</DqpmTag>
+                      {bStub ? (
+                        <DqpmTag tone="warning" style={{ fontSize: 11, margin: 0 }}>FK 스텁</DqpmTag>
+                      ) : !bReady ? (
+                        <DqpmTag tone="muted" style={{ fontSize: 11, margin: 0 }}>리뷰 대기</DqpmTag>
+                      ) : null}
                     </Space>
                   </Select.Option>
-                ))}
+                  );
+                })}
               </Select>
               {arrProductTemplates.length > 0 && nReadyTemplateCount === 0 && !objSelectedEvent && (
                 <Alert
@@ -784,7 +810,7 @@ const QueryPage = () => {
                 />
               )}
               {objSelectedEvent && (() => {
-                const arrValidSets = objSelectedEvent.arrQueryTemplates?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+                const objShape = fnSummarizeTemplateShape(objSelectedEvent);
                 const strStatus = fnResolveTemplateStatus(objSelectedEvent);
                 const objStatusCfg = OBJ_TEMPLATE_STATUS_CONFIG[strStatus];
                 return (
@@ -792,14 +818,35 @@ const QueryPage = () => {
                     <DqpmTag tone={objStatusCfg.strTagVariant} style={{ fontSize: 11, margin: 0 }}>
                       {objStatusCfg.strLabel}
                     </DqpmTag>
-                    {arrValidSets.length >= 2 && (
-                      <DqpmTag color="blue">다중 쿼리 ({arrValidSets.length}세트)</DqpmTag>
+                    {objShape.bLegacySingle ? (
+                      <DqpmTag>레거시 단일 쿼리</DqpmTag>
+                    ) : objShape.bMultiSet ? (
+                      <DqpmTag color="blue">다중 세트 ({objShape.nSetCount})</DqpmTag>
+                    ) : (
+                      <DqpmTag>단일 세트</DqpmTag>
                     )}
-                    {arrValidSets.length === 1 && <DqpmTag>단일 쿼리</DqpmTag>}
+                    {objShape.nMaxActiveSlotsPerSet === 0 ? (
+                      <DqpmTag tone="muted">입력 없음</DqpmTag>
+                    ) : objShape.bMultiSlot ? (
+                      <DqpmTag tone="tone4">다중 입력 (슬롯 {objShape.nMaxActiveSlotsPerSet})</DqpmTag>
+                    ) : (
+                      <DqpmTag tone="muted">단일 입력</DqpmTag>
+                    )}
                   </Space>
                 );
               })()}
               {objSelectedEvent && (() => {
+                if (fnIsEventTemplateFkStub(objSelectedEvent)) {
+                  return (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      style={{ marginTop: 8 }}
+                      message="삭제된 템플릿 참조 (FK 스텁)"
+                      description="과거 이벤트 인스턴스가 참조하는 템플릿 ID만 DB에 남아 있는 자동 생성 레코드입니다. 쿼리 내용이 없어 새 이벤트 생성에 사용할 수 없습니다. 쿼리 템플릿 메뉴에서 정상 템플릿을 선택하세요."
+                    />
+                  );
+                }
                 const objReviewAlert = fnBuildTemplateReviewAlert(objSelectedEvent);
                 if (objReviewAlert) {
                   return (
@@ -1006,20 +1053,75 @@ const QueryPage = () => {
                   </Form.Item>
                 )}
 
-                {/* 쿼리 세트별 입력 (세트 입력 형식·ID 기준) */}
+                {/* 세트·슬롯별 입력값 */}
                 {(() => {
                   const arrSetsForInput = arrSets.map((s) =>
                     fnNormalizeQueryTemplateItem(s, objSelectedEvent.strInputFormat),
                   );
-                  const bAnyInput = arrSetsForInput.some((s) => (s.strInputFormat ?? 'item_number') !== 'none')
-                    || (!bMultiQuery && (arrSetsForInput[0]?.strInputFormat ?? objSelectedEvent.strInputFormat) !== 'none');
-                  if (!bAnyInput) return null;
+                  if (arrSetsForInput.length === 0) {
+                    if ((objSelectedEvent.strInputFormat ?? 'item_number') === 'none') return null;
+                    return (
+                      <Form.Item
+                        label={
+                          <Space>
+                            <Text strong>입력값</Text>
+                            <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
+                          </Space>
+                        }
+                      >
+                        <TextArea
+                          value={strInputValues}
+                          onChange={(e) => setStrInputValues(e.target.value)}
+                          rows={4}
+                          placeholder={fnGetInputPlaceholder(objSelectedEvent.strInputFormat)}
+                          className={STR_CODE_BLOCK_CLASS}
+                          style={objSqlInputStyle}
+                        />
+                      </Form.Item>
+                    );
+                  }
 
-                  if (bMultiQuery) {
-                    const arrTabs = arrSetsForInput
-                      .map((objNorm, idx) => ({ objNorm, idx }))
-                      .filter(({ objNorm }) => (objNorm.strInputFormat ?? 'item_number') !== 'none');
-                    if (arrTabs.length === 0) return null;
+                  const fnRenderSetSlots = (
+                    objNorm: ReturnType<typeof fnNormalizeQueryTemplateItem>,
+                    nSetIdx: number,
+                  ) => (
+                    <QuerySetInputSlotRows
+                      arrSlots={(objNorm.arrInputs ?? []).filter((s) => s.strInputFormat !== 'none')}
+                      strThirdColumnLabel="입력값"
+                      objSqlFieldStyle={objSqlFormInputStyle}
+                      fnRenderValueCell={(objSlot) => (
+                        <Input
+                          value={arrSetSlotValues[nSetIdx]?.[objSlot.strInputId] ?? ''}
+                          onChange={(e) => {
+                            setArrSetSlotValues((prev) => {
+                              const next = prev.map((m) => ({ ...m }));
+                              while (next.length <= nSetIdx) next.push({});
+                              next[nSetIdx] = {
+                                ...next[nSetIdx],
+                                [objSlot.strInputId]: e.target.value,
+                              };
+                              return next;
+                            });
+                          }}
+                          placeholder={
+                            objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                          }
+                          className={STR_CODE_BLOCK_CLASS}
+                          style={objSqlFormInputStyle}
+                        />
+                      )}
+                    />
+                  );
+
+                  const fnCountActiveSlots = (objNorm: ReturnType<typeof fnNormalizeQueryTemplateItem>): number =>
+                    (objNorm.arrInputs ?? []).filter((s) => s.strInputFormat !== 'none').length;
+
+                  const bAnySlot = arrSetsForInput.some((s) =>
+                    (s.arrInputs ?? []).some((slot) => slot.strInputFormat !== 'none'),
+                  );
+                  if (!bAnySlot) return null;
+
+                  if (arrSetsForInput.length >= 2) {
                     return (
                       <Form.Item
                         label={
@@ -1028,59 +1130,47 @@ const QueryPage = () => {
                             <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                           </Space>
                         }
+                        extra={
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            세트마다 입력 ID·형식·입력값을 입력합니다 (ID/형식은 템플릿 기준 읽기 전용).
+                          </Text>
+                        }
                       >
                         <Tabs
                           type="card"
-                          items={arrTabs.map(({ objNorm, idx }) => ({
-                            key: String(idx),
-                            label: `세트 ${idx + 1} · {{${objNorm.strInputId}}} · ${fnGetInputFormatLabel(objNorm.strInputFormat)}`,
-                            children: (
-                              <TextArea
-                                value={arrInputValues[idx] ?? ''}
-                                onChange={(e) => {
-                                  const next = [...arrInputValues];
-                                  while (next.length <= idx) next.push('');
-                                  next[idx] = e.target.value;
-                                  setArrInputValues(next);
-                                }}
-                                rows={objNorm.strInputFormat === 'item_string' ? 6 : 3}
-                                placeholder={fnGetInputPlaceholder(objNorm.strInputFormat)}
-                                className={STR_CODE_BLOCK_CLASS}
-                                style={objSqlFormInputStyle}
-                              />
-                            ),
-                          }))}
+                          size="small"
+                          items={arrSetsForInput.map((objNorm, idx) => {
+                            const nSlots = fnCountActiveSlots(objNorm);
+                            return {
+                              key: String(idx),
+                              label: nSlots > 1 ? `세트 ${idx + 1} · ${nSlots}슬롯` : `세트 ${idx + 1}`,
+                              children: (
+                                <div style={{ paddingTop: 4 }}>
+                                  {fnRenderSetSlots(objNorm, idx)}
+                                </div>
+                              ),
+                            };
+                          })}
                         />
                       </Form.Item>
                     );
                   }
 
-                  const objFirst = arrSetsForInput[0];
-                  const strFmt = objFirst?.strInputFormat ?? objSelectedEvent.strInputFormat;
-                  const strId = objFirst?.strInputId ?? 'items';
-                  if (strFmt === 'none') return null;
                   return (
                     <Form.Item
                       label={
                         <Space>
-                          <Text strong>{`{{${strId}}}`} · {fnGetInputFormatLabel(strFmt)}</Text>
+                          <Text strong>입력값</Text>
                           <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         </Space>
                       }
                       extra={
                         <Text type="secondary" style={{ fontSize: 11 }}>
-                          쿼리 템플릿에 맞게 입력해주세요.
+                          입력 ID·형식·입력값 (3열). VALUES (a,b) 목록 zip 은 지원하지 않습니다.
                         </Text>
                       }
                     >
-                      <TextArea
-                        value={strInputValues}
-                        onChange={(e) => setStrInputValues(e.target.value)}
-                        rows={strFmt === 'item_string' ? 8 : 4}
-                        placeholder={fnGetInputPlaceholder(strFmt)}
-                        className={STR_CODE_BLOCK_CLASS}
-                        style={objSqlInputStyle}
-                      />
+                      {fnRenderSetSlots(arrSetsForInput[0], 0)}
                     </Form.Item>
                   );
                 })()}

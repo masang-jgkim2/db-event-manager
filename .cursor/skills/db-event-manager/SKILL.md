@@ -78,7 +78,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 
 ## 핵심 도메인
 
-- **쿼리 템플릿**: 3단계 (`template_created` → `confirm_requested` → `dba_confirmed`). **D1**: `dba_confirmed`만 `QueryPage`·`POST /api/event-instances` 허용. 전이 `PATCH /api/events/:id/status`. **D2**: 승인 후 `PUT /api/events/:id`로 쿼리·세트 변경 시 `confirm_requested` 자동 전이. 리뷰 대기 중 DBA 쿼리 수정은 `PUT /api/events/:id/query` + `objQueryEdit` 로그 (`EventPage`).
+- **쿼리 템플릿**: 3단계 (`template_created` → `confirm_requested` → `dba_confirmed`). **D1**: `dba_confirmed`만 `QueryPage`·`POST /api/event-instances` 허용. 전이 `PATCH /api/events/:id/status`. **D2**: 승인 후 `PUT /api/events/:id`로 쿼리·세트 변경 시 `confirm_requested` 자동 전이. 리뷰 대기 중 DBA 쿼리 수정은 `PUT /api/events/:id/query` + `objQueryEdit` 로그 (`EventPage`). **세트 입력**: `arrInputs[]`(`strInputId`·형식·기본값) — 레거시 1슬롯 dual-read. 인스턴스 `strInputValues`는 JSON `{v:1,sets:[{id:값}]}` (구 `\u0001` 읽기). MySQL `event_template_query_set.json_arr_inputs`. VALUES 행 zip 1차 비지원. 상세 `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`.
 - **이벤트 인스턴스**: **7단계** (`event_created` → qa_* → live_* → `live_verified`). 템플릿 컨펌은 인스턴스에 없음(D7: 레거시 confirm/dba → `event_created`). **재요청**: qa_verified→qa_requested, live_deployed/live_verified→live_requested.
 - **쿼리 실행**: QA/LIVE는 세트별 **QA/LIVE id 직접 사용**(`fnGetConnIdForDeployEnv`). 레거시 단일 쿼리만 `fnResolveExecuteConnection` fallback. `fnValidateQaLiveConnectionPair`로 템플릿·DBA 수정 검증.
 - **RBAC**: 동적 역할/권한 (admin, dba, game_manager, game_designer + 커스텀). 검증 성공 후 `authMiddleware`에서 사용자·역할 테이블 기준 `arrPermissions` 재계산(옛 JWT와 역할 변경 불일치 완화).
@@ -97,7 +97,7 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
   - **headed probe**: `front/scripts/probe-gm01-dba01-headed-full.mjs` (`DQPM_FRESH=1`, `DQPM_HEADED=1`), 공통 `probe-workflow-lib.mjs`
   - **카탈로그**: `front/e2e/HEADED-TEST-CATALOG.md` · `front/e2e/README.md`
 - **나의 대시보드 위젯·레이아웃 스펙**: `docs/DASHBOARD-LAYOUT-SPEC.md`
-- **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md`
+- **쿼리 템플릿 단일·다중 세트 로직**: `docs/QUERY-TEMPLATE-QUERY-LOGIC.md` (세트 `arrInputs`·인스턴스 JSON 입력)
 - **인앱 알림 목록(설계·검토)**: `docs/NOTIFICATIONS-DESIGN.md`
 - **레이아웃 타입·기본값**: `front/src/types/dashboardLayout.ts`, `front/src/constants/dashboardLayoutDefault.ts`
 - **Cursor 스타일 UI**: `design-system.ts` (`OBJ_CURSOR_NEUTRAL`, `objShell`), `MainLayout.tsx` · primary 기본 `STR_PRIMARY_CURSOR_NEUTRAL` `#434343` («Cursor»), 브랜드 `#f54e00` («브랜드 오렌지») · `docs/CURSOR-UI-AUDIT.md`
@@ -140,6 +140,9 @@ front/src/
   pages/ProductPage.tsx                   # 프로덕트·서비스 구분(arrServices, nServiceId Form hidden)
   pages/EventPage.tsx                     # 쿼리 템플릿 CRUD (/events) — 목록 서비스 구분 컬럼·연결 DB picker
   pages/QueryPage.tsx                     # 이벤트 생성 (Step2 nServiceId·payload nServiceId)
+  utils/querySetInput.ts                  # 세트 arrInputs dual-read·ID 검증
+  utils/instanceInputValues.ts            # 인스턴스 strInputValues JSON / 구 \u0001
+  utils/queryTemplateItems.ts             # {{id}} 치환·fnReplaceAllInputsInTemplate
   utils/countryPlatformLabel.ts           # STR_SERVICE_SCOPE_LABEL·약자/리전 포맷
   utils/dbConnectionScope.ts              # 접속 범위·fnFindDuplicateDbConnectionInList·템플릿 picker
   components/AppTable.tsx                 # 테이블 (리사이즈·드래그·더블클릭 자동맞춤, 번호 컬럼 fnMakeIndexColumn — 기본 PK nId)
