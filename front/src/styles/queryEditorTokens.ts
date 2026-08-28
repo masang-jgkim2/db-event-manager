@@ -44,3 +44,19 @@ export function fnSqlEditorReadonlyStyle(nFontSize = 13): CSSProperties {
     borderRadius: 8,
   };
 }
+
+/** 슬롯 값 입력(TextArea) — 한 줄 기본 + 세로 리사이즈·긴 목록 줄바꿈 */
+export function fnCodeSurfaceSlotValueStyle(
+  token: GlobalToken,
+  nFontSize = 12,
+  objExtra?: CSSProperties,
+): CSSProperties {
+  return fnCodeSurfaceStyle(token, nFontSize, {
+    resize: 'vertical',
+    minHeight: 32,
+    maxHeight: 200,
+    wordBreak: 'break-all',
+    overflowWrap: 'anywhere',
+    ...objExtra,
+  });
+}
