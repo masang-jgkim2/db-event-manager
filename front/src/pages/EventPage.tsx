@@ -48,7 +48,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fnApiGetEventInstancesByTemplate } from '../api/eventApi';
 import { fnRenderStatusIcon, fnRenderTemplateStatusIcon, OBJ_TEMPLATE_STATUS_ICONS } from '../constants/statusIcons';
 import type { TTagVariant } from '../styles/tagPalette';
-import { fnCodeSurfaceStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
+import { fnCodeSurfaceStyle, fnCodeSurfaceSlotValueStyle, STR_CODE_BLOCK_CLASS } from '../styles/queryEditorTokens';
 import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 import {
   fnNormalizeQueryTemplateItem,
@@ -212,6 +212,7 @@ const QueryTemplateSetTabPanel = ({
 }: TQueryTemplateSetTabPanelProps) => {
   const { token } = theme.useToken();
   const objSqlFieldStyle = fnCodeSurfaceStyle(token, 12);
+  const objSqlSlotValueInputStyle = fnCodeSurfaceSlotValueStyle(token, 12);
 
   return (
     <div style={{ paddingTop: 8 }}>
@@ -255,7 +256,15 @@ const QueryTemplateSetTabPanel = ({
         </Select>
       </Form.Item>
       <Form.List name={[name, 'arrInputs']} initialValue={[{ strInputId: 'items', strInputFormat: 'item_number', strDefaultItems: '' }]}>
-        {(arrSlotFields, { add: fnAddSlot, remove: fnRemoveSlot }) => (
+        {(arrSlotFields, { add: fnAddSlot, remove: fnRemoveSlot }) => {
+          const arrSlots = arrSlotFields.map((objSlotField) => {
+            const obj = form.getFieldValue(['arrQueryTemplates', name, 'arrInputs', objSlotField.name]) ?? {};
+            return {
+              strInputId: String(obj.strInputId ?? ''),
+              strInputFormat: (obj.strInputFormat ?? 'item_number') as TInputFormat,
+            };
+          });
+          return (
           <div style={{ marginBottom: 12 }}>
             <Space style={{ marginBottom: 8 }} align="center">
               <Text strong>입력 슬롯</Text>
@@ -263,25 +272,14 @@ const QueryTemplateSetTabPanel = ({
                 세트 안 여러 칸 (SQL {'{{id}}'}). VALUES (a,b) 목록 zip 은 미지원.
               </Text>
             </Space>
-            <Row gutter={12} style={{ marginBottom: 4 }}>
-              <Col span={6}>
-                <Text type="secondary" style={{ fontSize: 12 }}>입력 ID</Text>
-              </Col>
-              <Col span={6}>
-                <Text type="secondary" style={{ fontSize: 12 }}>입력 형식</Text>
-              </Col>
-              <Col span={12}>
-                <Text type="secondary" style={{ fontSize: 12 }}>기본값 (선택)</Text>
-              </Col>
-            </Row>
-            {arrSlotFields.map((objSlotField, nSlotIdx) => (
-              <Row
-                gutter={12}
-                key={objSlotField.key}
-                align="middle"
-                style={{ marginBottom: nSlotIdx < arrSlotFields.length - 1 ? 10 : 0 }}
-              >
-                <Col span={6}>
+            <QuerySetInputSlotRows
+              arrSlots={arrSlots.length > 0 ? arrSlots : [{ strInputId: 'items', strInputFormat: 'item_number' }]}
+              strThirdColumnLabel="입력값 (선택)"
+              objSqlFieldStyle={objSqlFieldStyle}
+              fnRenderIdCell={(_, nSlotIdx) => {
+                const objSlotField = arrSlotFields[nSlotIdx];
+                if (!objSlotField) return null;
+                return (
                   <Form.Item
                     {...objSlotField}
                     name={[objSlotField.name, 'strInputId']}
@@ -294,8 +292,12 @@ const QueryTemplateSetTabPanel = ({
                   >
                     <Input className={STR_CODE_BLOCK_CLASS} placeholder="items" style={objSqlFieldStyle} />
                   </Form.Item>
-                </Col>
-                <Col span={6}>
+                );
+              }}
+              fnRenderFormatCell={(_, nSlotIdx) => {
+                const objSlotField = arrSlotFields[nSlotIdx];
+                if (!objSlotField) return null;
+                return (
                   <Form.Item
                     {...objSlotField}
                     name={[objSlotField.name, 'strInputFormat']}
@@ -310,39 +312,48 @@ const QueryTemplateSetTabPanel = ({
                       options={ARR_INPUT_FORMATS.map((o) => ({ value: o.value, label: o.label }))}
                     />
                   </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-                    <Form.Item
-                      {...objSlotField}
-                      name={[objSlotField.name, 'strDefaultItems']}
-                      style={{ flex: 1, marginBottom: 0, minWidth: 0 }}
-                    >
-                      <Input className={STR_CODE_BLOCK_CLASS} placeholder="예: 1,2,3" style={objSqlFieldStyle} />
-                    </Form.Item>
-                    <Space size={4} style={{ flexShrink: 0, paddingTop: 4 }}>
-                      {arrSlotFields.length > 1 ? (
-                        <Button
-                          type="text"
-                          danger
-                          icon={<MinusCircleOutlined />}
-                          onClick={() => fnRemoveSlot(objSlotField.name)}
-                          aria-label="입력 슬롯 삭제"
-                        />
-                      ) : null}
-                      {objSlotField.name === arrSlotFields.length - 1 ? (
-                        <Button
-                          type="text"
-                          icon={<PlusOutlined />}
-                          onClick={() => fnAddSlot({ strInputId: '', strInputFormat: 'item_number', strDefaultItems: '' })}
-                          aria-label="입력 슬롯 추가"
-                        />
-                      ) : null}
-                    </Space>
-                  </div>
-                </Col>
-              </Row>
-            ))}
+                );
+              }}
+              fnRenderValueCell={(_, nSlotIdx) => {
+                const objSlotField = arrSlotFields[nSlotIdx];
+                if (!objSlotField) return null;
+                return (
+                  <Form.Item
+                    {...objSlotField}
+                    name={[objSlotField.name, 'strDefaultItems']}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <TextArea
+                      className={STR_CODE_BLOCK_CLASS}
+                      placeholder="예: 1,2,3"
+                      rows={1}
+                      styles={{ textarea: objSqlSlotValueInputStyle }}
+                    />
+                  </Form.Item>
+                );
+              }}
+              fnRenderValueCellExtra={(nSlotIdx, nSlotCount) => (
+                <Space size={4}>
+                  {nSlotCount > 1 ? (
+                    <Button
+                      type="text"
+                      danger
+                      icon={<MinusCircleOutlined />}
+                      onClick={() => fnRemoveSlot(arrSlotFields[nSlotIdx].name)}
+                      aria-label="입력 슬롯 삭제"
+                    />
+                  ) : null}
+                  {nSlotIdx === nSlotCount - 1 ? (
+                    <Button
+                      type="text"
+                      icon={<PlusOutlined />}
+                      onClick={() => fnAddSlot({ strInputId: '', strInputFormat: 'item_number', strDefaultItems: '' })}
+                      aria-label="입력 슬롯 추가"
+                    />
+                  ) : null}
+                </Space>
+              )}
+            />
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) =>
@@ -365,7 +376,8 @@ const QueryTemplateSetTabPanel = ({
               }}
             </Form.Item>
           </div>
-        )}
+          );
+        }}
       </Form.List>
       <Form.Item
         {...restField}
@@ -1769,8 +1781,8 @@ const EventPage = () => {
               message={`템플릿: ${objQueryEditTemplate.strEventLabel}`}
               description={
                 fnResolveTemplateStatus(objQueryEditTemplate) === 'dba_confirmed'
-                  ? '승인 완료 템플릿입니다. QA/LIVE·입력 ID/형식을 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 템플릿 SQL·세트 추가·삭제·기본값은 «수정» 모달을 사용하세요.'
-                  : 'QA/LIVE 연결·입력 ID/형식을 수정합니다. 아래 미리보기 입력값은 저장되지 않습니다. 템플릿 SQL·기본값은 «수정» 모달에서 편집하세요.'
+                  ? '승인 완료 템플릿입니다. QA/LIVE·입력 ID/형식을 변경하면 쿼리 리뷰 요청 상태로 되돌아갑니다. 템플릿 SQL·세트 추가·삭제·입력값 (선택)은 «수정» 모달을 사용하세요.'
+                  : 'QA/LIVE 연결·입력 ID/형식을 수정합니다. 아래 입력값 (미리보기)는 저장되지 않습니다. 템플릿 SQL·입력값 (선택)은 «수정» 모달에서 편집하세요.'
               }
             />
             {arrQueryEditSets.length > 0 ? (
@@ -1842,7 +1854,7 @@ const EventPage = () => {
                             return (
                               <QuerySetInputSlotRows
                                 arrSlots={arrSlots}
-                                strThirdColumnLabel="미리보기 입력값 (저장 안 함)"
+                                strThirdColumnLabel="입력값 (미리보기)"
                                 objSqlFieldStyle={objSqlFieldStyle}
                                 strMultiSlotHint="슬롯이 2개 이상이면 입력 ID는 «수정» 모달에서 편집합니다. 입력 형식은 여기서 변경·저장됩니다."
                                 bIdFormatEditable={bMetaEditable}
@@ -1950,7 +1962,7 @@ const EventPage = () => {
                   <div>
                     <div style={{ marginBottom: 8 }}>
                       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                        미리보기 입력값 (저장 안 함)
+                        입력값 (미리보기)
                       </Text>
                       <Input
                         className={STR_CODE_BLOCK_CLASS}

@@ -61,7 +61,7 @@ import {
   STR_SERVICE_SCOPE_LABEL,
 } from '../utils/countryPlatformLabel';
 import { useDesignSystem } from '../styles/DesignSystemContext';
-import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle } from '../styles/queryEditorTokens';
+import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle, fnCodeSurfaceSlotValueStyle } from '../styles/queryEditorTokens';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -149,6 +149,10 @@ const QueryPage = () => {
       marginTop: 8,
     }),
     [objSqlInputStyle],
+  );
+  const objSqlSlotValueInputStyle = useMemo(
+    () => fnCodeSurfaceSlotValueStyle(token, objTypoRoles.code.nFontSize),
+    [token, objTypoRoles.code.nFontSize],
   );
   const objSqlReadonlyStyle = useMemo(
     () => fnSqlEditorReadonlyStyle(objTypoRoles.code.nFontSize),
@@ -1090,7 +1094,7 @@ const QueryPage = () => {
                       strThirdColumnLabel="입력값"
                       objSqlFieldStyle={objSqlFormInputStyle}
                       fnRenderValueCell={(objSlot) => (
-                        <Input
+                        <TextArea
                           value={arrSetSlotValues[nSetIdx]?.[objSlot.strInputId] ?? ''}
                           onChange={(e) => {
                             setArrSetSlotValues((prev) => {
@@ -1107,7 +1111,8 @@ const QueryPage = () => {
                             objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
                           }
                           className={STR_CODE_BLOCK_CLASS}
-                          style={objSqlFormInputStyle}
+                          rows={1}
+                          styles={{ textarea: objSqlSlotValueInputStyle }}
                         />
                       )}
                     />
