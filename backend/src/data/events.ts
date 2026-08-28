@@ -24,6 +24,7 @@ import {
   fnNormalizeQuerySetInputFields,
   fnNormalizeQuerySetInputs,
   fnMirrorLegacyInputFieldsFromSlots,
+  fnResolveMirroredDefaultItems,
 } from '../utils/querySetInput';
 
 export interface ITemplateStatusLog {
@@ -100,7 +101,7 @@ const fnNormalizeQueryTemplateItemInline = (
     arrInputs,
     strInputId: objLegacy.strInputId,
     strInputFormat: objLegacy.strInputFormat,
-    strDefaultItems: objLegacy.strDefaultItems ?? s.strDefaultItems,
+    strDefaultItems: fnResolveMirroredDefaultItems(s, objLegacy),
   };
 };
 

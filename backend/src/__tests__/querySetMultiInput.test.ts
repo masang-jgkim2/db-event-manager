@@ -1,6 +1,7 @@
 import {
   fnNormalizeQuerySetInputs,
   fnMirrorLegacyInputFieldsFromSlots,
+  fnResolveMirroredDefaultItems,
   fnFindDuplicateInputIdsInSet,
   fnFindDuplicateInputIdMessageInSets,
 } from '../utils/querySetInput';
@@ -30,6 +31,39 @@ describe('querySetInput — arrInputs dual-read', () => {
     });
     expect(arr.map((s) => s.strInputId)).toEqual(['item_id', 'qty']);
     expect(arr[1].strDefaultItems).toBe('1');
+  });
+
+  it('arrInputs 명시 시 stale 레거시 strDefaultItems 무시', () => {
+    const objRaw = {
+      arrInputs: [
+        { strInputId: 'item_id', strInputFormat: 'item_number' },
+        { strInputId: 'qty', strInputFormat: 'item_number', strDefaultItems: '10' },
+      ],
+      strDefaultItems: 'STALE',
+    };
+    const arrInputs = fnNormalizeQuerySetInputs(objRaw);
+    const objLegacy = fnMirrorLegacyInputFieldsFromSlots(arrInputs);
+    expect(fnResolveMirroredDefaultItems(objRaw, objLegacy)).toBeUndefined();
+
+    const objRawFirst = {
+      arrInputs: [
+        { strInputId: 'item_id', strInputFormat: 'item_number', strDefaultItems: '1,2' },
+        { strInputId: 'qty', strInputFormat: 'item_number', strDefaultItems: '10' },
+      ],
+      strDefaultItems: 'STALE',
+    };
+    const arrFirst = fnNormalizeQuerySetInputs(objRawFirst);
+    expect(
+      fnResolveMirroredDefaultItems(objRawFirst, fnMirrorLegacyInputFieldsFromSlots(arrFirst)),
+    ).toBe('1,2');
+  });
+
+  it('레거시 1슬롯 — strDefaultItems 폴백 유지', () => {
+    const objRaw = { strInputId: 'items', strDefaultItems: '9,8' };
+    const arrInputs = fnNormalizeQuerySetInputs(objRaw);
+    expect(
+      fnResolveMirroredDefaultItems(objRaw, fnMirrorLegacyInputFieldsFromSlots(arrInputs)),
+    ).toBe('9,8');
   });
 
   it('중복 ID 검출', () => {

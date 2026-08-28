@@ -166,6 +166,27 @@ const fnBuildSlotDefaultPreviewMap = (objSet: Partial<IQueryTemplateItem>): Reco
   return objMap;
 };
 
+/** DBA «연결·입력 미리보기» 저장/변경 비교 — arrInputs 슬롯 기본값 기준 */
+const fnBuildQueryEditSetCompareEntry = (
+  s: Partial<IQueryTemplateItem>,
+  strTemplateFormatFallback: string,
+) => {
+  const objNorm = fnNormalizeQueryTemplateItem(s, strTemplateFormatFallback);
+  return {
+    nQaDbConnectionId: objNorm.nQaDbConnectionId,
+    nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
+    arrInputs: (objNorm.arrInputs ?? []).map((objSlot) => ({
+      strInputId: objSlot.strInputId,
+      strInputFormat: objSlot.strInputFormat,
+      strDefaultItems: (objSlot.strDefaultItems ?? '').trim(),
+    })),
+    strInputId: objNorm.strInputId,
+    strInputFormat: objNorm.strInputFormat,
+    strDefaultItems: (objNorm.strDefaultItems ?? '').trim(),
+    strQueryTemplate: (objNorm.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
+  };
+};
+
 type TQueryTemplateSetTabPanelProps = {
   name: number;
   restField: Omit<FormListFieldData, 'key' | 'name'>;
@@ -903,34 +924,35 @@ const EventPage = () => {
     setObjQueryEditTemplate(objTpl);
     const arrSets = fnFilterValidTemplateSets(objTpl.arrQueryTemplates);
     if (arrSets.length) {
-      const arrNormSets = arrSets.map((s) => ({
-        ...fnNormalizeQueryTemplateItem(s, objTpl.strInputFormat),
-        strDefaultItems: s.strDefaultItems,
-        strQueryTemplate: s.strQueryTemplate ?? '',
-      }));
+      const arrNormSets = arrSets.map((s) => fnNormalizeQueryTemplateItem(
+        { ...s, strQueryTemplate: s.strQueryTemplate ?? '' },
+        objTpl.strInputFormat,
+      ));
       setArrQueryEditSets(arrNormSets);
       setArrQueryEditPreviewMaps(arrNormSets.map(fnBuildQueryEditPreviewMap));
       setStrQueryEditValue('');
     } else {
       setStrQueryEditValue(objTpl.strQueryTemplate ?? '');
       setArrQueryEditSets([]);
-      setArrQueryEditPreviewMaps([{ items: objTpl.strDefaultItems ?? '' }]);
+      setArrQueryEditPreviewMaps([fnBuildSlotDefaultPreviewMap(objTpl)]);
     }
     setBQueryEditOpen(true);
   };
 
   const fnPatchQueryEditSet = (nIdx: number, patch: Partial<IQueryTemplateItem>) => {
+    if (!objQueryEditTemplate) return;
+    const strFmt = objQueryEditTemplate.strInputFormat ?? 'item_number';
     setArrQueryEditSets((prev) => prev.map((s, i) => {
       if (i !== nIdx) return s;
-      const objNext: IQueryTemplateItem = { ...s, ...patch };
+      const objMerged: Partial<IQueryTemplateItem> = { ...s, ...patch };
       // 단일 슬롯일 때만 레거시 strInputId/형식 ↔ arrInputs[0] 동기화
-      if (Array.isArray(objNext.arrInputs) && objNext.arrInputs.length === 1) {
-        const objSlot = { ...objNext.arrInputs[0] };
+      if (Array.isArray(objMerged.arrInputs) && objMerged.arrInputs.length === 1) {
+        const objSlot = { ...objMerged.arrInputs[0] };
         if (patch.strInputId !== undefined) objSlot.strInputId = patch.strInputId;
         if (patch.strInputFormat !== undefined) objSlot.strInputFormat = patch.strInputFormat;
-        objNext.arrInputs = [objSlot];
+        objMerged.arrInputs = [objSlot];
       }
-      return objNext;
+      return fnNormalizeQueryTemplateItem(objMerged, strFmt);
     }));
   };
 
@@ -940,12 +962,14 @@ const EventPage = () => {
     nSlotIdx: number,
     strFormat: TInputFormat,
   ) => {
+    if (!objQueryEditTemplate) return;
+    const strFmt = objQueryEditTemplate.strInputFormat ?? 'item_number';
     setArrQueryEditSets((prev) => prev.map((s, i) => {
       if (i !== nSetIdx) return s;
       const arrInputs = (s.arrInputs ?? []).map((objSlot, j) => (
         j === nSlotIdx ? { ...objSlot, strInputFormat: strFormat } : objSlot
       ));
-      return { ...s, arrInputs };
+      return fnNormalizeQueryTemplateItem({ ...s, arrInputs }, strFmt);
     }));
   };
 
@@ -966,18 +990,9 @@ const EventPage = () => {
     // 변경이 없으면 전용 API(쿼리 필수 변경)를 호출해 400을 받는 대신 조용히 닫는다.
     const fnEditSetsKey = (arrSets?: IQueryTemplateItem[]): string =>
       JSON.stringify(
-        fnFilterValidTemplateSets(arrSets).map((s) => {
-          const objNorm = fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat);
-          return {
-            nQaDbConnectionId: objNorm.nQaDbConnectionId,
-            nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
-            arrInputs: objNorm.arrInputs,
-            strInputId: objNorm.strInputId,
-            strInputFormat: objNorm.strInputFormat,
-            strDefaultItems: (s.strDefaultItems ?? '').trim(),
-            strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
-          };
-        }),
+        fnFilterValidTemplateSets(arrSets).map((s) =>
+          fnBuildQueryEditSetCompareEntry(s, objQueryEditTemplate.strInputFormat),
+        ),
       );
     const bQueryEditChanged = arrQueryEditSets.length
       ? fnEditSetsKey(objQueryEditTemplate.arrQueryTemplates) !== fnEditSetsKey(arrQueryEditSets)
@@ -1000,7 +1015,7 @@ const EventPage = () => {
                 arrInputs: objNorm.arrInputs,
                 strInputId: objNorm.strInputId,
                 strInputFormat: objNorm.strInputFormat,
-                strDefaultItems: s.strDefaultItems,
+                strDefaultItems: (objNorm.strDefaultItems ?? '').trim(),
                 strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
               };
             }),
