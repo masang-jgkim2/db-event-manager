@@ -91,6 +91,20 @@ export const fnMirrorLegacyInputFieldsFromSlots = (
   };
 };
 
+/** arrInputs가 명시된 세트는 첫 슬롯 미러만 — stale 레거시 strDefaultItems 폴백 금지 */
+export const fnResolveMirroredDefaultItems = (
+  raw: {
+    arrInputs?: Array<{ strInputId?: string; strInputFormat?: string; strDefaultItems?: string }>;
+    strDefaultItems?: string;
+  },
+  objLegacy: { strDefaultItems?: string },
+): string | undefined => {
+  if (objLegacy.strDefaultItems) return objLegacy.strDefaultItems;
+  if (Array.isArray(raw.arrInputs) && raw.arrInputs.length > 0) return undefined;
+  const strRaw = (raw.strDefaultItems ?? '').trim();
+  return strRaw || undefined;
+};
+
 /** 세트 정규화 — 입력 ID·형식 dual-read (템플릿 format fallback) — 레거시 API */
 export const fnNormalizeQuerySetInputFields = (
   objSet: {

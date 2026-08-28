@@ -15,6 +15,7 @@ import {
   fnIsValidQuerySetInputId,
   fnNormalizeQuerySetInputs,
   fnMirrorLegacyInputFieldsFromSlots,
+  fnResolveMirroredDefaultItems,
   fnFindDuplicateInputIdsInSet,
 } from '../utils/querySetInput';
 import type { IQueryTemplateItem } from '../data/events';
@@ -170,7 +171,7 @@ const fnNormalizeSetsForPersist = (
       arrInputs,
       strInputId: objLegacy.strInputId,
       strInputFormat: objLegacy.strInputFormat,
-      strDefaultItems: (objLegacy.strDefaultItems ?? (s.strDefaultItems ?? '').trim()) || undefined,
+      strDefaultItems: fnResolveMirroredDefaultItems(s, objLegacy),
       strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
     };
   });

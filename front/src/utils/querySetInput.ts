@@ -74,6 +74,17 @@ export const fnMirrorLegacyInputFieldsFromSlots = (
   };
 };
 
+/** arrInputs가 명시된 세트는 첫 슬롯 미러만 — stale 레거시 strDefaultItems 폴백 금지 */
+export const fnResolveMirroredDefaultItems = (
+  raw: Partial<IQueryTemplateItem>,
+  objLegacy: Pick<IQueryTemplateItem, 'strDefaultItems'>,
+): string | undefined => {
+  if (objLegacy.strDefaultItems) return objLegacy.strDefaultItems;
+  if (Array.isArray(raw.arrInputs) && raw.arrInputs.length > 0) return undefined;
+  const strRaw = (raw.strDefaultItems ?? '').trim();
+  return strRaw || undefined;
+};
+
 export const fnNormalizeQuerySetInputFields = (
   objSet: Partial<IQueryTemplateItem>,
   strTemplateFormatFallback: TInputFormat | string = 'item_number',
