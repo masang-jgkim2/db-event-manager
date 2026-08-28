@@ -15,6 +15,7 @@ import {
   SendOutlined, ExclamationCircleOutlined, ThunderboltOutlined,
   EyeInvisibleOutlined, EyeTwoTone, CodeOutlined, DeleteOutlined,
   TableOutlined, AppstoreOutlined, LinkOutlined, DashboardOutlined,
+  SearchOutlined, ToolOutlined,
 } from '@ant-design/icons';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import CrudPageShell from '../components/CrudPageShell';
@@ -58,6 +59,10 @@ import {
   fnIsInstanceInputValuesJson,
   MULTI_SET_INPUT_DELIMITER,
 } from '../utils/instanceInputValues';
+import {
+  fnBuildQueryPartKindIndexMaps,
+  fnIsQueryPartLookup,
+} from '../utils/queryResultKind';
 import { useDbConnectionStore } from '../stores/useDbConnectionStore';
 import { useProductStore } from '../stores/useProductStore';
 import { useEventStore } from '../stores/useEventStore';
@@ -323,44 +328,62 @@ const fnBuildQueryResultCollapseItems = (
 ): NonNullable<CollapseProps['items']> => {
   const bGroupBySet = arr.some((r) => r.nSetIndex != null && r.nSetTotal != null);
 
-  const fnOneQueryPanel = (r: IQueryPartResult, strKeyPrefix: string) => {
+  const fnOneQueryPanel = (
+    r: IQueryPartResult,
+    strKeyPrefix: string,
+    mapLookupIdx: Map<number, number>,
+    mapProcessIdx: Map<number, number>,
+  ) => {
+    const bLookup = fnIsQueryPartLookup(r);
     const nResultRows = r.arrResultRows?.length ?? 0;
-    const bHasResultSet = nResultRows > 0;
+    const nKindNum = bLookup
+      ? (mapLookupIdx.get(r.nIndex) ?? 1)
+      : (mapProcessIdx.get(r.nIndex) ?? 1);
     return {
-    key: `${strKeyPrefix}-q${r.nIndex}`,
-    label: (
-      <Space>
-        <Text strong style={{ fontSize: 13 }}>쿼리 {r.nIndex + 1}</Text>
-        <DqpmTag color="green">
-          {bHasResultSet ? `${nResultRows}행 조회` : `${r.nAffectedRows}건 처리`}
-        </DqpmTag>
-      </Space>
-    ),
-    children: (
-      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-        <div style={{ textAlign: 'right' }}>
-          <Button
-            type="default"
-            htmlType="button"
-            size="small"
-            icon={<CopyOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              fnCopySql(r.strQuery);
-            }}
-          >
-            복사
-          </Button>
-        </div>
-        <div style={strQueryBlockStyle}>{r.strQuery}</div>
-        <QueryResultSetTable objPart={r} />
-      </Space>
-    ),
-  };
+      key: `${strKeyPrefix}-q${r.nIndex}`,
+      label: (
+        <Space size={8} wrap align="center">
+          {bLookup ? (
+            <DqpmTag color="blue" icon={<SearchOutlined />} style={{ margin: 0 }}>
+              조회
+            </DqpmTag>
+          ) : (
+            <DqpmTag color="orange" icon={<ToolOutlined />} style={{ margin: 0 }}>
+              처리
+            </DqpmTag>
+          )}
+          <Text type="secondary" style={{ fontSize: 12 }}>#{nKindNum}</Text>
+          <Text strong style={{ fontSize: 13 }}>
+            {bLookup ? `${nResultRows}행 조회` : `${r.nAffectedRows}건 처리`}
+          </Text>
+        </Space>
+      ),
+      children: (
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <div style={{ textAlign: 'right' }}>
+            <Button
+              type="default"
+              htmlType="button"
+              size="small"
+              icon={<CopyOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                fnCopySql(r.strQuery);
+              }}
+            >
+              복사
+            </Button>
+          </div>
+          <div style={strQueryBlockStyle}>{r.strQuery}</div>
+          <QueryResultSetTable objPart={r} />
+        </Space>
+      ),
+    };
   };
 
   if (!bGroupBySet) {
-    return arr.map((r) => fnOneQueryPanel(r, 'flat'));
+    const { mapLookupIdx, mapProcessIdx } = fnBuildQueryPartKindIndexMaps(arr);
+    return arr.map((r) => fnOneQueryPanel(r, 'flat', mapLookupIdx, mapProcessIdx));
   }
 
   const mapSetToParts = new Map<number, IQueryPartResult[]>();
@@ -372,32 +395,52 @@ const fnBuildQueryResultCollapseItems = (
   const arrSets = Array.from(mapSetToParts.entries()).sort((a, b) => a[0] - b[0]);
   const nSetTotalGlobal = arr.find((x) => x.nSetTotal != null)?.nSetTotal ?? arrSets.length;
 
-  return arrSets.map(([nSet, arrPart]) => ({
-    key: `set-${nSet}`,
-    label: (
-      <Space wrap align="center">
-        <Space size={4}>
-          <Text strong style={{ fontSize: 14 }}>쿼리 세트 {nSet} 결과</Text>
-          {nSetTotalGlobal > 1 ? (
+  return arrSets.map(([nSet, arrPart]) => {
+    const nLookupCnt = arrPart.filter((p) => fnIsQueryPartLookup(p)).length;
+    const nProcCnt = arrPart.length - nLookupCnt;
+    const nProcAffectedSum = arrPart
+      .filter((p) => !fnIsQueryPartLookup(p))
+      .reduce((acc, p) => acc + p.nAffectedRows, 0);
+    const { mapLookupIdx, mapProcessIdx } = fnBuildQueryPartKindIndexMaps(arrPart);
+    return {
+      key: `set-${nSet}`,
+      label: (
+        <Space wrap align="center" size={8}>
+          <Space size={4}>
+            <Text strong style={{ fontSize: 14 }}>쿼리 세트 {nSet} 결과</Text>
+            {nSetTotalGlobal > 1 ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                ({nSet}/{nSetTotalGlobal})
+              </Text>
+            ) : null}
+          </Space>
+          {nProcCnt > 0 ? (
+            <DqpmTag color="orange" icon={<ToolOutlined />} style={{ margin: 0 }}>
+              처리 {nProcCnt}
+            </DqpmTag>
+          ) : null}
+          {nLookupCnt > 0 ? (
+            <DqpmTag color="blue" icon={<SearchOutlined />} style={{ margin: 0 }}>
+              조회 {nLookupCnt}
+            </DqpmTag>
+          ) : null}
+          {nProcCnt > 0 ? (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              ({nSet}/{nSetTotalGlobal})
+              합계 {nProcAffectedSum}건
             </Text>
           ) : null}
         </Space>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {arrPart.length}개 쿼리 · 합계 {arrPart.reduce((acc, p) => acc + p.nAffectedRows, 0)}건
-        </Text>
-      </Space>
-    ),
-    children: (
-      <Collapse
-        size="small"
-        bordered={false}
-        style={{ background: 'transparent' }}
-        items={arrPart.map((r) => fnOneQueryPanel(r, `set${nSet}`))}
-      />
-    ),
-  }));
+      ),
+      children: (
+        <Collapse
+          size="small"
+          bordered={false}
+          style={{ background: 'transparent' }}
+          items={arrPart.map((r) => fnOneQueryPanel(r, `set${nSet}`, mapLookupIdx, mapProcessIdx))}
+        />
+      ),
+    };
+  });
 };
 
 /** 다중 세트 실행 실패 시 오류 메시지에서 실패한 세트 번호(1-based) 추출 */
