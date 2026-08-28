@@ -152,6 +152,7 @@ export const fnTemplateSetBody = (
     strDefaultItems?: string;
     strInputId?: string;
     strInputFormat?: string;
+    arrInputs?: Array<{ strInputId: string; strInputFormat?: string; strDefaultItems?: string }>;
   },
 ) => ({
   nQaDbConnectionId: objPair.nQaId,
@@ -160,6 +161,7 @@ export const fnTemplateSetBody = (
   strInputFormat: body.strInputFormat ?? 'item_number',
   strDefaultItems: body.strDefaultItems,
   strQueryTemplate: body.strQueryTemplate,
+  ...(body.arrInputs ? { arrInputs: body.arrInputs } : {}),
 });
 
 export const fnExecutionTargetBody = (

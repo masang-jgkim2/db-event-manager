@@ -20,7 +20,11 @@ export interface ITemplateStageActor {
 }
 
 import type { IQueryEditLog } from '../utils/queryEditLog';
-import { fnNormalizeQuerySetInputFields } from '../utils/querySetInput';
+import {
+  fnNormalizeQuerySetInputFields,
+  fnNormalizeQuerySetInputs,
+  fnMirrorLegacyInputFieldsFromSlots,
+} from '../utils/querySetInput';
 
 export interface ITemplateStatusLog {
   strStatus: TTemplateStatus;
@@ -41,11 +45,13 @@ export interface IQueryTemplateItem {
   nLiveDbConnectionId: number;
   /** @deprecated nQaDbConnectionId 로 이관 */
   nDbConnectionId?: number;
-  /** 입력 슬롯 ID — 플레이스홀더 {{strInputId}} (기본 items) */
+  /** 세트 안 입력 슬롯 (없으면 strInputId/strInputFormat dual-read) */
+  arrInputs?: Array<{ strInputId: string; strInputFormat: string; strDefaultItems?: string }>;
+  /** @deprecated arrInputs[0] — 레거시·첫 슬롯 미러 */
   strInputId?: string;
-  /** 세트별 입력 형식 (템플릿 strInputFormat 은 레거시 dual-read) */
+  /** @deprecated arrInputs[0] */
   strInputFormat?: string;
-  /** 이 세트용 기본값 예시 */
+  /** @deprecated arrInputs[0] */
   strDefaultItems?: string;
   strQueryTemplate: string;
 }
@@ -85,13 +91,16 @@ const fnNormalizeQueryTemplateItemInline = (
   s: IQueryTemplateItem,
   strTemplateFormatFallback: string = 'item_number',
 ): IQueryTemplateItem => {
-  const objInput = fnNormalizeQuerySetInputFields(s, strTemplateFormatFallback);
+  const arrInputs = fnNormalizeQuerySetInputs(s, strTemplateFormatFallback);
+  const objLegacy = fnMirrorLegacyInputFieldsFromSlots(arrInputs);
   return {
     ...s,
     nQaDbConnectionId: Number(s.nQaDbConnectionId ?? s.nDbConnectionId) || 0,
     nLiveDbConnectionId: Number(s.nLiveDbConnectionId) || 0,
-    strInputId: objInput.strInputId,
-    strInputFormat: objInput.strInputFormat,
+    arrInputs,
+    strInputId: objLegacy.strInputId,
+    strInputFormat: objLegacy.strInputFormat,
+    strDefaultItems: objLegacy.strDefaultItems ?? s.strDefaultItems,
   };
 };
 

@@ -348,7 +348,7 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
 
-    it('기획자(planner01) 로그인 → 프로덕트·쿼리 템플릿·나의대시보드·DB접속 200, 사용자·역할 403', async () => {
+    it('기획자(planner01) 로그인 → 프로덕트·쿼리 템플릿·나의대시보드·DB접속·사용자 200, 역할 403', async () => {
       const loginRes = await request(app).post('/api/auth/login').send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
       expect(loginRes.status).toBe(200);
       const token = loginRes.body.strToken;
@@ -357,7 +357,8 @@ describe('API 전체 테스트', () => {
       await expect(request(app).get('/api/events').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/event-instances').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/db-connections').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
-      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
+      // game_designer 역할에 user.view 포함 (rolePermissions.json)
+      await expect(request(app).get('/api/users').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 200 });
       await expect(request(app).get('/api/roles').set('Authorization', `Bearer ${token}`)).resolves.toMatchObject({ status: 403 });
     });
   });
@@ -905,6 +906,9 @@ describe('API 전체 테스트', () => {
     let objConnPair: TTestQaLiveConnPair;
 
     beforeAll(async () => {
+      if (!strAdminToken) {
+        strAdminToken = await fnLoginAdminToken(app);
+      }
       objConnPair = await fnEnsureTestQaLiveConnPair(
         app,
         strAdminToken,
@@ -951,6 +955,48 @@ describe('API 전체 테스트', () => {
         });
       expect(res.status).toBe(200);
       expect(res.body.objEvent.arrQueryTemplates[0].strQueryTemplate).toBe('SELECT 2;');
+    });
+
+    it('PUT /api/events/:id (arrInputs 중복 ID) → 400', async () => {
+      const resCreate = await request(app)
+        .post('/api/events')
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          nProductId: nProductIdForEvent,
+          strEventLabel: '테스트중복ID',
+          strDescription: '',
+          strCategory: '아이템',
+          strType: '지급',
+          strInputFormat: 'item_number',
+          strQueryTemplate: '',
+          arrQueryTemplates: [
+            fnTemplateSetBody(objConnPair, { strQueryTemplate: 'SELECT 1;' }),
+          ],
+        });
+      expect(resCreate.status).toBe(200);
+      const nDupTestId = resCreate.body.objEvent.nId as number;
+
+      const res = await request(app)
+        .put(`/api/events/${nDupTestId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`)
+        .send({
+          arrQueryTemplates: [
+            fnTemplateSetBody(objConnPair, {
+              strQueryTemplate: 'SELECT {{item_id}};',
+              arrInputs: [
+                { strInputId: 'item_id', strInputFormat: 'item_number' },
+                { strInputId: 'item_id', strInputFormat: 'item_string' },
+              ],
+            }),
+          ],
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.bSuccess).toBe(false);
+      expect(String(res.body.strMessage)).toMatch(/중복/);
+
+      await request(app)
+        .delete(`/api/events/${nDupTestId}`)
+        .set('Authorization', `Bearer ${strAdminToken}`);
     });
 
     it('GET /api/events/:id/instances → 연결 인스턴스 목록', async () => {
@@ -1624,15 +1670,22 @@ describe('API 전체 테스트', () => {
     });
 
     it('DELETE /api/event-instances/:id (delete_any·delete_own 모두 해당 없으면) → 403', async () => {
-      // 기획자(planner): 나의 대시보드 보기는 있으나 삭제 권한 없음 — GM은 instance.delete_own이 있어 본인 건 삭제 가능
+      // 기획자: instance.delete_own은 있으나 타인 이벤트는 403 (my_dashboard.delete_any 없음)
       const loginPlanner = await request(app)
         .post('/api/auth/login')
         .send({ strUserId: 'planner01', strPassword: OBJ_PASSWORDS.planner01 });
       expect(loginPlanner.status).toBe(200);
       const strPlannerToken = loginPlanner.body?.strToken;
+      const nPlannerId = loginPlanner.body?.user?.nId ?? 0;
       const list = await request(app).get('/api/event-instances').set('Authorization', `Bearer ${strPlannerToken}`);
-      const live = (list.body?.arrInstances ?? []).find((i: { strStatus: string }) => i.strStatus === 'live_verified');
-      const nId = live?.nId ?? 1;
+      const live = (list.body?.arrInstances ?? []).find(
+        (i: { strStatus: string; bPermanentlyRemoved?: boolean; nCreatedByUserId?: number }) =>
+          i.strStatus === 'live_verified'
+          && !i.bPermanentlyRemoved
+          && i.nCreatedByUserId !== nPlannerId,
+      );
+      expect(live).toBeDefined();
+      const nId = live!.nId;
       const res = await request(app).delete(`/api/event-instances/${nId}`).set('Authorization', `Bearer ${strPlannerToken}`);
       expect(res.status).toBe(403);
     });

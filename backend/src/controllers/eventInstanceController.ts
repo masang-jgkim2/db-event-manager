@@ -11,7 +11,7 @@ import { fnExecuteQueryWithText } from '../services/queryExecutor';
 import { fnBroadcastInstanceUpdate, fnBroadcastInstanceCreated } from '../services/sseBroadcaster';
 import { fnGetTemplateExecElapsedMs, fnSetTemplateExecElapsedMs } from '../data/templateExecElapsed';
 import { IQueryExecutionResult, IDbConnection } from '../types';
-import { fnReplaceItemsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
+import { fnReplaceItemsInTemplate, fnReplaceAllInputsInTemplate, type TInputFormatForItems } from '../utils/queryTemplateItems';
 import { fnBuildQueryEditLog, fnSnapshotQueryBefore } from '../utils/queryEditLog';
 import { fnBuildMssqlGrantScriptForSql } from '../utils/grantScriptFromSql';
 import { fnResolveConnectionServiceFieldsForWrite } from '../utils/serviceId';
@@ -21,7 +21,8 @@ import {
   fnNormalizeQueryTemplateConnFields,
   fnValidateQaLiveConnectionPair,
 } from '../utils/queryTemplateConnections';
-import { fnNormalizeQuerySetInputFields } from '../utils/querySetInput';
+import { fnNormalizeQuerySetInputs } from '../utils/querySetInput';
+import { fnDecodeInstanceInputValues } from '../utils/instanceInputValues';
 import type { IExecutionTarget } from '../data/eventInstances';
 const STR_MSG_INSTANCE_MYSQL_FAIL =
   '변경은 메모리에 반영됐으나 DB 저장에 실패했습니다. 관리자에게 문의하세요.';
@@ -944,17 +945,27 @@ export const fnGetGrantScript = async (req: Request, res: Response): Promise<voi
 // 쿼리 템플릿 치환 헬퍼 (생성/수정에 공통 사용)
 const fnApplyQueryTemplate = (
   strTemplate: string,
-  strInputValues: string,
   strDeployDate: string,
   strEventName: string,
   strServiceAbbr: string,
   strProductName: string,
   strServiceRegion: string,
-  strInputFormat: TInputFormatForItems = 'item_number',
-  strInputId: string = 'items',
+  objReplace:
+    | { strInputValues: string; strInputFormat: TInputFormatForItems; strInputId: string }
+    | {
+      arrInputs: Array<{ strInputId: string; strInputFormat: TInputFormatForItems }>;
+      mapValues: Record<string, string>;
+    },
 ): string => {
-  const strDateOnly = strDeployDate.slice(0, 10);  // YYYY-MM-DD 부분만
-  let strQuery = fnReplaceItemsInTemplate(strTemplate, strInputValues, strInputFormat, strInputId);
+  const strDateOnly = strDeployDate.slice(0, 10);
+  let strQuery = 'arrInputs' in objReplace
+    ? fnReplaceAllInputsInTemplate(strTemplate, objReplace.arrInputs, objReplace.mapValues)
+    : fnReplaceItemsInTemplate(
+      strTemplate,
+      objReplace.strInputValues,
+      objReplace.strInputFormat,
+      objReplace.strInputId,
+    );
   strQuery = strQuery.replace(/\{\{date\}\}/g, strDateOnly);
   strQuery = strQuery.replace(/\{\{event_name\}\}/g, strEventName);
   strQuery = strQuery.replace(/\{\{abbr\}\}/g, strServiceAbbr);
@@ -1102,21 +1113,18 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         return (s.strQueryTemplate ?? '').trim() && objNorm.nQaDbConnectionId && objNorm.nLiveDbConnectionId;
       }) ?? [];
       if (arrSets.length > 0) {
-        const MULTI_INPUT_DELIMITER = '\u0001';
-        const arrParts = (objInstance.strInputValues ?? '').split(MULTI_INPUT_DELIMITER).map((s) => s.trim());
+        const arrSlotsPerSet = arrSets.map((s) => fnNormalizeQuerySetInputs(s, strTplFormat));
+        const arrMaps = fnDecodeInstanceInputValues(objInstance.strInputValues ?? '', arrSlotsPerSet);
         const arrTargets = arrSets.map((s, i) => {
-          const strItems = arrParts[i] ?? arrParts[0] ?? '';
-          const objInput = fnNormalizeQuerySetInputFields(s, strTplFormat);
+          const arrInputs = arrSlotsPerSet[i];
           const strQuery = fnApplyQueryTemplate(
             (s.strQueryTemplate ?? '').trim(),
-            strItems,
             objInstance.dtDeployDate,
             objInstance.strEventName,
             objInstance.strServiceAbbr,
             objInstance.strProductName,
             objInstance.strServiceRegion,
-            objInput.strInputFormat as TInputFormatForItems,
-            objInput.strInputId,
+            { arrInputs, mapValues: arrMaps[i] ?? {} },
           );
           return { nQaDbConnectionId: s.nQaDbConnectionId, nLiveDbConnectionId: s.nLiveDbConnectionId, strQuery };
         });
@@ -1126,17 +1134,16 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
         const strTemplate = objTemplate?.strQueryTemplate?.trim() || objTemplate?.arrQueryTemplates?.[0]?.strQueryTemplate?.trim();
         if (strTemplate) {
           const objFirst = objTemplate?.arrQueryTemplates?.[0];
-          const objInput = fnNormalizeQuerySetInputFields(objFirst ?? {}, strTplFormat);
+          const arrInputs = fnNormalizeQuerySetInputs(objFirst ?? {}, strTplFormat);
+          const arrMaps = fnDecodeInstanceInputValues(objInstance.strInputValues ?? '', [arrInputs]);
           objInstance.strGeneratedQuery = fnApplyQueryTemplate(
             strTemplate,
-            objInstance.strInputValues,
             objInstance.dtDeployDate,
             objInstance.strEventName,
             objInstance.strServiceAbbr,
             objInstance.strProductName,
             objInstance.strServiceRegion,
-            objInput.strInputFormat as TInputFormatForItems,
-            objInput.strInputId,
+            { arrInputs, mapValues: arrMaps[0] ?? {} },
           );
           objInstance.arrExecutionTargets = undefined;
         }
