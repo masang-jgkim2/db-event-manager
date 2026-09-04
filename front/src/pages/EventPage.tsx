@@ -25,7 +25,7 @@ import type { ColumnsType } from 'antd/es/table';
 import AppTable, { fnMakeIndexColumn } from '../components/AppTable';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, MinusCircleOutlined, LinkOutlined, CalendarOutlined,
-  CodeOutlined, CopyOutlined,
+  CodeOutlined, CopyOutlined, CheckCircleFilled,
 } from '@ant-design/icons';
 import CrudPageShell from '../components/CrudPageShell';
 import { ProductNameTag } from '../components/ProductNameTag';
@@ -156,6 +156,103 @@ type TQueryTemplatesTabContentProps = {
 
 const fnFilterValidTemplateSets = (arrSets?: IQueryTemplateItem[]) =>
   arrSets?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
+
+/** 메타 치환 변수 — 슬롯 ID 없이도 SQL에 둘 수 있음 */
+const SET_META_PLACEHOLDERS = new Set(['date', 'event_name', 'abbr', 'product', 'region']);
+
+/** SQL {{id}} 중 현재 슬롯에 없는 것 (메타 제외) — «수정» 인라인 경고용 */
+const fnFindOrphanInputPlaceholdersInSql = (
+  strSql: string,
+  arrInputs: Array<{ strInputId?: string }>,
+): string[] => {
+  const setSlotIds = new Set(
+    arrInputs
+      .map((obj) => (obj.strInputId ?? '').trim())
+      .filter((strId) => strId.length > 0),
+  );
+  const setFound = new Set<string>();
+  const rePh = /\{\{([a-z][a-z0-9_]{0,31})\}\}/g;
+  let objMatch: RegExpExecArray | null;
+  while ((objMatch = rePh.exec(strSql)) !== null) {
+    const strId = objMatch[1];
+    if (SET_META_PLACEHOLDERS.has(strId) || setSlotIds.has(strId)) continue;
+    setFound.add(strId);
+  }
+  return [...setFound];
+};
+
+/** 활성 슬롯 ID가 SQL에 {{id}}로 없는 경우 — 새 슬롯/ID 추가 후 쿼리 수정 유도 */
+const fnFindUnusedSlotIdsInSql = (
+  strSql: string,
+  arrInputs: Array<{ strInputId?: string; strInputFormat?: string }>,
+): string[] => {
+  const arrUnused: string[] = [];
+  const setSeen = new Set<string>();
+  for (const obj of arrInputs) {
+    const strId = (obj.strInputId ?? '').trim();
+    if (!strId || setSeen.has(strId)) continue;
+    setSeen.add(strId);
+    if ((obj.strInputFormat ?? '').trim() === 'none') continue;
+    if (!strSql.includes(`{{${strId}}}`)) arrUnused.push(strId);
+  }
+  return arrUnused;
+};
+
+/** 슬롯·SQL: 문제 있음→없음 전환일 때만 잠깐 표시 후 페이드아웃 */
+const SlotSqlMatchOkHint = ({
+  bHasIssue,
+  bHasSql,
+  strColor,
+}: {
+  bHasIssue: boolean;
+  bHasSql: boolean;
+  strColor: string;
+}) => {
+  const refPrevHadIssue = useRef(false);
+  const [bShow, setBShow] = useState(false);
+  const [bFading, setBFading] = useState(false);
+
+  useEffect(() => {
+    const bWasIssue = refPrevHadIssue.current;
+    refPrevHadIssue.current = bHasIssue;
+
+    if (bHasIssue || !bHasSql) {
+      setBShow(false);
+      setBFading(false);
+      return;
+    }
+    // 이미 정상인 상태에서의 슬롯 추가·삭제 등은 표시하지 않음
+    if (!bWasIssue) return;
+
+    setBShow(true);
+    setBFading(false);
+    const nFade = window.setTimeout(() => setBFading(true), 1800);
+    const nHide = window.setTimeout(() => setBShow(false), 3200);
+    return () => {
+      window.clearTimeout(nFade);
+      window.clearTimeout(nHide);
+    };
+  }, [bHasIssue, bHasSql]);
+
+  if (!bShow) return null;
+  return (
+    <Text
+      style={{
+        fontSize: 12,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        whiteSpace: 'nowrap',
+        color: strColor,
+        opacity: bFading ? 0 : 1,
+        transition: 'opacity 1.4s ease',
+      }}
+    >
+      <CheckCircleFilled aria-hidden />
+      입력 쿼리 일치
+    </Text>
+  );
+};
 
 const fnBuildSlotDefaultPreviewMap = (objSet: Partial<IQueryTemplateItem>): Record<string, string> => {
   const objNorm = fnNormalizeQueryTemplateItem(objSet);
@@ -356,22 +453,57 @@ const QueryTemplateSetTabPanel = ({
             />
             <Form.Item
               noStyle
-              shouldUpdate={(prev, cur) =>
-                prev?.arrQueryTemplates?.[name]?.arrInputs !== cur?.arrQueryTemplates?.[name]?.arrInputs
-              }
+              shouldUpdate={(prev, cur) => {
+                const objPrev = prev?.arrQueryTemplates?.[name];
+                const objCur = cur?.arrQueryTemplates?.[name];
+                return objPrev?.arrInputs !== objCur?.arrInputs
+                  || objPrev?.strQueryTemplate !== objCur?.strQueryTemplate;
+              }}
             >
               {() => {
-                const arrInputs: Array<{ strInputId?: string }> =
+                const arrInputs: Array<{ strInputId?: string; strInputFormat?: string }> =
                   form.getFieldValue(['arrQueryTemplates', name, 'arrInputs']) ?? [];
+                const strSql = String(
+                  form.getFieldValue(['arrQueryTemplates', name, 'strQueryTemplate']) ?? '',
+                ).trim();
                 const strDup = fnFindDuplicateInputIdsInSet(arrInputs);
-                if (!strDup) return null;
+                const arrOrphans = fnFindOrphanInputPlaceholdersInSql(strSql, arrInputs);
+                const arrUnused = fnFindUnusedSlotIdsInSql(strSql, arrInputs);
+                const bHasIssue = Boolean(strDup) || arrOrphans.length > 0 || arrUnused.length > 0;
+                // SQL 없고 이슈도 없으면 안내 영역 자체 생략
+                if (!bHasIssue && !strSql) return null;
                 return (
-                  <Text
-                    type="danger"
-                    style={{ fontSize: 12, display: 'block', marginTop: 4, whiteSpace: 'nowrap' }}
-                  >
-                    {`입력 ID "${strDup}"가 이 세트 안에서 중복됩니다.`}
-                  </Text>
+                  <div style={{ marginTop: 4 }}>
+                    {strDup ? (
+                      <Text
+                        type="danger"
+                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                      >
+                        {`입력 ID "${strDup}"가 이 세트 안에서 중복됩니다.`}
+                      </Text>
+                    ) : null}
+                    {arrOrphans.length > 0 ? (
+                      <Text
+                        type="danger"
+                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                      >
+                        {`쿼리 템플릿에 ${arrOrphans.map((strId) => `{{${strId}}}`).join(', ')}가 남아 있습니다. 쿼리 또는 입력을 수정하세요.`}
+                      </Text>
+                    ) : null}
+                    {arrUnused.length > 0 ? (
+                      <Text
+                        type="danger"
+                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                      >
+                        {`입력 ID ${arrUnused.map((strId) => `"${strId}"`).join(', ')}가 쿼리에 없습니다. 쿼리 또는 입력을 수정하세요.`}
+                      </Text>
+                    ) : null}
+                    <SlotSqlMatchOkHint
+                      bHasIssue={bHasIssue}
+                      bHasSql={Boolean(strSql)}
+                      strColor={token.colorPrimary}
+                    />
+                  </div>
                 );
               }}
             </Form.Item>
@@ -1573,15 +1705,16 @@ const EventPage = () => {
             </Button>
           </Space>
         )}
-        width={720}
+        width={1120}
         destroyOnClose
         maskClosable={!bSavingTemplate}
         closable={!bSavingTemplate}
+        styles={{ body: { maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' } }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          {/* 기본 정보 (탭 공통) */}
-          <Row gutter={16}>
-            <Col span={bShowTemplateConnFilter ? 12 : 24}>
+          <Row gutter={24} align="top" wrap>
+            {/* 왼쪽: 기본 정보 (기존 전체 폭의 약 1/2) */}
+            <Col flex="360px" style={{ maxWidth: '100%' }}>
               <Form.Item
                 name="nProductId"
                 label="프로덕트"
@@ -1598,9 +1731,8 @@ const EventPage = () => {
                   ))}
                 </Select>
               </Form.Item>
-            </Col>
-            {bShowTemplateConnFilter ? (
-              <Col span={12}>
+
+              {bShowTemplateConnFilter ? (
                 <Form.Item label={`${STR_SERVICE_SCOPE_LABEL} (연결 DB 필터)`}>
                   <Select
                     allowClear
@@ -1616,20 +1748,16 @@ const EventPage = () => {
                     ))}
                   </Select>
                 </Form.Item>
-              </Col>
-            ) : null}
-          </Row>
+              ) : null}
 
-          <Form.Item
-            name="strEventLabel"
-            label="이벤트명"
-            rules={[{ required: true, message: '이벤트명을 입력해주세요.' }]}
-          >
-            <Input placeholder="예: 어워드 이벤트 종료(아이템)" />
-          </Form.Item>
+              <Form.Item
+                name="strEventLabel"
+                label="이벤트명"
+                rules={[{ required: true, message: '이벤트명을 입력해주세요.' }]}
+              >
+                <Input placeholder="예: 어워드 이벤트 종료(아이템)" />
+              </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
               <Form.Item
                 name="strCategory"
                 label="이벤트 종류"
@@ -1641,8 +1769,7 @@ const EventPage = () => {
                   ))}
                 </Select>
               </Form.Item>
-            </Col>
-            <Col span={12}>
+
               <Form.Item
                 name="strType"
                 label="이벤트 유형"
@@ -1654,92 +1781,99 @@ const EventPage = () => {
                   ))}
                 </Select>
               </Form.Item>
+
+              {/* 입력 ID·형식은 쿼리 세트별 — 템플릿 strInputFormat은 저장 시 첫 세트에서 동기화 */}
+              <Form.Item name="strInputFormat" hidden>
+                <Input />
+              </Form.Item>
+
+              <Form.Item name="strDescription" label="설명">
+                <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
+              </Form.Item>
+
+              {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="쿼리 리뷰 대기 중"
+                  description={
+                    bCanConfirm
+                      ? '템플릿 SQL·세트·연결은 오른쪽에서 수정할 수 있습니다(저장 시 DBA 쿼리 API). «연결·입력 미리보기»는 연결·입력 ID·실행 미리보기용입니다.'
+                      : '쿼리·세트·QA/LIVE 연결은 일반 «수정»으로 변경할 수 없습니다. DBA «연결·입력 미리보기»에서 연결·입력 설정을 변경합니다.'
+                  }
+                />
+              )}
+
+              {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'dba_confirmed' && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  message="승인 완료 템플릿"
+                  description="쿼리·세트를 변경하면 DBA 재승인(쿼리 리뷰 요청) 상태로 되돌아갑니다."
+                />
+              )}
+            </Col>
+
+            {/* 오른쪽: 쿼리 템플릿 (기존 너비 유지) */}
+            <Col flex="1 1 672px" style={{ minWidth: 0, maxWidth: 720 }}>
+              {!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && !bCanConfirm) ? (
+                <Tabs
+                  activeKey={strQueryMode}
+                  onChange={(k) => setStrQueryMode(k as TQueryMode)}
+                  items={[
+                    {
+                      key: 'multi',
+                      label: '쿼리 템플릿',
+                      children: (
+                        <>
+                          <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                            세트별로 <strong>QA·LIVE 연결 DB</strong>를 각각 지정합니다. QA 선택 시 동일 DB명 LIVE 접속이 있으면 자동으로 채워집니다.
+                          </Text>
+                          {nProductIdWatch && arrQaConnections.length === 0 && arrLiveConnections.length === 0 ? (
+                            <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message="등록된 DB 접속이 없습니다"
+                              description={
+                                strTemplateConnFilterAbbr
+                                  ? `${fnFormatDbConnectionCountryPlatform(strTemplateConnFilterAbbr)} · 활성 접속을 DB 접속 정보에서 등록해주세요.`
+                                  : '프로덕트에 활성 DB 접속을 등록한 뒤 연결 DB를 선택할 수 있습니다.'
+                              }
+                            />
+                          ) : null}
+                          <Form.List name="arrQueryTemplates">
+                            {(fields, { add, remove }) => (
+                              <QueryTemplatesTabContent
+                                fields={fields}
+                                add={add}
+                                remove={remove}
+                                arrQaConnections={arrQaConnections}
+                                arrLiveConnections={arrLiveConnections}
+                                arrAllConnections={arrDbConnections}
+                                arrProducts={arrProducts}
+                                form={form}
+                                activeKey={strQueryTabsActiveKey}
+                                setActiveKey={setStrQueryTabsActiveKey}
+                                justAddedRef={bQueryTabsJustAddedRef}
+                                tabKeysRef={arrQueryTabKeysRef}
+                              />
+                            )}
+                          </Form.List>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
+              ) : (
+                <Text type="secondary">
+                  쿼리·세트는 리뷰 대기 중 잠겨 있습니다. DBA «연결·입력 미리보기»를 이용하세요.
+                </Text>
+              )}
             </Col>
           </Row>
-          {/* 입력 ID·형식은 쿼리 세트별 — 템플릿 strInputFormat은 저장 시 첫 세트에서 동기화 */}
-          <Form.Item name="strInputFormat" hidden>
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="strDescription" label="설명">
-            <TextArea rows={2} placeholder="이벤트에 대한 설명 (사용자에게 표시)" />
-          </Form.Item>
-
-          {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message="쿼리 리뷰 대기 중"
-              description={
-                bCanConfirm
-                  ? '템플릿 SQL·세트·연결은 아래에서 수정할 수 있습니다(저장 시 DBA 쿼리 API). «연결·입력 미리보기»는 연결·입력 ID·실행 미리보기용입니다.'
-                  : '쿼리·세트·QA/LIVE 연결은 일반 «수정»으로 변경할 수 없습니다. DBA «연결·입력 미리보기»에서 연결·입력 설정을 변경합니다.'
-              }
-            />
-          )}
-
-          {objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'dba_confirmed' && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message="승인 완료 템플릿"
-              description="쿼리·세트를 변경하면 DBA 재승인(쿼리 리뷰 요청) 상태로 되돌아갑니다."
-            />
-          )}
-
-          {/* confirm_requested: SQL은 이 모달에서 확인(DBA는 수정), 연결·입력 ID는 «쿼리 수정» */}
-          {!(objEditEvent && fnResolveTemplateStatus(objEditEvent) === 'confirm_requested' && !bCanConfirm) && (
-          <Tabs
-            activeKey={strQueryMode}
-            onChange={(k) => setStrQueryMode(k as TQueryMode)}
-            items={[
-              {
-                key: 'multi',
-                label: '쿼리 템플릿',
-                children: (
-                  <>
-                    <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
-                      세트별로 <strong>QA·LIVE 연결 DB</strong>를 각각 지정합니다. QA 선택 시 동일 DB명 LIVE 접속이 있으면 자동으로 채워집니다.
-                    </Text>
-                    {nProductIdWatch && arrQaConnections.length === 0 && arrLiveConnections.length === 0 ? (
-                      <Alert
-                        type="warning"
-                        showIcon
-                        style={{ marginBottom: 12 }}
-                        message="등록된 DB 접속이 없습니다"
-                        description={
-                          strTemplateConnFilterAbbr
-                            ? `${fnFormatDbConnectionCountryPlatform(strTemplateConnFilterAbbr)} · 활성 접속을 DB 접속 정보에서 등록해주세요.`
-                            : '프로덕트에 활성 DB 접속을 등록한 뒤 연결 DB를 선택할 수 있습니다.'
-                        }
-                      />
-                    ) : null}
-                    <Form.List name="arrQueryTemplates">
-                      {(fields, { add, remove }) => (
-                        <QueryTemplatesTabContent
-                          fields={fields}
-                          add={add}
-                          remove={remove}
-                          arrQaConnections={arrQaConnections}
-                          arrLiveConnections={arrLiveConnections}
-                          arrAllConnections={arrDbConnections}
-                          arrProducts={arrProducts}
-                          form={form}
-                          activeKey={strQueryTabsActiveKey}
-                          setActiveKey={setStrQueryTabsActiveKey}
-                          justAddedRef={bQueryTabsJustAddedRef}
-                          tabKeysRef={arrQueryTabKeysRef}
-                        />
-                      )}
-                    </Form.List>
-                  </>
-                ),
-              },
-            ]}
-          />
-          )}
         </Form>
       </Modal>
 
