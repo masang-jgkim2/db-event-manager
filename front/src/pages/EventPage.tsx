@@ -532,7 +532,7 @@ const QueryTemplatesTabContent = ({
   const tabItems = [
     ...fields.map(({ key, name, ...restField }) => ({
       key: String(key),
-      label: `세트 ${name + 1}`,
+      label: `쿼리 세트 ${name + 1}`,
       // 비활성 탭도 마운트 — 미방문 세트의 폼 필드가 저장 payload에서 누락되는 문제 방지
       forceRender: true,
       children: (
@@ -551,10 +551,10 @@ const QueryTemplatesTabContent = ({
     })),
     {
       key: QUERY_TABS_ADD_KEY,
-      label: '+ 세트 추가',
+      label: '+ 쿼리 세트 추가',
       children: (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
-          새 쿼리 세트를 추가하려면 「+ 세트 추가」 탭을 클릭하세요.
+          새 쿼리 세트를 추가하려면 「+ 쿼리 세트 추가」 탭을 클릭하세요.
         </div>
       ),
     },
@@ -1354,7 +1354,7 @@ const EventPage = () => {
         const nErrSetIdx = Number(objSetError.name[1]);
         const strTabKey = arrQueryTabKeysRef.current[nErrSetIdx];
         if (strTabKey) setStrQueryTabsActiveKey(strTabKey);
-        messageApi.warning(`세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
+        messageApi.warning(`쿼리 세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
       } else if (arrErrorFields.length > 0) {
         messageApi.warning('필수 입력 항목을 확인해주세요.');
       } else {
@@ -1982,7 +1982,7 @@ const EventPage = () => {
                   );
                   return {
                     key: String(idx),
-                    label: `세트 ${idx + 1}`,
+                    label: `쿼리 세트 ${idx + 1}`,
                     children: (
                       <div style={{ marginTop: 8 }}>
                         <Space direction="vertical" style={{ width: '100%' }} size="middle">
