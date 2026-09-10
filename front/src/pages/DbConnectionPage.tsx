@@ -29,6 +29,8 @@ import type { IDbConnection, TDbConnectionKind, TPermission } from '../types';
 import { ARR_DB_CONNECTION_KINDS } from '../types';
 import { fnSemanticColor } from '../styles/semanticColors';
 import { fnFormatDbConnectionCountryPlatform, fnFormatCountryPlatformOption, STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
+import type { RefSelectProps } from 'antd/es/select';
+import { fnOnModalSelectVisibleChange, fnScheduleModalSelectOpen, fnFocusOpenSelectSearch } from '../utils/modalFocus';
 import {
   fnFindDuplicateDbConnectionInList,
   fnNormalizeServiceAbbr,
@@ -86,6 +88,11 @@ const DbConnectionPage = () => {
   const [bLoading, setBLoading] = useState(false);
   const [bModalOpen, setBModalOpen] = useState(false);
   const [objEditConn, setObjEditConn] = useState<IDbConnection | null>(null);
+  /** 모달 첫 Select(프로덕트/서비스) 드롭다운 — 합성 click 대신 제어 open */
+  const [bModalFirstSelectOpen, setBModalFirstSelectOpen] = useState(false);
+  const nModalSelectIgnoreCloseUntilRef = useRef(0);
+  const nModalSelectOpenTimerRef = useRef<number | null>(null);
+  const refModalFirstSelect = useRef<RefSelectProps>(null);
   const [objSelectedRow, setObjSelectedRow] = useState<IDbConnection | null>(null);  // 확장된 행(선택된 행)
   const [bTesting, setBTesting] = useState<number | null>(null);  // 테스트 중인 커넥션 ID
   const [objTestResult, setObjTestResult] = useState<{ nId: number; result: ITestResult } | null>(null);
@@ -755,6 +762,26 @@ const DbConnectionPage = () => {
         destroyOnClose
         maskClosable={!bSaving}
         closable={!bSaving}
+        afterOpenChange={(bOpen) => {
+          if (nModalSelectOpenTimerRef.current != null) {
+            window.clearTimeout(nModalSelectOpenTimerRef.current);
+            nModalSelectOpenTimerRef.current = null;
+          }
+          if (!bOpen) {
+            setBModalFirstSelectOpen(false);
+            return;
+          }
+          // 신규 추가일 때만 첫 Select 자동 오픈·포커스
+          if (objEditConn) return;
+          nModalSelectOpenTimerRef.current = fnScheduleModalSelectOpen(
+            setBModalFirstSelectOpen,
+            nModalSelectIgnoreCloseUntilRef,
+            () => {
+              refModalFirstSelect.current?.focus();
+              fnFocusOpenSelectSearch();
+            },
+          );
+        }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           {objEditConn && !(objEditConn.nServiceId ?? 0) && !(objEditConn.strServiceAbbr ?? '').trim() ? (
@@ -773,7 +800,21 @@ const DbConnectionPage = () => {
               label="프로덕트"
               rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
             >
-              <Select placeholder="프로덕트 선택" showSearch optionFilterProp="children">
+              <Select
+                ref={refModalFirstSelect}
+                placeholder="프로덕트 선택"
+                showSearch
+                optionFilterProp="children"
+                autoFocus
+                open={bModalFirstSelectOpen}
+                onDropdownVisibleChange={(bOpen) => {
+                  fnOnModalSelectVisibleChange(
+                    bOpen,
+                    setBModalFirstSelectOpen,
+                    nModalSelectIgnoreCloseUntilRef,
+                  );
+                }}
+              >
                 {arrProducts.map((p) => (
                   <Select.Option key={p.nId} value={p.nId}>{p.strName}</Select.Option>
                 ))}

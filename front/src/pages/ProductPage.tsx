@@ -28,6 +28,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { IProduct, IService, TPermission } from '../types';
 import { ARR_REGION_OPTIONS } from '../types';
+import { fnAfterModalOpenFocusFirst } from '../utils/modalFocus';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
 
 const { TextArea } = Input;
@@ -269,6 +270,10 @@ const ProductPage = () => {
         destroyOnClose
         maskClosable={!bSaving}
         closable={!bSaving}
+        afterOpenChange={(bOpen) => {
+          // 신규 추가일 때만 첫 입력 포커스
+          if (bOpen && !objEditProduct) fnAfterModalOpenFocusFirst(true);
+        }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>
@@ -280,7 +285,11 @@ const ProductPage = () => {
                 validateStatus={objNameDuplicate ? 'warning' : undefined}
                 help={nodeNameDuplicateHint}
               >
-                <Input placeholder="예: DK온라인" />
+                <Input
+                  placeholder="예: DK온라인"
+                  autoFocus={!objEditProduct}
+                  {...(!objEditProduct ? { 'data-dqpm-modal-focus': '1' as const } : {})}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
