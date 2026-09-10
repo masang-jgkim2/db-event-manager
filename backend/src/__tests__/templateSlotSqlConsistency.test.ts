@@ -41,6 +41,6 @@ describe('templateSlotSqlConsistency', () => {
       arrInputs: [{ strInputId: 'qty', strInputFormat: 'item_number' }],
     }]);
     expect(arr.length).toBeGreaterThanOrEqual(2);
-    expect(fnFirstSlotSqlConsistencyMessage(arr)).toMatch(/세트 1/);
+    expect(fnFirstSlotSqlConsistencyMessage(arr)).toMatch(/쿼리 세트 1/);
   });
 });

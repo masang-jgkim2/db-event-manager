@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Typography,
   Card,
@@ -18,6 +18,7 @@ import {
   Tabs,
   theme,
 } from 'antd';
+import type { RefSelectProps } from 'antd/es/select';
 import {
   CodeOutlined,
   CopyOutlined,
@@ -60,6 +61,7 @@ import {
   fnFormatCountryPlatformRegion,
   STR_SERVICE_SCOPE_LABEL,
 } from '../utils/countryPlatformLabel';
+import { fnFocusOpenSelectSearch } from '../utils/modalFocus';
 import { useDesignSystem } from '../styles/DesignSystemContext';
 import { fnSqlEditorReadonlyStyle, STR_CODE_BLOCK_CLASS, fnCodeSurfaceStyle, fnCodeSurfaceSlotValueStyle } from '../styles/queryEditorTokens';
 
@@ -106,6 +108,10 @@ const QueryPage = () => {
   const [nSelectedProductId, setNSelectedProductId] = useState<number | null>(null);
   const [nSelectedServiceId, setNSelectedServiceId] = useState<number | null>(null);
   const [nSelectedEventId, setNSelectedEventId] = useState<number | null>(null);
+  /** Step1 프로덕트 Select — 미선택 시 드롭다운·검색 커서 */
+  const [bProductSelectOpen, setBProductSelectOpen] = useState(false);
+  const nProductSelectIgnoreCloseUntilRef = useRef(0);
+  const refProductSelect = useRef<RefSelectProps>(null);
 
   // 입력 상태
   const [strEventName, setStrEventName] = useState('');
@@ -174,6 +180,23 @@ const QueryPage = () => {
     fnFetchEvents();
     void fnFetchDbConnections();
   });
+
+  // 프로덕트 미선택이면 Step1 Select를 열어 검색 커서부터 (레이아웃·포커스 트랩 이후)
+  useEffect(() => {
+    if (nSelectedProductId != null) {
+      setBProductSelectOpen(false);
+      return;
+    }
+    nProductSelectIgnoreCloseUntilRef.current = Date.now() + 500;
+    const nTimer = window.setTimeout(() => {
+      setBProductSelectOpen(true);
+      window.setTimeout(() => {
+        refProductSelect.current?.focus();
+        fnFocusOpenSelectSearch();
+      }, 50);
+    }, 200);
+    return () => window.clearTimeout(nTimer);
+  }, [nSelectedProductId]);
 
   // 선택된 프로덕트
   const objSelectedProduct = useMemo(() => {
@@ -688,14 +711,28 @@ const QueryPage = () => {
           {/* STEP 1: 프로덕트 선택 */}
           <Card title="1. 프로덕트 선택" size="small">
             <Select
+              ref={refProductSelect}
               style={{ width: '100%' }}
               placeholder="프로덕트를 선택하세요"
               onChange={fnHandleProductChange}
               value={nSelectedProductId}
               size="large"
+              showSearch
+              optionFilterProp="label"
+              open={bProductSelectOpen}
+              onDropdownVisibleChange={(bOpen) => {
+                if (!bOpen && Date.now() < nProductSelectIgnoreCloseUntilRef.current) return;
+                setBProductSelectOpen(bOpen);
+                if (bOpen) {
+                  window.setTimeout(() => {
+                    refProductSelect.current?.focus();
+                    fnFocusOpenSelectSearch();
+                  }, 0);
+                }
+              }}
             >
               {arrProducts.map((p) => (
-                <Select.Option key={p.nId} value={p.nId}>
+                <Select.Option key={p.nId} value={p.nId} label={p.strName}>
                   {p.strName}
                   <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
                     ({p.arrServices.map((s) => s.strAbbr).join(', ')})
@@ -1148,7 +1185,7 @@ const QueryPage = () => {
                             const nSlots = fnCountActiveSlots(objNorm);
                             return {
                               key: String(idx),
-                              label: nSlots > 1 ? `세트 ${idx + 1} · ${nSlots}슬롯` : `세트 ${idx + 1}`,
+                              label: nSlots > 1 ? `쿼리 세트 ${idx + 1} · ${nSlots}슬롯` : `쿼리 세트 ${idx + 1}`,
                               children: (
                                 <div style={{ paddingTop: 4 }}>
                                   {fnRenderSetSlots(objNorm, idx)}

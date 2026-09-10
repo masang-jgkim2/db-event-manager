@@ -61,6 +61,8 @@ import {
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
 import { fnFindDuplicateInputIdMessageInSets, fnFindDuplicateInputIdsInSet } from '../utils/querySetInput';
+import type { RefSelectProps } from 'antd/es/select';
+import { fnOnModalSelectVisibleChange, fnScheduleModalSelectOpen, fnFocusOpenSelectSearch } from '../utils/modalFocus';
 import {
   fnFindOrphanInputPlaceholdersInSql,
   fnFindUnusedSlotIdsInSql,
@@ -530,7 +532,7 @@ const QueryTemplatesTabContent = ({
   const tabItems = [
     ...fields.map(({ key, name, ...restField }) => ({
       key: String(key),
-      label: `세트 ${name + 1}`,
+      label: `쿼리 세트 ${name + 1}`,
       // 비활성 탭도 마운트 — 미방문 세트의 폼 필드가 저장 payload에서 누락되는 문제 방지
       forceRender: true,
       children: (
@@ -549,10 +551,10 @@ const QueryTemplatesTabContent = ({
     })),
     {
       key: QUERY_TABS_ADD_KEY,
-      label: '+ 세트 추가',
+      label: '+ 쿼리 세트 추가',
       children: (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--ant-color-text-tertiary)' }}>
-          새 쿼리 세트를 추가하려면 「+ 세트 추가」 탭을 클릭하세요.
+          새 쿼리 세트를 추가하려면 「+ 쿼리 세트 추가」 탭을 클릭하세요.
         </div>
       ),
     },
@@ -603,6 +605,11 @@ const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
   const [bSavingTemplate, setBSavingTemplate] = useState(false);
   const [strTemplateConnFilterAbbr, setStrTemplateConnFilterAbbr] = useState<string | undefined>(undefined);
+  /** 템플릿 모달 프로덕트 Select 드롭다운 */
+  const [bModalProductSelectOpen, setBModalProductSelectOpen] = useState(false);
+  const nModalSelectIgnoreCloseUntilRef = useRef(0);
+  const nModalSelectOpenTimerRef = useRef<number | null>(null);
+  const refModalProductSelect = useRef<RefSelectProps>(null);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
   const [form] = Form.useForm();
@@ -1347,7 +1354,7 @@ const EventPage = () => {
         const nErrSetIdx = Number(objSetError.name[1]);
         const strTabKey = arrQueryTabKeysRef.current[nErrSetIdx];
         if (strTabKey) setStrQueryTabsActiveKey(strTabKey);
-        messageApi.warning(`세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
+        messageApi.warning(`쿼리 세트 ${nErrSetIdx + 1}의 필수 항목(연결 DB·입력 ID·쿼리 등)을 확인해주세요.`);
       } else if (arrErrorFields.length > 0) {
         messageApi.warning('필수 입력 항목을 확인해주세요.');
       } else {
@@ -1725,6 +1732,26 @@ const EventPage = () => {
         maskClosable={!bSavingTemplate}
         closable={!bSavingTemplate}
         styles={{ body: { maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' } }}
+        afterOpenChange={(bOpen) => {
+          if (nModalSelectOpenTimerRef.current != null) {
+            window.clearTimeout(nModalSelectOpenTimerRef.current);
+            nModalSelectOpenTimerRef.current = null;
+          }
+          if (!bOpen) {
+            setBModalProductSelectOpen(false);
+            return;
+          }
+          // 신규 추가일 때만 프로덕트 Select 자동 오픈·포커스
+          if (objEditEvent) return;
+          nModalSelectOpenTimerRef.current = fnScheduleModalSelectOpen(
+            setBModalProductSelectOpen,
+            nModalSelectIgnoreCloseUntilRef,
+            () => {
+              refModalProductSelect.current?.focus();
+              fnFocusOpenSelectSearch();
+            },
+          );
+        }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={24} align="top" wrap>
@@ -1736,7 +1763,19 @@ const EventPage = () => {
                 rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
               >
                 <Select
+                  ref={objEditEvent ? undefined : refModalProductSelect}
                   placeholder="프로덕트 선택"
+                  showSearch
+                  optionFilterProp="children"
+                  autoFocus={!objEditEvent}
+                  open={objEditEvent ? undefined : bModalProductSelectOpen}
+                  onDropdownVisibleChange={objEditEvent ? undefined : ((bOpen) => {
+                    fnOnModalSelectVisibleChange(
+                      bOpen,
+                      setBModalProductSelectOpen,
+                      nModalSelectIgnoreCloseUntilRef,
+                    );
+                  })}
                   onChange={() => setStrTemplateConnFilterAbbr(undefined)}
                 >
                   {arrProducts.map((p) => (
@@ -1943,7 +1982,7 @@ const EventPage = () => {
                   );
                   return {
                     key: String(idx),
-                    label: `세트 ${idx + 1}`,
+                    label: `쿼리 세트 ${idx + 1}`,
                     children: (
                       <div style={{ marginTop: 8 }}>
                         <Space direction="vertical" style={{ width: '100%' }} size="middle">
