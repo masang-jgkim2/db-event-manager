@@ -505,7 +505,7 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       objTpl.arrQueryTemplates = objNormSets.arrSets;
       objTpl.strInputFormat = objNormSets.strInputFormat;
       const strSlotSqlErr = fnFirstSlotSqlConsistencyMessage(
-        fnValidateSetsSlotSqlConsistency(objTpl.arrQueryTemplates),
+        fnValidateSetsSlotSqlConsistency(objNormSets.arrSets ?? []),
       );
       if (strSlotSqlErr) {
         objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
