@@ -26,6 +26,7 @@ import {
 } from '../constants/userStatus';
 import type { IRole, TPermission } from '../types';
 import { REG_USER_ID, ruleUserIdCharsOnly } from '../utils/userIdInput';
+import { fnAfterModalOpenFocusFirst } from '../utils/modalFocus';
 import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
@@ -527,6 +528,7 @@ const UserPage = () => {
         cancelText="취소"
         destroyOnClose
         width={500}
+        afterOpenChange={fnAfterModalOpenFocusFirst}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -539,7 +541,7 @@ const UserPage = () => {
             ]}
             validateTrigger={['onChange', 'onBlur']}
           >
-            <Input placeholder="로그인에 사용할 아이디 (영문·숫자)" />
+            <Input placeholder="로그인에 사용할 아이디 (영문·숫자)" autoFocus data-dqpm-modal-focus="1" />
           </Form.Item>
           <Form.Item
             name="strEmail"
