@@ -82,7 +82,7 @@ describe('querySetInput — arrInputs dual-read', () => {
       { arrInputs: [{ strInputId: 'dup' }, { strInputId: 'dup' }] },
     ]);
     expect(obj?.nSetIdx).toBe(1);
-    expect(obj?.strMessage).toMatch(/세트 2.*dup/);
+    expect(obj?.strMessage).toMatch(/쿼리 세트 2.*dup/);
   });
 });
 
