@@ -15,8 +15,14 @@ import {
   fnIsValidQuerySetInputId,
   fnNormalizeQuerySetInputs,
   fnMirrorLegacyInputFieldsFromSlots,
+  fnResolveMirroredDefaultItems,
   fnFindDuplicateInputIdsInSet,
 } from '../utils/querySetInput';
+import {
+  fnFirstSlotSqlConsistencyMessage,
+  fnValidateSetsSlotSqlConsistency,
+  fnValidateSingleSlotSqlConsistency,
+} from '../utils/templateSlotSqlConsistency';
 import type { IQueryTemplateItem } from '../data/events';
 import { fnIsMysqlStore } from '../data/dataStore';
 import { fnGetMysqlAppPool } from '../db/mysqlAppPool';
@@ -148,7 +154,21 @@ const fnValidateTemplateQueryConnections = (
       return '각 쿼리 세트에 입력 형식을 지정해주세요.';
     }
   }
+  const strSlotSqlErr = fnFirstSlotSqlConsistencyMessage(fnValidateSetsSlotSqlConsistency(arrQueryTemplates));
+  if (strSlotSqlErr) return strSlotSqlErr;
   return null;
+};
+
+/** 단일 쿼리 모드 슬롯↔SQL 정합 */
+const fnValidateSingleTemplateSlotSql = (
+  strQueryTemplate?: string,
+  strInputId?: string,
+  strInputFormat?: string,
+): string | null => {
+  if (!(strQueryTemplate ?? '').trim()) return null;
+  return fnFirstSlotSqlConsistencyMessage(
+    fnValidateSingleSlotSqlConsistency(strQueryTemplate!, strInputId, strInputFormat),
+  );
 };
 
 /** 세트 저장 전 — 입력 슬롯 정규화 + 템플릿 format(첫 세트·첫 슬롯) 산출 */
@@ -170,7 +190,7 @@ const fnNormalizeSetsForPersist = (
       arrInputs,
       strInputId: objLegacy.strInputId,
       strInputFormat: objLegacy.strInputFormat,
-      strDefaultItems: (objLegacy.strDefaultItems ?? (s.strDefaultItems ?? '').trim()) || undefined,
+      strDefaultItems: fnResolveMirroredDefaultItems(s, objLegacy),
       strQueryTemplate: (s.strQueryTemplate ?? '').trim(),
     };
   });
@@ -203,10 +223,21 @@ export const fnCreateEvent = async (req: Request, res: Response): Promise<void> 
         res.status(400).json({ bSuccess: false, strMessage: strConnErr });
         return;
       }
-    } else if (!(strInputFormat ?? '').trim()) {
-      // 레거시 단일 쿼리: 템플릿 입력 형식 필수
-      res.status(400).json({ bSuccess: false, strMessage: '입력 형식을 지정해주세요.' });
-      return;
+    } else {
+      if (!(strInputFormat ?? '').trim()) {
+        // 레거시 단일 쿼리: 템플릿 입력 형식 필수
+        res.status(400).json({ bSuccess: false, strMessage: '입력 형식을 지정해주세요.' });
+        return;
+      }
+      const strSlotSqlErr = fnValidateSingleTemplateSlotSql(
+        strQueryTemplate,
+        undefined,
+        strInputFormat,
+      );
+      if (strSlotSqlErr) {
+        res.status(400).json({ bSuccess: false, strMessage: strSlotSqlErr });
+        return;
+      }
     }
 
     const objNormSets = fnNormalizeSetsForPersist(arrSetsRaw, strInputFormat || 'item_number');
@@ -300,6 +331,17 @@ export const fnUpdateEvent = async (req: Request, res: Response): Promise<void> 
       const strConnErr = fnValidateTemplateQueryConnections(nProductIdForConn, req.body.arrQueryTemplates);
       if (strConnErr) {
         res.status(400).json({ bSuccess: false, strMessage: strConnErr });
+        return;
+      }
+    } else if (req.body.strQueryTemplate !== undefined) {
+      // 단일 모드는 입력 ID 미저장(항상 items) — body.strInputId로 검증하지 않음
+      const strSlotSqlErr = fnValidateSingleTemplateSlotSql(
+        req.body.strQueryTemplate,
+        undefined,
+        req.body.strInputFormat ?? objTpl.strInputFormat,
+      );
+      if (strSlotSqlErr) {
+        res.status(400).json({ bSuccess: false, strMessage: strSlotSqlErr });
         return;
       }
     }
@@ -431,6 +473,19 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
           res.status(400).json({ bSuccess: false, strMessage: strConnErr });
           return;
         }
+      } else if (req.body.strQueryTemplate !== undefined) {
+        const strSlotSqlErr = fnValidateSingleTemplateSlotSql(
+          req.body.strQueryTemplate,
+          undefined,
+          objTpl.strInputFormat,
+        );
+        if (strSlotSqlErr) {
+          objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
+          objTpl.strDefaultItems = objFieldsBefore.strDefaultItems ?? '';
+          objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
+          res.status(400).json({ bSuccess: false, strMessage: strSlotSqlErr });
+          return;
+        }
       }
       objTpl.arrQueryTemplates = arrIncoming;
     }
@@ -449,6 +504,31 @@ export const fnUpdateEventQuery = async (req: Request, res: Response): Promise<v
       );
       objTpl.arrQueryTemplates = objNormSets.arrSets;
       objTpl.strInputFormat = objNormSets.strInputFormat;
+      const strSlotSqlErr = fnFirstSlotSqlConsistencyMessage(
+        fnValidateSetsSlotSqlConsistency(objNormSets.arrSets ?? []),
+      );
+      if (strSlotSqlErr) {
+        objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
+        objTpl.strDefaultItems = objFieldsBefore.strDefaultItems ?? '';
+        objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
+        objTpl.strInputFormat = strInputFormatBefore;
+        res.status(400).json({ bSuccess: false, strMessage: strSlotSqlErr });
+        return;
+      }
+    } else if ((objTpl.strQueryTemplate ?? '').trim()) {
+      const strSlotSqlErr = fnValidateSingleTemplateSlotSql(
+        objTpl.strQueryTemplate,
+        undefined,
+        objTpl.strInputFormat,
+      );
+      if (strSlotSqlErr) {
+        objTpl.strQueryTemplate = objFieldsBefore.strQueryTemplate ?? objTpl.strQueryTemplate;
+        objTpl.strDefaultItems = objFieldsBefore.strDefaultItems ?? '';
+        objTpl.arrQueryTemplates = objFieldsBefore.arrQueryTemplates;
+        objTpl.strInputFormat = strInputFormatBefore;
+        res.status(400).json({ bSuccess: false, strMessage: strSlotSqlErr });
+        return;
+      }
     }
 
     if (!fnTemplateQueryBodyChanged(objFieldsBefore, objTpl)) {
