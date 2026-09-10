@@ -25,13 +25,13 @@ alwaysApply: false
 ```
 front/src/
   pages/      # 각 메뉴 페이지 (MyDashboardPage 등)
-  components/ # AppTable, CrudPageShell, RequestWithLongPressButton, SettingsDrawer(굳굳/재미모드) 등
+  components/ # AppTable, CrudPageShell, QuerySetInputSlotRows, RequestWithLongPressButton, SettingsDrawer 등
   styles/     # design-system, typographyTokens, semanticColors, queryEditorTokens
   stories/    # Storybook DQPM 카탈로그
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore, useNotificationStore)
   api/        # API 클라이언트 (axios 래퍼)
   hooks/      # useEventStream, useUserPresenceStream 등
-  utils/      # userScopedStorage (dbem:u{nId}:…)
+  utils/      # userScopedStorage · instanceInputValues · querySetInput 등
   services/   # userUiPreferencesSync (pull / 디바운스 push)
   types/      # 공유 인터페이스 (백엔드와 동기화)
 ```
@@ -127,6 +127,7 @@ export const fnApiGetProducts = () => apiClient.get('/products');
 - **테이블**: `AppTable`. **번호** `fnMakeIndexColumn(55)` 최좌측 — 헤더 `번호`, 값 기본 PK `nId`(2번째 인자로 다른 키), PK 없으면 순번 폴백. 확장 `expandable.columnWidth: 24`.
 - **SQL 클립보드**: `copy` 이벤트에서 `clipboardData.setData('text/plain')` → `execCommand('copy')` → `clipboard.writeText` 후 가능하면 `readText`로 검증(불일치 시 성공 토스트 금지). `onMouseDown` + `preventDefault` 금지.
 - **상세·진행 이력**: 타임라인의 `objExecutionResult` — 성공은 초록 톤, `bSuccess === false`면 경고 톤·`strError`·`strConnectionSummary`. 실행 실패 응답에 `objInstance` 오면 동일 인스턴스 상세 갱신.
+- **상세 입력값**: `QuerySetInputSlotRows`(입력 ID·형식·값) — 수정/DBA 미리보기와 동일. 값은 `fnDecodeInstanceInputValues`+템플릿 슬롯. 읽기 전용. Collapse 기본 펼침 = **첫 쿼리 세트 + 진행 이력**. 탭/검증 라벨은 **`쿼리 세트 N`**.
 
 ## 이벤트 대시보드 (DashboardPage)
 
