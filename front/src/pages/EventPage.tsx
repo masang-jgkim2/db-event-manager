@@ -61,6 +61,13 @@ import {
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
 import { fnFindDuplicateInputIdMessageInSets, fnFindDuplicateInputIdsInSet } from '../utils/querySetInput';
+import {
+  fnFindOrphanInputPlaceholdersInSql,
+  fnFindUnusedSlotIdsInSql,
+  fnFirstSlotSqlConsistencyMessage,
+  fnValidateSetsSlotSqlConsistency,
+  fnValidateSingleSlotSqlConsistency,
+} from '../utils/templateSlotSqlConsistency';
 import { fnReplaceItemsInTemplate, fnReplaceAllInputsInTemplate } from '../utils/queryTemplateItems';
 
 const { Text } = Typography;
@@ -156,47 +163,6 @@ type TQueryTemplatesTabContentProps = {
 
 const fnFilterValidTemplateSets = (arrSets?: IQueryTemplateItem[]) =>
   arrSets?.filter((s) => fnIsValidQueryTemplateSet(s)) ?? [];
-
-/** 메타 치환 변수 — 슬롯 ID 없이도 SQL에 둘 수 있음 */
-const SET_META_PLACEHOLDERS = new Set(['date', 'event_name', 'abbr', 'product', 'region']);
-
-/** SQL {{id}} 중 현재 슬롯에 없는 것 (메타 제외) — «수정» 인라인 경고용 */
-const fnFindOrphanInputPlaceholdersInSql = (
-  strSql: string,
-  arrInputs: Array<{ strInputId?: string }>,
-): string[] => {
-  const setSlotIds = new Set(
-    arrInputs
-      .map((obj) => (obj.strInputId ?? '').trim())
-      .filter((strId) => strId.length > 0),
-  );
-  const setFound = new Set<string>();
-  const rePh = /\{\{([a-z][a-z0-9_]{0,31})\}\}/g;
-  let objMatch: RegExpExecArray | null;
-  while ((objMatch = rePh.exec(strSql)) !== null) {
-    const strId = objMatch[1];
-    if (SET_META_PLACEHOLDERS.has(strId) || setSlotIds.has(strId)) continue;
-    setFound.add(strId);
-  }
-  return [...setFound];
-};
-
-/** 활성 슬롯 ID가 SQL에 {{id}}로 없는 경우 — 새 슬롯/ID 추가 후 쿼리 수정 유도 */
-const fnFindUnusedSlotIdsInSql = (
-  strSql: string,
-  arrInputs: Array<{ strInputId?: string; strInputFormat?: string }>,
-): string[] => {
-  const arrUnused: string[] = [];
-  const setSeen = new Set<string>();
-  for (const obj of arrInputs) {
-    const strId = (obj.strInputId ?? '').trim();
-    if (!strId || setSeen.has(strId)) continue;
-    setSeen.add(strId);
-    if ((obj.strInputFormat ?? '').trim() === 'none') continue;
-    if (!strSql.includes(`{{${strId}}}`)) arrUnused.push(strId);
-  }
-  return arrUnused;
-};
 
 /** 슬롯·SQL: 문제 있음→없음 전환일 때만 잠깐 표시 후 페이드아웃 */
 const SlotSqlMatchOkHint = ({
@@ -1147,6 +1113,29 @@ const EventPage = () => {
       return;
     }
 
+    if (arrQueryEditSets.length > 0) {
+      const arrIssues = fnValidateSetsSlotSqlConsistency(
+        arrQueryEditSets.map((s) => fnNormalizeQueryTemplateItem(s, objQueryEditTemplate.strInputFormat)),
+      );
+      const strSlotSqlMsg = fnFirstSlotSqlConsistencyMessage(arrIssues);
+      if (strSlotSqlMsg) {
+        messageApi.warning(strSlotSqlMsg);
+        return;
+      }
+    } else if (strQueryEditValue.trim()) {
+      const strSlotSqlMsg = fnFirstSlotSqlConsistencyMessage(
+        fnValidateSingleSlotSqlConsistency(
+          strQueryEditValue,
+          undefined,
+          objQueryEditTemplate.strInputFormat,
+        ),
+      );
+      if (strSlotSqlMsg) {
+        messageApi.warning(strSlotSqlMsg);
+        return;
+      }
+    }
+
     setBSavingQueryEdit(true);
     try {
       const payload: Record<string, unknown> = arrQueryEditSets.length
@@ -1258,6 +1247,51 @@ const EventPage = () => {
         return;
       }
 
+      // DBA 리뷰대기: 쿼리 변경 여부 — 메타만 저장이면 슬롯↔SQL 게이트 생략
+      const fnSetKeyForCompare = (arr?: IQueryTemplateItem[]) => JSON.stringify(
+        (arr ?? [])
+          .map((s) => fnNormalizeQueryTemplateItem(s, objEditEvent?.strInputFormat))
+          .filter((s) => (s.strQueryTemplate ?? '').trim() && s.nQaDbConnectionId && s.nLiveDbConnectionId)
+          .map((s) => ({
+            nQaDbConnectionId: s.nQaDbConnectionId,
+            nLiveDbConnectionId: s.nLiveDbConnectionId,
+            arrInputs: s.arrInputs,
+            strInputId: s.strInputId,
+            strInputFormat: s.strInputFormat,
+            strDefaultItems: (s.strDefaultItems ?? '').trim(),
+            strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
+          })),
+      );
+      const bDbaQueryChanged = !!(objEditEvent && bDbaSaveQueryViaApi && (
+        arrQueryPayload?.length
+          ? fnSetKeyForCompare(objEditEvent.arrQueryTemplates) !== fnSetKeyForCompare(arrQueryPayload)
+          : ((objEditEvent.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim() !== strSingleQuery.trim()
+            || (objEditEvent.strDefaultItems ?? '').trim() !== strSingleDefault.trim())
+      ));
+      const bPersistQueryNow = !bQueryLocked && (!bDbaSaveQueryViaApi || bDbaQueryChanged);
+
+      // 슬롯↔SQL 정합 — 쿼리·세트를 실제로 저장할 때만 차단
+      if (bPersistQueryNow) {
+        const arrIssues = arrQueryPayload?.length
+          ? fnValidateSetsSlotSqlConsistency(arrQueryPayload)
+          : (strSingleQuery.trim()
+            // 단일 모드 입력 ID 미저장 — 서버와 동일하게 items 기본
+            ? fnValidateSingleSlotSqlConsistency(
+              strSingleQuery,
+              undefined,
+              objValues.strInputFormat,
+            )
+            : []);
+        const strSlotSqlMsg = fnFirstSlotSqlConsistencyMessage(arrIssues);
+        if (strSlotSqlMsg) {
+          const nIssueSet = arrIssues[0]?.nSetIdx ?? 0;
+          const strTabKey = arrQueryTabKeysRef.current[nIssueSet];
+          if (strTabKey) setStrQueryTabsActiveKey(strTabKey);
+          messageApi.warning(strSlotSqlMsg);
+          return;
+        }
+      }
+
       if (objEditEvent && bDbaSaveQueryViaApi) {
         // 메타(종류·유형·설명 등)는 일반 PUT, 쿼리·세트는 전용 API(변경 있을 때만)
         delete objEventData.strQueryTemplate;
@@ -1271,26 +1305,7 @@ const EventPage = () => {
           return;
         }
 
-        const fnSetKey = (arr?: IQueryTemplateItem[]) => JSON.stringify(
-          (arr ?? [])
-            .map((s) => fnNormalizeQueryTemplateItem(s, objEditEvent.strInputFormat))
-            .filter((s) => (s.strQueryTemplate ?? '').trim() && s.nQaDbConnectionId && s.nLiveDbConnectionId)
-            .map((s) => ({
-              nQaDbConnectionId: s.nQaDbConnectionId,
-              nLiveDbConnectionId: s.nLiveDbConnectionId,
-              arrInputs: s.arrInputs,
-              strInputId: s.strInputId,
-              strInputFormat: s.strInputFormat,
-              strDefaultItems: (s.strDefaultItems ?? '').trim(),
-              strQueryTemplate: (s.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim(),
-            })),
-        );
-        const bQueryChanged = arrQueryPayload?.length
-          ? fnSetKey(objEditEvent.arrQueryTemplates) !== fnSetKey(arrQueryPayload)
-          : ((objEditEvent.strQueryTemplate ?? '').replace(/\r\n/g, '\n').trim() !== strSingleQuery.trim()
-            || (objEditEvent.strDefaultItems ?? '').trim() !== strSingleDefault.trim());
-
-        if (!bQueryChanged) {
+        if (!bDbaQueryChanged) {
           messageApi.success(resultMeta.strMessage);
           fnCloseModal();
           return;

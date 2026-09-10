@@ -363,15 +363,33 @@ const PopconfirmWithSkip = ({
   );
 };
 
-// 처리자 표시 컴포넌트
+// 처리자 표시 — 좁은 왼쪽 열에서 한 줄 유지
 const ActorTag = ({ objActor, strLabel }: { objActor: IStageActor | null; strLabel: string }) => {
   if (!objActor) return <Text type="secondary" style={{ fontSize: 12 }}>-</Text>;
+  const dtAt = new Date(objActor.dtProcessedAt);
+  const strAtShort = `${dtAt.getFullYear()}-${String(dtAt.getMonth() + 1).padStart(2, '0')}-${String(dtAt.getDate()).padStart(2, '0')} ${String(dtAt.getHours()).padStart(2, '0')}:${String(dtAt.getMinutes()).padStart(2, '0')}`;
+  const strAtFull = dtAt.toLocaleString('ko-KR');
   return (
-    <Space size={4}>
-      <Text style={{ fontSize: 12 }}>{strLabel}:</Text>
-      <DqpmTag icon={<UserOutlined />} color="blue" style={{ fontSize: 11 }}>{objActor.strDisplayName}</DqpmTag>
-      <Text type="secondary" style={{ fontSize: 11 }}>{new Date(objActor.dtProcessedAt).toLocaleString('ko-KR')}</Text>
-    </Space>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        width: '100%',
+        minWidth: 0,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+      title={`${strLabel}: ${objActor.strDisplayName} ${strAtFull}`}
+    >
+      <Text style={{ fontSize: 12, flex: '0 0 auto' }}>{strLabel}:</Text>
+      <DqpmTag icon={<UserOutlined />} color="blue" style={{ fontSize: 11, margin: 0, flex: '0 1 auto', maxWidth: '40%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {objActor.strDisplayName}
+      </DqpmTag>
+      <Text type="secondary" style={{ fontSize: 11, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {strAtShort}
+      </Text>
+    </div>
   );
 };
 
@@ -2244,18 +2262,31 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
         </div>
       </CrudPageShell>
 
-      {/* 상세 모달 — 각 섹션 접기/펼치기, 입력값·쿼리는 기본 접힘 */}
-      <Modal title="이벤트 상세" open={bDetailOpen} onCancel={() => setBDetailOpen(false)} footer={null} width={780}>
-        {objDetail && (
-          <Collapse
-            defaultActiveKey={['basic', 'actors', 'history']}
-            items={[
+      {/* 상세 모달 — 왼쪽 기본·처리자 / 오른쪽 쿼리 세트·진행 이력 */}
+      <Modal
+        title="이벤트 상세"
+        open={bDetailOpen}
+        onCancel={() => setBDetailOpen(false)}
+        footer={null}
+        width={1280}
+        styles={{ body: { maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' } }}
+      >
+        {objDetail && (() => {
+          const arrLeftItems: NonNullable<CollapseProps['items']> = [
               {
                 key: 'basic',
                 label: '기본 정보',
                 children: (
-                  <Descriptions column={2} size="small">
+                  <Descriptions
+                    column={1}
+                    size="small"
+                    styles={{
+                      label: { width: 96, whiteSpace: 'nowrap' },
+                      content: { minWidth: 0 },
+                    }}
+                  >
                     <Descriptions.Item label="이벤트 번호">{objDetail.nId}</Descriptions.Item>
+                    <Descriptions.Item label="프로덕트">{objDetail.strProductName}</Descriptions.Item>
                     <Descriptions.Item label="쿼리 템플릿">
                       {(fnHasPermission('event_template.view') || fnHasPermission('event_template.manage')) ? (
                         <Link
@@ -2268,18 +2299,47 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                         <Text type="secondary">ID {objDetail.nEventTemplateId}</Text>
                       )}
                     </Descriptions.Item>
-                    <Descriptions.Item label="이벤트명">{objDetail.strEventName}</Descriptions.Item>
-                    <Descriptions.Item label="프로덕트">{objDetail.strProductName}</Descriptions.Item>
+                    <Descriptions.Item label="이벤트명">
+                      <Tooltip title={objDetail.strEventName}>
+                        <Text
+                          ellipsis
+                          style={{ maxWidth: '100%', margin: 0, display: 'block' }}
+                        >
+                          {objDetail.strEventName}
+                        </Text>
+                      </Tooltip>
+                    </Descriptions.Item>
                     <Descriptions.Item label={STR_SERVICE_SCOPE_LABEL}>
                       <InstanceServiceScopeCell strServiceAbbr={objDetail.strServiceAbbr} />
                     </Descriptions.Item>
                     <Descriptions.Item label="종류"><DqpmTag color="blue">{objDetail.strCategory}</DqpmTag></Descriptions.Item>
                     <Descriptions.Item label="유형"><DqpmTag color="red">{objDetail.strType}</DqpmTag></Descriptions.Item>
-                    {objDetail.strAlloLink && (
-                      <Descriptions.Item label="알로 링크" span={2}>
-                        <a href={objDetail.strAlloLink} target="_blank" rel="noreferrer">{objDetail.strAlloLink}</a>
-                      </Descriptions.Item>
-                    )}
+                    <Descriptions.Item label="업무 링크">
+                      {objDetail.strAlloLink ? (
+                        <Tooltip title={objDetail.strAlloLink}>
+                          <a
+                            href={objDetail.strAlloLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              maxWidth: '100%',
+                              minWidth: 0,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <LinkOutlined style={{ flexShrink: 0 }} />
+                            <Text ellipsis style={{ margin: 0, flex: '1 1 auto', minWidth: 0 }}>
+                              {objDetail.strAlloLink}
+                            </Text>
+                          </a>
+                        </Tooltip>
+                      ) : (
+                        <Text type="secondary">-</Text>
+                      )}
+                    </Descriptions.Item>
                     <Descriptions.Item label="반영 범위">
                       <Space size={4}>
                         {(objDetail.arrDeployScope ?? ['qa', 'live']).map((s) => {
@@ -2322,87 +2382,90 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   </Space>
                 ),
               },
-              ...(objDetail.arrExecutionTargets?.length
-                ? (() => {
-                    const strRaw = objDetail.strInputValues ?? '';
-                    const bJson = fnIsInstanceInputValuesJson(strRaw);
-                    let arrMaps: Array<Record<string, string>> = [];
-                    if (bJson) {
-                      try {
-                        const obj = JSON.parse(strRaw.trim()) as { sets?: Array<Record<string, string>> };
-                        arrMaps = Array.isArray(obj.sets) ? obj.sets : [];
-                      } catch {
-                        arrMaps = [];
-                      }
-                    }
-                    const arrInputParts = bJson ? [] : strRaw.split(MULTI_SET_INPUT_DELIMITER);
-                    return objDetail.arrExecutionTargets!.map((t, idx) => {
-                      const strSetInput = bJson
-                        ? Object.entries(arrMaps[idx] ?? {})
-                          .map(([strId, strVal]) => `{{${strId}}}\n${strVal}`)
-                          .join('\n\n')
-                        : (arrInputParts[idx] ?? arrInputParts[0] ?? '');
-                      return {
-                        key: `query-set-${idx}`,
-                        label: `쿼리 세트 ${idx + 1}`,
-                        children: (
-                          <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                            {strSetInput !== '' && (
-                              <div>
-                                <Text type="secondary" style={{ fontSize: 12 }}>입력값 (이 세트)</Text>
-                                <div style={{ marginTop: 4, padding: 8, background: token.colorFillTertiary, borderRadius: token.borderRadius }}>
-                                  <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{strSetInput}</Text>
-                                </div>
-                              </div>
-                            )}
-                            <div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                                <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
-                                <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
-                              </div>
-                              <SqlLineNumberArea
-                                strValue={t.strQuery}
-                                bReadOnly
-                                nFontSize={12}
-                                nMinRows={4}
-                                nMaxRows={15}
-                              />
+          ];
+
+          const arrQuerySetItems: NonNullable<CollapseProps['items']> = objDetail.arrExecutionTargets?.length
+            ? (() => {
+                const strRaw = objDetail.strInputValues ?? '';
+                const bJson = fnIsInstanceInputValuesJson(strRaw);
+                let arrMaps: Array<Record<string, string>> = [];
+                if (bJson) {
+                  try {
+                    const obj = JSON.parse(strRaw.trim()) as { sets?: Array<Record<string, string>> };
+                    arrMaps = Array.isArray(obj.sets) ? obj.sets : [];
+                  } catch {
+                    arrMaps = [];
+                  }
+                }
+                const arrInputParts = bJson ? [] : strRaw.split(MULTI_SET_INPUT_DELIMITER);
+                return objDetail.arrExecutionTargets!.map((t, idx) => {
+                  const strSetInput = bJson
+                    ? Object.entries(arrMaps[idx] ?? {})
+                      .map(([strId, strVal]) => `{{${strId}}}\n${strVal}`)
+                      .join('\n\n')
+                    : (arrInputParts[idx] ?? arrInputParts[0] ?? '');
+                  return {
+                    key: `query-set-${idx}`,
+                    label: `쿼리 세트 ${idx + 1}`,
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                        {strSetInput !== '' && (
+                          <div>
+                            <Text type="secondary" style={{ fontSize: 12 }}>입력값 (이 세트)</Text>
+                            <div style={{ marginTop: 4, padding: 8, background: token.colorFillTertiary, borderRadius: token.borderRadius }}>
+                              <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{strSetInput}</Text>
                             </div>
-                          </Space>
-                        ),
-                      };
-                    });
-                  })()
-                : objDetail.strInputValues
-                  ? [{
-                      key: 'input',
-                      label: '입력값',
-                      children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
-                    }]
-                  : []),
-              ...(objDetail.arrExecutionTargets?.length
-                ? []
-                : objDetail.strGeneratedQuery
-                  ? [{
-                      key: 'query',
-                      label: '최종 쿼리',
-                      children: (
-                        <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                          <div style={{ textAlign: 'right' }}>
-                            <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
+                            <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(t.strQuery)}>복사</Button>
                           </div>
                           <SqlLineNumberArea
-                            strValue={objDetail.strGeneratedQuery}
+                            strValue={t.strQuery}
                             bReadOnly
                             nFontSize={12}
                             nMinRows={4}
                             nMaxRows={15}
                           />
-                        </Space>
-                      ),
-                    }]
-                  : []),
-              {
+                        </div>
+                      </Space>
+                    ),
+                  };
+                });
+              })()
+            : [
+              ...(objDetail.strInputValues
+                ? [{
+                    key: 'input',
+                    label: '입력값',
+                    children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
+                  }]
+                : []),
+              ...(objDetail.strGeneratedQuery
+                ? [{
+                    key: 'query',
+                    label: '최종 쿼리',
+                    children: (
+                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                        <div style={{ textAlign: 'right' }}>
+                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                        </div>
+                        <SqlLineNumberArea
+                          strValue={objDetail.strGeneratedQuery}
+                          bReadOnly
+                          nFontSize={12}
+                          nMinRows={4}
+                          nMaxRows={15}
+                        />
+                      </Space>
+                    ),
+                  }]
+                : []),
+            ];
+
+          const objHistoryItem: NonNullable<CollapseProps['items']>[number] = {
                 key: 'history',
                 label: '진행 이력',
                 children: (
@@ -2499,10 +2562,29 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     })}
                   />
                 ),
-              },
-            ]}
-          />
-        )}
+          };
+
+          const arrRightItems: NonNullable<CollapseProps['items']> = [
+            ...arrQuerySetItems,
+            objHistoryItem,
+          ];
+          const arrRightDefaultKeys = [
+            ...arrQuerySetItems.map((obj) => String(obj.key)),
+            'history',
+          ];
+
+          return (
+            <Row gutter={24} align="top" wrap>
+              {/* 기본정보 값(이벤트명·업무링크)이 잘리지 않도록 좌측을 넉넉히 */}
+              <Col flex="480px" style={{ maxWidth: '100%' }}>
+                <Collapse defaultActiveKey={['basic', 'actors']} items={arrLeftItems} />
+              </Col>
+              <Col flex="1 1 720px" style={{ minWidth: 0 }}>
+                <Collapse defaultActiveKey={arrRightDefaultKeys} items={arrRightItems} />
+              </Col>
+            </Row>
+          );
+        })()}
       </Modal>
 
       {/* 수정 모달 */}
@@ -2539,13 +2621,13 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             </div>
             <div>
               <Space style={{ marginBottom: 4 }}>
-                <Text strong>알로 링크</Text>
+                <Text strong>업무 링크</Text>
                 <Text type="secondary" style={{ fontSize: 11 }}>선택사항</Text>
               </Space>
               <Input
                 value={strEditAlloLink}
                 onChange={(e) => setStrEditAlloLink(e.target.value)}
-                placeholder="https://allo.io/... 알로 업무 카드 링크"
+                placeholder="알로·코웤 등 업무 링크 URL (https://...)"
                 allowClear
                 style={{ marginTop: 4 }}
               />
