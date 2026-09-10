@@ -1185,7 +1185,7 @@ const QueryPage = () => {
                             const nSlots = fnCountActiveSlots(objNorm);
                             return {
                               key: String(idx),
-                              label: nSlots > 1 ? `세트 ${idx + 1} · ${nSlots}슬롯` : `세트 ${idx + 1}`,
+                              label: nSlots > 1 ? `쿼리 세트 ${idx + 1} · ${nSlots}슬롯` : `쿼리 세트 ${idx + 1}`,
                               children: (
                                 <div style={{ paddingTop: 4 }}>
                                   {fnRenderSetSlots(objNorm, idx)}
