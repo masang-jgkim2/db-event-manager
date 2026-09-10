@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '../stores/useAuthStore';
 import type { IRole } from '../types';
 import { DqpmTag } from '../components/DqpmTag';
+import { fnAfterModalOpenFocusFirst } from '../utils/modalFocus';
 import {
   ARR_PERMISSION_GROUPS,
   fnExpandPermissionsForRoleFormDisplay,
@@ -240,10 +241,15 @@ const RolePage = () => {
         cancelText="취소"
         width={780}
         destroyOnClose
+        afterOpenChange={(bOpen) => {
+          // 신규 추가일 때만 첫 입력 포커스
+          if (bOpen && !objEditRole) fnAfterModalOpenFocusFirst(true);
+        }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
+          {/* 신규 시 권한은 접어 두고 역할 코드부터 */}
           <Collapse
-            defaultActiveKey={['basic', 'permissions']}
+            defaultActiveKey={['basic']}
             items={[
               {
                 key: 'basic',
@@ -266,7 +272,7 @@ const RolePage = () => {
                               { pattern: /^[a-z_]+$/, message: '소문자와 밑줄(_)만 사용 가능합니다.' },
                             ]}
                           >
-                            <Input placeholder="예: custom_operator" />
+                            <Input placeholder="예: custom_operator" autoFocus data-dqpm-modal-focus="1" />
                           </Form.Item>
                         </Col>
                       ) : (
@@ -282,7 +288,9 @@ const RolePage = () => {
                           label="역할명"
                           rules={[{ required: true, message: '역할명을 입력해주세요.' }]}
                         >
-                          <Input placeholder={objEditRole?.bIsSystem ? '예: GM' : '예: 커스텀 운영자'} />
+                          <Input
+                            placeholder={objEditRole?.bIsSystem ? '예: GM' : '예: 커스텀 운영자'}
+                          />
                         </Form.Item>
                       </Col>
                     </Row>

@@ -61,6 +61,8 @@ import {
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
 import { fnFindDuplicateInputIdMessageInSets, fnFindDuplicateInputIdsInSet } from '../utils/querySetInput';
+import type { RefSelectProps } from 'antd/es/select';
+import { fnOnModalSelectVisibleChange, fnScheduleModalSelectOpen, fnFocusOpenSelectSearch } from '../utils/modalFocus';
 import {
   fnFindOrphanInputPlaceholdersInSql,
   fnFindUnusedSlotIdsInSql,
@@ -603,6 +605,11 @@ const EventPage = () => {
   const [bModalOpen, setBModalOpen] = useState(false);
   const [bSavingTemplate, setBSavingTemplate] = useState(false);
   const [strTemplateConnFilterAbbr, setStrTemplateConnFilterAbbr] = useState<string | undefined>(undefined);
+  /** 템플릿 모달 프로덕트 Select 드롭다운 */
+  const [bModalProductSelectOpen, setBModalProductSelectOpen] = useState(false);
+  const nModalSelectIgnoreCloseUntilRef = useRef(0);
+  const nModalSelectOpenTimerRef = useRef<number | null>(null);
+  const refModalProductSelect = useRef<RefSelectProps>(null);
   const [objEditEvent, setObjEditEvent] = useState<IEventTemplate | null>(null);
   const [strQueryMode, setStrQueryMode] = useState<TQueryMode>('single');
   const [form] = Form.useForm();
@@ -1725,6 +1732,26 @@ const EventPage = () => {
         maskClosable={!bSavingTemplate}
         closable={!bSavingTemplate}
         styles={{ body: { maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' } }}
+        afterOpenChange={(bOpen) => {
+          if (nModalSelectOpenTimerRef.current != null) {
+            window.clearTimeout(nModalSelectOpenTimerRef.current);
+            nModalSelectOpenTimerRef.current = null;
+          }
+          if (!bOpen) {
+            setBModalProductSelectOpen(false);
+            return;
+          }
+          // 신규 추가일 때만 프로덕트 Select 자동 오픈·포커스
+          if (objEditEvent) return;
+          nModalSelectOpenTimerRef.current = fnScheduleModalSelectOpen(
+            setBModalProductSelectOpen,
+            nModalSelectIgnoreCloseUntilRef,
+            () => {
+              refModalProductSelect.current?.focus();
+              fnFocusOpenSelectSearch();
+            },
+          );
+        }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={24} align="top" wrap>
@@ -1736,7 +1763,19 @@ const EventPage = () => {
                 rules={[{ required: true, message: '프로덕트를 선택해주세요.' }]}
               >
                 <Select
+                  ref={objEditEvent ? undefined : refModalProductSelect}
                   placeholder="프로덕트 선택"
+                  showSearch
+                  optionFilterProp="children"
+                  autoFocus={!objEditEvent}
+                  open={objEditEvent ? undefined : bModalProductSelectOpen}
+                  onDropdownVisibleChange={objEditEvent ? undefined : ((bOpen) => {
+                    fnOnModalSelectVisibleChange(
+                      bOpen,
+                      setBModalProductSelectOpen,
+                      nModalSelectIgnoreCloseUntilRef,
+                    );
+                  })}
                   onChange={() => setStrTemplateConnFilterAbbr(undefined)}
                 >
                   {arrProducts.map((p) => (
