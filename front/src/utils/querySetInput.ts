@@ -119,7 +119,7 @@ export const fnFindDuplicateInputIdMessageInSets = (
     if (strDup) {
       return {
         nSetIdx: nIdx,
-        strMessage: `세트 ${nIdx + 1}: 입력 ID "${strDup}"가 중복됩니다.`,
+        strMessage: `쿼리 세트 ${nIdx + 1}: 입력 ID "${strDup}"가 중복됩니다.`,
       };
     }
   }

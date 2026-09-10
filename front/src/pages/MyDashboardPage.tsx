@@ -58,8 +58,6 @@ import { fnReplaceAllInputsInTemplate } from '../utils/queryTemplateItems';
 import {
   fnDecodeInstanceInputValues,
   fnEncodeInstanceInputValues,
-  fnIsInstanceInputValuesJson,
-  MULTI_SET_INPUT_DELIMITER,
 } from '../utils/instanceInputValues';
 import {
   fnBuildQueryPartKindIndexMaps,
@@ -2386,37 +2384,49 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
 
           const arrQuerySetItems: NonNullable<CollapseProps['items']> = objDetail.arrExecutionTargets?.length
             ? (() => {
-                const strRaw = objDetail.strInputValues ?? '';
-                const bJson = fnIsInstanceInputValuesJson(strRaw);
-                let arrMaps: Array<Record<string, string>> = [];
-                if (bJson) {
-                  try {
-                    const obj = JSON.parse(strRaw.trim()) as { sets?: Array<Record<string, string>> };
-                    arrMaps = Array.isArray(obj.sets) ? obj.sets : [];
-                  } catch {
-                    arrMaps = [];
-                  }
-                }
-                const arrInputParts = bJson ? [] : strRaw.split(MULTI_SET_INPUT_DELIMITER);
+                const objDetailTpl = arrEvents.find((e) => e.nId === objDetail.nEventTemplateId);
+                const arrSlotsPerSet = fnBuildEditSlotRowsFromTemplate(objDetail, objDetailTpl);
+                const arrValueMaps = fnDecodeInstanceInputValues(
+                  objDetail.strInputValues ?? '',
+                  arrSlotsPerSet,
+                );
                 return objDetail.arrExecutionTargets!.map((t, idx) => {
-                  const strSetInput = bJson
-                    ? Object.entries(arrMaps[idx] ?? {})
-                      .map(([strId, strVal]) => `{{${strId}}}\n${strVal}`)
-                      .join('\n\n')
-                    : (arrInputParts[idx] ?? arrInputParts[0] ?? '');
+                  const arrSlots = arrSlotsPerSet[idx] ?? [
+                    { strInputId: 'items', strInputFormat: 'item_number' as TInputFormat },
+                  ];
+                  const objValueMap = arrValueMaps[idx] ?? {};
+                  // 템플릿에 없는 키만 값 맵에 있으면 행 추가 (과거 데이터 표시)
+                  const setKnownIds = new Set(arrSlots.map((s) => s.strInputId));
+                  const arrExtraSlots: TQuerySetSlotRowItem[] = Object.keys(objValueMap)
+                    .filter((strId) => strId && !setKnownIds.has(strId))
+                    .map((strId) => ({
+                      strInputId: strId,
+                      strInputFormat: 'item_string' as TInputFormat,
+                    }));
+                  const arrDisplaySlots = [...arrSlots, ...arrExtraSlots];
+                  const bHasAnyValue = arrDisplaySlots.some(
+                    (s) => (objValueMap[s.strInputId] ?? '').trim().length > 0,
+                  );
                   return {
                     key: `query-set-${idx}`,
                     label: `쿼리 세트 ${idx + 1}`,
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={12}>
-                        {strSetInput !== '' && (
-                          <div>
-                            <Text type="secondary" style={{ fontSize: 12 }}>입력값 (이 세트)</Text>
-                            <div style={{ marginTop: 4, padding: 8, background: token.colorFillTertiary, borderRadius: token.borderRadius }}>
-                              <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{strSetInput}</Text>
-                            </div>
-                          </div>
-                        )}
+                        {bHasAnyValue ? (
+                          <QuerySetInputSlotRows
+                            arrSlots={arrDisplaySlots}
+                            strThirdColumnLabel="입력값 (이 세트)"
+                            objSqlFieldStyle={objSqlTaEditable13}
+                            fnRenderValueCell={(objSlot) => (
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                value={objValueMap[objSlot.strInputId] ?? ''}
+                                disabled
+                                style={objSqlTaEditable13}
+                              />
+                            )}
+                          />
+                        ) : null}
                         <div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <Text type="secondary" style={{ fontSize: 12 }}>쿼리</Text>
@@ -2435,35 +2445,64 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   };
                 });
               })()
-            : [
-              ...(objDetail.strInputValues
-                ? [{
-                    key: 'input',
-                    label: '입력값',
-                    children: <Text code style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{objDetail.strInputValues}</Text>,
-                  }]
-                : []),
-              ...(objDetail.strGeneratedQuery
-                ? [{
-                    key: 'query',
-                    label: '최종 쿼리',
-                    children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                        <div style={{ textAlign: 'right' }}>
-                          <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
-                        </div>
-                        <SqlLineNumberArea
-                          strValue={objDetail.strGeneratedQuery}
-                          bReadOnly
-                          nFontSize={12}
-                          nMinRows={4}
-                          nMaxRows={15}
-                        />
-                      </Space>
-                    ),
-                  }]
-                : []),
-            ];
+            : (() => {
+                const objDetailTpl = arrEvents.find((e) => e.nId === objDetail.nEventTemplateId);
+                const arrSlotsPerSet = fnBuildEditSlotRowsFromTemplate(objDetail, objDetailTpl);
+                const arrValueMaps = fnDecodeInstanceInputValues(
+                  objDetail.strInputValues ?? '',
+                  arrSlotsPerSet,
+                );
+                const arrSlots = arrSlotsPerSet[0] ?? [
+                  { strInputId: 'items', strInputFormat: 'item_number' as TInputFormat },
+                ];
+                const objValueMap = arrValueMaps[0] ?? {};
+                const bHasAnyValue = arrSlots.some(
+                  (s) => (objValueMap[s.strInputId] ?? '').trim().length > 0,
+                ) || Boolean((objDetail.strInputValues ?? '').trim());
+                return [
+                  ...(bHasAnyValue
+                    ? [{
+                        key: 'input',
+                        label: '입력값',
+                        children: (
+                          <QuerySetInputSlotRows
+                            arrSlots={arrSlots}
+                            strThirdColumnLabel="입력값"
+                            objSqlFieldStyle={objSqlTaEditable13}
+                            fnRenderValueCell={(objSlot) => (
+                              <Input
+                                className={STR_CODE_BLOCK_CLASS}
+                                value={objValueMap[objSlot.strInputId] ?? ''}
+                                disabled
+                                style={objSqlTaEditable13}
+                              />
+                            )}
+                          />
+                        ),
+                      }]
+                    : []),
+                  ...(objDetail.strGeneratedQuery
+                    ? [{
+                        key: 'query',
+                        label: '최종 쿼리',
+                        children: (
+                          <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                            <div style={{ textAlign: 'right' }}>
+                              <Button size="small" icon={<CopyOutlined />} onClick={() => fnCopy(objDetail.strGeneratedQuery)}>복사</Button>
+                            </div>
+                            <SqlLineNumberArea
+                              strValue={objDetail.strGeneratedQuery}
+                              bReadOnly
+                              nFontSize={12}
+                              nMinRows={4}
+                              nMaxRows={15}
+                            />
+                          </Space>
+                        ),
+                      }]
+                    : []),
+                ];
+              })();
 
           const objHistoryItem: NonNullable<CollapseProps['items']>[number] = {
                 key: 'history',
@@ -2568,8 +2607,9 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             ...arrQuerySetItems,
             objHistoryItem,
           ];
+          // 세트 많으면 전부 펼치면 스크롤이 길어져 첫 세트·이력만 기본 펼침
           const arrRightDefaultKeys = [
-            ...arrQuerySetItems.map((obj) => String(obj.key)),
+            ...(arrQuerySetItems[0] ? [String(arrQuerySetItems[0].key)] : []),
             'history',
           ];
 
@@ -2959,7 +2999,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                 type="card"
                 items={arrQueryEditTargets.map((objTarget, idx) => ({
                   key: String(idx),
-                  label: `세트 ${idx + 1}`,
+                  label: `쿼리 세트 ${idx + 1}`,
                   children: (
                     <div style={{ marginTop: 8 }}>
                       <Space direction="vertical" style={{ width: '100%' }} size="middle">

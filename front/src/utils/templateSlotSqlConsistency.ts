@@ -93,7 +93,7 @@ export const fnValidateSetsSlotSqlConsistency = (arrSets: TSetLike[]): TSlotSqlI
         strKind: 'orphan',
         arrIds: arrOrphans,
         strMessage:
-          `세트 ${nSetIdx + 1}: 쿼리 템플릿에 ${arrOrphans.map((id) => `{{${id}}}`).join(', ')}가 남아 있습니다. 쿼리 또는 입력을 수정하세요.`,
+          `쿼리 세트 ${nSetIdx + 1}: 쿼리 템플릿에 ${arrOrphans.map((id) => `{{${id}}}`).join(', ')}가 남아 있습니다. 쿼리 또는 입력을 수정하세요.`,
       });
     }
     const arrUnused = fnFindUnusedSlotIdsInSql(strSql, arrInputs);
@@ -103,7 +103,7 @@ export const fnValidateSetsSlotSqlConsistency = (arrSets: TSetLike[]): TSlotSqlI
         strKind: 'unused',
         arrIds: arrUnused,
         strMessage:
-          `세트 ${nSetIdx + 1}: 입력 ID ${arrUnused.map((id) => `"${id}"`).join(', ')}가 쿼리에 없습니다. 쿼리 또는 입력을 수정하세요.`,
+          `쿼리 세트 ${nSetIdx + 1}: 입력 ID ${arrUnused.map((id) => `"${id}"`).join(', ')}가 쿼리에 없습니다. 쿼리 또는 입력을 수정하세요.`,
       });
     }
   });
