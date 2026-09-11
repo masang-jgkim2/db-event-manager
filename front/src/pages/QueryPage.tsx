@@ -581,7 +581,9 @@ const QueryPage = () => {
         // 하위 호환: QA 또는 LIVE 날짜 중 대표값
         dtDeployDate: strQaDeployDate || strLiveDeployDate,
         arrDeployScope,
-        bLiveSlackRemind: arrDeployScope.includes('live') ? bLiveSlackRemind : false,
+        bLiveSlackRemind: arrDeployScope.includes('live') && Boolean(strLiveDeployDate)
+          ? bLiveSlackRemind
+          : false,
         strCreatedBy: user?.strDisplayName || '',
       };
       if (arrTargets.length > 0) {
@@ -1003,7 +1005,7 @@ const QueryPage = () => {
                     </Checkbox.Group>
                     <Checkbox
                       checked={bLiveSlackRemind}
-                      disabled={!arrDeployScope.includes('live')}
+                      disabled={!arrDeployScope.includes('live') || !strLiveDeployDate}
                       onChange={(e) => setBLiveSlackRemind(e.target.checked)}
                     >
                       미리알림
@@ -1105,7 +1107,11 @@ const QueryPage = () => {
                       format="YYYY-MM-DD HH:mm:ss"
                       placeholder="LIVE 반영 날짜/시각을 선택하세요"
                       value={strLiveDeployDate ? dayjs(strLiveDeployDate) : null}
-                      onChange={(date) => setStrLiveDeployDate(date ? date.toISOString() : '')}
+                      onChange={(date) => {
+                        const strNext = date ? date.toISOString() : '';
+                        setStrLiveDeployDate(strNext);
+                        if (!strNext) setBLiveSlackRemind(false);
+                      }}
                       size="large"
                     />
                   </Form.Item>

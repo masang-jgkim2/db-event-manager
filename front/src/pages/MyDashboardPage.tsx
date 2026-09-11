@@ -928,6 +928,7 @@ const MyDashboardPage = () => {
   const [strEditLiveDeployDate, setStrEditLiveDeployDate] = useState('');
   const [strEditAlloLink, setStrEditAlloLink] = useState('');
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+  const [bEditLiveSlackRemind, setBEditLiveSlackRemind] = useState(false);
   // DBA 쿼리 수정 모달
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
@@ -1265,6 +1266,7 @@ const MyDashboardPage = () => {
     }
     setStrEditAlloLink(r.strAlloLink ?? '');
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
+    setBEditLiveSlackRemind(Boolean(r.bLiveSlackRemind));
     setBEditOpen(true);
   };
 
@@ -1280,6 +1282,9 @@ const MyDashboardPage = () => {
       dtLiveDeployDate: strEditLiveDeployDate || undefined,
       dtDeployDate: strEditQaDeployDate || strEditLiveDeployDate || strEditDeployDate,
       arrDeployScope: arrEditDeployScope,
+      bLiveSlackRemind: arrEditDeployScope.includes('live') && Boolean(strEditLiveDeployDate)
+        ? bEditLiveSlackRemind
+        : false,
     });
     if (result.bSuccess) {
       messageApi.success('이벤트가 수정되었습니다.');
@@ -2681,27 +2686,45 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               </Space>
               <div style={{ marginTop: 4 }}>
                 {objEditInstance.strStatus === 'event_created' ? (
-                  <Checkbox.Group
-                    value={arrEditDeployScope}
-                    onChange={(arrChecked) => {
-                      const arrNext = arrChecked.filter(
-                        (v): v is TDeployScope => v === 'qa' || v === 'live'
-                      );
-                      if (arrNext.length > 0) setArrEditDeployScope(arrNext);
-                    }}
-                  >
-                    {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                      <Checkbox key={opt.value} value={opt.value}>
-                        <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
-                      </Checkbox>
-                    ))}
-                  </Checkbox.Group>
+                  <Space wrap>
+                    <Checkbox.Group
+                      value={arrEditDeployScope}
+                      onChange={(arrChecked) => {
+                        const arrNext = arrChecked.filter(
+                          (v): v is TDeployScope => v === 'qa' || v === 'live'
+                        );
+                        if (arrNext.length > 0) {
+                          setArrEditDeployScope(arrNext);
+                          if (!arrNext.includes('live')) setBEditLiveSlackRemind(false);
+                        }
+                      }}
+                    >
+                      {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                        <Checkbox key={opt.value} value={opt.value}>
+                          <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
+                        </Checkbox>
+                      ))}
+                    </Checkbox.Group>
+                    <Checkbox
+                      checked={bEditLiveSlackRemind}
+                      disabled={!arrEditDeployScope.includes('live') || !strEditLiveDeployDate}
+                      onChange={(e) => setBEditLiveSlackRemind(e.target.checked)}
+                    >
+                      미리알림
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                        (LIVE 10분 전 · DBA)
+                      </Text>
+                    </Checkbox>
+                  </Space>
                 ) : (
-                  <Space size={4}>
+                  <Space size={4} wrap>
                     {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
                       const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
                       return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                     })}
+                    {objEditInstance.bLiveSlackRemind ? (
+                      <Text type="secondary" style={{ fontSize: 12 }}>미리알림 ON</Text>
+                    ) : null}
                   </Space>
                 )}
               </div>
@@ -2732,7 +2755,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                   showTime={{ format: 'HH:mm:ss' }}
                   format="YYYY-MM-DD HH:mm:ss"
                   value={strEditLiveDeployDate ? dayjs(strEditLiveDeployDate) : null}
-                  onChange={(date) => setStrEditLiveDeployDate(date ? date.toISOString() : '')}
+                  onChange={(date) => {
+                    const strNext = date ? date.toISOString() : '';
+                    setStrEditLiveDeployDate(strNext);
+                    if (!strNext) setBEditLiveSlackRemind(false);
+                  }}
                 />
               </div>
             )}
