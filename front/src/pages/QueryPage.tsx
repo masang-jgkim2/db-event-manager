@@ -125,6 +125,7 @@ const QueryPage = () => {
 
   // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+  const [bLiveSlackRemind, setBLiveSlackRemind] = useState(false);
 
   // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
@@ -580,6 +581,7 @@ const QueryPage = () => {
         // 하위 호환: QA 또는 LIVE 날짜 중 대표값
         dtDeployDate: strQaDeployDate || strLiveDeployDate,
         arrDeployScope,
+        bLiveSlackRemind: arrDeployScope.includes('live') ? bLiveSlackRemind : false,
         strCreatedBy: user?.strDisplayName || '',
       };
       if (arrTargets.length > 0) {
@@ -967,34 +969,49 @@ const QueryPage = () => {
                     </Text>
                   }
                 >
-                  <Checkbox.Group
-                    value={arrDeployScope}
-                    onChange={(arrChecked) => {
-                      const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
-                        if (v !== 'qa' && v !== 'live') return false;
-                        return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
-                      });
-                      if (arrNext.length > 0) setArrDeployScope(arrNext);
-                    }}
-                  >
-                    <Space>
-                      {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                        <Checkbox
-                          key={opt.value}
-                          value={opt.value}
-                          disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
-                        >
-                          <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
-                          {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              {' '}
-                              (서비스·종류별 {opt.value.toUpperCase()} DB 접속 없음)
-                            </Text>
-                          ) : null}
-                        </Checkbox>
-                      ))}
-                    </Space>
-                  </Checkbox.Group>
+                  <Space wrap>
+                    <Checkbox.Group
+                      value={arrDeployScope}
+                      onChange={(arrChecked) => {
+                        const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
+                          if (v !== 'qa' && v !== 'live') return false;
+                          return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
+                        });
+                        if (arrNext.length > 0) {
+                          setArrDeployScope(arrNext);
+                          if (!arrNext.includes('live')) setBLiveSlackRemind(false);
+                        }
+                      }}
+                    >
+                      <Space>
+                        {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                          <Checkbox
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
+                          >
+                            <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
+                            {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                {' '}
+                                (서비스·종류별 {opt.value.toUpperCase()} DB 접속 없음)
+                              </Text>
+                            ) : null}
+                          </Checkbox>
+                        ))}
+                      </Space>
+                    </Checkbox.Group>
+                    <Checkbox
+                      checked={bLiveSlackRemind}
+                      disabled={!arrDeployScope.includes('live')}
+                      onChange={(e) => setBLiveSlackRemind(e.target.checked)}
+                    >
+                      미리알림
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                        (LIVE 10분 전 · DBA)
+                      </Text>
+                    </Checkbox>
+                  </Space>
                 </Form.Item>
 
                 {arrDbConnections.length > 0 && strSelectedAbbr && arrConnectionPreview.length > 0 ? (
