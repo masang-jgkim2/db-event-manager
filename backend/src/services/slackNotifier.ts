@@ -356,6 +356,13 @@ export const fnNotifySlackInstanceCreated = (objInstance: IEventInstance): void 
   fnSendSlackForInstance(objInstance);
 };
 
+/** LIVE 반영 10분 전 미리알림 — DBA 채널만. 기존 요청/완료 알림과 분리 */
+export const fnNotifySlackLiveRemind = (objInstance: IEventInstance): void => {
+  if (!fnIsSlackNotificationsEnabled()) return;
+  const strBaseTitle = OBJ_DBA_SLACK_TITLE.live_requested ?? 'LIVE 반영 요청';
+  fnSendSlackToChannel('dba', `(미리 알림) ${strBaseTitle}`, objInstance);
+};
+
 export const fnNotifySlackInstanceUpdate = (
   objInstance: IEventInstance,
   bNotifyStatusProgress: boolean,

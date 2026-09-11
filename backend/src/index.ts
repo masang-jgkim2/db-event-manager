@@ -62,10 +62,12 @@ const fnStartServer = async (): Promise<void> => {
 
   const { default: app } = await import('./app');
   const { fnStartUserPresenceSweep } = await import('./services/userPresence');
+  const { fnStartSlackLiveRemindSweep } = await import('./services/slackLiveRemindSweep');
 
   const strHost = process.env.HOST || '0.0.0.0';
   app.listen(nPort, strHost, () => {
     fnStartUserPresenceSweep();
+    fnStartSlackLiveRemindSweep();
     const strMode = fnIsMysqlStore() ? '메타 MySQL + 인메모리' : '인메모리(JSON)';
     console.log(`[서버] http://${strHost === '0.0.0.0' ? 'localhost' : strHost}:${nPort} 에서 실행 중 (${strMode})`);
     if (strHost === '0.0.0.0') {

@@ -174,7 +174,7 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       strServiceAbbr, strServiceRegion, strCategory, strType, nServiceId,
       strEventName, strInputValues, strGeneratedQuery, arrExecutionTargets,
       dtDeployDate, dtQaDeployDate, dtLiveDeployDate, strAlloLink,
-      arrDeployScope: arrReqScope, strCreatedBy,
+      arrDeployScope: arrReqScope, strCreatedBy, bLiveSlackRemind,
     } = req.body;
 
     if (!strEventName || !nEventTemplateId) {
@@ -297,6 +297,10 @@ export const fnCreateInstance = async (req: Request, res: Response): Promise<voi
       dtDeployDate: dtQaDeployDate || dtLiveDeployDate || dtDeployDate,
       dtQaDeployDate: dtQaDeployDate || undefined,
       dtLiveDeployDate: dtLiveDeployDate || undefined,
+      // LIVE 스코프·날짜 있을 때만 미리알림 옵트인 저장
+      bLiveSlackRemind: Boolean(bLiveSlackRemind)
+        && arrDeployScope.includes('live')
+        && Boolean(dtLiveDeployDate || dtDeployDate),
       arrDeployScope,
       strStatus: 'event_created' as TEventStatus,
       arrStatusLogs: [{
@@ -428,7 +432,11 @@ export const fnUpdateStatus = async (req: Request, res: Response): Promise<void>
       case 'qa_requested':    objInstance.objQaRequester = objActor; break;
       case 'qa_deployed':     objInstance.objQaDeployer = objActor; break;
       case 'qa_verified':     objInstance.objQaVerifier = objActor; break;
-      case 'live_requested':  objInstance.objLiveRequester = objActor; break;
+      case 'live_requested':
+        objInstance.objLiveRequester = objActor;
+        // 재요청 시 미리알림 1회 다시 허용
+        objInstance.dtSlackLiveRemindedAt = undefined;
+        break;
       case 'live_deployed':   objInstance.objLiveDeployer = objActor; break;
       case 'live_verified':   objInstance.objLiveVerifier = objActor; break;
     }
@@ -1089,11 +1097,25 @@ export const fnUpdateInstance = async (req: Request, res: Response): Promise<voi
       }
     }
 
+    const strPrevLiveDeploy = objInstance.dtLiveDeployDate ?? '';
     // QA/LIVE 날짜 개별 업데이트; dtDeployDate는 하위 호환용으로 동기화
     if (req.body.dtQaDeployDate !== undefined)   objInstance.dtQaDeployDate   = req.body.dtQaDeployDate   || undefined;
     if (req.body.dtLiveDeployDate !== undefined) objInstance.dtLiveDeployDate = req.body.dtLiveDeployDate || undefined;
     // dtDeployDate는 QA/LIVE 중 대표값으로 유지
     objInstance.dtDeployDate = objInstance.dtQaDeployDate ?? objInstance.dtLiveDeployDate ?? objInstance.dtDeployDate;
+
+    if (req.body.bLiveSlackRemind !== undefined) {
+      const bWant = Boolean(req.body.bLiveSlackRemind);
+      objInstance.bLiveSlackRemind = bWant
+        && (objInstance.arrDeployScope ?? []).includes('live')
+        && Boolean(objInstance.dtLiveDeployDate || objInstance.dtDeployDate);
+      if (!objInstance.bLiveSlackRemind) objInstance.dtSlackLiveRemindedAt = undefined;
+    }
+    // LIVE 반영 시각 변경 시 미리알림 재발송 가능하도록 플래그 리셋
+    const strNextLiveDeploy = objInstance.dtLiveDeployDate ?? '';
+    if (strPrevLiveDeploy !== strNextLiveDeploy) {
+      objInstance.dtSlackLiveRemindedAt = undefined;
+    }
 
     // inputValues / dtDeployDate 실제 변경 시에만 쿼리 재생성 (값이 동일하면 GM이 수정한 쿼리 유지)
     const strNewInput = req.body.strInputValues;
