@@ -53,18 +53,6 @@ const OBJ_PRODUCT_SLACK_TITLE: Partial<Record<TEventStatus, string>> = {
   live_deployed: 'LIVE 반영 완료',
 };
 
-/** 본문 가로 줄 *상태* — header 제목과 중복되는 「요청·완료」는 생략 */
-const OBJ_INSTANCE_SLACK_SUMMARY_STATUS: Partial<Record<TEventStatus, string>> = {
-  qa_requested: 'QA 반영',
-  live_requested: 'LIVE 반영',
-  qa_deployed: 'QA 반영',
-  live_deployed: 'LIVE 반영',
-};
-
-const OBJ_TEMPLATE_SLACK_SUMMARY_STATUS: Partial<Record<TTemplateStatus, string>> = {
-  confirm_requested: '쿼리 리뷰',
-};
-
 /** strServiceAbbr 접두사 → GM Slack 채널 (예: AD/G → ad, DK/KR → dk) */
 const MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL: Record<string, TSlackProductChannel> = {
   GZ: 'gz',
@@ -81,22 +69,6 @@ const MAP_SERVICE_PREFIX_TO_SLACK_CHANNEL: Record<string, TSlackProductChannel> 
   PT: 'pt',
   DK: 'dk',
 };
-
-const fnGetInstanceSlackSummaryStatusLabel = (
-  strStatus: TEventStatus,
-  bPermanentlyRemoved?: boolean,
-): string => {
-  if (bPermanentlyRemoved) return '영구 삭제';
-  return OBJ_INSTANCE_SLACK_SUMMARY_STATUS[strStatus]
-    ?? OBJ_STATUS_LABEL[strStatus]
-    ?? strStatus;
-};
-
-const fnGetTemplateSlackSummaryStatusLabel = (strStatus: TTemplateStatus): string => (
-  OBJ_TEMPLATE_SLACK_SUMMARY_STATUS[strStatus]
-    ?? OBJ_TEMPLATE_STATUS_LABEL[strStatus]
-    ?? strStatus
-);
 
 const fnTrimPublicBaseUrl = (strRaw?: string): string | null => {
   const strBase = strRaw?.trim().replace(/\/$/, '');
@@ -171,11 +143,10 @@ const fnGetInstanceSlackTitle = (strChannel: TSlackWebhookChannel, strStatus: TE
 
 type TSlackBlockKitOpts = {
   strTitle: string;
-  strSubjectLabel: string;
-  strName: string;
-  strStatusLabel: string;
-  strProductName?: string;
-  nId: number;
+  /** 본문 한 줄 mrkdwn */
+  strSummaryMrkdwn: string;
+  /** 알림 배지·fallback 용 */
+  strFallbackDetail: string;
   strButtonText?: string;
   strButtonUrl?: string | null;
 };
@@ -184,22 +155,92 @@ type TSlackBlockKitOpts = {
 const fnEscapeSlackMrkdwn = (strRaw: string): string =>
   strRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** 가로 한 줄: 프로덕트 · ID · 이벤트(또는 템플릿)명 · 상태 (링크는 actions 버튼) */
-const fnBuildSlackSummaryMrkdwn = (objOpts: TSlackBlockKitOpts): string => {
-  const arrParts: string[] = [];
-  const strProduct = (objOpts.strProductName ?? '').trim();
-  if (strProduct) {
-    arrParts.push(`*프로덕트* ${fnEscapeSlackMrkdwn(strProduct)}`);
+/** Asia/Seoul YYYY-MM-DD HH:mm — 없거나 무효면 null */
+export const fnFormatSlackDateTimeKst = (strIso?: string): string | null => {
+  const strTrim = (strIso ?? '').trim();
+  if (!strTrim) return null;
+  const dt = new Date(strTrim);
+  if (Number.isNaN(dt.getTime())) return null;
+  const strFmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(dt);
+  // en-CA: YYYY-MM-DD, HH:mm → YYYY-MM-DD HH:mm
+  return strFmt.replace(', ', ' ');
+};
+
+/** 상태 구간에 맞는 반영 예정 ISO */
+export const fnResolveSlackDeployAtIso = (
+  objInstance: Pick<IEventInstance, 'strStatus' | 'dtQaDeployDate' | 'dtLiveDeployDate' | 'dtDeployDate'>,
+): string | undefined => {
+  if (objInstance.strStatus.startsWith('qa_')) {
+    return objInstance.dtQaDeployDate || undefined;
   }
-  arrParts.push(`*ID* #${objOpts.nId}`);
-  arrParts.push(`*${objOpts.strSubjectLabel}* ${fnEscapeSlackMrkdwn(objOpts.strName)}`);
-  arrParts.push(`*상태* ${fnEscapeSlackMrkdwn(objOpts.strStatusLabel)}`);
-  return arrParts.join(' · ');
+  if (objInstance.strStatus.startsWith('live_')) {
+    return objInstance.dtLiveDeployDate || objInstance.dtDeployDate || undefined;
+  }
+  return objInstance.dtQaDeployDate || objInstance.dtLiveDeployDate || objInstance.dtDeployDate || undefined;
+};
+
+const fnJoinSlackSummaryParts = (arrParts: string[]): string =>
+  arrParts.filter((s) => s.trim().length > 0).join(' · ');
+
+/** 인스턴스 본문: 값만 · 연결 (이벤트 번호 · 이벤트명 · 서비스 · 상태 · 반영 예정 시각) */
+export const fnBuildSlackInstanceSummaryMrkdwn = (
+  objInstance: Pick<
+    IEventInstance,
+    | 'nId'
+    | 'strEventName'
+    | 'strServiceAbbr'
+    | 'strStatus'
+    | 'bPermanentlyRemoved'
+    | 'dtQaDeployDate'
+    | 'dtLiveDeployDate'
+    | 'dtDeployDate'
+  >,
+): string => {
+  const strEventName = (objInstance.strEventName || `이벤트 #${objInstance.nId}`).trim();
+  const strService = (objInstance.strServiceAbbr ?? '').trim();
+  const strStatus = objInstance.bPermanentlyRemoved
+    ? '영구 삭제'
+    : (OBJ_STATUS_LABEL[objInstance.strStatus] ?? objInstance.strStatus);
+  const strDeployAt = fnFormatSlackDateTimeKst(fnResolveSlackDeployAtIso(objInstance)) ?? '즉시 가능';
+  // 라벨 없이 값만 · 로 연결 (이벤트 번호 · 이벤트명 · 서비스 · 상태 · 반영 예정 시각)
+  return fnJoinSlackSummaryParts([
+    `#${objInstance.nId}`,
+    fnEscapeSlackMrkdwn(strEventName),
+    strService ? fnEscapeSlackMrkdwn(strService) : '',
+    fnEscapeSlackMrkdwn(strStatus),
+    fnEscapeSlackMrkdwn(strDeployAt),
+  ]);
+};
+
+/** 템플릿 본문: 값만 · 연결 (이벤트 번호 · 프로덕트 · 이벤트명 · 서비스 · 상태) */
+export const fnBuildSlackTemplateSummaryMrkdwn = (
+  objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'> & {
+    strServiceAbbr?: string;
+  },
+): string => {
+  const strEventName = (objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`);
+  const strProduct = (objTpl.strProductName ?? '').trim();
+  const strService = (objTpl.strServiceAbbr ?? '').trim();
+  const strStatus = OBJ_TEMPLATE_STATUS_LABEL[objTpl.strStatus] ?? objTpl.strStatus;
+  return fnJoinSlackSummaryParts([
+    `#${objTpl.nId}`,
+    strProduct ? fnEscapeSlackMrkdwn(strProduct) : '',
+    fnEscapeSlackMrkdwn(strEventName),
+    strService ? fnEscapeSlackMrkdwn(strService) : '',
+    fnEscapeSlackMrkdwn(strStatus),
+  ]);
 };
 
 const fnBuildSlackBlockKitPayload = (objOpts: TSlackBlockKitOpts): Record<string, unknown> => {
-  const strProduct = objOpts.strProductName ? ` · ${objOpts.strProductName}` : '';
-  const strFallback = `${objOpts.strTitle}: ${objOpts.strName}${strProduct} → ${objOpts.strStatusLabel}`;
+  const strFallback = `${objOpts.strTitle}: ${objOpts.strFallbackDetail}`;
   const arrBlocks: Record<string, unknown>[] = [
     {
       type: 'header',
@@ -207,7 +248,7 @@ const fnBuildSlackBlockKitPayload = (objOpts: TSlackBlockKitOpts): Record<string
     },
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: fnBuildSlackSummaryMrkdwn(objOpts) },
+      text: { type: 'mrkdwn', text: objOpts.strSummaryMrkdwn },
     },
   ];
   if (objOpts.strButtonText && objOpts.strButtonUrl) {
@@ -225,24 +266,29 @@ const fnBuildSlackBlockKitPayload = (objOpts: TSlackBlockKitOpts): Record<string
   return { text: strFallback, blocks: arrBlocks };
 };
 
+type TSlackInstanceFields = Pick<
+  IEventInstance,
+  | 'nId'
+  | 'strEventName'
+  | 'strProductName'
+  | 'strServiceAbbr'
+  | 'strStatus'
+  | 'bPermanentlyRemoved'
+  | 'dtQaDeployDate'
+  | 'dtLiveDeployDate'
+  | 'dtDeployDate'
+>;
+
 export const fnBuildSlackInstancePayload = (
   strTitle: string,
-  objInstance: Pick<
-    IEventInstance,
-    'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
-  >,
+  objInstance: TSlackInstanceFields,
 ): Record<string, unknown> => {
   const strBase = fnGetPublicBaseUrlForInstanceStatus(objInstance.strStatus);
+  const strEventName = objInstance.strEventName || `이벤트 #${objInstance.nId}`;
   return fnBuildSlackBlockKitPayload({
     strTitle,
-    strSubjectLabel: '이벤트',
-    strName: objInstance.strEventName || `이벤트 #${objInstance.nId}`,
-    strStatusLabel: fnGetInstanceSlackSummaryStatusLabel(
-      objInstance.strStatus,
-      objInstance.bPermanentlyRemoved,
-    ),
-    strProductName: objInstance.strProductName,
-    nId: objInstance.nId,
+    strSummaryMrkdwn: fnBuildSlackInstanceSummaryMrkdwn(objInstance),
+    strFallbackDetail: `#${objInstance.nId} · ${strEventName}`,
     // DBA·프로덕트 채널 공통 — QA/LIVE 반영 요청·완료 모두 나의 대시보드
     strButtonText: '나의 대시보드에서 보기',
     strButtonUrl: strBase ? `${strBase}/my-dashboard?nInstanceId=${objInstance.nId}` : null,
@@ -251,16 +297,16 @@ export const fnBuildSlackInstancePayload = (
 
 export const fnBuildSlackTemplatePayload = (
   strTitle: string,
-  objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'>,
+  objTpl: Pick<IEventTemplate, 'nId' | 'strEventLabel' | 'strProductName' | 'strStatus'> & {
+    strServiceAbbr?: string;
+  },
 ): Record<string, unknown> => {
   const strBase = fnGetPublicBaseUrl();
+  const strEventName = objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`;
   return fnBuildSlackBlockKitPayload({
     strTitle,
-    strSubjectLabel: '템플릿',
-    strName: objTpl.strEventLabel?.trim() || `템플릿 #${objTpl.nId}`,
-    strStatusLabel: fnGetTemplateSlackSummaryStatusLabel(objTpl.strStatus),
-    strProductName: objTpl.strProductName,
-    nId: objTpl.nId,
+    strSummaryMrkdwn: fnBuildSlackTemplateSummaryMrkdwn(objTpl),
+    strFallbackDetail: `#${objTpl.nId} · ${strEventName}`,
     // 쿼리 리뷰만 쿼리 템플릿 (DBA 채널이어도 인스턴스 알림과 버튼을 섞지 않음)
     strButtonText: '쿼리 템플릿에서 보기',
     strButtonUrl: strBase ? `${strBase}/events?nTemplateId=${objTpl.nId}` : null,
@@ -279,10 +325,7 @@ const fnPostSlackPayloadToChannel = (
 const fnSendSlackToChannel = (
   strChannel: TSlackWebhookChannel,
   strTitle: string,
-  objInstance: Pick<
-    IEventInstance,
-    'nId' | 'strEventName' | 'strProductName' | 'strStatus' | 'bPermanentlyRemoved'
-  >,
+  objInstance: TSlackInstanceFields,
 ): void => {
   fnPostSlackPayloadToChannel(strChannel, fnBuildSlackInstancePayload(strTitle, objInstance));
 };
