@@ -14,6 +14,8 @@ const objBaseInstance = (): IEventInstance => ({
   strInputValues: '{}',
   strGeneratedQuery: 'SELECT 1',
   dtDeployDate: '2026-01-01T00:00:00.000Z',
+  dtQaDeployDate: '2026-01-01T01:00:00.000Z',
+  dtLiveDeployDate: '2026-01-02T02:00:00.000Z',
   arrDeployScope: ['qa'],
   strStatus: 'qa_requested',
   arrStatusLogs: [],
@@ -91,12 +93,41 @@ describe('slackNotifier', () => {
     expect(objBody.text).toContain('테스트 이벤트');
     expect(objBody.blocks?.[0]?.text?.text).toBe('QA 반영 요청');
     const objSection = objBody.blocks.find((b: { type: string }) => b.type === 'section');
-    expect(objSection.text.text).toBe('*프로덕트* DK · *ID* #42 · *이벤트* 테스트 이벤트 · *상태* QA 반영');
+    // 본문: 값만 · 연결 (KST)
+    expect(objSection.text.text).toBe(
+      '#42 · 테스트 이벤트 · DK/KR · QA 반영 요청 · 2026-01-01 10:00',
+    );
     expect(objSection.fields).toBeUndefined();
     const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
     expect(objActions.elements[0].text.text).toBe('나의 대시보드에서 보기');
     expect(objActions.elements[0].url).toBe('https://dqpm.example.com/my-dashboard?nInstanceId=42');
     expect(objActions.elements[0].url).not.toContain('/events?');
+  });
+
+  it('QA 반영 예정 시각이 없으면 즉시 가능으로 표기한다', async () => {
+    const {
+      fnBuildSlackInstanceSummaryMrkdwn,
+    } = await import('../services/slackNotifier');
+    const strSummary = fnBuildSlackInstanceSummaryMrkdwn({
+      ...objBaseInstance(),
+      dtQaDeployDate: undefined,
+      dtLiveDeployDate: undefined,
+      dtDeployDate: '2026-01-01T00:00:00.000Z',
+    });
+    expect(strSummary).toMatch(/ · 즉시 가능$/);
+  });
+
+  it('LIVE 상태는 dtLiveDeployDate 없으면 dtDeployDate 를 쓴다', async () => {
+    const {
+      fnBuildSlackInstanceSummaryMrkdwn,
+    } = await import('../services/slackNotifier');
+    const strSummary = fnBuildSlackInstanceSummaryMrkdwn({
+      ...objBaseInstance(),
+      strStatus: 'live_requested',
+      dtLiveDeployDate: undefined,
+      dtDeployDate: '2026-01-02T02:00:00.000Z',
+    });
+    expect(strSummary).toMatch(/ · 2026-01-02 11:00$/);
   });
 
   it('bNotifyStatusProgress=false 면 DBA 쿼리 수정 등에서 Slack 을 보내지 않는다', async () => {
@@ -295,7 +326,10 @@ describe('slackNotifier', () => {
     const objBody = JSON.parse(String((fnFetchMock.mock.calls[0][1] as RequestInit).body));
     expect(objBody.blocks?.[0]?.text?.text).toBe('쿼리 리뷰 요청');
     const objSection = objBody.blocks.find((b: { type: string }) => b.type === 'section');
-    expect(objSection.text.text).toBe('*프로덕트* DK온라인 · *ID* #7 · *템플릿* 6월 이벤트 템플릿 · *상태* 쿼리 리뷰');
+    // 템플릿에 서비스 필드 없음 → 서비스 절 생략
+    expect(objSection.text.text).toBe(
+      '#7 · DK온라인 · 6월 이벤트 템플릿 · 쿼리 리뷰 요청',
+    );
     const objActions = objBody.blocks.find((b: { type: string }) => b.type === 'actions');
     expect(objActions.elements[0].text.text).toBe('쿼리 템플릿에서 보기');
     expect(objActions.elements[0].url).toBe('https://dqpm.example.com/events?nTemplateId=7');
