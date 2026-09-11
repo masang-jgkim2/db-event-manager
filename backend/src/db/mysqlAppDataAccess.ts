@@ -212,6 +212,21 @@ export const fnEnsureMysqlAppSchema = async (pool: Pool): Promise<void> => {
     console.log('[DATA_MYSQL] 컬럼 추가 | event_instance.n_service_id');
   }
 
+  const [instLiveRemindCol] = await pool.query<RowDataPacket[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_instance' AND COLUMN_NAME = 'b_live_slack_remind'`,
+  );
+  if (Number((instLiveRemindCol as RowDataPacket[])[0]?.n) === 0) {
+    await pool.query(
+      `ALTER TABLE event_instance
+       ADD COLUMN b_live_slack_remind TINYINT(1) NOT NULL DEFAULT 0
+         COMMENT 'LIVE 10분 전 DBA 미리알림' AFTER dt_live_deploy_date,
+       ADD COLUMN dt_slack_live_reminded_at DATETIME(6) NULL
+         COMMENT 'LIVE 미리알림 발송 시각' AFTER b_live_slack_remind`,
+    );
+    console.log('[DATA_MYSQL] 컬럼 추가 | event_instance.b_live_slack_remind, dt_slack_live_reminded_at');
+  }
+
   const [etqsLiveCol] = await pool.query<RowDataPacket[]>(
     `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'event_template_query_set' AND COLUMN_NAME = 'n_live_db_connection_id'`,

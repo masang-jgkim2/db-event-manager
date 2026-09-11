@@ -177,9 +177,9 @@ const fnInsertEventInstancesRelational = async (
       `INSERT INTO event_instance (
         n_id, n_event_template_id, n_product_id, n_service_id, str_event_label, str_product_name, str_service_abbr, str_service_region,
         str_category, str_type, str_event_name, str_input_values, str_generated_query, dt_deploy_date,
-        dt_qa_deploy_date, dt_live_deploy_date, str_allo_link, str_status, str_created_by, n_created_by_user_id,
+        dt_qa_deploy_date, dt_live_deploy_date, b_live_slack_remind, dt_slack_live_reminded_at, str_allo_link, str_status, str_created_by, n_created_by_user_id,
         dt_created_at, b_permanently_removed, dt_permanently_removed_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         inst.nId,
         inst.nEventTemplateId,
@@ -197,6 +197,8 @@ const fnInsertEventInstancesRelational = async (
         strDeploy,
         fnToMysqlDatetime6(inst.dtQaDeployDate ?? null),
         fnToMysqlDatetime6(inst.dtLiveDeployDate ?? null),
+        fnTiny(Boolean(inst.bLiveSlackRemind)),
+        fnToMysqlDatetime6(inst.dtSlackLiveRemindedAt ?? null),
         inst.strAlloLink ?? null,
         inst.strStatus,
         inst.strCreatedBy,
@@ -1449,6 +1451,10 @@ export const fnRelationalLoadEventInstances = async (pool: Pool): Promise<IEvent
         : undefined,
       dtLiveDeployDate: r.dt_live_deploy_date
         ? new Date(r.dt_live_deploy_date as string | Date).toISOString()
+        : undefined,
+      bLiveSlackRemind: Boolean(r.b_live_slack_remind),
+      dtSlackLiveRemindedAt: r.dt_slack_live_reminded_at
+        ? new Date(r.dt_slack_live_reminded_at as string | Date).toISOString()
         : undefined,
       strAlloLink: r.str_allo_link != null ? String(r.str_allo_link) : undefined,
       arrDeployScope: mapScope.get(nId) ?? [],
