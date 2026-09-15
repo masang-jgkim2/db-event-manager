@@ -42,7 +42,7 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
-import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
+import { fnFormatDeployDateDisplay, fnCompareDeployDateIso } from '../utils/deployDateDisplay';
 import {
   fnFilterConnectionsForTemplatePickerByEnv,
   fnFindLivePairForQaConnection,
@@ -1987,12 +1987,15 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       title: 'QA 반영',
       key: 'dtQaDeployDate',
       width: 140,
+      // 클릭: 원래 → 오름 → 내림 → 원래 (Ant Design 기본 sortDirections)
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'qa'),
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'qa', 'short'),
     },
     {
       title: 'LIVE 반영',
       key: 'dtLiveDeployDate',
       width: 140,
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'live'),
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'live', 'short'),
     },
     {
