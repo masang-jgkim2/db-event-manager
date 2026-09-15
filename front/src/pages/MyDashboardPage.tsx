@@ -42,7 +42,7 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
-import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
+import { fnFormatDeployDateDisplay, fnCompareDeployDateIso } from '../utils/deployDateDisplay';
 import {
   fnFilterConnectionsForTemplatePickerByEnv,
   fnFindLivePairForQaConnection,
@@ -1987,12 +1987,17 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       title: 'QA 반영',
       key: 'dtQaDeployDate',
       width: 140,
+      // 클릭: 원래 → 내림 → 오름 → 원래
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'qa'),
+      sortDirections: ['descend', 'ascend'],
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'qa', 'short'),
     },
     {
       title: 'LIVE 반영',
       key: 'dtLiveDeployDate',
       width: 140,
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'live'),
+      sortDirections: ['descend', 'ascend'],
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'live', 'short'),
     },
     {
@@ -2185,6 +2190,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           loading={bLoading}
           pagination={{ pageSize: 15 }}
           strEmptyText="해당 조건의 이벤트가 없습니다."
+          locale={{
+            triggerDesc: '내림차순',
+            triggerAsc: '오름차순',
+            cancelSort: '정렬 취소',
+          }}
           expandable={{
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),

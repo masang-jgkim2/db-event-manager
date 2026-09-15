@@ -45,3 +45,21 @@ export const fnFormatDeployDateDisplay = (
     ? dt.toLocaleString('ko-KR')
     : dt.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 };
+
+/** 테이블 정렬용 — 표시와 동일 해석. 날짜 없음·스코프 밖은 오름차순 시 뒤 */
+export const fnCompareDeployDateIso = (
+  objA: Pick<IEventInstance, 'dtQaDeployDate' | 'dtLiveDeployDate' | 'dtDeployDate' | 'arrDeployScope'>,
+  objB: Pick<IEventInstance, 'dtQaDeployDate' | 'dtLiveDeployDate' | 'dtDeployDate' | 'arrDeployScope'>,
+  strEnv: TDeployEnv,
+): number => {
+  const fnSortMs = (
+    obj: Pick<IEventInstance, 'dtQaDeployDate' | 'dtLiveDeployDate' | 'dtDeployDate' | 'arrDeployScope'>,
+  ): number => {
+    const { strIso, bInScope } = fnResolveDeployDateIso(obj, strEnv);
+    if (!bInScope) return Number.POSITIVE_INFINITY;
+    if (!strIso) return Number.POSITIVE_INFINITY - 1;
+    const nMs = new Date(strIso).getTime();
+    return Number.isNaN(nMs) ? Number.POSITIVE_INFINITY - 1 : nMs;
+  };
+  return fnSortMs(objA) - fnSortMs(objB);
+};
