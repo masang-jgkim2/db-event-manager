@@ -349,11 +349,13 @@ const UserPage = () => {
                 {fnFormatLastAccess(r.dtLastLoginAt)}
               </Text>
             ),
+            // 클릭: 원래 → 내림(최근) → 오름 → 원래
             sorter: (a: IUserRow, b: IUserRow) => {
               const nA = a.dtLastLoginAt ? new Date(a.dtLastLoginAt).getTime() : 0;
               const nB = b.dtLastLoginAt ? new Date(b.dtLastLoginAt).getTime() : 0;
               return nA - nB;
             },
+            sortDirections: ['descend', 'ascend'],
           },
         ]
       : []),
@@ -384,6 +386,13 @@ const UserPage = () => {
       key: 'dtCreatedAt',
       width: 160,
       render: (strDate: string) => <Text style={{ fontSize: 12 }}>{new Date(strDate).toLocaleString('ko-KR')}</Text>,
+      // 클릭: 원래 → 내림(최근) → 오름 → 원래
+      sorter: (a: IUserRow, b: IUserRow) => {
+        const nA = a.dtCreatedAt ? new Date(a.dtCreatedAt).getTime() : 0;
+        const nB = b.dtCreatedAt ? new Date(b.dtCreatedAt).getTime() : 0;
+        return nA - nB;
+      },
+      sortDirections: ['descend', 'ascend'],
     },
     ...(bCanEdit || bCanResetPassword || bCanDelete || bCanApprove
       ? [{
