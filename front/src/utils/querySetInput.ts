@@ -125,3 +125,14 @@ export const fnFindDuplicateInputIdMessageInSets = (
   }
   return null;
 };
+
+/**
+ * 저장 직전 — Form에서 슬롯을 전부 지운 경우.
+ * 빈 arrInputs[] 는 dual-read로 item_number 1칸이 되므로 none 센티널로 고정.
+ */
+export const fnEnsureQuerySetInputsForPersist = (
+  arrInputs: IQuerySetInputSlot[] | undefined | null,
+): IQuerySetInputSlot[] => {
+  if (Array.isArray(arrInputs) && arrInputs.length > 0) return arrInputs;
+  return [{ strInputId: STR_DEFAULT_QUERY_SET_INPUT_ID, strInputFormat: 'none' }];
+};
