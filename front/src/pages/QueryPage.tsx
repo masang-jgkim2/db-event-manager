@@ -971,49 +971,37 @@ const QueryPage = () => {
                     </Text>
                   }
                 >
-                  <Space wrap>
-                    <Checkbox.Group
-                      value={arrDeployScope}
-                      onChange={(arrChecked) => {
-                        const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
-                          if (v !== 'qa' && v !== 'live') return false;
-                          return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
-                        });
-                        if (arrNext.length > 0) {
-                          setArrDeployScope(arrNext);
-                          if (!arrNext.includes('live')) setBLiveSlackRemind(false);
-                        }
-                      }}
-                    >
-                      <Space>
-                        {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                          <Checkbox
-                            key={opt.value}
-                            value={opt.value}
-                            disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
-                          >
-                            <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
-                            {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
-                              <Text type="secondary" style={{ fontSize: 11 }}>
-                                {' '}
-                                (서비스·종류별 {opt.value.toUpperCase()} DB 접속 없음)
-                              </Text>
-                            ) : null}
-                          </Checkbox>
-                        ))}
-                      </Space>
-                    </Checkbox.Group>
-                    <Checkbox
-                      checked={bLiveSlackRemind}
-                      disabled={!arrDeployScope.includes('live') || !strLiveDeployDate}
-                      onChange={(e) => setBLiveSlackRemind(e.target.checked)}
-                    >
-                      미리알림
-                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
-                        (LIVE 10분 전 · DBA)
-                      </Text>
-                    </Checkbox>
-                  </Space>
+                  <Checkbox.Group
+                    value={arrDeployScope}
+                    onChange={(arrChecked) => {
+                      const arrNext = (arrChecked as TDeployScope[]).filter((v) => {
+                        if (v !== 'qa' && v !== 'live') return false;
+                        return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
+                      });
+                      if (arrNext.length > 0) {
+                        setArrDeployScope(arrNext);
+                        if (!arrNext.includes('live')) setBLiveSlackRemind(false);
+                      }
+                    }}
+                  >
+                    <Space>
+                      {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                        <Checkbox
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={opt.value === 'qa' ? !bHasQaConnection : !bHasLiveConnection}
+                        >
+                          <DqpmTag tone={opt.strTagVariant}>{opt.label}</DqpmTag>
+                          {(opt.value === 'qa' && !bHasQaConnection) || (opt.value === 'live' && !bHasLiveConnection) ? (
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              {' '}
+                              (서비스·종류별 {opt.value.toUpperCase()} DB 접속 없음)
+                            </Text>
+                          ) : null}
+                        </Checkbox>
+                      ))}
+                    </Space>
+                  </Checkbox.Group>
                 </Form.Item>
 
                 {arrDbConnections.length > 0 && strSelectedAbbr && arrConnectionPreview.length > 0 ? (
@@ -1094,10 +1082,20 @@ const QueryPage = () => {
                 {arrDeployScope.includes('live') && (
                   <Form.Item
                     label={
-                      <Space>
+                      <Space wrap>
                         LIVE 반영 날짜
                         <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                        <Checkbox
+                          checked={bLiveSlackRemind}
+                          disabled={!strLiveDeployDate}
+                          onChange={(e) => setBLiveSlackRemind(e.target.checked)}
+                        >
+                          미리알림
+                          <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                            (LIVE 10분 전 · DBA)
+                          </Text>
+                        </Checkbox>
                       </Space>
                     }
                   >
@@ -1168,10 +1166,15 @@ const QueryPage = () => {
                             });
                           }}
                           placeholder={
-                            objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                            objSlot.strInputFormat === 'none'
+                              ? undefined
+                              : objSlot.strInputFormat === 'date'
+                                ? '예: 20251125'
+                                : '예: 1,2,3'
                           }
                           className={STR_CODE_BLOCK_CLASS}
                           rows={1}
+                          disabled={objSlot.strInputFormat === 'none'}
                           styles={{ textarea: objSqlSlotValueInputStyle }}
                         />
                       )}

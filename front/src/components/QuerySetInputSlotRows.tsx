@@ -33,6 +33,8 @@ export type TQuerySetInputSlotRowsProps = {
   fnRenderFormatCell?: (objSlot: TQuerySetSlotRowItem, nSlotIdx: number) => ReactNode;
   /** 값 열 오른쪽 — 슬롯 추가/삭제 버튼 등 */
   fnRenderValueCellExtra?: (nSlotIdx: number, nSlotCount: number) => ReactNode;
+  /** 3열 헤더 오른쪽 — 삭제 버튼과 세로 정렬되는 추가 버튼 등 */
+  nodeThirdColumnHeaderExtra?: ReactNode;
 };
 
 /** 쿼리 세트 입력 슬롯 — 입력 ID | 입력 형식 | 값 (6+6+12) 공통 레이아웃 */
@@ -52,10 +54,13 @@ export const QuerySetInputSlotRows = ({
   fnRenderIdCell,
   fnRenderFormatCell,
   fnRenderValueCellExtra,
+  nodeThirdColumnHeaderExtra,
 }: TQuerySetInputSlotRowsProps) => {
   const objSelectStyle: CSSProperties = { width: '100%', ...(objSqlFieldStyle ?? {}) };
   const arrActive = arrSlots.filter((s) => s.strInputFormat !== 'none');
-  if (arrActive.length === 0) {
+  // 편집 모드(Form 셀·추가/삭제)면 none/빈 슬롯도 행·버튼 유지 — 읽기 전용만 문구
+  const bEditorMode = Boolean(fnRenderIdCell || fnRenderFormatCell || fnRenderValueCellExtra);
+  if (arrActive.length === 0 && !bEditorMode) {
     return (
       <Text type="secondary" style={{ fontSize: 12 }}>
         이 세트는 입력 슬롯 없음
@@ -78,15 +83,21 @@ export const QuerySetInputSlotRows = ({
           <Text type="secondary" style={{ fontSize: 12 }}>입력 형식</Text>
         </Col>
         <Col span={12}>
-          <Text type="secondary" style={{ fontSize: 12 }}>{strThirdColumnLabel}</Text>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>{strThirdColumnLabel}</Text>
+            </div>
+            {nodeThirdColumnHeaderExtra ? (
+              <div style={{ flexShrink: 0 }}>{nodeThirdColumnHeaderExtra}</div>
+            ) : null}
+          </div>
         </Col>
       </Row>
       {arrSlots.map((objSlot, nSlotIdx) => {
         const bIdEditable = Boolean(bIdFormatEditable && nSlotIdx === 0);
         const bFormatEditableHere = bIdEditable || bFormatEditable;
-        const nodeValueCell = objSlot.strInputFormat === 'none'
-          ? <Text type="secondary" style={{ fontSize: 12, lineHeight: '32px' }}>—</Text>
-          : fnRenderValueCell(objSlot, nSlotIdx);
+        // 입력 없음(none)도 textarea/Input 유지 — 호출부에서 disabled 처리
+        const nodeValueCell = fnRenderValueCell(objSlot, nSlotIdx);
         const nodeValueExtra = fnRenderValueCellExtra?.(nSlotIdx, arrSlots.length);
         return (
           <Row

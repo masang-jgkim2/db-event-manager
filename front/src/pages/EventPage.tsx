@@ -60,7 +60,7 @@ import {
   fnDeriveTemplateConnFilterAbbr,
   type TProductServiceLookup,
 } from '../utils/dbConnectionScope';
-import { fnFindDuplicateInputIdMessageInSets, fnFindDuplicateInputIdsInSet } from '../utils/querySetInput';
+import { fnEnsureQuerySetInputsForPersist, fnFindDuplicateInputIdMessageInSets, fnFindDuplicateInputIdsInSet } from '../utils/querySetInput';
 import type { RefSelectProps } from 'antd/es/select';
 import { fnOnModalSelectVisibleChange, fnScheduleModalSelectOpen, fnFocusOpenSelectSearch } from '../utils/modalFocus';
 import {
@@ -329,18 +329,52 @@ const QueryTemplateSetTabPanel = ({
               strInputFormat: (obj.strInputFormat ?? 'item_number') as TInputFormat,
             };
           });
+          const fnAddEmptySlot = () => fnAddSlot({ strInputId: '', strInputFormat: 'item_number', strDefaultItems: '' });
+          const nodeAddSlotBtn = (
+            <Button
+              type="text"
+              icon={<PlusOutlined />}
+              onClick={fnAddEmptySlot}
+              aria-label="입력 슬롯 추가"
+            />
+          );
           return (
           <div style={{ marginBottom: 12 }}>
-            <Space style={{ marginBottom: 8 }} align="center">
+            <Space style={{ marginBottom: 8 }} align="center" wrap size={8}>
               <Text strong>입력 슬롯</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                세트 안 여러 칸 (SQL {'{{id}}'}). VALUES (a,b) 목록 zip 은 미지원.
+                세트 안 여러 칸 (SQL {'{{id}}'}). VALUES (a,b) 목록 zip 은 미지원. 없어도 됨.
               </Text>
             </Space>
+            <div style={{ minHeight: 56 }}>
+            {arrSlotFields.length === 0 ? (
+              <div>
+                <Row gutter={12} style={{ marginBottom: 4 }}>
+                  <Col span={6}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>입력 ID</Text>
+                  </Col>
+                  <Col span={6}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>입력 형식</Text>
+                  </Col>
+                  <Col span={12}>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>입력값 (선택)</Text>
+                      </div>
+                      <div style={{ flexShrink: 0 }}>{nodeAddSlotBtn}</div>
+                    </div>
+                  </Col>
+                </Row>
+                <div style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>이 세트는 입력 슬롯 없음</Text>
+                </div>
+              </div>
+            ) : (
             <QuerySetInputSlotRows
-              arrSlots={arrSlots.length > 0 ? arrSlots : [{ strInputId: 'items', strInputFormat: 'item_number' }]}
+              arrSlots={arrSlots}
               strThirdColumnLabel="입력값 (선택)"
               objSqlFieldStyle={objSqlFieldStyle}
+              nodeThirdColumnHeaderExtra={nodeAddSlotBtn}
               fnRenderIdCell={(_, nSlotIdx) => {
                 const objSlotField = arrSlotFields[nSlotIdx];
                 if (!objSlotField) return null;
@@ -384,41 +418,49 @@ const QueryTemplateSetTabPanel = ({
                 if (!objSlotField) return null;
                 return (
                   <Form.Item
-                    {...objSlotField}
-                    name={[objSlotField.name, 'strDefaultItems']}
-                    style={{ marginBottom: 0 }}
+                    noStyle
+                    shouldUpdate={(prev, cur) => {
+                      const strPrev = prev?.arrQueryTemplates?.[name]?.arrInputs?.[objSlotField.name]?.strInputFormat;
+                      const strCur = cur?.arrQueryTemplates?.[name]?.arrInputs?.[objSlotField.name]?.strInputFormat;
+                      return strPrev !== strCur;
+                    }}
                   >
-                    <TextArea
-                      className={STR_CODE_BLOCK_CLASS}
-                      placeholder="예: 1,2,3"
-                      rows={1}
-                      styles={{ textarea: objSqlSlotValueInputStyle }}
-                    />
+                    {() => {
+                      const strFmt = form.getFieldValue([
+                        'arrQueryTemplates', name, 'arrInputs', objSlotField.name, 'strInputFormat',
+                      ]) as TInputFormat | undefined;
+                      const bNoInput = strFmt === 'none';
+                      return (
+                        <Form.Item
+                          {...objSlotField}
+                          name={[objSlotField.name, 'strDefaultItems']}
+                          style={{ marginBottom: 0 }}
+                        >
+                          <TextArea
+                            className={STR_CODE_BLOCK_CLASS}
+                            placeholder={bNoInput ? undefined : '예: 1,2,3'}
+                            rows={1}
+                            disabled={bNoInput}
+                            styles={{ textarea: objSqlSlotValueInputStyle }}
+                          />
+                        </Form.Item>
+                      );
+                    }}
                   </Form.Item>
                 );
               }}
-              fnRenderValueCellExtra={(nSlotIdx, nSlotCount) => (
-                <Space size={4}>
-                  {nSlotCount > 1 ? (
-                    <Button
-                      type="text"
-                      danger
-                      icon={<MinusCircleOutlined />}
-                      onClick={() => fnRemoveSlot(arrSlotFields[nSlotIdx].name)}
-                      aria-label="입력 슬롯 삭제"
-                    />
-                  ) : null}
-                  {nSlotIdx === nSlotCount - 1 ? (
-                    <Button
-                      type="text"
-                      icon={<PlusOutlined />}
-                      onClick={() => fnAddSlot({ strInputId: '', strInputFormat: 'item_number', strDefaultItems: '' })}
-                      aria-label="입력 슬롯 추가"
-                    />
-                  ) : null}
-                </Space>
+              fnRenderValueCellExtra={(nSlotIdx) => (
+                <Button
+                  type="text"
+                  danger
+                  icon={<MinusCircleOutlined />}
+                  onClick={() => fnRemoveSlot(arrSlotFields[nSlotIdx].name)}
+                  aria-label="입력 슬롯 삭제"
+                />
               )}
             />
+            )}
+            </div>
             <Form.Item
               noStyle
               shouldUpdate={(prev, cur) => {
@@ -441,11 +483,11 @@ const QueryTemplateSetTabPanel = ({
                 // SQL 없고 이슈도 없으면 안내 영역 자체 생략
                 if (!bHasIssue && !strSql) return null;
                 return (
-                  <div style={{ marginTop: 4 }}>
+                  <div style={{ marginTop: 8 }}>
                     {strDup ? (
                       <Text
                         type="danger"
-                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                        style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
                       >
                         {`입력 ID "${strDup}"가 이 세트 안에서 중복됩니다.`}
                       </Text>
@@ -453,7 +495,7 @@ const QueryTemplateSetTabPanel = ({
                     {arrOrphans.length > 0 ? (
                       <Text
                         type="danger"
-                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                        style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
                       >
                         {`쿼리 템플릿에 ${arrOrphans.map((strId) => `{{${strId}}}`).join(', ')}가 남아 있습니다. 쿼리 또는 입력을 수정하세요.`}
                       </Text>
@@ -461,7 +503,7 @@ const QueryTemplateSetTabPanel = ({
                     {arrUnused.length > 0 ? (
                       <Text
                         type="danger"
-                        style={{ fontSize: 12, display: 'block', whiteSpace: 'nowrap' }}
+                        style={{ fontSize: 12, display: 'block', lineHeight: 1.5 }}
                       >
                         {`입력 ID ${arrUnused.map((strId) => `"${strId}"`).join(', ')}가 쿼리에 없습니다. 쿼리 또는 입력을 수정하세요.`}
                       </Text>
@@ -1218,13 +1260,25 @@ const EventPage = () => {
         strSingleDefault = bMulti ? '' : (objValues.strDefaultItems ?? '');
         arrQueryPayload = bMulti
           ? (objValues.arrQueryTemplates ?? [])
-              .map((s: IQueryTemplateItem) => fnNormalizeQueryTemplateItem(s))
+              .map((s: IQueryTemplateItem) => {
+                // 슬롯 전부 삭제(빈 배열)는 dual-read 방지용 none 센티널로 정규화
+                const bSlotsCleared = Array.isArray(s.arrInputs) && s.arrInputs.length === 0;
+                return fnNormalizeQueryTemplateItem(
+                  bSlotsCleared
+                    ? {
+                        ...s,
+                        arrInputs: fnEnsureQuerySetInputsForPersist([]),
+                        strInputFormat: 'none',
+                      }
+                    : s,
+                );
+              })
               .filter((objNorm: IQueryTemplateItem) =>
                 objNorm.nQaDbConnectionId > 0 && objNorm.nLiveDbConnectionId > 0 && (objNorm.strQueryTemplate ?? '').trim())
               .map((objNorm: IQueryTemplateItem) => ({
                 nQaDbConnectionId: objNorm.nQaDbConnectionId,
                 nLiveDbConnectionId: objNorm.nLiveDbConnectionId,
-                arrInputs: (objNorm.arrInputs ?? []).map((objSlot) => ({
+                arrInputs: fnEnsureQuerySetInputsForPersist(objNorm.arrInputs).map((objSlot) => ({
                   strInputId: (objSlot.strInputId ?? 'items').trim() || 'items',
                   strInputFormat: objSlot.strInputFormat ?? 'item_number',
                   strDefaultItems: (objSlot.strDefaultItems ?? '').trim() || undefined,
@@ -2057,6 +2111,7 @@ const EventPage = () => {
                                     className={STR_CODE_BLOCK_CLASS}
                                     style={objSqlFieldStyle}
                                     value={objPreviewMap[objSlot.strInputId] ?? ''}
+                                    disabled={objSlot.strInputFormat === 'none'}
                                     onChange={(e) => {
                                       setArrQueryEditPreviewMaps((prev) => {
                                         const next = prev.map((m) => ({ ...m }));
@@ -2068,7 +2123,7 @@ const EventPage = () => {
                                         return next;
                                       });
                                     }}
-                                    placeholder="예: 1,2,3"
+                                    placeholder={objSlot.strInputFormat === 'none' ? undefined : '예: 1,2,3'}
                                   />
                                 )}
                               />

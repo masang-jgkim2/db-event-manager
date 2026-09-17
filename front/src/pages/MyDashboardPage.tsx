@@ -2696,45 +2696,30 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
               </Space>
               <div style={{ marginTop: 4 }}>
                 {objEditInstance.strStatus === 'event_created' ? (
-                  <Space wrap>
-                    <Checkbox.Group
-                      value={arrEditDeployScope}
-                      onChange={(arrChecked) => {
-                        const arrNext = arrChecked.filter(
-                          (v): v is TDeployScope => v === 'qa' || v === 'live'
-                        );
-                        if (arrNext.length > 0) {
-                          setArrEditDeployScope(arrNext);
-                          if (!arrNext.includes('live')) setBEditLiveSlackRemind(false);
-                        }
-                      }}
-                    >
-                      {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
-                        <Checkbox key={opt.value} value={opt.value}>
-                          <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
-                        </Checkbox>
-                      ))}
-                    </Checkbox.Group>
-                    <Checkbox
-                      checked={bEditLiveSlackRemind}
-                      disabled={!arrEditDeployScope.includes('live') || !strEditLiveDeployDate}
-                      onChange={(e) => setBEditLiveSlackRemind(e.target.checked)}
-                    >
-                      미리알림
-                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
-                        (LIVE 10분 전 · DBA)
-                      </Text>
-                    </Checkbox>
-                  </Space>
+                  <Checkbox.Group
+                    value={arrEditDeployScope}
+                    onChange={(arrChecked) => {
+                      const arrNext = arrChecked.filter(
+                        (v): v is TDeployScope => v === 'qa' || v === 'live'
+                      );
+                      if (arrNext.length > 0) {
+                        setArrEditDeployScope(arrNext);
+                        if (!arrNext.includes('live')) setBEditLiveSlackRemind(false);
+                      }
+                    }}
+                  >
+                    {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
+                      <Checkbox key={opt.value} value={opt.value}>
+                        <DqpmTag tone={opt.strTagVariant} style={{ marginRight: 0 }}>{opt.label}</DqpmTag>
+                      </Checkbox>
+                    ))}
+                  </Checkbox.Group>
                 ) : (
                   <Space size={4} wrap>
                     {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
                       const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
                       return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
                     })}
-                    {objEditInstance.bLiveSlackRemind ? (
-                      <Text type="secondary" style={{ fontSize: 12 }}>미리알림 ON</Text>
-                    ) : null}
                   </Space>
                 )}
               </div>
@@ -2756,9 +2741,23 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             )}
             {arrEditDeployScope.includes('live') && (
               <div>
-                <Space style={{ marginBottom: 4 }}>
+                <Space wrap style={{ marginBottom: 4 }} align="center">
                   <Text strong>LIVE 반영 날짜</Text>
                   <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                  {objEditInstance.strStatus === 'event_created' ? (
+                    <Checkbox
+                      checked={bEditLiveSlackRemind}
+                      disabled={!strEditLiveDeployDate}
+                      onChange={(e) => setBEditLiveSlackRemind(e.target.checked)}
+                    >
+                      미리알림
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                        (LIVE 10분 전 · DBA)
+                      </Text>
+                    </Checkbox>
+                  ) : objEditInstance.bLiveSlackRemind ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>미리알림 ON</Text>
+                  ) : null}
                 </Space>
                 <DatePicker
                   style={{ width: '100%', marginTop: 4 }}
@@ -2837,9 +2836,14 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                   });
                                 }}
                                 placeholder={
-                                  objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                                  objSlot.strInputFormat === 'none'
+                                    ? undefined
+                                    : objSlot.strInputFormat === 'date'
+                                      ? '예: 20251125'
+                                      : '예: 1,2,3'
                                 }
                                 rows={1}
+                                disabled={objSlot.strInputFormat === 'none'}
                                 styles={{ textarea: objSqlSlotValueInputStyle }}
                               />
                             )}
@@ -2940,9 +2944,14 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               });
                             }}
                             placeholder={
-                              objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                              objSlot.strInputFormat === 'none'
+                                ? undefined
+                                : objSlot.strInputFormat === 'date'
+                                  ? '예: 20251125'
+                                  : '예: 1,2,3'
                             }
                             rows={1}
+                            disabled={objSlot.strInputFormat === 'none'}
                             styles={{ textarea: objSqlSlotValueInputStyle }}
                           />
                         )}
