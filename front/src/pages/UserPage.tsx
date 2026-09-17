@@ -4,6 +4,7 @@ import {
   Popconfirm, message, Tooltip, Segmented, theme,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { SortOrder } from 'antd/es/table/interface';
 import {
   PlusOutlined, DeleteOutlined, KeyOutlined, EditOutlined,
   CheckCircleOutlined, CloseCircleOutlined, MailOutlined, TeamOutlined,
@@ -30,6 +31,9 @@ import { fnAfterModalOpenFocusFirst } from '../utils/modalFocus';
 import { fnSemanticColor } from '../styles/semanticColors';
 
 const { Text } = Typography;
+
+/** 날짜 컬럼 — 원래 → 내림(최근) → 오름 → 원래 */
+const ARR_DATE_SORT_DIRECTIONS: SortOrder[] = ['descend', 'ascend'];
 
 const fnFormatLastAccess = (strIso?: string | null): string => {
   if (!strIso) return '-';
@@ -355,7 +359,7 @@ const UserPage = () => {
               const nB = b.dtLastLoginAt ? new Date(b.dtLastLoginAt).getTime() : 0;
               return nA - nB;
             },
-            sortDirections: ['descend', 'ascend'],
+            sortDirections: ARR_DATE_SORT_DIRECTIONS,
           },
         ]
       : []),
@@ -392,7 +396,7 @@ const UserPage = () => {
         const nB = b.dtCreatedAt ? new Date(b.dtCreatedAt).getTime() : 0;
         return nA - nB;
       },
-      sortDirections: ['descend', 'ascend'],
+      sortDirections: ARR_DATE_SORT_DIRECTIONS,
     },
     ...(bCanEdit || bCanResetPassword || bCanDelete || bCanApprove
       ? [{
