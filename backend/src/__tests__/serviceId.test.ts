@@ -1,7 +1,7 @@
 import {
-  fnDefaultServiceId,
   fnEnsureAllProductsServiceIds,
   fnFindServiceByAbbr,
+  fnGetNextServiceId,
   fnMergeProductServices,
   fnResolveConnectionServiceFields,
   fnResolveConnectionServiceFieldsForWrite,
@@ -17,20 +17,58 @@ describe('serviceId', () => {
       strName: '아스다글로벌',
       strDescription: '',
       strDbType: 'mssql',
-      arrServices: [{ strAbbr: 'AD/G', strRegion: '글로벌' }],
+      arrServices: [{ nServiceId: 12, strAbbr: 'AD/G', strRegion: '글로벌' }],
       dtCreatedAt: '2026-01-01T00:00:00.000Z',
     },
   ];
 
-  it('fnDefaultServiceId — 프로덕트별 구간', () => {
-    expect(fnDefaultServiceId(4, 0)).toBe(4001);
-    expect(fnDefaultServiceId(2, 1)).toBe(2002);
+  it('fnGetNextServiceId — 전역 MAX+1', () => {
+    expect(fnGetNextServiceId(arrSample)).toBe(13);
+    const arrEmpty: IProduct[] = [
+      {
+        nId: 9,
+        strName: '신규',
+        strDescription: '',
+        strDbType: 'mysql',
+        arrServices: [{ strAbbr: 'X', strRegion: '국내' }],
+        dtCreatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    expect(fnGetNextServiceId(arrEmpty)).toBe(1);
   });
 
-  it('fnEnsureAllProductsServiceIds — nServiceId 부여', () => {
+  it('fnEnsureAllProductsServiceIds — nServiceId 부여는 MAX+1', () => {
     const arr = JSON.parse(JSON.stringify(arrSample)) as IProduct[];
+    arr[0].arrServices = [{ strAbbr: 'AD/G', strRegion: '글로벌' }];
     expect(fnEnsureAllProductsServiceIds(arr)).toBe(true);
-    expect(arr[0].arrServices[0].nServiceId).toBe(4001);
+    expect(arr[0].arrServices[0].nServiceId).toBe(1);
+  });
+
+  it('fnEnsureAllProductsServiceIds — 기존 MAX 다음부터', () => {
+    const arr: IProduct[] = [
+      {
+        nId: 1,
+        strName: 'A',
+        strDescription: '',
+        strDbType: 'mysql',
+        arrServices: [{ nServiceId: 12, strAbbr: 'A', strRegion: '국내' }],
+        dtCreatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        nId: 9,
+        strName: 'B',
+        strDescription: '',
+        strDbType: 'mysql',
+        arrServices: [
+          { strAbbr: 'B1', strRegion: '국내' },
+          { strAbbr: 'B2', strRegion: '해외' },
+        ],
+        dtCreatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ];
+    expect(fnEnsureAllProductsServiceIds(arr)).toBe(true);
+    expect(arr[1].arrServices[0].nServiceId).toBe(13);
+    expect(arr[1].arrServices[1].nServiceId).toBe(14);
   });
 
   it('fnResolveServiceIdFromAbbr — CC/KR 호환', () => {

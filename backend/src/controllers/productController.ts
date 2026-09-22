@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { arrProducts, fnFindProductByName, fnGetNextProductId, fnCommitProductsToStore, fnReloadProductsFromDiskIfEmpty } from '../data/products';
-import { fnEnsureAllProductsServiceIds, fnEnsureProductServiceIds, fnGetNextServiceId, fnMergeProductServices } from '../utils/serviceId';
+import { fnGetNextServiceId, fnMergeProductServices } from '../utils/serviceId';
 import {
   fnCascadeProductDisplayName,
   fnCascadeProductServiceAbbr,
@@ -40,14 +40,15 @@ export const fnCreateProduct = async (req: Request, res: Response): Promise<void
       arrServices: [] as typeof arrServices,
       dtCreatedAt: new Date().toISOString(),
     };
+    // 전역 MAX+1 — productId×1000 구간 공식 사용 금지
+    let nNextServiceId = fnGetNextServiceId(arrProducts);
     objNew.arrServices = (arrServices as Array<{ strAbbr: string; strRegion: string; nServiceId?: number }>).map(
       (objSvc) => ({
         strAbbr: objSvc.strAbbr,
         strRegion: objSvc.strRegion,
-        nServiceId: 0,
+        nServiceId: nNextServiceId++,
       }),
     );
-    fnEnsureProductServiceIds(objNew);
 
     arrProducts.push(objNew);
     try {

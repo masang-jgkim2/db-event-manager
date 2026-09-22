@@ -42,7 +42,7 @@ import { fnFindFirstInstanceListOptions } from '../utils/dashboardLayoutResolve'
 import { fnNotifyError } from '../utils/notificationHelpers';
 import { fnScopedStorageGetItem, fnScopedStorageSetItem } from '../utils/userScopedStorage';
 import { STR_SERVICE_SCOPE_LABEL } from '../utils/countryPlatformLabel';
-import { fnFormatDeployDateDisplay } from '../utils/deployDateDisplay';
+import { fnFormatDeployDateDisplay, fnCompareDeployDateIso } from '../utils/deployDateDisplay';
 import {
   fnFilterConnectionsForTemplatePickerByEnv,
   fnFindLivePairForQaConnection,
@@ -928,6 +928,7 @@ const MyDashboardPage = () => {
   const [strEditLiveDeployDate, setStrEditLiveDeployDate] = useState('');
   const [strEditAlloLink, setStrEditAlloLink] = useState('');
   const [arrEditDeployScope, setArrEditDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+  const [bEditLiveSlackRemind, setBEditLiveSlackRemind] = useState(false);
   // DBA 쿼리 수정 모달
   const [bQueryEditOpen, setBQueryEditOpen] = useState(false);
   const [objQueryEditInstance, setObjQueryEditInstance] = useState<IEventInstance | null>(null);
@@ -1265,6 +1266,7 @@ const MyDashboardPage = () => {
     }
     setStrEditAlloLink(r.strAlloLink ?? '');
     setArrEditDeployScope(r.arrDeployScope ?? ['qa', 'live']);
+    setBEditLiveSlackRemind(Boolean(r.bLiveSlackRemind));
     setBEditOpen(true);
   };
 
@@ -1280,6 +1282,9 @@ const MyDashboardPage = () => {
       dtLiveDeployDate: strEditLiveDeployDate || undefined,
       dtDeployDate: strEditQaDeployDate || strEditLiveDeployDate || strEditDeployDate,
       arrDeployScope: arrEditDeployScope,
+      bLiveSlackRemind: arrEditDeployScope.includes('live') && Boolean(strEditLiveDeployDate)
+        ? bEditLiveSlackRemind
+        : false,
     });
     if (result.bSuccess) {
       messageApi.success('이벤트가 수정되었습니다.');
@@ -1982,12 +1987,17 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
       title: 'QA 반영',
       key: 'dtQaDeployDate',
       width: 140,
+      // 클릭: 원래 → 내림 → 오름 → 원래
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'qa'),
+      sortDirections: ['descend', 'ascend'],
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'qa', 'short'),
     },
     {
       title: 'LIVE 반영',
       key: 'dtLiveDeployDate',
       width: 140,
+      sorter: (a: IEventInstance, b: IEventInstance) => fnCompareDeployDateIso(a, b, 'live'),
+      sortDirections: ['descend', 'ascend'],
       render: (_: unknown, r: IEventInstance) => fnFormatDeployDateDisplay(r, 'live', 'short'),
     },
     {
@@ -2180,6 +2190,11 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
           loading={bLoading}
           pagination={{ pageSize: 15 }}
           strEmptyText="해당 조건의 이벤트가 없습니다."
+          locale={{
+            triggerDesc: '내림차순',
+            triggerAsc: '오름차순',
+            cancelSort: '정렬 취소',
+          }}
           expandable={{
             expandedRowKeys: objSelectedRow ? [objSelectedRow.nId] : [],
             onExpand: (bExpanded, r) => setObjSelectedRow(bExpanded ? r : null),
@@ -2687,7 +2702,10 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                       const arrNext = arrChecked.filter(
                         (v): v is TDeployScope => v === 'qa' || v === 'live'
                       );
-                      if (arrNext.length > 0) setArrEditDeployScope(arrNext);
+                      if (arrNext.length > 0) {
+                        setArrEditDeployScope(arrNext);
+                        if (!arrNext.includes('live')) setBEditLiveSlackRemind(false);
+                      }
                     }}
                   >
                     {ARR_DEPLOY_SCOPE_OPTIONS.map((opt) => (
@@ -2697,7 +2715,7 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                     ))}
                   </Checkbox.Group>
                 ) : (
-                  <Space size={4}>
+                  <Space size={4} wrap>
                     {(objEditInstance.arrDeployScope ?? ['qa', 'live']).map((s) => {
                       const opt = ARR_DEPLOY_SCOPE_OPTIONS.find((o) => o.value === s);
                       return opt ? <DqpmTag key={s} tone={opt.strTagVariant}>{opt.label}</DqpmTag> : null;
@@ -2723,16 +2741,34 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
             )}
             {arrEditDeployScope.includes('live') && (
               <div>
-                <Space style={{ marginBottom: 4 }}>
+                <Space wrap style={{ marginBottom: 4 }} align="center">
                   <Text strong>LIVE 반영 날짜</Text>
                   <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                  {objEditInstance.strStatus === 'event_created' ? (
+                    <Checkbox
+                      checked={bEditLiveSlackRemind}
+                      disabled={!strEditLiveDeployDate}
+                      onChange={(e) => setBEditLiveSlackRemind(e.target.checked)}
+                    >
+                      미리알림
+                      <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                        (LIVE 10분 전 · DBA)
+                      </Text>
+                    </Checkbox>
+                  ) : objEditInstance.bLiveSlackRemind ? (
+                    <Text type="secondary" style={{ fontSize: 12 }}>미리알림 ON</Text>
+                  ) : null}
                 </Space>
                 <DatePicker
                   style={{ width: '100%', marginTop: 4 }}
                   showTime={{ format: 'HH:mm:ss' }}
                   format="YYYY-MM-DD HH:mm:ss"
                   value={strEditLiveDeployDate ? dayjs(strEditLiveDeployDate) : null}
-                  onChange={(date) => setStrEditLiveDeployDate(date ? date.toISOString() : '')}
+                  onChange={(date) => {
+                    const strNext = date ? date.toISOString() : '';
+                    setStrEditLiveDeployDate(strNext);
+                    if (!strNext) setBEditLiveSlackRemind(false);
+                  }}
                 />
               </div>
             )}
@@ -2800,9 +2836,14 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                                   });
                                 }}
                                 placeholder={
-                                  objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                                  objSlot.strInputFormat === 'none'
+                                    ? undefined
+                                    : objSlot.strInputFormat === 'date'
+                                      ? '예: 20251125'
+                                      : '예: 1,2,3'
                                 }
                                 rows={1}
+                                disabled={objSlot.strInputFormat === 'none'}
                                 styles={{ textarea: objSqlSlotValueInputStyle }}
                               />
                             )}
@@ -2903,9 +2944,14 @@ title="LIVE 쿼리 실행 재요청을 하시겠습니까?"
                               });
                             }}
                             placeholder={
-                              objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                              objSlot.strInputFormat === 'none'
+                                ? undefined
+                                : objSlot.strInputFormat === 'date'
+                                  ? '예: 20251125'
+                                  : '예: 1,2,3'
                             }
                             rows={1}
+                            disabled={objSlot.strInputFormat === 'none'}
                             styles={{ textarea: objSqlSlotValueInputStyle }}
                           />
                         )}

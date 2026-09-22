@@ -125,6 +125,7 @@ const QueryPage = () => {
 
   // 단일 서버(한 환경) vs 다중 서버(QA+LIVE) — QA/LIVE 체크박스로 선택 (선택 시 해당 프로덕트에 해당 env DB 접속 있어야 함)
   const [arrDeployScope, setArrDeployScope] = useState<TDeployScope[]>(['qa', 'live']);
+  const [bLiveSlackRemind, setBLiveSlackRemind] = useState(false);
 
   // 결과 (단일: strGeneratedQuery만 사용, 다중: arrExecutionTargets + 미리보기용 strGeneratedQuery)
   const [strGeneratedQuery, setStrGeneratedQuery] = useState('');
@@ -580,6 +581,9 @@ const QueryPage = () => {
         // 하위 호환: QA 또는 LIVE 날짜 중 대표값
         dtDeployDate: strQaDeployDate || strLiveDeployDate,
         arrDeployScope,
+        bLiveSlackRemind: arrDeployScope.includes('live') && Boolean(strLiveDeployDate)
+          ? bLiveSlackRemind
+          : false,
         strCreatedBy: user?.strDisplayName || '',
       };
       if (arrTargets.length > 0) {
@@ -974,7 +978,10 @@ const QueryPage = () => {
                         if (v !== 'qa' && v !== 'live') return false;
                         return (v === 'qa' && bHasQaConnection) || (v === 'live' && bHasLiveConnection);
                       });
-                      if (arrNext.length > 0) setArrDeployScope(arrNext);
+                      if (arrNext.length > 0) {
+                        setArrDeployScope(arrNext);
+                        if (!arrNext.includes('live')) setBLiveSlackRemind(false);
+                      }
                     }}
                   >
                     <Space>
@@ -1075,10 +1082,20 @@ const QueryPage = () => {
                 {arrDeployScope.includes('live') && (
                   <Form.Item
                     label={
-                      <Space>
+                      <Space wrap>
                         LIVE 반영 날짜
                         <DqpmTag color="red" style={{ fontSize: 11 }}>필수</DqpmTag>
                         <Text type="secondary" style={{ fontSize: 11 }}>이 시각 이후에 LIVE 실행 가능</Text>
+                        <Checkbox
+                          checked={bLiveSlackRemind}
+                          disabled={!strLiveDeployDate}
+                          onChange={(e) => setBLiveSlackRemind(e.target.checked)}
+                        >
+                          미리알림
+                          <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                            (LIVE 10분 전 · DBA)
+                          </Text>
+                        </Checkbox>
                       </Space>
                     }
                   >
@@ -1088,7 +1105,11 @@ const QueryPage = () => {
                       format="YYYY-MM-DD HH:mm:ss"
                       placeholder="LIVE 반영 날짜/시각을 선택하세요"
                       value={strLiveDeployDate ? dayjs(strLiveDeployDate) : null}
-                      onChange={(date) => setStrLiveDeployDate(date ? date.toISOString() : '')}
+                      onChange={(date) => {
+                        const strNext = date ? date.toISOString() : '';
+                        setStrLiveDeployDate(strNext);
+                        if (!strNext) setBLiveSlackRemind(false);
+                      }}
                       size="large"
                     />
                   </Form.Item>
@@ -1145,10 +1166,15 @@ const QueryPage = () => {
                             });
                           }}
                           placeholder={
-                            objSlot.strInputFormat === 'date' ? '예: 20251125' : '예: 1,2,3'
+                            objSlot.strInputFormat === 'none'
+                              ? undefined
+                              : objSlot.strInputFormat === 'date'
+                                ? '예: 20251125'
+                                : '예: 1,2,3'
                           }
                           className={STR_CODE_BLOCK_CLASS}
                           rows={1}
+                          disabled={objSlot.strInputFormat === 'none'}
                           styles={{ textarea: objSqlSlotValueInputStyle }}
                         />
                       )}

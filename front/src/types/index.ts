@@ -604,6 +604,10 @@ export interface IEventInstance {
   dtLiveDeployDate?: string;        // LIVE 반영 날짜 (이 시각 이후에 LIVE 실행 허용)
   strAlloLink?: string;             // 업무 링크 URL (알로·코웤 등, 선택)
   arrDeployScope: TDeployScope[];   // 반영 범위 ['qa','live'] or ['live']
+  /** LIVE 반영 10분 전 DBA Slack 미리알림 (생성 시 옵트인) */
+  bLiveSlackRemind?: boolean;
+  /** LIVE 미리알림 발송 시각 */
+  dtSlackLiveRemindedAt?: string;
   strStatus: TEventStatus;
   arrStatusLogs: IStatusLog[];
   // 단계별 처리자 (추적용)
