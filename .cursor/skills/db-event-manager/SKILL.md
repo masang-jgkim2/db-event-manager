@@ -66,7 +66,8 @@ release/0.0.1  ──MR──▶ main            ← LIVE (build_live → deploy
 - **등록·생성 경로**: DB 접속·QueryPage·`POST /api/event-instances` — **`nServiceId` 필수**(프로덕트에 서비스 있을 때). 약자 단독 → 400.
 - **프로덕트 수정**: `ProductPage` Form에 `nServiceId` hidden 유지 → `fnMergeProductServices`가 약자만 바꿔도 **기존 ID 유지**(없으면 신규 발급). 약자 변경 시 `fnCascadeProductServiceAbbr`로 **DB 접속 `strServiceAbbr`만** 연쇄(인스턴스 스냅샷은 유지).
 - **실행·레거시**: `fnServiceAbbrsCompatible` dual-read. 나의 대시보드 표시는 **스냅샷**(`strServiceAbbr`/`strProductName`) 유지.
-- **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장. 잘못 재발급된 ID 복구: `npm run repair-reissued-service-ids` (dry-run) / `--apply` — 대상 출조낚시왕·콜오브카오스·스키드러시·라그하임, 접속·인스턴스 참조로 old ID 추론(`utils/repairReissuedServiceIds.ts`). apply 전 백엔드 중지.
+- **발급**: 신규·누락 서비스 ID는 전역 **`MAX(nServiceId)+1`** (`fnGetNextServiceId`). `productId×1000` 공식 사용 금지.
+- **backfill**: `npm run backfill-service-ids`(있으면) · QA/LIVE DB 접속 `n_service_id` null 행은 UI 수정 저장. 잘못 재발급된 ID 복구: `npm run repair-reissued-service-ids` (dry-run) / `--apply` — 대상 출조낚시왕·콜오브카오스·스키드러시·라그하임, 접속·인스턴스 참조로 old ID 추론(`utils/repairReissuedServiceIds.ts`). ×1000 순번 정리 SQL: `docs/sql/remap-high-service-ids-qa.sql` · `remap-high-service-ids-live.sql` (백엔드 중지 후 메타 DB에서 실행). apply 전 백엔드 중지.
 - **QA/LIVE 접속 id**: 템플릿·인스턴스 세트당 `nQaDbConnectionId`/`nLiveDbConnectionId`. 배포 후 EC2: `node dist/scripts/backfillQaLiveConnections.js` (`docs/DEPLOYMENT.md`). 유틸 `queryTemplateConnections.ts` · UI `DbConnectionSelectOption.tsx`.
 
 ## 회원 가입·승인 (Phase A)

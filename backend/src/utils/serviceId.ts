@@ -1,10 +1,6 @@
 import type { IProduct, IService } from '../data/products';
 import { fnServiceAbbrsCompatible } from './serviceScope';
 
-/** backfill·신규 서비스 기본 ID: nProductId*1000 + (sort+1) — 프로덕트별 구간 분리 */
-export const fnDefaultServiceId = (nProductId: number, nSort: number): number =>
-  nProductId * 1000 + (nSort + 1);
-
 export const fnGetMaxServiceId = (arrProducts: readonly IProduct[]): number => {
   let nMax = 0;
   for (const objProd of arrProducts) {
@@ -16,17 +12,21 @@ export const fnGetMaxServiceId = (arrProducts: readonly IProduct[]): number => {
   return nMax;
 };
 
+/** 전 프로덕트 서비스 ID 최댓값 + 1 (신규 생성·서비스 추가 공통) */
 export const fnGetNextServiceId = (arrProducts: readonly IProduct[]): number =>
   fnGetMaxServiceId(arrProducts) + 1;
 
-/** arrServices에 nServiceId 없으면 할당 (기존 ID 유지) */
-export const fnEnsureProductServiceIds = (objProduct: IProduct): boolean => {
+/** arrServices에 nServiceId 없으면 fnNextId로 할당 (기존 ID 유지) */
+export const fnEnsureProductServiceIds = (
+  objProduct: IProduct,
+  fnNextId: () => number,
+): boolean => {
   let bChanged = false;
-  objProduct.arrServices = (objProduct.arrServices ?? []).map((objSvc, nSort) => {
+  objProduct.arrServices = (objProduct.arrServices ?? []).map((objSvc) => {
     const nExisting = Number(objSvc.nServiceId);
     if (nExisting > 0) return objSvc;
     bChanged = true;
-    return { ...objSvc, nServiceId: fnDefaultServiceId(objProduct.nId, nSort) };
+    return { ...objSvc, nServiceId: fnNextId() };
   });
   return bChanged;
 };
@@ -34,8 +34,9 @@ export const fnEnsureProductServiceIds = (objProduct: IProduct): boolean => {
 export const fnEnsureAllProductsServiceIds = (arrProducts: IProduct[]): boolean => {
   let bAny = false;
   let nNext = fnGetMaxServiceId(arrProducts) + 1;
+  const fnNextId = (): number => nNext++;
   for (const objProd of arrProducts) {
-    if (fnEnsureProductServiceIds(objProd)) {
+    if (fnEnsureProductServiceIds(objProd, fnNextId)) {
       bAny = true;
     }
     const setSeen = new Set<number>();
@@ -45,7 +46,7 @@ export const fnEnsureAllProductsServiceIds = (arrProducts: IProduct[]): boolean 
         setSeen.add(nId);
         continue;
       }
-      objSvc.nServiceId = nNext++;
+      objSvc.nServiceId = fnNextId();
       bAny = true;
     }
   }
