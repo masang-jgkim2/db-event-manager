@@ -19,6 +19,7 @@ alwaysApply: false
 - **검토표**: `docs/CURSOR-UI-AUDIT.md`
 - **CRUD 골격**: `CrudPageShell` + `CrudListToolbar` (Segmented·Form 필터)
 - **헤더 토글**: `LabeledSwitch` — 라벨+Switch (`ActivityPage` 실시간 갱신, `DbConnectionPage` 자동 연결). SettingsDrawer 풀폭 행과는 별개.
+- **신규 모달 첫 입력 포커스**: `utils/modalFocus.ts` — **추가(생성) 모달만**. Input은 `afterOpenChange`+`data-dqpm-modal-focus`; Select는 지연 `open`+close무시+검색 input 포커스. **수정 모달은 자동 포커스하지 않음**.
 
 ## 프로젝트 구조
 
@@ -31,7 +32,7 @@ front/src/
   stores/     # Zustand (useAuthStore, useEventInstanceStore, useThemeStore, useNotificationStore)
   api/        # API 클라이언트 (axios 래퍼)
   hooks/      # useEventStream, useUserPresenceStream 등
-  utils/      # userScopedStorage (dbem:u{nId}:…)
+  utils/      # userScopedStorage · modalFocus (신규 모달 첫 포커스) 등
   services/   # userUiPreferencesSync (pull / 디바운스 push)
   types/      # 공유 인터페이스 (백엔드와 동기화)
 ```
